@@ -145,19 +145,40 @@ void PptxPanel::onOpen()
 
 void PptxPanel::onExport()
 {
-    if (m_rendered.isEmpty()) {
-        QMessageBox::information(this, QStringLiteral("Exportar"),
-                                 QStringLiteral("No hay presentación cargada para exportar."));
+    // CORRECCION: antes se exportaban m_rendered (slides de IMAGEN sin lines),
+    // lo que producia un .pptx vacio. Ahora:
+    //  1) Si hay un PPTX cargado, se exportan sus CAJAS DE TEXTO reales.
+    //  2) Si no, se pide a MainWindow exportar el contenido en vivo
+    //     (cancion/biblia con texto verdadero).
+    if (!m_slides.isEmpty()) {
+        QVector<Slide> textSlides;
+        for (const PptxEngine::PptxSlide &ps : m_slides) {
+            Slide s;
+            s.kind = Slide::Pptx;
+            s.title = QFileInfo(m_file).completeBaseName();
+            s.refLabel = QStringLiteral("Slide %1/%2").arg(textSlides.size() + 1).arg(m_slides.size());
+            for (const PptxEngine::Box &b : ps.boxes) {
+                if (b.kind == PptxEngine::Box::Text && !b.text.simplified().isEmpty()) {
+                    const QStringList paragraphs = b.text.split(QChar('\n'));
+                    for (const QString &par : paragraphs)
+                        s.lines.append(SlideLine(par));
+                }
+            }
+            textSlides.append(s);
+        }
+        const QString out = QFileDialog::getSaveFileName(this, QStringLiteral("Exportar a PowerPoint"),
+                                                         QStringLiteral("presentacion.pptx"),
+                                                         QStringLiteral("PowerPoint (*.pptx)"));
+        if (out.isEmpty()) return;
+        QString err;
+        if (PptxEngine::exportPptx(textSlides, *m_ctx->currentTheme, out, &err))
+            QMessageBox::information(this, QStringLiteral("Exportar"),
+                                     QStringLiteral("Exportado correctamente a:\n%1").arg(out));
+        else
+            QMessageBox::warning(this, QStringLiteral("Exportar"), err);
         return;
     }
-    const QString out = QFileDialog::getSaveFileName(this, QStringLiteral("Exportar a PowerPoint"),
-                                                     QStringLiteral("presentacion.pptx"),
-                                                     QStringLiteral("PowerPoint (*.pptx)"));
-    if (out.isEmpty()) return;
-    QString err;
-    if (PptxEngine::exportPptx(m_rendered, *m_ctx->currentTheme, out, &err))
-        QMessageBox::information(this, QStringLiteral("Exportar"),
-                                 QStringLiteral("Exportado correctamente a:\n%1").arg(out));
-    else
-        QMessageBox::warning(this, QStringLiteral("Exportar"), err);
+    // Sin PPTX cargado: exporta el contenido en vivo (texto real de la
+    // cancion/versiculo que esta proyectado).
+    emit requestExportLive();
 }

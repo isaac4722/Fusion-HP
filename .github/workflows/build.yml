@@ -19,8 +19,8 @@ permissions:
 env:
   APP_NAME: LuminaPresentationSuite
   # Version dinamica: nombre del tag (vN.N.N) al hacer push de tags;
-  # fallback v1.0.0 en pushes a main (solo artefactos) y workflow_dispatch.
-  APP_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.0.0' }}
+  # fallback v1.0.1 en pushes a main (solo artefactos) y workflow_dispatch.
+  APP_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.0.1' }}
   VLC_VERSION: "3.0.21"
 
 jobs:
@@ -212,7 +212,7 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v1.0.0' }}
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v1.0.1' }}
           name: LuminaPresentation Suite ${{ env.APP_VERSION }}
           draft: false
           prerelease: false
@@ -234,13 +234,16 @@ jobs:
             - Control remoto móvil: `http://<ip-del-pc>:8088/remote.html` · Overlay OBS: `http://<ip>:8088/overlay.html`
             - Nota: el trigger Telegram requiere HTTPS; sin OpenSSL embebido se degrada con aviso (Webhook/OBS/MIDI al 100%).
 
-            ### Novedades ${{ env.APP_VERSION }}
-            - Canciones con FTS5 instantáneo, acordes y transposición, Modo Hinario
-            - Biblia multiversión con hasta 3 versiones en paralelo + versículo rápido (F9)
-            - Importación PPTX nativa (OpenXML) sin Office
-            - Stage View con acordes, reloj y cuenta regresiva
-            - Triggers: Webhook, OBS WebSocket v5, MIDI Out, Telegram
-            - Salida multipantalla con crossfade y recuperación ante desconexión
+            ### Correcciones ${{ env.APP_VERSION }} (sobre v1.0.0)
+            - **Importación PPTX arreglada**: el parser XML ignoraba el texto y las posiciones de las cajas (comparación de nombres con prefijo de namespace que nunca coincidía + doble conversión EMU→px)
+            - **Búsqueda de canciones arreglada**: `ORDER BY rank` inválido en la query externa hacía que toda búsqueda FTS devolviera 0 resultados
+            - **Biblia con acentos arreglada**: `stripAccents` roto impedía resolver «Génesis», «Éxodo», «Levítico»...
+            - **Exportación PPTX con texto real** (antes exportaba imágenes sin texto)
+            - Acordes: eliminada fuga de estado entre canciones parseadas
+            - Control remoto: puerto WebSocket ahora dinámico (respeta el configurado en Ajustes)
+            - Lienzo: rectángulos redondeados reales y corrección de fuga de memoria al borrar
+            - Crossfade sin asignaciones por frame + cierre ordenado del servidor embebido
+            - FTS robusto ante términos con guiones/paréntesis/AND
           files: |
             rel/LuminaPresentationSuite-${{ env.APP_VERSION }}-x64-portable.zip
             rel/LuminaPresentationSuite-${{ env.APP_VERSION }}-x86-portable.zip

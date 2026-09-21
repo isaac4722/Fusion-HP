@@ -145,14 +145,12 @@ protected:
         if (m_mode == Black && m_current.isNull()) { p.end(); return; }
         const QPixmap &top = m_current.isNull() ? m_shown : m_current;
         if (m_fadeAnim && m_fadeAnim->state() == QVariantAnimation::Running && !m_prev.isNull()) {
-            if (!m_prev.isNull()) p.drawPixmap(rect(), m_prev);
-            QPixmap blended(top.size());
-            blended.fill(Qt::transparent);
-            QPainter bp(&blended);
-            bp.setOpacity(m_fadeAnim->currentValue().toReal());
-            bp.drawPixmap(0, 0, top);
-            bp.end();
-            p.drawPixmap(rect(), blended);
+            // Crossfade sin allocations por frame: opacidad directa del painter
+            // (antes se creaba un QPixmap blended en cada repintado).
+            p.drawPixmap(rect(), m_prev);
+            p.setOpacity(qreal(m_fadeAnim->currentValue().toReal()));
+            p.drawPixmap(rect(), top);
+            p.setOpacity(1.0);
         } else if (!top.isNull()) {
             p.drawPixmap(rect(), top);
         }

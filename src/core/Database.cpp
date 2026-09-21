@@ -304,21 +304,28 @@ QVector<SongRow> Database::searchSongs(const QString &term, int limit)
 {
     QString t = term.simplified();
     if (t.isEmpty()) return allSongs();
-    // FTS5: prefijos por palabra
+    // FTS5: prefijos por palabra.
+    // CORRECCION: sanitizacion robusta — se envuelve CADA palabra entre
+    // comillas dobles para que caracteres como '-', ':', '(' o 'AND' no
+    // rompan la sintaxis FTS5 (antes fallaba en silencio y devolvia vacio).
     QStringList words;
     const QStringList parts = t.split(QChar(' '), Qt::SkipEmptyParts);
     for (const QString &p : parts) {
         QString w = p;
-        w.replace(QChar('"'), QChar());
-        if (!w.isEmpty()) words << w + QChar('*');
+        w.remove(QChar('"'));
+        w.remove(QChar('\''));
+        if (!w.isEmpty()) words << QStringLiteral("\"%1\"*").arg(w);
     }
     if (words.isEmpty()) return allSongs();
-    QString match = words.join(QStringLiteral(" "));
-    match.replace(QChar('\''), QStringLiteral("''"));
+    const QString match = words.join(QStringLiteral(" "));
+    // CORRECCION CRITICA: el ORDER BY rank estaba en la query EXTERNA
+    // (tabla songs, que no tiene columna rank) — la busqueda de canciones
+    // fallaba en silencio y devolvia SIEMPRE 0 resultados. El rank pertenece
+    // al subquery de songs_fts.
     sqlite3_stmt *st = prepare(QStringLiteral(
         "SELECT s.id, s.title, s.artist, s.key, s.bpm FROM songs s WHERE s.id IN "
-        "(SELECT rowid FROM songs_fts WHERE songs_fts MATCH '%1') "
-        "ORDER BY rank LIMIT %2").arg(match).arg(limit));
+        "(SELECT rowid FROM songs_fts WHERE songs_fts MATCH '%1' ORDER BY rank) "
+        "ORDER BY s.title COLLATE NOCASE LIMIT %2").arg(match).arg(limit));
     return rowsFromStmt(st);
 }
 
@@ -465,19 +472,19 @@ QVector<QPair<BibleRef::VerseRef, QString>> Database::bibleWordSearch(const QStr
                                                                       const QString &term, int limit)
 {
     QVector<QPair<BibleRef::VerseRef, QString>> out;
+    // CORRECCION: misma sanitizacion FTS5 robusta que searchSongs.
     QStringList words;
     for (const QString &p : term.simplified().split(QChar(' '), Qt::SkipEmptyParts)) {
         QString w = p;
-        w.replace(QChar('"'), QChar());
-        w.replace(QChar('\''), QChar());
-        if (!w.isEmpty()) words << w + QChar('*');
+        w.remove(QChar('"'));
+        w.remove(QChar('\''));
+        if (!w.isEmpty()) words << QStringLiteral("\"%1\"*").arg(w);
     }
     if (words.isEmpty()) return out;
-    sqlite3_stmt *st = nullptr;
-    QString match = words.join(QStringLiteral(" "));
-    match.replace(QChar('\''), QStringLiteral("''"));
+    const QString match = words.join(QStringLiteral(" "));
     QString verSafe = version;
     verSafe.replace(QChar('\''), QStringLiteral("''"));
+    sqlite3_stmt *st = nullptr;
     const QString sql = QStringLiteral(
         "SELECT b.book,b.chapter,b.verse,b.text FROM bible b WHERE b.id IN "
         "(SELECT rowid FROM bible_fts WHERE bible_fts MATCH '%1' AND version='%2') "

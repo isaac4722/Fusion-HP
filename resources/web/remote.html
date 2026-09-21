@@ -59,7 +59,9 @@ background:#101728;color:#e6ecf8;font-size:15px}
 <script>
 let ws=null, retry=0;
 function connect(){
-  ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.hostname+':8765');
+  // %%WSPORT%% lo sustituye el servidor embebido con el puerto WS real
+  const wsPort=(typeof WSPORT!=='undefined')?WSPORT:%%WSPORT%%;
+  ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.hostname+':'+wsPort);
   ws.onopen=()=>{document.getElementById('conn').classList.add('on');document.getElementById('status').textContent='conectado';retry=0;};
   ws.onclose=()=>{document.getElementById('conn').classList.remove('on');document.getElementById('status').textContent='reconectando…';
     setTimeout(connect, Math.min(3000*Math.pow(1.5,retry++),15000));};

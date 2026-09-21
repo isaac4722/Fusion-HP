@@ -5,6 +5,7 @@
 #include "core/Database.h"
 #include "core/Lyrics.h"
 #include "core/BibleRef.h"
+#include "core/PptxEngine.h"
 #include "gui/SongPanel.h"
 #include "gui/BiblePanel.h"
 #include "gui/MediaPanel.h"
@@ -21,6 +22,7 @@
 #include <QSplitter>
 #include <QMessageBox>
 #include <QInputDialog>
+#include <QFileDialog>
 #include <QComboBox>
 #include <QStatusBar>
 #include <QApplication>
@@ -315,6 +317,26 @@ void MainWindow::buildUi()
             ServiceItem it; it.kind = ServiceItem::Pptx; it.label = name;
             m_ctx.db->addPlaylistItem(lists.first().first, it);
         }
+    });
+    // Exportar el contenido EN VIVO (cancion/biblia) a .pptx con texto real
+    connect(m_pptxPanel, &PptxPanel::requestExportLive, this, [this]() {
+        if (m_liveSlides.isEmpty()) {
+            QMessageBox::information(this, QStringLiteral("Exportar a PowerPoint"),
+                                     QStringLiteral("No hay contenido en vivo. Proyecta una canción o "
+                                                    "versículo primero, o carga un .pptx en el panel "
+                                                    "de PowerPoint."));
+            return;
+        }
+        const QString out = QFileDialog::getSaveFileName(this, QStringLiteral("Exportar en vivo a PowerPoint"),
+                                                         QStringLiteral("presentacion.pptx"),
+                                                         QStringLiteral("PowerPoint (*.pptx)"));
+        if (out.isEmpty()) return;
+        QString err;
+        if (PptxEngine::exportPptx(m_liveSlides, m_theme, out, &err))
+            QMessageBox::information(this, QStringLiteral("Exportar"),
+                                     QStringLiteral("Exportado correctamente a:\n%1").arg(out));
+        else
+            QMessageBox::warning(this, QStringLiteral("Exportar"), err);
     });
 
     connect(m_themePanel, &ThemePanel::themeChanged, this, [this](const Theme &t) {
@@ -739,7 +761,12 @@ void MainWindow::updateStage()
         }
         m_stage->setThemeColors(m_theme);
         m_stage->updateSlide(c, next ? &n : nullptr, m_theme);
-        m_stage->setKeyBpm(QStringLiteral("Tono: %1").arg(m_ctx.db->songById(m_liveRefId).key));
+        // El tono/BPM solo aplica a canciones (antes se consultaba songById
+        // para cualquier tipo de slide, mostrando "Tono: " vacio).
+        if (m_liveRefKind == ServiceItem::Song && m_liveRefId > 0)
+            m_stage->setKeyBpm(QStringLiteral("Tono: %1").arg(m_ctx.db->songById(m_liveRefId).key));
+        else
+            m_stage->setKeyBpm(QString());
     } else {
         m_stage->clearSlide();
     }
@@ -876,7 +903,7 @@ void MainWindow::pushWebState()
     QJsonObject st;
     st["ev"] = QStringLiteral("state");
     st["app"] = QStringLiteral("LuminaPresentation Suite");
-    st["version"] = QStringLiteral("1.0.0");
+    st["version"] = QApplication::applicationVersion();
     st["mode"] = m_output->mode() == OutputWindow::Black ? QStringLiteral("black")
                  : m_output->mode() == OutputWindow::Clear ? QStringLiteral("clear")
                  : m_output->mode() == OutputWindow::Logo ? QStringLiteral("logo")
@@ -922,6 +949,8 @@ void MainWindow::closeEvent(QCloseEvent *ev)
             return;
         }
     }
+    // Detener el servidor embebido y el motor multimedia de forma ordenada
+    m_ctx.web->stop();
     m_ctx.media->shutdown();
     ev->accept();
 }

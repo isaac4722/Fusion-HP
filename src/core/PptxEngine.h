@@ -97,12 +97,15 @@ public:
             }
         }
         const double outW = 1920.0, outH = 1080.0;
-        const double sx = outW / slideEmu.width();
-        const double sy = outH / slideEmu.height();
-        // Presentaciones 4:3 proyectadas en 16:9: escala uniforme + centrado vertical
-        const double scale = qMin(sx, sy);
-        const double offX = (outW - slideEmu.width() * scale) / 2.0;
-        const double offY = (outH - slideEmu.height() * scale) / 2.0;
+        // CORRECCION: emuToPx() ya convierte EMU->px@96dpi. El factor de
+        // escala debe ser px-de-salida / px-de-la-slide (NO px/EMU: eso
+        // provocaba una doble conversion y geometria ~0 en todas las cajas).
+        const double slidePxW = slideEmu.width() / 9525.0;
+        const double slidePxH = slideEmu.height() / 9525.0;
+        // Presentaciones 4:3 proyectadas en 16:9: escala uniforme + centrado
+        const double scale = qMin(outW / slidePxW, outH / slidePxH);
+        const double offX = (outW - slidePxW * scale) / 2.0;
+        const double offY = (outH - slidePxH * scale) / 2.0;
         *slideSizePx = QSize(int(outW), int(outH));
 
         // Relaciones presentation -> slides en orden
@@ -197,10 +200,14 @@ private:
         if (xml.isEmpty()) return;
         QXmlStreamReader xr(xml);
 
+        // NOTA CRITICA: QXmlStreamReader::name() devuelve el nombre LOCAL
+        // (sin prefijo de namespace). Los elementos DrawingML "a:xxx" se
+        // comparan por nombre local ("t", "off", "ext", ...).
         struct Ctx {
             Box cur;
             QString runText;
-            bool inText = false;
+            bool inText = false;    // dentro de <a:t>
+            bool inRun = false;     // dentro de <a:r> (run de texto)
             int runSize = -1;
             bool runBold = false, runItalic = false;
             QString runColor;
@@ -208,15 +215,27 @@ private:
         } c;
 
         auto flushParagraph = [&]() {
-            if (!c.runText.isEmpty() && c.cur.kind != Box::Image) {
+            const QString trimmed = c.runText.trimmed();
+            if (!trimmed.isEmpty() && c.cur.kind != Box::Image) {
                 if (!c.cur.text.isEmpty()) c.cur.text += QChar('\n');
-                c.cur.text += c.runText;
+                c.cur.text += trimmed;
+                // Aplica el estilo del ultimo run activo a la caja
+                if (c.runSize > 0) c.cur.fontSize = c.runSize;
+                c.cur.bold = c.runBold;
+                c.cur.italic = c.runItalic;
+                if (!c.runColor.isEmpty()) c.cur.color = c.runColor;
             }
             c.runText.clear();
         };
 
         while (!xr.atEnd()) {
             xr.readNext();
+            if (xr.hasError()) break;
+            // ---- Caracteres: contenido textual de <a:t> ----
+            if (xr.isCharacters() || xr.isCDATA()) {
+                if (c.inText) c.runText += xr.text();
+                continue;
+            }
             const QString name = xr.name().toString();
             if (xr.isStartElement()) {
                 if (name == QStringLiteral("sp")) {
@@ -230,45 +249,68 @@ private:
                     if (c.cur.kind == Box::Text && !c.cur.text.isEmpty()) out->boxes.append(c.cur);
                     c = Ctx();
                     c.cur.kind = Box::Image;
-                } else if (name == QStringLiteral("a:off")) {
-                    c.cur.x = emuToPx(xr.attributes().value(QStringLiteral("x")).toLongLong()) * scale + offX;
-                    c.cur.y = emuToPx(xr.attributes().value(QStringLiteral("y")).toLongLong()) * scale + offY;
-                } else if (name == QStringLiteral("a:ext")) {
-                    c.cur.w = emuToPx(xr.attributes().value(QStringLiteral("cx")).toLongLong()) * scale;
-                    c.cur.h = emuToPx(xr.attributes().value(QStringLiteral("cy")).toLongLong()) * scale;
-                } else if (name == QStringLiteral("a:prstGeom")) {
+                } else if (name == QStringLiteral("off")) {
+                    // Solo la primera transform dentro de la forma actual
+                    if (c.cur.w == 0 && c.cur.h == 0) {
+                        c.cur.x = emuToPx(xr.attributes().value(QStringLiteral("x")).toLongLong()) * scale + offX;
+                        c.cur.y = emuToPx(xr.attributes().value(QStringLiteral("y")).toLongLong()) * scale + offY;
+                    }
+                } else if (name == QStringLiteral("ext")) {
+                    if (c.cur.w == 0 && c.cur.h == 0) {
+                        c.cur.w = emuToPx(xr.attributes().value(QStringLiteral("cx")).toLongLong()) * scale;
+                        c.cur.h = emuToPx(xr.attributes().value(QStringLiteral("cy")).toLongLong()) * scale;
+                    }
+                } else if (name == QStringLiteral("prstGeom")) {
                     c.cur.prst = xr.attributes().value(QStringLiteral("prst")).toString();
-                } else if (name == QStringLiteral("a:rPr")) {
+                } else if (name == QStringLiteral("r")) {
+                    c.inRun = true;
+                } else if (name == QStringLiteral("rPr")) {
                     const int sz = xr.attributes().value(QStringLiteral("sz")).toInt();
                     if (sz > 0) { c.runSize = sz / 100; c.cur.fontSize = c.runSize; }
                     c.runBold = xr.attributes().value(QStringLiteral("b")).toInt() == 1;
                     c.runItalic = xr.attributes().value(QStringLiteral("i")).toInt() == 1;
                     c.cur.bold = c.runBold; c.cur.italic = c.runItalic;
-                } else if (name == QStringLiteral("a:srgbClr") && c.inText) {
-                    c.runColor = QStringLiteral("#") + xr.attributes().value(QStringLiteral("val")).toString();
-                } else if (name == QStringLiteral("a:t")) {
+                } else if (name == QStringLiteral("srgbClr")) {
+                    if (c.inRun) {
+                        // Color del run de texto (esta dentro de <a:r><a:rPr>)
+                        c.runColor = QStringLiteral("#") + xr.attributes().value(QStringLiteral("val")).toString();
+                    }
+                } else if (name == QStringLiteral("t")) {
                     c.inText = true;
-                    c.runText.clear();
-                } else if (name == QStringLiteral("a:blip")) {
-                    const QString rid = xr.attributes().value(QStringLiteral("r:embed")).toString();
+                } else if (name == QStringLiteral("blip")) {
+                    QString rid = xr.attributes().value(QStringLiteral("embed")).toString();
+                    if (rid.isEmpty())
+                        rid = xr.attributes().value(QStringLiteral("r:embed")).toString();
                     c.cur.imagePath = imageMap.value(rid);
-                } else if (name == QStringLiteral("a:pPr")) {
+                } else if (name == QStringLiteral("pPr")) {
                     const QString al = xr.attributes().value(QStringLiteral("algn")).toString();
                     c.align = al;
                     c.cur.align = (al == QStringLiteral("l")) ? 1 : (al == QStringLiteral("r")) ? 2 : 0;
                 }
             } else if (xr.isEndElement()) {
-                if (name == QStringLiteral("a:t")) { c.inText = false; }
-                else if (name == QStringLiteral("a:p")) { flushParagraph(); }
+                if (name == QStringLiteral("t")) {
+                    c.inText = false;
+                    if (!c.runText.isEmpty() && !c.runText.endsWith(QChar(' ')))
+                        c.runText += QChar(' ');
+                }
+                else if (name == QStringLiteral("r")) { c.inRun = false; }
+                else if (name == QStringLiteral("p")) { flushParagraph(); }
                 else if (name == QStringLiteral("sp") || name == QStringLiteral("pic")) {
                     flushParagraph();
                     if ((c.cur.kind == Box::Image && !c.cur.imagePath.isEmpty()) ||
-                        (c.cur.kind == Box::Text && !c.cur.text.simplified().isEmpty()))
+                        (c.cur.kind == Box::Text && !c.cur.text.simplified().isEmpty())) {
+                        // Cajas sin xfrm explicito (heredan de layout): geometria
+                        // por defecto centrada para que el texto sea visible.
+                        if (c.cur.w <= 0 || c.cur.h <= 0) {
+                            c.cur.x = 1920.0 * 0.07;
+                            c.cur.y = 1080.0 * 0.25;
+                            c.cur.w = 1920.0 * 0.86;
+                            c.cur.h = 1080.0 * 0.5;
+                        }
                         out->boxes.append(c.cur);
+                    }
                     c = Ctx();
                 }
-            } else if (xr.hasError()) {
-                break;
             }
         }
     }
@@ -326,7 +368,7 @@ public:
             "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">";
         for (int i = 0; i < slides.size(); ++i)
             prels += QString("<Relationship Id=\"rId%1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide\" Target=\"slides/slide%2.xml\"/>")
-                        .arg(i + 1).arg(i + 1);
+                        .arg(i + 1).arg(i + 1).toUtf8();
         prels += "</Relationships>";
         addFile("ppt/_rels/presentation.xml.rels", prels);
 

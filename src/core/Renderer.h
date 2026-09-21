@@ -206,13 +206,6 @@ public:
         else if (st.align == 2) align = Qt::AlignRight;
         align |= Qt::AlignVCenter;
 
-        // Contorno via QPainterPath
-        if (st.outlineWidth > 0) {
-            QPainterPath path;
-            path.addText(QPointF(0, 0), p.font(), content);
-            // Usamos un QTextLayout simplificado: contorno linea a linea via bounding
-            // Para bloques multiliena usamos boundingRect dibujo por partes:
-        }
         // Sombra
         if (st.shadow) {
             p.setPen(Qt::NoPen);
@@ -221,21 +214,15 @@ public:
             p.drawText(box.translated(st.shadowOffset * base, st.shadowOffset * base),
                        align | Qt::TextWordWrap, content);
         }
-        // Texto con contorno
+        // Contorno por capas (offset circular) — robusto y rapido
         if (st.outlineWidth > 0) {
             p.setPen(QPen(st.outlineColor, st.outlineWidth * base, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-            QPainterPath pp;
-            QFont f = p.font();
-            // Contorno por capas (offset circular) — robusto y rapido
             const qreal ow = st.outlineWidth * base;
             for (int a = 0; a < 12; ++a) {
                 const qreal ang = a * 3.14159265 / 6.0;
-                p.setPen(st.outlineColor);
                 p.drawText(box.translated(ow * std::cos(ang), ow * std::sin(ang)),
                            align | Qt::TextWordWrap, content);
             }
-            Q_UNUSED(f)
-            Q_UNUSED(pp)
         }
         p.setPen(st.color);
         p.setBrush(Qt::NoBrush);

@@ -60,33 +60,39 @@ public:
         return it;
     }
 
+    // Fabrica un item de forma con la geometria correcta (incluye esquinas
+    // redondeadas reales, que QGraphicsRectItem no soporta).
+    QGraphicsPathItem *makeShapeItem(ShapeKind kind, const QRectF &rect,
+                                     const QPen &pen, const QBrush &brush)
+    {
+        QPainterPath path;
+        if (kind == ShapeEllipse)
+            path.addEllipse(rect);
+        else if (kind == ShapeRound)
+            path.addRoundedRect(rect, 24, 24);
+        else
+            path.addRect(rect);
+        QGraphicsPathItem *it = m_scene->addPath(path, pen, brush);
+        it->setFlags(QGraphicsItem::ItemIsMovable | QGraphicsItem::ItemIsSelectable);
+        it->setData(kind == ShapeEllipse ? KindEllipse : (kind == ShapeRound ? KindRound : KindRect), true);
+        return it;
+    }
+
     QGraphicsItem *addShape(ShapeKind kind)
     {
+        const QPen pen(QColor(60, 140, 255), 4);
+        const QBrush brush(QColor(30, 60, 140, 200));
         QGraphicsItem *it = nullptr;
         switch (kind) {
-        case ShapeRect: {
-            it = m_scene->addRect(QRectF(600, 350, 500, 250), QPen(QColor(60, 140, 255), 4),
-                                  QColor(30, 60, 140, 200));
+        case ShapeRect:
+        case ShapeRound:
+            it = makeShapeItem(kind, QRectF(600, 350, 500, 250), pen, brush);
             break;
-        }
-        case ShapeRound: {
-            it = m_scene->addRect(QRectF(600, 350, 500, 250), QPen(QColor(60, 140, 255), 4),
-                                  QColor(30, 60, 140, 200));
+        case ShapeEllipse:
+            it = makeShapeItem(ShapeEllipse, QRectF(650, 350, 420, 300), pen, brush);
             break;
-        }
-        case ShapeEllipse: {
-            QGraphicsEllipseItem *el = m_scene->addEllipse(QRectF(650, 350, 420, 300),
-                                                           QPen(QColor(60, 140, 255), 4),
-                                                           QColor(30, 60, 140, 200));
-            el->setFlags(QGraphicsItem::ItemIsMovable | QGraphicsItem::ItemIsSelectable);
-            el->setData(KindEllipse, true);
-            emit canvasChanged();
-            return el;
-        }
         default: return nullptr;
         }
-        it->setFlags(QGraphicsItem::ItemIsMovable | QGraphicsItem::ItemIsSelectable);
-        it->setData(kind == ShapeRound ? KindRound : KindRect, true);
         emit canvasChanged();
         return it;
     }
@@ -106,8 +112,13 @@ public:
 
     void deleteSelected()
     {
+        // CORRECCION: removeItem() solo desvincula; hay que liberar la memoria
+        // explicitamente o los items se acumulan (leak).
         const QList<QGraphicsItem *> items = m_scene->selectedItems();
-        for (QGraphicsItem *it : items) m_scene->removeItem(it);
+        for (QGraphicsItem *it : items) {
+            m_scene->removeItem(it);
+            delete it;
+        }
         emit canvasChanged();
     }
 
@@ -191,19 +202,16 @@ public:
                 p->setData(KindImage, true);
                 p->setData(PathRole, o.value(QStringLiteral("path")).toString());
             } else if (type == QStringLiteral("ellipse")) {
-                auto *e = m_scene->addEllipse(QRectF(x, y, o.value(QStringLiteral("w")).toDouble(),
-                                                     o.value(QStringLiteral("h")).toDouble()),
-                                              penFromJson(o.value(QStringLiteral("pen")).toObject()),
-                                              brushFromJson(o.value(QStringLiteral("brush")).toObject()));
-                e->setFlags(QGraphicsItem::ItemIsMovable | QGraphicsItem::ItemIsSelectable);
-                e->setData(KindEllipse, true);
+                makeShapeItem(ShapeEllipse, QRectF(x, y, o.value(QStringLiteral("w")).toDouble(),
+                                                   o.value(QStringLiteral("h")).toDouble()),
+                              penFromJson(o.value(QStringLiteral("pen")).toObject()),
+                              brushFromJson(o.value(QStringLiteral("brush")).toObject()));
             } else {
-                QGraphicsRectItem *r = m_scene->addRect(QRectF(x, y, o.value(QStringLiteral("w")).toDouble(),
-                                                               o.value(QStringLiteral("h")).toDouble()),
-                                                        penFromJson(o.value(QStringLiteral("pen")).toObject()),
-                                                        brushFromJson(o.value(QStringLiteral("brush")).toObject()));
-                r->setFlags(QGraphicsItem::ItemIsMovable | QGraphicsItem::ItemIsSelectable);
-                r->setData(type == QStringLiteral("roundRect") ? KindRound : KindRect, true);
+                const ShapeKind k = (type == QStringLiteral("roundRect")) ? ShapeRound : ShapeRect;
+                makeShapeItem(k, QRectF(x, y, o.value(QStringLiteral("w")).toDouble(),
+                                        o.value(QStringLiteral("h")).toDouble()),
+                              penFromJson(o.value(QStringLiteral("pen")).toObject()),
+                              brushFromJson(o.value(QStringLiteral("brush")).toObject()));
             }
         }
         emit canvasChanged();
@@ -287,12 +295,9 @@ private:
     static QJsonObject shapePenJson(QGraphicsItem *gi)
     {
         QJsonObject o;
-        if (auto *r = dynamic_cast<QGraphicsRectItem *>(gi)) {
-            o["color"] = r->pen().color().name(QColor::HexArgb);
-            o["width"] = int(r->pen().widthF());
-        } else if (auto *e = dynamic_cast<QGraphicsEllipseItem *>(gi)) {
-            o["color"] = e->pen().color().name(QColor::HexArgb);
-            o["width"] = int(e->pen().widthF());
+        if (auto *p = dynamic_cast<QGraphicsPathItem *>(gi)) {
+            o["color"] = p->pen().color().name(QColor::HexArgb);
+            o["width"] = int(p->pen().widthF());
         }
         return o;
     }
@@ -301,8 +306,7 @@ private:
     {
         QJsonObject o;
         QColor c(Qt::transparent);
-        if (auto *r = dynamic_cast<QGraphicsRectItem *>(gi)) c = r->brush().color();
-        else if (auto *e = dynamic_cast<QGraphicsEllipseItem *>(gi)) c = e->brush().color();
+        if (auto *p = dynamic_cast<QGraphicsPathItem *>(gi)) c = p->brush().color();
         o["color"] = c.name(QColor::HexArgb);
         return o;
     }

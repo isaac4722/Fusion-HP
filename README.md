@@ -13,8 +13,8 @@ agilidad operativa de Holyrics y la potencia de composición vectorial de PowerP
 
 1. Ir a **[Releases](https://github.com/isaac4722/Fusion-HP/releases)**.
 2. Descargar el paquete para tu arquitectura:
-   - `LuminaPresentationSuite-1.0.0-win64-portable.zip` (Windows 7 SP1 … Windows 11, 64 bits)
-   - `LuminaPresentationSuite-1.0.0-win32-portable.zip` (Windows 7 SP1 … Windows 10, 32 bits)
+   - `LuminaPresentationSuite-1.0.1-win64-portable.zip` (Windows 7 SP1 … Windows 11, 64 bits)
+   - `LuminaPresentationSuite-1.0.1-win32-portable.zip` (Windows 7 SP1 … Windows 10, 32 bits)
 3. Descomprimir en cualquier carpeta y ejecutar `LuminaPresentationSuite.exe`.
    **Todo va incluido**: Qt, LibVLC con codecs, Biblia RVR1909 completa y la base de datos se
    crea sola en el primer arranque. No requiere permisos de administrador ni conexión a internet.
@@ -75,7 +75,8 @@ LuminaPresentationSuite-<arch>-portable/
 
 `.github/workflows/build.yml` compila **x86 y x64** con Qt 5.15.2 (MinGW 7.3) en Windows,
 descarga LibVLC 3.0.21, ejecuta `windeployqt` y publica automáticamente el release portable
-en cada `tag v*` (o manualmente con *workflow_dispatch*).
+en cada `tag v*` (o manualmente con *workflow_dispatch*). La versión se define en la
+variable `APP_VERSION` del workflow.
 
 ## 🧱 Arquitectura
 

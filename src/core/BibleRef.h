@@ -46,12 +46,21 @@ public:
 
     static QString stripAccents(const QString &s)
     {
+        // CORRECCION: la version anterior normalizaba a NFD (lo que DESCOMPONE
+        // 'e' + acento en dos code points) y luego hacia replace() de
+        // caracteres PREcompuestos, que ya no existen en la cadena. Resultado:
+        // los acentos nunca se eliminaban y libros como "Génesis" o "Éxodo"
+        // fallaban en el prefijo. Solucion: NFD + filtrado de marcas
+        // combinantes (categoria Mark_NonSpacing), que cubre todos los
+        // diacriticos del espanol.
         QString out = s.normalized(QString::NormalizationForm_D);
-        static const QString acc = QStringLiteral("áàäâãéèëêíìïîóòöôõúùüûñçÁÀÄÂÃÉÈËÊÍÌÏÎÓÒÖÔÕÚÙÜÛÑÇ");
-        static const QString rep = QStringLiteral("aaaaaeeeeiiiiooooouuuuncAAAAAEEEEIIIIOOOOOUUUUNC");
-        for (int i = 0; i < acc.size() && i < rep.size(); ++i)
-            out.replace(acc.at(i), rep.at(i));
-        return out;
+        QString result;
+        result.reserve(out.size());
+        for (const QChar &c : out) {
+            if (c.category() != QChar::Mark_NonSpacing)
+                result += c;
+        }
+        return result;
     }
 
     // Resuelve una referencia tipada. Acepta:

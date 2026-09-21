@@ -44,6 +44,11 @@ public:
         // Detecta etiqueta de acorde-token: p.ej "[Do]" sola en linea = etiqueta NO acorde
         static const QRegularExpression simpleTag(QStringLiteral("^\\s*\\[([^\\]]{1,40})\\]\\s*$"));
 
+        // CORRECCION: era un miembro estatico de clase — fuga de estado entre
+        // llamadas (los acordes finales de una cancion contaminaban la
+        // siguiente). Ahora es estado local del parseo.
+        QString pendingChords;
+
         for (const QString &rawLine : lines) {
             const QString line = rawLine;
             QRegularExpressionMatch mt = simpleTag.match(line);
@@ -152,8 +157,6 @@ public:
     }
 
 private:
-    static QString pendingChords;
-
     static void flush(QVector<Section> &sections, Section &current)
     {
         if (!current.lines.isEmpty()) sections.append(current);
@@ -176,7 +179,5 @@ private:
         return s;
     }
 };
-
-inline QString Lyrics::pendingChords;
 
 #endif // LUMINA_LYRICS_H

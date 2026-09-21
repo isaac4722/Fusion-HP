@@ -141,7 +141,13 @@ private:
         } else if (path == QStringLiteral("/overlay.html") || path == QStringLiteral("/overlay")) {
             body = resource(QStringLiteral(":/web/overlay.html"));
         } else if (path == QStringLiteral("/remote.html") || path == QStringLiteral("/remote")) {
+            // CORRECCION: el puerto WS estaba hardcodeado (8765) en el HTML; si
+            // el usuario lo cambiaba en Ajustes, el control remoto se rompia.
+            // Ahora se inyecta el puerto real del servidor al servir la pagina.
             body = resource(QStringLiteral(":/web/remote.html"));
+            const QString wsPortToken = QStringLiteral("%%WSPORT%%");
+            const QByteArray wsPortValue = QByteArray::number(m_ws ? int(m_ws->serverPort()) : 8765);
+            body.replace(wsPortToken.toUtf8(), wsPortValue);
         } else if (path == QStringLiteral("/favicon.ico")) {
             body = resource(QStringLiteral(":/img/logo.png"));
             contentType = "image/png";
