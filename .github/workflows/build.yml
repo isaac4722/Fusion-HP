@@ -18,6 +18,9 @@ permissions:
 
 env:
   APP_NAME: LuminaPresentationSuite
+  # Version dinamica: nombre del tag (vN.N.N) al hacer push de tags;
+  # fallback v1.0.0 en pushes a main (solo artefactos) y workflow_dispatch.
+  APP_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.0.0' }}
   VLC_VERSION: "3.0.21"
 
 jobs:
@@ -166,7 +169,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $out = "${{ env.APP_NAME }}-1.0.0-${{ matrix.arch }}-portable"
+          $out = "${{ env.APP_NAME }}-${{ env.APP_VERSION }}-${{ matrix.arch }}-portable"
           Compress-Archive -Path "deploy_stage\*" -DestinationPath "$out.zip" -Force
           $hash = (Get-FileHash "$out.zip" -Algorithm SHA256).Hash
           "$hash  $out.zip" | Out-File -Encoding ascii "SHA256SUMS-${{ matrix.arch }}.txt"
@@ -175,9 +178,9 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.APP_NAME }}-1.0.0-${{ matrix.arch }}-portable
+          name: ${{ env.APP_NAME }}-${{ env.APP_VERSION }}-${{ matrix.arch }}-portable
           path: |
-            LuminaPresentationSuite-1.0.0-${{ matrix.arch }}-portable.zip
+            LuminaPresentationSuite-${{ env.APP_VERSION }}-${{ matrix.arch }}-portable.zip
             SHA256SUMS-${{ matrix.arch }}.txt
           retention-days: 14
 
@@ -190,19 +193,19 @@ jobs:
       - name: Download x64 artifact
         uses: actions/download-artifact@v4
         with:
-          name: ${{ env.APP_NAME }}-1.0.0-x64-portable
+          name: ${{ env.APP_NAME }}-${{ env.APP_VERSION }}-x64-portable
           path: artifacts/x64
       - name: Download x86 artifact
         uses: actions/download-artifact@v4
         with:
-          name: ${{ env.APP_NAME }}-1.0.0-x86-portable
+          name: ${{ env.APP_NAME }}-${{ env.APP_VERSION }}-x86-portable
           path: artifacts/x86
 
       - name: Prepare release files
         run: |
           mkdir -p rel
-          cp artifacts/x64/LuminaPresentationSuite-1.0.0-x64-portable.zip rel/
-          cp artifacts/x86/LuminaPresentationSuite-1.0.0-x86-portable.zip rel/
+          cp artifacts/x64/LuminaPresentationSuite-${{ env.APP_VERSION }}-x64-portable.zip rel/
+          cp artifacts/x86/LuminaPresentationSuite-${{ env.APP_VERSION }}-x86-portable.zip rel/
           cat artifacts/x64/SHA256SUMS-x64.txt artifacts/x86/SHA256SUMS-x86.txt > rel/SHA256SUMS.txt
           ls -la rel/
 
@@ -210,27 +213,28 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v1.0.0' }}
-          name: LuminaPresentation Suite ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v1.0.0' }}
+          name: LuminaPresentation Suite ${{ env.APP_VERSION }}
           draft: false
           prerelease: false
           make_latest: true
           body: |
-            ## LuminaPresentation Suite 1.0.0
+            ## LuminaPresentation Suite ${{ env.APP_VERSION }}
 
-            **Proyección multimedia híbrida nativa** — C++20 / Qt 5.15 LTS · sin JVM · sin Electron.
+            **Proyección multimedia híbrida nativa** — C++17 / Qt 5.15 LTS · sin JVM · sin Electron.
 
             ### Paquetes portables (todo incluido)
             | Archivo | Arquitectura | Sistemas |
             |---|---|---|
-            | `LuminaPresentationSuite-1.0.0-x64-portable.zip` | 64 bits | Windows 7 SP1 → Windows 11 |
-            | `LuminaPresentationSuite-1.0.0-x86-portable.zip` | 32 bits | Windows 7 SP1 → Windows 10 |
+            | `LuminaPresentationSuite-${{ env.APP_VERSION }}-x64-portable.zip` | 64 bits | Windows 7 SP1 → Windows 11 |
+            | `LuminaPresentationSuite-${{ env.APP_VERSION }}-x86-portable.zip` | 32 bits | Windows 7 SP1 → Windows 10 |
 
             - Descomprimir y ejecutar `LuminaPresentationSuite.exe` — **no requiere instalación**.
             - Incluye: motor Qt, **LibVLC 3.0.21** (todos los codecs), **Biblia RVR1909 completa** y temas.
             - Verifica la integridad con `SHA256SUMS.txt`.
             - Control remoto móvil: `http://<ip-del-pc>:8088/remote.html` · Overlay OBS: `http://<ip>:8088/overlay.html`
+            - Nota: el trigger Telegram requiere HTTPS; sin OpenSSL embebido se degrada con aviso (Webhook/OBS/MIDI al 100%).
 
-            ### Novedades v1.0.0
+            ### Novedades ${{ env.APP_VERSION }}
             - Canciones con FTS5 instantáneo, acordes y transposición, Modo Hinario
             - Biblia multiversión con hasta 3 versiones en paralelo + versículo rápido (F9)
             - Importación PPTX nativa (OpenXML) sin Office
@@ -238,6 +242,6 @@ jobs:
             - Triggers: Webhook, OBS WebSocket v5, MIDI Out, Telegram
             - Salida multipantalla con crossfade y recuperación ante desconexión
           files: |
-            rel/LuminaPresentationSuite-1.0.0-x64-portable.zip
-            rel/LuminaPresentationSuite-1.0.0-x86-portable.zip
+            rel/LuminaPresentationSuite-${{ env.APP_VERSION }}-x64-portable.zip
+            rel/LuminaPresentationSuite-${{ env.APP_VERSION }}-x86-portable.zip
             rel/SHA256SUMS.txt

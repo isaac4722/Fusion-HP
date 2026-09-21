@@ -94,6 +94,9 @@ set(LUMINA_THIRD_PARTY
 # rompia la compilacion del .rc en CI (no en builds in-source).
 if (WIN32)
     set(ICON_RC_PATH "${CMAKE_CURRENT_SOURCE_DIR}/resources/img/app.ico")
+    # Version del exe derivada de project(VERSION) -> bump unico en la cabecera
+    set(RC_VERSION_QUADS   "${PROJECT_VERSION_MAJOR},${PROJECT_VERSION_MINOR},${PROJECT_VERSION_PATCH},0")
+    set(RC_VERSION_DOTTED  "${PROJECT_VERSION}")
     configure_file(
         ${CMAKE_CURRENT_SOURCE_DIR}/windows/app.rc.in
         ${CMAKE_CURRENT_BINARY_DIR}/app.rc
