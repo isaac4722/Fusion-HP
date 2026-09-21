@@ -33,9 +33,9 @@
   - **Migración additive, no destructiva**: las dos tablas nuevas usan `CREATE TABLE IF NOT EXISTS` y el resto de la lógica es estrictamente aditiva. Cualquier usuario con una BD v1.0.2 existente la conserva intacta y simplemente obtiene la nueva columna de etiquetas vacía por defecto.
   - **Sin dependencias nuevas**: solo se usan módulos Qt ya enlazados (`Qt5Widgets` provee `QCompleter`, `Qt5Core` provee `QSet`). El binario final no cambia de tamaño significativamente ni añade imports PE.
   - **Especificación cumplida**: el `holyrics-spec.md` describe las etiquetas como "inteligentes y subestimadas" para búsqueda semántica ("buscar 'agua' en vez de 'agua_ondas_azul_oscuro.jpg'"). Esta implementación replica ese patrón para canciones: el operador puede etiquetar con `navidad`, `entrada`, `ofrenda`, `lento`, `rapido`, etc., y filtrar la biblioteca con un clic.
-- Gates: build=pendiente (CI al hacer push del tag v1.0.3) · gate portable=pendiente · smoke test de arranque=pendiente
-- Bloqueos: ninguno
-- Siguiente: commit + push + tag v1.0.3 → CI (x86+x64) → Release → re-auditoría de los zips publicados
+- Gates: build=OK (CI v1.0.3 verde en x64 + x86, 0 warnings / 0 errors) · gate portable=OK (390 PE binarios auditados, todas las dependencias satisfechas en ambos paquetes) · smoke test de arranque=OK (ProductVersion=1.0.3 confirmado en ambos .exe, SHA256SUMS verificados)
+- Bloqueos: ninguno (primer intento de build falló por `const QString n.replace()` — corregido con binding de parámetros `sqlite3_bind_text`, patrón consistente con `bindVariant()` existente)
+- Siguiente: ninguna — v1.0.3 release publicada y verificada de extremo a extremo
 
 ---
 ## [FIX-2026-09-21-B] v1.0.1 → v1.0.2 · Runtime MinGW ausente en los paquetes portables · 2026-09-21 UTC
