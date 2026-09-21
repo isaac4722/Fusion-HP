@@ -100,17 +100,54 @@ jobs:
           cmake --build build -j $env:NUMBER_OF_PROCESSORS
           if ($LASTEXITCODE -ne 0) { throw "Fallo la compilacion" }
 
-      - name: Deploy (windeployqt + VLC + licencias)
+      - name: Deploy (DLLs Qt + plugins + VLC + licencias)
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $stage = "deploy_stage"
+          $qt = $env:QT_ROOT_DIR
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
           Copy-Item "build\${{ env.APP_NAME }}.exe" "$stage\"
-          # DLLs de Qt + plugins (sin runtime del compilador ni traducciones)
-          windeployqt --release --no-compiler-runtime --no-translations --no-system-d3d-compiler `
-            --no-opengl-sw "$stage\${{ env.APP_NAME }}.exe"
-          if ($LASTEXITCODE -ne 0) { throw "windeployqt fallo" }
+
+          # ---------------------------------------------------------------
+          # Despliegue manual determinista de Qt 5.15 (windeployqt falla en
+          # CI con "Unable to find the platform plugin"). Se copian unicamente
+          # las DLLs de los modulos enlazados (Core Gui Widgets Network
+          # WebSockets PrintSupport) y los plugins que Qt carga en runtime.
+          # ---------------------------------------------------------------
+          $qtDlls = @(
+            'Qt5Core.dll','Qt5Gui.dll','Qt5Widgets.dll','Qt5Network.dll',
+            'Qt5WebSockets.dll','Qt5PrintSupport.dll','Qt5Svg.dll'
+          )
+          foreach ($dll in $qtDlls) {
+            if (-not (Test-Path "$qt\bin\$dll")) { throw "Falta DLL de Qt: $dll" }
+            Copy-Item "$qt\bin\$dll" "$stage\"
+          }
+          # Fallback grafico dynamic-GL (PCs sin aceleradora / Win7): si existe se incluye
+          foreach ($dll in @('libEGL.dll','libGLESv2.dll','opengl32sw.dll','d3dcompiler_47.dll')) {
+            if (Test-Path "$qt\bin\$dll") { Copy-Item "$qt\bin\$dll" "$stage\" }
+            else { Write-Host "AVISO: $dll no presente en el paquete Qt (se omite)" }
+          }
+
+          $plugins = [ordered]@{
+            'platforms\qwindows.dll'                 = 'platforms'
+            'styles\qwindowsvistastyle.dll'          = 'styles'
+            'printsupport\windowsprintersupport.dll' = 'printsupport'
+            'iconengines\qsvgicon.dll'               = 'iconengines'
+            'imageformats\qgif.dll'                  = 'imageformats'
+            'imageformats\qico.dll'                  = 'imageformats'
+            'imageformats\qjpeg.dll'                 = 'imageformats'
+            'imageformats\qsvg.dll'                  = 'imageformats'
+          }
+          foreach ($rel in $plugins.Keys) {
+            $src = Join-Path "$qt\plugins" $rel
+            if (-not (Test-Path $src)) { throw "Falta plugin de Qt: $rel" }
+            $destDir = Join-Path $stage $plugins[$rel]
+            New-Item -ItemType Directory -Force -Path $destDir | Out-Null
+            Copy-Item $src $destDir
+          }
+          Write-Host "Qt desplegado: $($qtDlls.Count) DLLs + $($plugins.Count) plugins"
+
           # Motor VLC embebido (carga dinamica en runtime desde <appdir>/vlc/)
           New-Item -ItemType Directory -Force -Path "$stage\vlc" | Out-Null
           Copy-Item "$env:VLC_ROOT\libvlc.dll"     "$stage\vlc\"
@@ -119,6 +156,7 @@ jobs:
           if (Test-Path "$env:VLC_ROOT\AUTHORS.txt")  { Copy-Item "$env:VLC_ROOT\AUTHORS.txt"  "$stage\vlc\VLCAuthors.txt" }
           if (Test-Path "$env:VLC_ROOT\COPYING.txt")  { Copy-Item "$env:VLC_ROOT\COPYING.txt"  "$stage\vlc\VLCCopying.txt" }
           Copy-Item "$env:VLC_ROOT\plugins" "$stage\vlc\plugins" -Recurse
+
           # Licencias y documentacion
           Copy-Item "LICENSE.md" "$stage\"
           Copy-Item "README.md" "$stage\"
