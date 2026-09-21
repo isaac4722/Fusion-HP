@@ -3,6 +3,41 @@
 > Registro acumulativo de trabajo (append-only). Formato definido en `AGENT.md`.
 
 ---
+## [FEAT-2026-09-21-C] v1.0.2 → v1.0.3 · Sistema de etiquetas semánticas para canciones · 2026-09-21 UTC
+- Agente: Super Z (GLM) — ciclo de mejora incremental sobre la base v1.0.2 funcional
+- Hecho:
+  - **Auditoría previa al cambio**: verifiqué que el release v1.0.2 publicado funciona — descargué los 2 zips (`LuminaPresentationSuite-v1.0.2-x64-portable.zip` 90.9 MB y `-x86-portable.zip` 86.1 MB), comprobé los SHA256 contra `SHA256SUMS.txt` (coinciden exactos), extraje los paquetes (396 archivos cada uno) y ejecuté el gate `tools/verify_portable.py` contra ambos: 390 PE binarios auditados, todas las dependencias satisfechas dentro del paquete, 0 DLLs externas faltantes. El bug de v1.0.1 (libwinpthread-1.dll ausente) está confirmado arreglado.
+  - **Auditoría del build v1.0.2**: revisé los logs del run #35595183820 (CI en `windows-latest` con Qt 5.15.2 MinGW 8.1 + LibVLC 3.0.21) — los 3 jobs (Build x64, Build x86, Create Release) finalizaron en `success` con 0 warnings y 0 errores en la compilación de los 7897 LOC.
+  - **Identificación del gap vs specs**: comparé los MD del usuario (Requerimientos.md / holyrics-spec.md / powerpoint-spec.md) contra el código existente. La gran mayoría de features descritas ya están implementadas (Canciones + FTS5, Biblia RVR1909, PPTX import/export, Stage View, Control remoto móvil, Overlay OBS, Triggers + OBS WebSocket v5 + MIDI, Temas, Lienzo vectorial, Cultos, Historial). La feature más mencionada como "inteligente y subestimada" en `holyrics-spec.md` que NO estaba en el código era el **sistema de etiquetas (tags) semánticas** para canciones.
+  - **Implementación del sistema de etiquetas**:
+    1. **Esquema DB** (`Database.cpp::ensureSchema`): añadidas dos tablas nuevas con `CREATE TABLE IF NOT EXISTS` (migración segura sobre BDs existentes — no rompe instalaciones previas):
+       - `tags(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE NOT NULL COLLATE NOCASE)`
+       - `song_tags(song_id, tag_id, PRIMARY KEY(song_id, tag_id), FK CASCADE)` + índice `idx_song_tags_tag`
+    2. **API de DB** (`Database.h/.cpp`): 5 métodos nuevos:
+       - `int addTag(name)` — idempotente (INSERT OR IGNORE + SELECT)
+       - `bool setSongTags(songId, tags[])` — transaccional (BEGIN/COMMIT), reemplaza todas las etiquetas
+       - `QStringList songTags(songId)` — etiquetas ordenadas
+       - `QVector<QPair<int,QString>> allTags()` — ordenado por uso (LEFT JOIN + COUNT + GROUP BY)
+       - `QVector<SongRow> searchByTag(tag)` — canciones con esa etiqueta
+    3. **UI** (`SongPanel.cpp/.h`):
+       - Fila nueva arriba de la búsqueda: combo `🏷 Etiqueta` con `(todas)` + todas las etiquetas existentes.
+       - Tabla ampliada de 4 → 5 columnas (añadida `Etiquetas` al final, en azul claro).
+       - `reload()` ahora combina filtro por etiqueta + búsqueda FTS por texto (intersección con `QSet<int>` construido manualmente, sin `toSet()` que está deprecado en Qt 5.15).
+       - Editor de canciones: nuevo campo `Etiquetas (separadas por coma)` con `QCompleter` que sugiere las etiquetas ya usadas en la biblioteca (autocompletado caso-insensible).
+       - `onAdd`/`onEdit`/`onDuplicate` actualizados para persistir/leer/copiar las etiquetas.
+    4. **Importación masiva**: `onImportText` reconoce ahora la directiva `@tags a,b,c` en archivos `.txt` y la persiste junto a la canción importada.
+  - **Version bump 1.0.2 → 1.0.3**: actualizado en `CMakeLists.txt` (project VERSION), `src/main.cpp` (QApplication::setApplicationVersion) y `.github/workflows/build.yml` (fallback APP_VERSION y tag_name del release).
+  - **Notas de release v1.0.3** añadidas al `body` del step `Create Release` en `build.yml`.
+  - **README** actualizado: feature row de Canciones ampliado + descarga apunta a 1.0.3.
+- Decisiones:
+  - **Migración additive, no destructiva**: las dos tablas nuevas usan `CREATE TABLE IF NOT EXISTS` y el resto de la lógica es estrictamente aditiva. Cualquier usuario con una BD v1.0.2 existente la conserva intacta y simplemente obtiene la nueva columna de etiquetas vacía por defecto.
+  - **Sin dependencias nuevas**: solo se usan módulos Qt ya enlazados (`Qt5Widgets` provee `QCompleter`, `Qt5Core` provee `QSet`). El binario final no cambia de tamaño significativamente ni añade imports PE.
+  - **Especificación cumplida**: el `holyrics-spec.md` describe las etiquetas como "inteligentes y subestimadas" para búsqueda semántica ("buscar 'agua' en vez de 'agua_ondas_azul_oscuro.jpg'"). Esta implementación replica ese patrón para canciones: el operador puede etiquetar con `navidad`, `entrada`, `ofrenda`, `lento`, `rapido`, etc., y filtrar la biblioteca con un clic.
+- Gates: build=pendiente (CI al hacer push del tag v1.0.3) · gate portable=pendiente · smoke test de arranque=pendiente
+- Bloqueos: ninguno
+- Siguiente: commit + push + tag v1.0.3 → CI (x86+x64) → Release → re-auditoría de los zips publicados
+
+---
 ## [FIX-2026-09-21-B] v1.0.1 → v1.0.2 · Runtime MinGW ausente en los paquetes portables · 2026-09-21 UTC
 - Agente: Super Z (GLM) — diagnóstico del error reportado por el usuario (imagen) + fix definitivo
 - Síntoma (el error de la imagen): al ejecutar `LuminaPresentationSuite.exe` en un Windows limpio, Windows muestra el diálogo fatal «El código de ejecución no puede continuar porque no se encontró libwinpthread-1.dll» (o libgcc_s_dw2-1.dll / libstdc++-6.dll).

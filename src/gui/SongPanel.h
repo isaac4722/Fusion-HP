@@ -16,6 +16,8 @@
 #include <QPushButton>
 #include <QTimer>
 #include <QLabel>
+#include <QComboBox>
+#include <QStringList>
 
 class SongPanel : public QWidget
 {
@@ -38,17 +40,20 @@ private slots:
     void onDuplicate();
     void onImportText();
     void onTransposePreview(int);
-    bool editSongDialog(Song &song, bool isNew);
+    void onTagFilterChanged(int);
+    bool editSongDialog(Song &song, QStringList &tags, bool isNew);
 
 private:
     void buildUi();
     void populateTable(const QVector<SongRow> &rows);
+    void refreshTagFilter();
     int selectedSongId() const;
 
     AppContext *m_ctx;
     QLineEdit *m_search = nullptr;
     QTableWidget *m_table = nullptr;
     QLabel *m_count = nullptr;
+    QComboBox *m_tagFilter = nullptr;   // v1.0.3: filtro por etiqueta
     QTimer m_searchTimer;
     int m_transpose = 0;
 };

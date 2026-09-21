@@ -43,6 +43,15 @@ public:
     QVector<SongRow> allSongs();
     void touchSongUsage(int songId);            // historial + estadisticas
 
+    // ----------------------- Etiquetas (tags) v1.0.3 -----------------------
+    // Tags semanticos para canciones (feature del spec Holyrics):
+    // asignar palabras clave y luego filtrar por etiqueta.
+    int  addTag(const QString &name);                       // idempotente
+    bool setSongTags(int songId, const QStringList &tags);  // reemplaza
+    QStringList songTags(int songId);
+    QVector<QPair<int, QString>> allTags();                 // (id, nombre) ordenado por uso
+    QVector<SongRow> searchByTag(const QString &tag);        // canciones con la etiqueta
+
     // ------------------------------ Biblias ---------------------------------
     QStringList bibleVersions();
     bool importBibleFromJsonResource(const QString &resourcePath, const QString &versionCode,

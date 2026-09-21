@@ -21,6 +21,11 @@
 #include <QFileInfo>
 #include <QRegularExpression>
 #include <QFont>
+#include <QComboBox>
+#include <QLineEdit>
+#include <QBrush>
+#include <QSet>
+#include <QCompleter>
 
 SongPanel::SongPanel(AppContext *ctx, QWidget *parent)
     : QWidget(parent), m_ctx(ctx)
@@ -37,7 +42,20 @@ void SongPanel::buildUi()
     auto *lay = new QVBoxLayout(this);
     lay->setContentsMargins(12, 12, 12, 12);
 
-    // Busqueda FTS
+    // Fila 1: filtro por etiqueta (tags semanticos v1.0.3)
+    auto *tagRow = new QHBoxLayout();
+    tagRow->addWidget(new QLabel(QStringLiteral("🏷 Etiqueta:"), this));
+    m_tagFilter = new QComboBox(this);
+    m_tagFilter->setMinimumWidth(220);
+    m_tagFilter->setToolTip(QStringLiteral("Filtrar canciones por etiqueta semántica "
+                                            "(las etiquetas se asignan en el editor de cada canción)."));
+    connect(m_tagFilter, qOverload<int>(&QComboBox::currentIndexChanged),
+            this, &SongPanel::onTagFilterChanged);
+    tagRow->addWidget(m_tagFilter, 1);
+    tagRow->addSpacing(16);
+    lay->addLayout(tagRow);
+
+    // Fila 2: busqueda FTS
     auto *searchRow = new QHBoxLayout();
     m_search = new QLineEdit(this);
     m_search->setPlaceholderText(
@@ -49,13 +67,17 @@ void SongPanel::buildUi()
     searchRow->addWidget(m_count);
     lay->addLayout(searchRow);
 
-    // Tabla de resultados
+    // Tabla de resultados (5 columnas: Título, Autor, Tono, BPM, Etiquetas)
     m_table = new QTableWidget(this);
-    m_table->setColumnCount(4);
+    m_table->setColumnCount(5);
     m_table->setHorizontalHeaderLabels({ QStringLiteral("Título"), QStringLiteral("Autor / Grupo"),
-                                         QStringLiteral("Tono"), QStringLiteral("BPM") });
+                                         QStringLiteral("Tono"), QStringLiteral("BPM"),
+                                         QStringLiteral("Etiquetas") });
     m_table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
     m_table->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+    m_table->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+    m_table->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
+    m_table->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Stretch);
     m_table->verticalHeader()->setVisible(false);
     m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_table->setSelectionMode(QAbstractItemView::SingleSelection);
@@ -123,10 +145,52 @@ int SongPanel::selectedSongId() const
 
 void SongPanel::reload()
 {
-    if (!m_search->text().simplified().isEmpty())
-        populateTable(m_ctx->db->searchSongs(m_search->text()));
-    else
-        populateTable(m_ctx->db->allSongs());
+    refreshTagFilter();
+    const QString tag = m_tagFilter ? m_tagFilter->currentData().toString() : QString();
+    const QString term = m_search->text().simplified();
+
+    QVector<SongRow> rows;
+    if (!tag.isEmpty()) {
+        // Filtro por etiqueta semantica (v1.0.3). Si ademas hay texto FTS,
+        // se aplica la interseccion manualmente (caso raro pero correcto).
+        QVector<SongRow> byTag = m_ctx->db->searchByTag(tag);
+        if (term.isEmpty()) {
+            rows = byTag;
+        } else {
+            const QVector<SongRow> fts = m_ctx->db->searchSongs(term);
+            QSet<int> match;
+            match.reserve(fts.size());
+            for (const SongRow &r : fts) match.insert(r.id);
+            for (const SongRow &r : byTag)
+                if (match.contains(r.id)) rows.append(r);
+        }
+    } else if (!term.isEmpty()) {
+        rows = m_ctx->db->searchSongs(term);
+    } else {
+        rows = m_ctx->db->allSongs();
+    }
+    populateTable(rows);
+}
+
+void SongPanel::refreshTagFilter()
+{
+    if (!m_tagFilter) return;
+    // Preservar la seleccion actual del usuario.
+    const QString prev = m_tagFilter->currentData().toString();
+    QSignalBlocker blk(m_tagFilter);
+    m_tagFilter->clear();
+    m_tagFilter->addItem(QStringLiteral("(todas)"), QString());
+    const auto tags = m_ctx->db->allTags();
+    for (const auto &t : tags)
+        m_tagFilter->addItem(t.second, t.second);
+    // Restaurar seleccion si aun existe
+    const int idx = m_tagFilter->findData(prev);
+    if (idx >= 0) m_tagFilter->setCurrentIndex(idx);
+}
+
+void SongPanel::onTagFilterChanged(int)
+{
+    reload();
 }
 
 void SongPanel::onSearchChanged()
@@ -136,6 +200,7 @@ void SongPanel::onSearchChanged()
 
 void SongPanel::populateTable(const QVector<SongRow> &rows)
 {
+    // Cache de etiquetas por cancion (unica consulta en lote por cancion visible).
     m_table->setRowCount(rows.size());
     for (int i = 0; i < rows.size(); ++i) {
         const SongRow &r = rows.at(i);
@@ -145,6 +210,11 @@ void SongPanel::populateTable(const QVector<SongRow> &rows)
         m_table->setItem(i, 1, new QTableWidgetItem(r.artist));
         m_table->setItem(i, 2, new QTableWidgetItem(r.key));
         m_table->setItem(i, 3, new QTableWidgetItem(r.bpm > 0 ? QString::number(r.bpm) : QString()));
+        // v1.0.3: columna Etiquetas (tags semanticos)
+        const QStringList tags = m_ctx->db->songTags(r.id);
+        auto *cTags = new QTableWidgetItem(tags.join(QStringLiteral(", ")));
+        cTags->setForeground(QBrush(QColor(120, 200, 255)));
+        m_table->setItem(i, 4, cTags);
     }
     m_count->setText(QStringLiteral("%1 canciones").arg(rows.size()));
 }
@@ -152,8 +222,10 @@ void SongPanel::populateTable(const QVector<SongRow> &rows)
 void SongPanel::onAdd()
 {
     Song s;
-    if (editSongDialog(s, true)) {
-        m_ctx->db->addSong(s);
+    QStringList tags;  // v1.0.3: tags semanticos capturados en el dialogo
+    if (editSongDialog(s, tags, true)) {
+        const int newId = m_ctx->db->addSong(s);
+        if (newId > 0) m_ctx->db->setSongTags(newId, tags);
         reload();
     }
 }
@@ -163,8 +235,10 @@ void SongPanel::onEdit()
     const int id = selectedSongId();
     if (id <= 0) return;
     Song s = m_ctx->db->songById(id);
-    if (editSongDialog(s, false)) {
+    QStringList tags = m_ctx->db->songTags(id);  // cargar tags existentes
+    if (editSongDialog(s, tags, false)) {
         m_ctx->db->updateSong(s);
+        m_ctx->db->setSongTags(id, tags);
         reload();
     }
 }
@@ -187,9 +261,11 @@ void SongPanel::onDuplicate()
     const int id = selectedSongId();
     if (id <= 0) return;
     Song s = m_ctx->db->songById(id);
+    const QStringList tags = m_ctx->db->songTags(id);  // duplicar tambien las etiquetas
     s.id = 0;
     s.title += QStringLiteral(" (copia)");
-    m_ctx->db->addSong(s);
+    const int newId = m_ctx->db->addSong(s);
+    if (newId > 0) m_ctx->db->setSongTags(newId, tags);
     reload();
 }
 
@@ -206,6 +282,7 @@ void SongPanel::onImportText()
         file.close();
         Song s;
         s.title = QFileInfo(f).completeBaseName();
+        QStringList songTags;   // v1.0.3: importar etiquetas desde @tags a,b,c
         // Primera linea no vacia = titulo si empieza con "@"
         const QStringList lines = content.split(QChar('\n'));
         for (const QString &ln : lines) {
@@ -215,10 +292,21 @@ void SongPanel::onImportText()
             else if (t.startsWith(QStringLiteral("@autor "))) s.artist = t.mid(7);
             else if (t.startsWith(QStringLiteral("@tono "))) s.key = t.mid(6);
             else if (t.startsWith(QStringLiteral("@bpm "))) s.bpm = t.mid(5).toInt();
+            else if (t.startsWith(QStringLiteral("@tags "))) {
+                const QStringList parts = t.mid(6).split(QChar(','));
+                for (const QString &p : parts) {
+                    const QString tn = p.trimmed();
+                    if (!tn.isEmpty()) songTags << tn;
+                }
+            }
         }
         content.remove(QRegularExpression(QStringLiteral("^@.*$"), QRegularExpression::MultilineOption));
         s.lyrics = content.trimmed();
-        if (!s.lyrics.isEmpty()) { m_ctx->db->addSong(s); imported++; }
+        if (!s.lyrics.isEmpty()) {
+            const int newId = m_ctx->db->addSong(s);
+            if (newId > 0 && !songTags.isEmpty()) m_ctx->db->setSongTags(newId, songTags);
+            imported++;
+        }
     }
     QMessageBox::information(this, QStringLiteral("Importación"),
                              QStringLiteral("Se importaron %1 canciones.").arg(imported));
@@ -248,7 +336,7 @@ void SongPanel::onTransposePreview(int semi)
                              QStringLiteral("Esta canción no tiene cifras/acordes detectados."));
 }
 
-bool SongPanel::editSongDialog(Song &song, bool isNew)
+bool SongPanel::editSongDialog(Song &song, QStringList &tags, bool isNew)
 {
     QDialog dlg(this);
     dlg.setWindowTitle(isNew ? QStringLiteral("Nueva canción")
@@ -262,10 +350,21 @@ bool SongPanel::editSongDialog(Song &song, bool isNew)
     auto *edBpm = new QSpinBox(&dlg);
     edBpm->setRange(0, 300);
     edBpm->setValue(song.bpm);
+    // v1.0.3: editor de etiquetas semanticas (coma-separado).
+    // Sugerencia con las etiquetas mas usadas para autocompletar.
+    auto *edTags = new QLineEdit(tags.join(QStringLiteral(", ")), &dlg);
+    edTags->setPlaceholderText(QStringLiteral("lento, navidad, entrada, ofrenda…"));
+    // Completer con las etiquetas existentes (palabra-clave libre)
+    QStringList existingTags;
+    for (const auto &t : m_ctx->db->allTags()) existingTags << t.second;
+    auto *completer = new QCompleter(existingTags, edTags);
+    completer->setCaseSensitivity(Qt::CaseInsensitive);
+    edTags->setCompleter(completer);
     form->addRow(QStringLiteral("Título:"), edTitle);
     form->addRow(QStringLiteral("Autor / Grupo:"), edArtist);
     form->addRow(QStringLiteral("Tonalidad (ej: Do, Sol, Am):"), edKey);
     form->addRow(QStringLiteral("Tempo (BPM):"), edBpm);
+    form->addRow(QStringLiteral("Etiquetas (separadas por coma):"), edTags);
     lay->addLayout(form);
 
     auto *edLyrics = new QPlainTextEdit(&dlg);
@@ -295,5 +394,11 @@ bool SongPanel::editSongDialog(Song &song, bool isNew)
     song.key = edKey->text().trimmed();
     song.bpm = edBpm->value();
     song.lyrics = edLyrics->toPlainText();
+    // v1.0.3: capturar etiquetas (separadas por coma)
+    tags.clear();
+    for (const QString &t : edTags->text().split(QChar(','), Qt::SkipEmptyParts)) {
+        const QString tn = t.trimmed();
+        if (!tn.isEmpty()) tags << tn;
+    }
     return true;
 }

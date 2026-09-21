@@ -13,8 +13,8 @@ agilidad operativa de Holyrics y la potencia de composición vectorial de PowerP
 
 1. Ir a **[Releases](https://github.com/isaac4722/Fusion-HP/releases)**.
 2. Descargar el paquete para tu arquitectura:
-   - `LuminaPresentationSuite-1.0.2-win64-portable.zip` (Windows 7 SP1 … Windows 11, 64 bits)
-   - `LuminaPresentationSuite-1.0.2-win32-portable.zip` (Windows 7 SP1 … Windows 10, 32 bits)
+   - `LuminaPresentationSuite-1.0.3-win64-portable.zip` (Windows 7 SP1 … Windows 11, 64 bits)
+   - `LuminaPresentationSuite-1.0.3-win32-portable.zip` (Windows 7 SP1 … Windows 10, 32 bits)
 3. Descomprimir en cualquier carpeta y ejecutar `LuminaPresentationSuite.exe`.
    **Todo va incluido**: Qt, LibVLC con codecs, Biblia RVR1909 completa y la base de datos se
    crea sola en el primer arranque. No requiere permisos de administrador ni conexión a internet.
@@ -23,7 +23,7 @@ agilidad operativa de Holyrics y la potencia de composición vectorial de PowerP
 
 | Módulo | Detalle |
 |---|---|
-| 🎵 **Canciones** | SQLite + FTS5: búsqueda instantánea por título/autor/letra, editor con etiquetas `[Verso]/[Coro]`, **transposición de acordes**, Modo Hinario (coro intercalado) |
+| 🎵 **Canciones** | SQLite + FTS5: búsqueda instantánea por título/autor/letra, editor con etiquetas `[Verso]/[Coro]`, **transposición de acordes**, Modo Hinario (coro intercalado), **🏷 sistema de etiquetas semánticas** (tags) para filtrado por categoría (lento, navidad, entrada, ofrenda…) |
 | 📖 **Biblia** | **RVR1909 completa incluida** (dominio público), comandos tipados `Jn 3:16`, hasta **3 versiones en paralelo**, búsqueda por palabras FTS |
 | 📽 **PowerPoint** | Importación **.pptx nativa (OpenXML)** sin Office: textos, formas e imágenes; exportación .pptx básica |
 | 🖥 **Salidas** | Audiencia + **Stage View** + overlay web; enrutamiento multipantalla con recuperación ante desconexión |

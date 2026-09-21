@@ -202,6 +202,22 @@ CREATE TABLE IF NOT EXISTS alerts_log (
     text TEXT,
     created_at TEXT
 );
+-- v1.0.3: Sistema de etiquetas (tags) semanticas para canciones.
+-- Permite asignar palabras clave (ej: "lento", "navidad", "entrada",
+-- "ofrenda") y luego filtrar/buscar por etiqueta — feature del spec
+-- Holyrics descrito como "inteligente y subestimado".
+CREATE TABLE IF NOT EXISTS tags (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT UNIQUE NOT NULL COLLATE NOCASE
+);
+CREATE TABLE IF NOT EXISTS song_tags (
+    song_id INTEGER NOT NULL,
+    tag_id  INTEGER NOT NULL,
+    PRIMARY KEY(song_id, tag_id),
+    FOREIGN KEY(song_id) REFERENCES songs(id) ON DELETE CASCADE,
+    FOREIGN KEY(tag_id)  REFERENCES tags(id)  ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_song_tags_tag ON song_tags(tag_id);
     )SQL");
     if (!exec(schema)) {
         if (error) *error = m_lastError;
@@ -343,6 +359,80 @@ void Database::touchSongUsage(int songId)
     stmtExec("INSERT INTO song_stats(song_id, use_count, last_used) VALUES(?,1,?) "
              "ON CONFLICT(song_id) DO UPDATE SET use_count=use_count+1, last_used=excluded.last_used",
              { songId, now });
+}
+
+// ---------------------------------------------------------------------------
+// Etiquetas (tags) semanticas — v1.0.3
+// ---------------------------------------------------------------------------
+int Database::addTag(const QString &name)
+{
+    const QString n = name.trimmed();
+    if (n.isEmpty()) return 0;
+    // INSERT OR IGNORE: si ya existe (UNIQUE COLLATE NOCASE), no falla.
+    stmtExec("INSERT OR IGNORE INTO tags(name) VALUES(?)", { n });
+    const qint64 id = scalar(QStringLiteral(
+        "SELECT id FROM tags WHERE name='%1' COLLATE NOCASE").arg(
+            n.replace('\'', QStringLiteral("''"))));
+    return static_cast<int>(id);
+}
+
+bool Database::setSongTags(int songId, const QStringList &tagNames)
+{
+    if (!begin()) return false;
+    stmtExec("DELETE FROM song_tags WHERE song_id=?", { songId });
+    for (const QString &raw : tagNames) {
+        const QString n = raw.trimmed();
+        if (n.isEmpty()) continue;
+        const int tagId = addTag(n);
+        if (tagId > 0)
+            stmtExec("INSERT OR IGNORE INTO song_tags(song_id, tag_id) VALUES(?,?)",
+                     { songId, tagId });
+    }
+    return commit();
+}
+
+QStringList Database::songTags(int songId)
+{
+    QStringList out;
+    sqlite3_stmt *st = prepare(QStringLiteral(
+        "SELECT t.name FROM tags t INNER JOIN song_tags st ON st.tag_id=t.id "
+        "WHERE st.song_id=%1 ORDER BY t.name COLLATE NOCASE").arg(songId));
+    if (st) {
+        while (sqlite3_step(st) == SQLITE_ROW)
+            out << QString::fromUtf8((const char*)sqlite3_column_text(st, 0));
+        sqlite3_finalize(st);
+    }
+    return out;
+}
+
+QVector<QPair<int, QString>> Database::allTags()
+{
+    QVector<QPair<int, QString>> out;
+    sqlite3_stmt *st = prepare(QStringLiteral(
+        "SELECT t.id, t.name, COUNT(st.song_id) AS uses "
+        "FROM tags t LEFT JOIN song_tags st ON st.tag_id=t.id "
+        "GROUP BY t.id ORDER BY uses DESC, t.name COLLATE NOCASE"));
+    if (st) {
+        while (sqlite3_step(st) == SQLITE_ROW) {
+            out.append(qMakePair(sqlite3_column_int(st, 0),
+                                  QString::fromUtf8((const char*)sqlite3_column_text(st, 1))));
+        }
+        sqlite3_finalize(st);
+    }
+    return out;
+}
+
+QVector<SongRow> Database::searchByTag(const QString &tag)
+{
+    const QString t = tag.trimmed().replace('\'', QStringLiteral("''"));
+    if (t.isEmpty()) return allSongs();
+    sqlite3_stmt *st = prepare(QStringLiteral(
+        "SELECT s.id, s.title, s.artist, s.key, s.bpm FROM songs s "
+        "WHERE s.id IN (SELECT st.song_id FROM song_tags st "
+        "               INNER JOIN tags t ON t.id=st.tag_id "
+        "               WHERE t.name='%1' COLLATE NOCASE) "
+        "ORDER BY s.title COLLATE NOCASE").arg(t));
+    return rowsFromStmt(st);
 }
 
 // ---------------------------------------------------------------------------

@@ -19,8 +19,8 @@ permissions:
 env:
   APP_NAME: LuminaPresentationSuite
   # Version dinamica: nombre del tag (vN.N.N) al hacer push de tags;
-  # fallback v1.0.2 en pushes a main (solo artefactos) y workflow_dispatch.
-  APP_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.0.2' }}
+  # fallback v1.0.3 en pushes a main (solo artefactos) y workflow_dispatch.
+  APP_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.0.3' }}
   VLC_VERSION: "3.0.21"
 
 jobs:
@@ -242,7 +242,7 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v1.0.2' }}
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v1.0.3' }}
           name: LuminaPresentation Suite ${{ env.APP_VERSION }}
           draft: false
           prerelease: false
@@ -263,6 +263,12 @@ jobs:
             - Verifica la integridad con `SHA256SUMS.txt`.
             - Control remoto móvil: `http://<ip-del-pc>:8088/remote.html` · Overlay OBS: `http://<ip>:8088/overlay.html`
             - Nota: el trigger Telegram requiere HTTPS; sin OpenSSL embebido se degrada con aviso (Webhook/OBS/MIDI al 100%).
+
+            ### Novedades v1.0.3
+            - **🏷 Sistema de etiquetas semánticas para canciones** (feature del spec Holyrics descrito como "inteligente y subestimado"): asigna palabras clave a cada canción (ej: `lento`, `navidad`, `entrada`, `ofrenda`) desde el editor y filtra la biblioteca completa con un clic. Las etiquetas también se importan automáticamente desde archivos `.txt` con la directiva `@tags a,b,c`. Búsqueda FTS por texto + filtro por etiqueta funcionan de forma combinada.
+            - Completador inteligente en el editor de etiquetas (sugiere las ya usadas en la biblioteca).
+            - Duplicar canción ahora copia también sus etiquetas.
+            - Versión bump 1.0.2 → 1.0.3.
 
             ### Correcciones v1.0.2
             - **FIX CRÍTICO — arranque en Windows limpio**: los paquetes v1.0.1 omitían el runtime de MinGW (`libwinpthread-1.dll`, `libstdc++-6.dll`, `libgcc_s_dw2-1/seh-1.dll`) que las DLLs de Qt importan de forma dinámica → al ejecutar el programa en un PC sin MinGW instalado aparecía «El código de ejecución no puede continuar porque no se encontró libwinpthread-1.dll». Ahora el runtime viaja DENTRO del paquete.
