@@ -366,14 +366,22 @@ void Database::touchSongUsage(int songId)
 // ---------------------------------------------------------------------------
 int Database::addTag(const QString &name)
 {
-    const QString n = name.trimmed();
+    QString n = name.trimmed();
     if (n.isEmpty()) return 0;
     // INSERT OR IGNORE: si ya existe (UNIQUE COLLATE NOCASE), no falla.
     stmtExec("INSERT OR IGNORE INTO tags(name) VALUES(?)", { n });
-    const qint64 id = scalar(QStringLiteral(
-        "SELECT id FROM tags WHERE name='%1' COLLATE NOCASE").arg(
-            n.replace('\'', QStringLiteral("''"))));
-    return static_cast<int>(id);
+    // Recuperar el id (existente o recien creado) con binding seguro
+    // (evita inyeccion SQL y problemas de escape de comillas).
+    int id = 0;
+    sqlite3_stmt *st = prepare(QStringLiteral(
+        "SELECT id FROM tags WHERE name=? COLLATE NOCASE"));
+    if (st) {
+        sqlite3_bind_text(st, 1, n.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+        if (sqlite3_step(st) == SQLITE_ROW)
+            id = sqlite3_column_int(st, 0);
+        sqlite3_finalize(st);
+    }
+    return id;
 }
 
 bool Database::setSongTags(int songId, const QStringList &tagNames)
