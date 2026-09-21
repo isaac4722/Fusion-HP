@@ -6,7 +6,7 @@
 #  LibVLC se resuelve en RUNTIME (carga dinamica), no se enlaza.
 # ============================================================================
 cmake_minimum_required(VERSION 3.16)
-project(LuminaPresentationSuite VERSION 1.0.1 LANGUAGES CXX C)
+project(LuminaPresentationSuite VERSION 1.0.2 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -29,7 +29,10 @@ if (MSVC)
 else()
     add_compile_options(-O2)
     if (WIN32)
-        # Runtimes estaticos: portabilidad total Win7-11 sin DLLs de MinGW
+        # Runtimes estaticos para el EXE (portabilidad Win7-11). OJO: las
+        # Qt5*.dll precompiladas SI enlazan libgcc/libstdc++/libwinpthread de
+        # forma dinamica -> el CI empaqueta esas 3 DLLs del runtime MinGW y
+        # lo verifica con tools/verify_portable.py (gate anti-regresion).
         link_libraries(-static-libgcc -static-libstdc++)
     endif()
 endif()

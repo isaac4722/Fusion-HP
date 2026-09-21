@@ -19,8 +19,8 @@ permissions:
 env:
   APP_NAME: LuminaPresentationSuite
   # Version dinamica: nombre del tag (vN.N.N) al hacer push de tags;
-  # fallback v1.0.1 en pushes a main (solo artefactos) y workflow_dispatch.
-  APP_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.0.1' }}
+  # fallback v1.0.2 en pushes a main (solo artefactos) y workflow_dispatch.
+  APP_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.0.2' }}
   VLC_VERSION: "3.0.21"
 
 jobs:
@@ -35,10 +35,13 @@ jobs:
             qt_arch: win64_mingw81
             mingw_tool: qt.tools.win64_mingw810
             vlc_url: https://download.videolan.org/pub/videolan/vlc/3.0.21/win64/vlc-3.0.21-win64.7z
+            # Runtime MinGW requerido por las Qt5*.dll precompiladas (enlace dinamico)
+            mingw_runtime: libgcc_s_seh-1.dll,libstdc++-6.dll,libwinpthread-1.dll
           - arch: x86
             qt_arch: win32_mingw81
             mingw_tool: qt.tools.win32_mingw810
             vlc_url: https://download.videolan.org/pub/videolan/vlc/3.0.21/win32/vlc-3.0.21-win32.7z
+            mingw_runtime: libgcc_s_dw2-1.dll,libstdc++-6.dll,libwinpthread-1.dll
 
     steps:
       - name: Checkout
@@ -113,6 +116,23 @@ jobs:
           Copy-Item "build\${{ env.APP_NAME }}.exe" "$stage\"
 
           # ---------------------------------------------------------------
+          # RUNTIME DE MinGW (FIX v1.0.2 - CRITICO):
+          # Las Qt5*.dll y los plugins de Qt vienen precompilados por el propio
+          # Qt con enlace DINAMICO a libgcc/libstdc++/libwinpthread. El exe usa
+          # -static-libgcc/-static-libstdc++, pero eso NO cubre las DLLs de Qt.
+          # Sin estas 3 DLLs, el paquete muere al arrancar en cualquier Windows
+          # limpio con "El codigo de ejecucion no puede continuar porque no se
+          # encontro libwinpthread-1.dll" (defecto de la Release v1.0.1).
+          # Se copian desde el toolchain MinGW 8.1 instalado por aqt (MINGW_BIN).
+          # ---------------------------------------------------------------
+          foreach ($dll in '${{ matrix.mingw_runtime }}'.Split(',')) {
+            $src = Join-Path $env:MINGW_BIN $dll
+            if (-not (Test-Path $src)) { throw "Falta DLL del runtime MinGW: $dll (buscada en $env:MINGW_BIN)" }
+            Copy-Item $src "$stage\"
+            Write-Host "Runtime MinGW copiado: $dll"
+          }
+
+          # ---------------------------------------------------------------
           # Despliegue manual determinista de Qt 5.15 (windeployqt falla en
           # CI con "Unable to find the platform plugin"). Se copian unicamente
           # las DLLs de los modulos enlazados (Core Gui Widgets Network
@@ -165,6 +185,16 @@ jobs:
           Copy-Item "README.md" "$stage\"
           Write-Host "Staging listo"
 
+      - name: Verify portable deps (gate PE imports)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # GATE anti-regresion (defecto v1.0.1): audita las tablas de imports
+          # PE de TODOS los binarios del staging y falla el build si falta
+          # alguna DLL requerida que no sea de sistema Windows.
+          python tools/verify_portable.py deploy_stage ${{ matrix.arch }}
+          if ($LASTEXITCODE -ne 0) { throw "Gate de dependencias portable FALLADO (ver arriba)" }
+
       - name: Package (zip + SHA256)
         shell: pwsh
         run: |
@@ -212,7 +242,7 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v1.0.1' }}
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v1.0.2' }}
           name: LuminaPresentation Suite ${{ env.APP_VERSION }}
           draft: false
           prerelease: false
@@ -229,12 +259,17 @@ jobs:
             | `LuminaPresentationSuite-${{ env.APP_VERSION }}-x86-portable.zip` | 32 bits | Windows 7 SP1 → Windows 10 |
 
             - Descomprimir y ejecutar `LuminaPresentationSuite.exe` — **no requiere instalación**.
-            - Incluye: motor Qt, **LibVLC 3.0.21** (todos los codecs), **Biblia RVR1909 completa** y temas.
+            - Incluye: motor Qt + **runtime MinGW**, **LibVLC 3.0.21** (todos los codecs), **Biblia RVR1909 completa** y temas.
             - Verifica la integridad con `SHA256SUMS.txt`.
             - Control remoto móvil: `http://<ip-del-pc>:8088/remote.html` · Overlay OBS: `http://<ip>:8088/overlay.html`
             - Nota: el trigger Telegram requiere HTTPS; sin OpenSSL embebido se degrada con aviso (Webhook/OBS/MIDI al 100%).
 
-            ### Correcciones ${{ env.APP_VERSION }} (sobre v1.0.0)
+            ### Correcciones v1.0.2
+            - **FIX CRÍTICO — arranque en Windows limpio**: los paquetes v1.0.1 omitían el runtime de MinGW (`libwinpthread-1.dll`, `libstdc++-6.dll`, `libgcc_s_dw2-1/seh-1.dll`) que las DLLs de Qt importan de forma dinámica → al ejecutar el programa en un PC sin MinGW instalado aparecía «El código de ejecución no puede continuar porque no se encontró libwinpthread-1.dll». Ahora el runtime viaja DENTRO del paquete.
+            - **Gate de dependencias en CI**: nuevo paso `verify_portable` que audita las tablas de imports PE de los 380+ binarios del paquete y **falla el build** si falta cualquier DLL no-sistema — este defecto jamás podrá volver a publicarse.
+            - Verificación de arquitectura: el gate también comprueba que el paquete x86 solo contenga PE de 32 bits (y x64 solo de 64 bits).
+
+            ### Correcciones v1.0.1 (sobre v1.0.0)
             - **Importación PPTX arreglada**: el parser XML ignoraba el texto y las posiciones de las cajas (comparación de nombres con prefijo de namespace que nunca coincidía + doble conversión EMU→px)
             - **Búsqueda de canciones arreglada**: `ORDER BY rank` inválido en la query externa hacía que toda búsqueda FTS devolviera 0 resultados
             - **Biblia con acentos arreglada**: `stripAccents` roto impedía resolver «Génesis», «Éxodo», «Levítico»...

@@ -116,7 +116,7 @@ int main(int argc, char *argv[])
     QApplication app(argc, argv);
     QApplication::setApplicationName(QStringLiteral("LuminaPresentationSuite"));
     QApplication::setOrganizationName(QStringLiteral("LuminaSoftware"));
-    QApplication::setApplicationVersion(QStringLiteral("1.0.1"));
+    QApplication::setApplicationVersion(QStringLiteral("1.0.2"));
     QApplication::setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
 
     // Paleta oscura profesional
