@@ -3,6 +3,16 @@
 > Registro acumulativo de trabajo (append-only). Formato definido en `AGENT.md`.
 
 ---
+## [CIERRE-2026-09-21-N] v1.6.0 «ESTABILIDAD» publicada y verificada de extremo a extremo · 2026-09-21 UTC
+- Agente: Z.ai Code (GLM) — cierre del ciclo (pasos 8-9 de AGENT.md)
+- Hecho:
+  - Runs del tag v1.6.0 (35659827527) y de main (35659814706): **success — 0 errores / 0 warnings**, los 2 GATES de release en verde (purga de drafts + verificación post-publicación). CI verde al PRIMER intento del tag.
+  - **Release v1.6.0 PUBLICADA** (id 393322886, draft=false, 21:57:02Z) con sus 3 assets: `LuminaPresentationSuite-v1.6.0-x64-portable.zip` (89.0 MB), `-x86-portable.zip` (84.5 MB) y `SHA256SUMS.txt`.
+  - **Verificación post-publicación (descarga real)**: ambos zips descargados; **SHA256 idénticos** a los publicados (197441f3… x64 · b855b700… x86); **gate `verify_portable.py` OK en ambos** (392 binarios PE auditados por arquitectura, todas las dependencias satisfechas dentro del paquete); **VS_FIXEDFILEINFO 1.6.0.0** confirmado en ambos exe; componentes presentes (Qt5Qml.dll, qtiff.dll, LibVLC).
+- Gates: CI=success (runs main + tag, primer intento) · release=publicada con 3 assets · SHA256=exactos · verify_portable=OK x64 y x86 · versión exe=1.6.0.0 · harness local=45/45 · build local=0 err/0 warn
+- Bloqueos: ninguno
+- Siguiente: ninguna — v1.6.0 «ESTABILIDAD» cerrada: auditoría profunda del código nuevo de 3 versiones, 37 defectos corregidos (3 críticos reproducidos antes del fix), suite de regresión permanente de 45 checks, release verificada de extremo a extremo.
+---
 ## [QA-2026-09-21-M] v1.5.0 → v1.6.0 «ESTABILIDAD» · Auditoría profunda de v1.3.0→v1.5.0: 3 críticos + 19 medios + 15 bajos corregidos · 2026-09-21 UTC
 - Agente: Z.ai Code (GLM) — ciclo completo con 3 auditores paralelos + 5 lotes de corrección + suite de regresión nueva
 - Hecho:
