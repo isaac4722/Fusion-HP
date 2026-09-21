@@ -100,7 +100,7 @@ struct SlideLine
 // ---------------------------------------------------------------------------
 struct Slide
 {
-    enum Kind { Title, Text, Bible, Image, Video, Blank, Custom, Pptx, Aviso };
+    enum Kind { Title, Text, Bible, Image, Video, Blank, Custom, Pptx, Aviso, LowerThird };
 
     Kind        kind = Text;
     QString     title;          // encabezado opcional (titulo cancion, referencia biblica)
@@ -109,6 +109,10 @@ struct Slide
     QString     refLabel;       // etiqueta de referencia (ej: "Jn 3:16")
     QString     mediaPath;      // para Image/Video/Custom(JSON)/Pptx(imagen extraida)
     QString     ref;            // referencia interna DB (ej: "song:12")
+    // v1.1.0: resaltado de palabras (spec Holyrics: "destacar palabras
+    // especificas" en versiculos). Palabras separadas por espacio; el
+    // Renderer las pinta en dorado/negrita caso- y acento-insensible.
+    QString     highlight;
 
     int lineCount() const { return lines.size(); }
 };

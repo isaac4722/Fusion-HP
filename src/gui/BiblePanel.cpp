@@ -75,6 +75,16 @@ void BiblePanel::buildUi()
     navRow->addStretch();
     lay->addLayout(navRow);
 
+    // ---- Destacar palabras (v1.1.0 — spec Holyrics: "destacar palabras
+    // específicas" en versiculos proyectados) ----
+    auto *hlRow = new QHBoxLayout();
+    m_highlight = new QLineEdit(this);
+    m_highlight->setPlaceholderText(QStringLiteral("Destacar palabras en dorado (separadas por espacio, ej: amor luz gracia)…"));
+    m_highlight->setClearButtonEnabled(true);
+    hlRow->addWidget(new QLabel(QStringLiteral("✨ Destacar:"), this));
+    hlRow->addWidget(m_highlight, 1);
+    lay->addLayout(hlRow);
+
     // ---- Lista de versiculos ----
     m_list = new QListWidget(this);
     m_list->setAlternatingRowColors(true);
@@ -196,10 +206,14 @@ void BiblePanel::onProjectClicked()
     QStringList vers;
     vers << v1;
     if (!m_v2->currentData().toString().isEmpty()) vers << m_v2->currentData().toString();
-    if (!m_v3->currentData().toString().isEmpty() && m_v3->currentText() != m_v2->currentText())
+    // FIX v1.1.0: dedupe de la 3ra version contra v1 Y v2 (antes solo v2)
+    if (!m_v3->currentData().toString().isEmpty() &&
+        m_v3->currentText() != m_v2->currentText() &&
+        m_v3->currentText() != m_v1->currentText())
         vers << m_v3->currentData().toString();
     emit requestProjectVerses(vers, selectedBook(), m_chapter->value(),
-                              m_vFrom->value(), m_vTo->value());
+                              m_vFrom->value(), m_vTo->value(),
+                              m_highlight->text().simplified());
 }
 
 void BiblePanel::onAddToServiceClicked()

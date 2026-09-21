@@ -81,3 +81,37 @@
 - Gates: build=OK (0 errores, 0 warnings, MinGW-equivalente gcc 9/Linux) · tests=83/83 OK · runtime arranque OK · WS/HTTP OK · Biblia íntegra OK
 - Bloqueos: ninguno
 - Siguiente: CI verde en Windows (x86+x64) y Release v1.0.1 con los paquetes portables corregidos
+
+---
+## [FEAT-2026-09-21-D] v1.0.3 → v1.1.0 · Auditoría integral + features de specs + correcciones · 2026-09-21 UTC
+- Agente: Super Z (GLM) — ciclo de auditoría completa + implementación de gaps vs specs (Requerimientos.md / holyrics-spec.md / powerpoint-spec.md)
+- Hecho:
+  - **Auditoría integral de la base v1.0.3** (8.2k LOC C++/Qt 5.15): revisión línea a línea de core (Database/Lyrics/Chords/BibleRef/Renderer/DisplayEngine/MediaEngine/PptxEngine/Triggers/MidiOut), net (WebServer), gui (11 paneles) y CI. Compilación local Linux Qt 5.15.2 gcc con 0 warnings y smoke test offscreen (arranque, seed Biblia+canciones, WS 8765 + HTTP 8088).
+  - **Features nuevas (gaps vs specs)**:
+    1. **API HTTP de comandos** (Componente 3 del spec): `GET /api/cmd?c=next|prev|black|clear|logo|goto|alert|qnext|qprev[&i=N][&text=…][&token=…]` + `GET /api/live.txt` (texto plano para fuente de texto de OBS) — token opcional configurable en Ajustes (patrón Holyrics).
+    2. **Exportación a PDF** del escenario en vivo (spec: «PPTX y PDF»): QPdfWriter páginas 16:9 rasterizadas con el Renderer; botón en panel PowerPoint.
+    3. **Lower Third** (Componente 2 del spec): nuevo `Slide::LowerThird` + `Renderer::paintLowerThird` (banda semitransparente, barra dorada, título/texto alineados) + diálogo en la toolbar.
+    4. **Resaltado de palabras bíblicas** (spec Holyrics: «destacar palabras»): `Slide::highlight` + ruta QTextDocument en `Renderer::drawBlock/measureBlock/drawRichLine`; comparación insensible a acentos/mayúsculas y puntuación; campo «Destacar» en BiblePanel (señal con 6º parámetro).
+    5. **Modo Hinario configurable** + **densidad de proyección** (2–8 líneas/slide) en Ajustes › Canciones; `MainWindow::goLiveSong` centraliza la construcción de slides de canciones.
+    6. **Transposición EN VIVO del Stage View**: la señal `stageTransposeChanged` persiste en DB y `updateStage()` transpone las cifras con `Chords::transposeLine` (antes el spinbox solo mostraba un mensaje).
+    7. **Cola del culto remota**: comandos `qnext`/`qprev` (WS + HTTP) ejecutan el item siguiente/anterior (`runQueueAt`); botones nuevos en remote.html.
+  - **Correcciones de defectos**:
+    1. **BibleRef::resolve** con «13, 4-7» (espacio tras coma): el regex numérico no casaba → capítulo 0 → referencia inválida. Normalización `simplified()+remove(' ')`.
+    2. **WebServer: QUrlQuery NO elimina la ruta** — `queryItemValue("c")` devolvía vacío (clave «/api/cmd?c»); ahora se extrae solo la parte posterior a '?'. Detectado por el harness (comando llegaba vacío pese a responder ok).
+    3. **Lyrics interleave (Modo Hinario)**: coro duplicado consecutivo (V1 C C V2); ahora omite el bloque suelto e intercala tras cada verso: V1 C V2 C.
+    4. **quickVerse (F9 doble)**: `m_savedIndex` se machacaba con el índice del overlay → Esc restauraba slide equivocada. El estado original solo se guarda la primera vez.
+    5. **PPTX en cola de culto**: la señal `requestAddPptxToService` nunca se emitía (sin botón) y los items no guardaban la ruta → no ejecutables. Nuevo botón «＋ A culto», payload = ruta, `runServiceItem` importa+rasteriza con el helper compartido `PptxEngine::renderToSlides` (la rasterización del panel y la cola comparten implementación).
+    6. **MediaEngine↔MediaPanel desconectados**: `positionChanged`/`stateChanged` nunca se conectaban (barra/tiempo muertos); ahora conectados en MainWindow + manejo de `finished` (limpia salida + trigger media_stop).
+    7. **Fondos de video**: `playBackground` reiniciaba el bucle en cada slide (parpadeo); ahora continúa si es el mismo archivo.
+    8. **Ajustes ↔ Toolbar**: la pantalla elegida en Ajustes se refleja en los combos y se aplica; token API aplicado también tras «Aplicar».
+    9. Barra de estado con versión real; `stop()` del WebServer cierra clientes WS; eliminada `tagRegex()` muerta en Lyrics.
+  - **Harness de pruebas** (fuera del repo): 51 checks — Chords (10), Lyrics (9, incl. hinario V1 C V2 C y densidad), BibleRef (4), Database (12, tags CRUD + biblia), Renderer (4, LowerThird + Highlight), PptxEngine roundtrip (5), WebServer HTTP (6, incl. 401 sin token y qnext→remoteCommand). Resultado: 51/51 OK.
+  - Gates locales: build=OK (0 errores / 0 warnings) · smoke offscreen OK · API HTTP verificada con curl (state 1.1.0, cmd, remote.html, overlay.html).
+  - Version bump 1.0.3 → 1.1.0 (CMakeLists, main.cpp, workflow) + notas de release v1.1.0 + README (nuevas features + tabla API HTTP).
+- Decisiones:
+  - **Se mantiene C++/Qt 5.15** (no .NET 4.8): el requisito dominante del usuario es «cero instalaciones» y Win7 x32 → un portable Qt+LibVLC autocontenido arranca en Win7 limpio sin instalar runtime; .NET 4.8 no viene preinstalado en Win7. Decisión ya registrada en v1.0.1 y revalidada.
+  - **QTextDocument para el resaltado**: permite HTML por palabra manteniendo word-wrap y alineación del tema sin partir líneas a mano; sombra simulada con segunda pasada translúcida.
+  - **Token API opcional** (no obligatorio): el uso típico es LAN de confianza; el token cubre el flujo Holyrics/Companion sin fricción extra.
+- Gates: analyze=equivalente (build 0 err / 0 warn) · test=51/51 OK (harness) · smoke=OK · CI Windows x86+x64 → pendiente del run del tag v1.1.0
+- Bloqueos: ninguno
+- Siguiente: CI verde del tag v1.1.0 + verificación de paquetes publicados (descarga + verify_portable + SHA256)

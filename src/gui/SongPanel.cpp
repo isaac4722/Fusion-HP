@@ -86,12 +86,18 @@ void SongPanel::buildUi()
     connect(m_table, &QTableWidget::cellDoubleClicked, this, [this](int, int) { onEdit(); });
     lay->addWidget(m_table, 1);
 
-    // Transposicion (preview de cifras para stage view)
+    // Transposición (Stage View en vivo — v1.1.0)
     auto *transRow = new QHBoxLayout();
-    transRow->addWidget(new QLabel(QStringLiteral("Transponer cifras (Stage View):"), this));
+    auto *transLbl = new QLabel(QStringLiteral("Transponer cifras (Stage View en vivo):"), this);
+    transLbl->setToolTip(QStringLiteral("Aplica la transposición a las cifras mostradas en el "
+                                        "monitor del escenario (los músicos ven los acordes en la nueva tonalidad)."));
+    transRow->addWidget(transLbl);
     auto *transSpin = new QSpinBox(this);
     transSpin->setRange(-11, 11);
-    connect(transSpin, qOverload<int>(&QSpinBox::valueChanged), this, &SongPanel::onTransposePreview);
+    transSpin->setSuffix(QStringLiteral(" semitono(s)"));
+    // v1.1.0: el valor se persiste y aplica en vivo (antes solo mostraba un mensaje)
+    transSpin->setValue(m_ctx->db->setting(QStringLiteral("stage_transpose"), QStringLiteral("0")).toInt());
+    connect(transSpin, qOverload<int>(&QSpinBox::valueChanged), this, &SongPanel::onTransposeChanged);
     transRow->addWidget(transSpin);
     transRow->addStretch();
     lay->addLayout(transRow);
@@ -313,27 +319,12 @@ void SongPanel::onImportText()
     reload();
 }
 
-void SongPanel::onTransposePreview(int semi)
+void SongPanel::onTransposeChanged(int semi)
 {
     m_transpose = semi;
-    const int id = selectedSongId();
-    if (id <= 0 || semi == 0) return;
-    const Song s = m_ctx->db->songById(id);
-    // Vista previa: transpone la primera linea de acordes encontrada
-    const auto sections = Lyrics::parse(s.lyrics);
-    for (const auto &sec : sections) {
-        for (const auto &ln : sec.lines) {
-            if (!ln.chords.isEmpty()) {
-                QMessageBox::information(this, QStringLiteral("Vista previa de transposición"),
-                                         QStringLiteral("Original:  %1\nTranspuesto: %2")
-                                             .arg(ln.chords,
-                                                  Chords::transposeLine(ln.chords, semi, true)));
-                return;
-            }
-        }
-    }
-    QMessageBox::information(this, QStringLiteral("Transposición"),
-                             QStringLiteral("Esta canción no tiene cifras/acordes detectados."));
+    // v1.1.0: emite la transposición para que MainWindow la aplique al Stage
+    // View EN VIVO y la persista. Además informa el efecto en la barra.
+    emit stageTransposeChanged(semi);
 }
 
 bool SongPanel::editSongDialog(Song &song, QStringList &tags, bool isNew)

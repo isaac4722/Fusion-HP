@@ -45,6 +45,8 @@ background:#101728;color:#e6ecf8;font-size:15px}
   <button id="clear">🖼 Solo fondo</button>
   <button id="black">⬛ Negro</button>
   <button id="logo">✝ Logo</button>
+  <button id="qprev">⏮ Culto: anterior</button>
+  <button id="qnext">⏭ Culto: siguiente</button>
 </div>
 
 <div class="card" style="margin-top:12px">
@@ -82,6 +84,8 @@ document.getElementById('prev').onclick=()=>send('prev');
 document.getElementById('black').onclick=()=>send('black');
 document.getElementById('clear').onclick=()=>send('clear');
 document.getElementById('logo').onclick=()=>send('logo');
+document.getElementById('qnext').onclick=()=>send('qnext');
+document.getElementById('qprev').onclick=()=>send('qprev');
 document.getElementById('sendAlert').onclick=()=>{const a=document.getElementById('alert');if(a.value.trim()){send('alert',{text:a.value.trim()});a.value='';}};
 connect();
 </script>

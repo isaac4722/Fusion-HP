@@ -103,7 +103,12 @@ public:
         out.book = bookNum;
         out.bookName = bookName;
         if (!rest.isEmpty()) {
+            // v1.1.0: normalización robusta — "13, 4-7" tenía un espacio tras
+            // la coma y el regex numérico no casaba (capítulo quedaba en 0 y
+            // la referencia se reportaba inválida).
+            rest = rest.simplified();
             rest.replace(QChar(','), QChar(':'));
+            rest.remove(QChar(' '));
             static const QRegularExpression nums(QStringLiteral("^(\\d+)(?::(\\d+))?(?:\\s*-\\s*(\\d+))?(?::(\\d+))?$"));
             QRegularExpressionMatch mr = nums.match(rest);
             if (mr.hasMatch()) {

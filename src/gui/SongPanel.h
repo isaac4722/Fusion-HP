@@ -28,6 +28,8 @@ public:
 signals:
     void requestProjectSong(int songId);
     void requestAddToService(int songId);
+    // v1.1.0: transposición EN VIVO del Stage View (persistida por MainWindow)
+    void stageTransposeChanged(int semitones);
 
 public slots:
     void reload();
@@ -39,7 +41,7 @@ private slots:
     void onDelete();
     void onDuplicate();
     void onImportText();
-    void onTransposePreview(int);
+    void onTransposeChanged(int);   // v1.1.0: antes onTransposePreview (solo mensaje)
     void onTagFilterChanged(int);
     bool editSongDialog(Song &song, QStringList &tags, bool isNew);
 

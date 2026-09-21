@@ -34,6 +34,12 @@
 #include <QShortcut>
 #include <QItemSelectionModel>
 #include <QStyle>
+#include <QFileInfo>
+#include <QLineEdit>
+#include <QPlainTextEdit>
+#include <QVBoxLayout>
+#include <QPdfWriter>
+#include <QPageSize>
 #include <functional>
 
 MainWindow::MainWindow(AppContext *ctx, QWidget *parent)
@@ -68,10 +74,13 @@ MainWindow::MainWindow(AppContext *ctx, QWidget *parent)
         if (!m_ctx.web->start(ws, http, &err))
             statusBar()->showMessage(QStringLiteral("Servidor remoto: %1").arg(err), 8000);
     }
+    // v1.1.0: token opcional de la API HTTP (espec Holyrics)
+    m_ctx.web->setApiToken(m_ctx.db->setting(QStringLiteral("api_token")));
 
     statusBar()->showMessage(QStringLiteral(
-        "LuminaPresentation Suite v1.0 — Salida audiencia: %1 · Stage: %2 · Remoto: %3")
-        .arg(m_ctx.db->setting(QStringLiteral("screen_output"), QStringLiteral("auto")),
+        "LuminaPresentation Suite %1 — Salida audiencia: %2 · Stage: %3 · Remoto: %4")
+        .arg(QApplication::applicationVersion(),
+             m_ctx.db->setting(QStringLiteral("screen_output"), QStringLiteral("auto")),
              m_ctx.db->setting(QStringLiteral("screen_stage"), QStringLiteral("auto")),
              m_ctx.web->running() ? QStringLiteral("activo") : QStringLiteral("inactivo")));
 
@@ -100,6 +109,8 @@ void MainWindow::buildUi()
     auto *bLogo = new QAction(QStringLiteral("✝"), this);
     bLogo->setToolTip(QStringLiteral("Logo (L)"));
     auto *bQuick = new QAction(QStringLiteral("⚡ Versículo rápido (F9)"), this);
+    auto *bLower = new QAction(QStringLiteral("📌 Lower Third"), this);
+    bLower->setToolTip(QStringLiteral("Superposición de texto inferior (títulos, citas) — elemento del spec"));
     connect(bLive, &QAction::triggered, this, [this]() {
         if (m_liveSlides.isEmpty()) {
             // Si no hay nada cargado, proyecta la primera cancion del culto activo
@@ -114,6 +125,7 @@ void MainWindow::buildUi()
     connect(bClear, &QAction::triggered, this, &MainWindow::showClear);
     connect(bLogo, &QAction::triggered, this, &MainWindow::showLogo);
     connect(bQuick, &QAction::triggered, this, &MainWindow::quickVerse);
+    connect(bLower, &QAction::triggered, this, &MainWindow::quickLowerThird);
     tb->addAction(bLive);
     tb->addAction(bPrev);
     tb->addAction(bNext);
@@ -121,6 +133,7 @@ void MainWindow::buildUi()
     tb->addAction(bClear);
     tb->addAction(bLogo);
     tb->addAction(bQuick);
+    tb->addAction(bLower);
     tb->addSeparator();
 
     // Selectores de pantalla en la toolbar
@@ -228,11 +241,7 @@ void MainWindow::buildUi()
     // ---- Conexiones entre paneles y motor en vivo ----
     connect(m_songPanel, &SongPanel::requestProjectSong, this, [this](int songId) {
         const Song s = m_ctx.db->songById(songId);
-        Lyrics::BuildOptions opt;
-        opt.titleSlide = m_ctx.db->setting(QStringLiteral("song_title_slide"), QStringLiteral("1")) == QStringLiteral("1");
-        opt.endBlank = m_ctx.db->setting(QStringLiteral("song_end_blank"), QStringLiteral("0")) == QStringLiteral("1");
-        opt.maxLinesPerSlide = 4;
-        goLive(Lyrics::buildSlides(s, opt), s.title, ServiceItem::Song, s.id);
+        goLiveSong(s, ServiceItem::Song, s.id);
         m_ctx.db->touchSongUsage(s.id);
         m_ctx.triggers->fireEvent(QStringLiteral("golive"), { { QStringLiteral("song"), s.title } });
     });
@@ -251,7 +260,8 @@ void MainWindow::buildUi()
     });
 
     connect(m_biblePanel, &BiblePanel::requestProjectVerses, this,
-            [this](const QStringList &versions, int book, int ch, int from, int to) {
+            [this](const QStringList &versions, int book, int ch, int from, int to,
+                   const QString &highlight) {
         if (ch <= 0) return;
         QVector<Slide> slides;
         // Slides por grupos de 2 versiculos; versiones paralelas apiladas
@@ -267,6 +277,7 @@ void MainWindow::buildUi()
                          (i + 1 < primary.size()
                               ? QStringLiteral("-%1").arg(primary.at(i + 1).ref.verse)
                               : QString());
+            s.highlight = highlight;        // v1.1.0: resaltado de palabras
             if (versions.size() > 1) {
                 s.refLabel += QStringLiteral("  (%1)").arg(versions.join(QStringLiteral("+")));
                 for (const QString &v : versions) {
@@ -287,6 +298,7 @@ void MainWindow::buildUi()
             slides.append(s);
         }
         goLive(slides, s_titleOf(book, ch), ServiceItem::Bible, 0);
+        m_ctx.triggers->fireEvent(QStringLiteral("golive"), { { QStringLiteral("item"), s_titleOf(book, ch) } });
     });
     connect(m_biblePanel, &BiblePanel::requestAddVerseToService, this,
             [this](const QStringList &versions, int book, int ch, int from, int to) {
@@ -307,15 +319,34 @@ void MainWindow::buildUi()
     connect(m_mediaPanel, &MediaPanel::playMedia, this, &MainWindow::onPlayMedia);
     connect(m_mediaPanel, &MediaPanel::stopMedia, this, &MainWindow::onStopMedia);
     connect(m_mediaPanel, &MediaPanel::volumeChanged, this, &MainWindow::onVolume);
+    // FIX v1.1.0: las señales del motor multimedia nunca estaban conectadas
+    // al panel — la barra de progreso y el tiempo estaban muertos. Ademas,
+    // el fin de medio (finished) ahora limpia la salida y dispara trigger.
+    if (m_ctx.media) {
+        connect(m_ctx.media, &MediaEngine::positionChanged, m_mediaPanel, &MediaPanel::onPosition);
+        connect(m_ctx.media, &MediaEngine::stateChanged, m_mediaPanel, &MediaPanel::onMediaState);
+        connect(m_ctx.media, &MediaEngine::finished, this, [this]() {
+            m_ctx.media->stopMain();
+            m_output->setVideoVisible(false);
+            m_ctx.triggers->fireEvent(QStringLiteral("media_stop"));
+            statusBar()->showMessage(QStringLiteral("Medio finalizado."), 3000);
+        });
+    }
 
     connect(m_pptxPanel, &PptxPanel::requestProjectPptx, this, [this](const QVector<Slide> &slides) {
         goLive(slides, QStringLiteral("Presentación PowerPoint"), ServiceItem::Pptx, 0);
+        m_ctx.triggers->fireEvent(QStringLiteral("golive"), { { QStringLiteral("item"), QStringLiteral("PowerPoint") } });
     });
-    connect(m_pptxPanel, &PptxPanel::requestAddPptxToService, this, [this](const QString &name, const QVector<Slide> &) {
+    // FIX v1.1.0: los items PPTX añadidos al culto guardaban el ARCHIVO en
+    // payload (antes solo el nombre) y nunca podian ejecutarse desde la cola.
+    connect(m_pptxPanel, &PptxPanel::requestAddPptxToService, this, [this](const QString &filePath) {
         const auto lists = m_ctx.db->playlists();
         if (!lists.isEmpty()) {
-            ServiceItem it; it.kind = ServiceItem::Pptx; it.label = name;
+            ServiceItem it; it.kind = ServiceItem::Pptx;
+            it.label = QStringLiteral("📽 %1").arg(QFileInfo(filePath).completeBaseName());
+            it.payload = filePath;
             m_ctx.db->addPlaylistItem(lists.first().first, it);
+            statusBar()->showMessage(QStringLiteral("PowerPoint añadido al culto activo."), 3000);
         }
     });
     // Exportar el contenido EN VIVO (cancion/biblia) a .pptx con texto real
@@ -338,6 +369,8 @@ void MainWindow::buildUi()
         else
             QMessageBox::warning(this, QStringLiteral("Exportar"), err);
     });
+    // v1.1.0: exportar el escenario en vivo a PDF (spec: exportar a "PPTX y PDF")
+    connect(m_pptxPanel, &PptxPanel::requestExportPdf, this, &MainWindow::exportLivePdf);
 
     connect(m_themePanel, &ThemePanel::themeChanged, this, [this](const Theme &t) {
         m_theme = t;
@@ -374,11 +407,29 @@ void MainWindow::buildUi()
     connect(m_commsPanel, &CommsPanel::startCountdown, this, &MainWindow::onStartCountdown);
     connect(m_commsPanel, &CommsPanel::stopCountdownSignal, this, &MainWindow::onStopCountdown);
 
+    // v1.1.0: transposición en vivo del Stage View (spec: cifras para musicos)
+    m_stageTranspose = m_ctx.db->setting(QStringLiteral("stage_transpose"), QStringLiteral("0")).toInt();
+    connect(m_songPanel, &SongPanel::stageTransposeChanged, this, [this](int semi) {
+        m_stageTranspose = semi;
+        m_ctx.db->setSetting(QStringLiteral("stage_transpose"), QString::number(semi));
+        updateStage();
+    });
+
     connect(m_settingsPanel, &SettingsPanel::settingsApplied, this, [this]() {
+        // FIX v1.1.0: los combos de la toolbar quedaban desincronizados tras
+        // aplicar Ajustes (la pantalla elegida en Ajustes no se reflejaba).
+        rebuildScreenCombos();
+        const int outScr = m_ctx.db->setting(QStringLiteral("screen_output"), QStringLiteral("-1")).toInt();
+        const int stgScr = m_ctx.db->setting(QStringLiteral("screen_stage"), QStringLiteral("0")).toInt();
+        if (m_comboOutputScreen->findData(outScr) >= 0)
+            m_comboOutputScreen->setCurrentIndex(m_comboOutputScreen->findData(outScr));
+        if (m_comboStageScreen->findData(stgScr) >= 0)
+            m_comboStageScreen->setCurrentIndex(m_comboStageScreen->findData(stgScr));
         reassignOutputs();
         quint16 ws = quint16(m_ctx.db->setting(QStringLiteral("ws_port"), QStringLiteral("8765")).toInt());
         quint16 http = quint16(m_ctx.db->setting(QStringLiteral("http_port"), QStringLiteral("8088")).toInt());
         m_ctx.web->start(ws, http);
+        m_ctx.web->setApiToken(m_ctx.db->setting(QStringLiteral("api_token")));   // v1.1.0
         statusBar()->showMessage(QStringLiteral("Configuración aplicada y servidor reiniciado."), 4000);
     });
 
@@ -463,6 +514,21 @@ void MainWindow::applyTheme(int themeId)
 // ---------------------------------------------------------------------------
 // En vivo
 // ---------------------------------------------------------------------------
+// v1.1.0: proyección de canciones centralizada (un solo lugar aplica los
+// ajustes: slide de título, Modo Hinario, versos por slide).
+void MainWindow::goLiveSong(const Song &s, int refKind, int refId)
+{
+    Lyrics::BuildOptions opt;
+    opt.titleSlide = m_ctx.db->setting(QStringLiteral("song_title_slide"), QStringLiteral("1")) == QStringLiteral("1");
+    opt.endBlank = m_ctx.db->setting(QStringLiteral("song_end_blank"), QStringLiteral("0")) == QStringLiteral("1");
+    // v1.1.0: Modo Hinario (intercalar coro tras cada verso) — ajuste de spec
+    opt.chorusInterleave = m_ctx.db->setting(QStringLiteral("song_hinario"), QStringLiteral("0")) == QStringLiteral("1");
+    // v1.1.0: versos por slide configurable (2..8, por defecto 4)
+    int maxLines = m_ctx.db->setting(QStringLiteral("song_maxlines"), QStringLiteral("4")).toInt();
+    opt.maxLinesPerSlide = qBound(2, maxLines, 8);
+    goLive(Lyrics::buildSlides(s, opt), s.title, refKind, refId);
+}
+
 void MainWindow::goLive(const QVector<Slide> &slides, const QString &label, int refKind, int refId)
 {
     m_liveSlides = slides;
@@ -563,6 +629,9 @@ void MainWindow::quickVerse()
         return;
     }
     // Conserva el estado actual para restaurar con Esc
+    // FIX v1.1.0: antes, un segundo F9 (versiculo sobre versiculo) machacaba
+    // m_savedIndex con el indice del overlay y Esc restauraba la slide
+    // equivocada. Ahora el estado original solo se guarda la primera vez.
     if (!m_overlayActive) {
         m_savedSlides = m_liveSlides;
         m_savedIndex = m_liveIndex;
@@ -581,10 +650,95 @@ void MainWindow::quickVerse()
     for (const BibleRef::Verse &v : verses)
         s.lines.append(SlideLine(QStringLiteral("%1 %2").arg(v.ref.verse).arg(v.text)));
     slides.append(s);
-    const int keepIdx = m_liveIndex;
     goLive(slides, QStringLiteral("Versículo rápido"), ServiceItem::Bible, 0);
-    m_savedIndex = keepIdx;      // restaurar al cerrar
     statusBar()->showMessage(QStringLiteral("Versículo proyectado. Esc para volver a la canción."), 4000);
+}
+
+// ---------------------------------------------------------------------------
+// v1.1.0: Lower Third (superposición inferior) — elemento del spec (Componente
+// 2). Un dialogo pide titulo y lineas; se proyecta como slide semitransparente
+// sobre el fondo/tema actual sin interrumpir la secuencia en vivo.
+// ---------------------------------------------------------------------------
+void MainWindow::quickLowerThird()
+{
+    QDialog dlg(this);
+    dlg.setWindowTitle(QStringLiteral("Lower Third — superposición inferior"));
+    dlg.resize(520, 220);
+    auto *lay = new QVBoxLayout(&dlg);
+    auto *edTitle = new QLineEdit(&dlg);
+    edTitle->setPlaceholderText(QStringLiteral("Título (ej: Pr. Juan Pérez — Pastor)"));
+    auto *edText = new QPlainTextEdit(&dlg);
+    edText->setPlaceholderText(QStringLiteral("Texto del lower third (una o varias líneas)…"));
+    edText->setMaximumHeight(90);
+    lay->addWidget(new QLabel(QStringLiteral("Título:"), &dlg));
+    lay->addWidget(edTitle);
+    lay->addWidget(new QLabel(QStringLiteral("Texto:"), &dlg));
+    lay->addWidget(edText);
+    auto *btns = new QHBoxLayout();
+    btns->addStretch();
+    auto *ok = new QPushButton(QStringLiteral("Proyectar"), &dlg);
+    ok->setDefault(true);
+    auto *cancel = new QPushButton(QStringLiteral("Cancelar"), &dlg);
+    connect(ok, &QPushButton::clicked, &dlg, &QDialog::accept);
+    connect(cancel, &QPushButton::clicked, &dlg, &QDialog::reject);
+    btns->addWidget(cancel);
+    btns->addWidget(ok);
+    lay->addLayout(btns);
+    if (dlg.exec() != QDialog::Accepted) return;
+
+    Slide s;
+    s.kind = Slide::LowerThird;
+    s.title = edTitle->text().trimmed();
+    const QString body = edText->toPlainText().trimmed();
+    for (const QString &ln : body.split(QChar('\n'), Qt::SkipEmptyParts))
+        s.lines.append(SlideLine(ln.trimmed()));
+    if (s.title.isEmpty() && s.lines.isEmpty()) return;
+    s.refLabel = QStringLiteral("Lower Third");
+    QVector<Slide> v; v.append(s);
+    goLive(v, QStringLiteral("Lower Third"), ServiceItem::Custom, 0);
+}
+
+// ---------------------------------------------------------------------------
+// v1.1.0: exportar el escenario EN VIVO a PDF (spec: exportar a PPTX y PDF).
+// Cada slide se rasteriza con el Renderer a 1920x1080 y se pagina en un
+// QPdfWriter (16:9).
+// ---------------------------------------------------------------------------
+void MainWindow::exportLivePdf()
+{
+    if (m_liveSlides.isEmpty()) {
+        QMessageBox::information(this, QStringLiteral("Exportar a PDF"),
+                                 QStringLiteral("No hay contenido en vivo. Proyecta una canción, "
+                                                "versículo o presentación primero."));
+        return;
+    }
+    const QString out = QFileDialog::getSaveFileName(this, QStringLiteral("Exportar en vivo a PDF"),
+                                                     QStringLiteral("escenario.pdf"),
+                                                     QStringLiteral("PDF (*.pdf)"));
+    if (out.isEmpty()) return;
+
+    QPdfWriter pdf(out);
+    pdf.setResolution(96);
+    // Página 16:9 (1920x1080 px @96dpi = 1440x810 pt)
+    pdf.setPageSize(QPageSize(QSize(1440, 810), QPageSize::Point));
+    pdf.setTitle(QStringLiteral("LuminaPresentation Suite — %1").arg(m_liveLabel));
+
+    QPainter painter;
+    if (!painter.begin(&pdf)) {
+        QMessageBox::warning(this, QStringLiteral("Exportar a PDF"),
+                             QStringLiteral("No se pudo crear el archivo PDF:\n%1").arg(out));
+        return;
+    }
+    const QSize pagePx(pdf.width(), pdf.height());
+    for (int i = 0; i < m_liveSlides.size(); ++i) {
+        if (i > 0) pdf.newPage();
+        const QPixmap pm = Renderer::render(m_theme, m_liveSlides.at(i), pagePx,
+                                            Renderer::Options());
+        painter.drawPixmap(0, 0, pm);
+    }
+    painter.end();
+    QMessageBox::information(this, QStringLiteral("Exportar a PDF"),
+                             QStringLiteral("PDF generado con %1 diapositiva(s):\n%2")
+                                 .arg(m_liveSlides.size()).arg(out));
 }
 
 void MainWindow::closeOverlay()
@@ -759,6 +913,15 @@ void MainWindow::updateStage()
             n = *next;
             if (!chords) for (SlideLine &l : n.lines) l.chords.clear();
         }
+        // v1.1.0: transposición EN VIVO de las cifras del Stage View
+        if (m_stageTranspose != 0) {
+            for (SlideLine &l : c.lines)
+                if (!l.chords.isEmpty())
+                    l.chords = Chords::transposeLine(l.chords, m_stageTranspose, true);
+            for (SlideLine &l : n.lines)
+                if (!l.chords.isEmpty())
+                    l.chords = Chords::transposeLine(l.chords, m_stageTranspose, true);
+        }
         m_stage->setThemeColors(m_theme);
         m_stage->updateSlide(c, next ? &n : nullptr, m_theme);
         // El tono/BPM solo aplica a canciones (antes se consultaba songById
@@ -803,10 +966,7 @@ void MainWindow::runServiceItem(const ServiceItem &item)
     switch (item.kind) {
     case ServiceItem::Song: {
         const Song s = m_ctx.db->songById(item.refId);
-        Lyrics::BuildOptions opt;
-        opt.titleSlide = m_ctx.db->setting(QStringLiteral("song_title_slide"), QStringLiteral("1")) == QStringLiteral("1");
-        opt.endBlank = m_ctx.db->setting(QStringLiteral("song_end_blank"), QStringLiteral("0")) == QStringLiteral("1");
-        goLive(Lyrics::buildSlides(s, opt), s.title, ServiceItem::Song, s.id);
+        goLiveSong(s, ServiceItem::Song, s.id);
         m_ctx.db->touchSongUsage(s.id);
         m_historyPanel->reload();
         break;
@@ -817,7 +977,8 @@ void MainWindow::runServiceItem(const ServiceItem &item)
         if (parts.size() >= 5) {
             const QStringList vers = parts.at(0).split(QChar('+'));
             emit m_biblePanel->requestProjectVerses(vers, parts.at(1).toInt(), parts.at(2).toInt(),
-                                                    parts.at(3).toInt(), parts.at(4).toInt());
+                                                    parts.at(3).toInt(), parts.at(4).toInt(),
+                                                    QString());
         } else {
             const BibleRef::VerseRef r = BibleRef::resolve(item.payload);
             if (r.valid()) {
@@ -845,6 +1006,28 @@ void MainWindow::runServiceItem(const ServiceItem &item)
         s.lines.append(SlideLine(item.payload));
         QVector<Slide> v; v.append(s);
         goLive(v, QStringLiteral("Aviso"), ServiceItem::Aviso, 0);
+        break;
+    }
+    case ServiceItem::Pptx: {
+        // FIX v1.1.0: ejecutar items PPTX de la cola importando el archivo
+        // guardado en payload y rasterizando con el helper compartido.
+        const QString path = item.payload.trimmed();
+        if (path.isEmpty() || !QFile::exists(path)) {
+            QMessageBox::warning(this, QStringLiteral("Culto"),
+                                 QStringLiteral("El archivo PowerPoint de este item no está disponible:\n%1")
+                                     .arg(path.isEmpty() ? QStringLiteral("(ruta no guardada)") : path));
+            break;
+        }
+        QVector<PptxEngine::PptxSlide> ps;
+        QSize sz;
+        QString err;
+        if (!PptxEngine::importPptx(path, &ps, &sz, &err)) {
+            QMessageBox::warning(this, QStringLiteral("Culto"), err);
+            break;
+        }
+        const QString name = QFileInfo(path).completeBaseName();
+        goLive(PptxEngine::renderToSlides(ps, sz, m_theme, name),
+               name, ServiceItem::Pptx, 0);
         break;
     }
     default:
@@ -895,7 +1078,26 @@ void MainWindow::onRemoteCommand(const QString &cmd, const QJsonObject &data)
     else if (cmd == QStringLiteral("goto")) showSlideIndex(data.value(QStringLiteral("index")).toInt());
     else if (cmd == QStringLiteral("alert")) onSendAlert(data.value(QStringLiteral("text")).toString());
     else if (cmd == QStringLiteral("ping")) pushWebState();
+    // v1.1.0: navegacion de la COLA del culto desde el remoto (spec Holyrics:
+    // el operador avanza el orden del servicio desde el movil)
+    else if (cmd == QStringLiteral("qnext")) {
+        const int row = m_queueList->currentRow() + 1;
+        if (row < m_queueData.size()) runQueueAt(row);
+    } else if (cmd == QStringLiteral("qprev")) {
+        const int row = m_queueList->currentRow() - 1;
+        if (row >= 0) runQueueAt(row);
+    }
     pushWebState();
+}
+
+// ---------------------------------------------------------------------------
+// v1.1.0: ejecutar un item concreto de la cola (remoto qnext/qprev + doble clic)
+// ---------------------------------------------------------------------------
+void MainWindow::runQueueAt(int row)
+{
+    if (row < 0 || row >= m_queueData.size()) return;
+    m_queueList->setCurrentRow(row);
+    runServiceItem(m_queueData.at(row));
 }
 
 void MainWindow::pushWebState()

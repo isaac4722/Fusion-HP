@@ -30,12 +30,29 @@ void PptxPanel::buildUi()
     auto *row = new QHBoxLayout();
     auto *bOpen = new QPushButton(QStringLiteral("📂 Abrir .PPTX (OpenXML, sin Office)"), this);
     bOpen->setStyleSheet(QStringLiteral("QPushButton{background:#1E6FD9;color:white;font-weight:bold;padding:8px 16px;}"));
-    auto *bExport = new QPushButton(QStringLiteral("💾 Exportar culto/letra actual a .PPTX"), this);
+    auto *bExport = new QPushButton(QStringLiteral("💾 Exportar a .PPTX"), this);
+    // v1.1.0: exportar el escenario EN VIVO a PDF (spec: "PPTX y PDF")
+    auto *bPdf = new QPushButton(QStringLiteral("📄 Exportar en vivo a PDF"), this);
+    // v1.1.0: boton Añadir al culto (la señal existía pero NUNCA se emitía)
+    auto *bCulto = new QPushButton(QStringLiteral("＋ A culto"), this);
+    bCulto->setToolTip(QStringLiteral("Añade el .pptx abierto a la cola del culto activo "
+                                      "(guarda la ruta del archivo para poder ejecutarlo desde la cola)."));
     connect(bOpen, &QPushButton::clicked, this, &PptxPanel::onOpen);
     connect(bExport, &QPushButton::clicked, this, &PptxPanel::onExport);
+    connect(bPdf, &QPushButton::clicked, this, [this]() { emit requestExportPdf(); });
+    connect(bCulto, &QPushButton::clicked, this, [this]() {
+        if (m_file.isEmpty()) {
+            QMessageBox::information(this, QStringLiteral("A culto"),
+                                     QStringLiteral("Abre primero un archivo .pptx."));
+            return;
+        }
+        emit requestAddPptxToService(m_file);
+    });
     row->addWidget(bOpen);
     row->addWidget(bExport);
+    row->addWidget(bPdf);
     row->addStretch();
+    row->addWidget(bCulto);
     lay->addLayout(row);
 
     auto *split = new QSplitter(Qt::Horizontal, this);
@@ -82,53 +99,11 @@ void PptxPanel::onOpen()
     m_file = f;
     m_importDir = QDir::tempPath() + QStringLiteral("/LuminaImports/");
 
-    // Conversion a Slide: cada slide se rasteriza a PNG para salida fiel
-    m_rendered.clear();
+    // v1.1.0: la rasterización vive ahora en PptxEngine::renderToSlides
+    // (compartida con la ejecución de items PPTX de la cola del culto).
     const Theme theme = *m_ctx->currentTheme;
-    for (const PptxEngine::PptxSlide &ps : m_slides) {
-        QPixmap pm(m_slideSize);
-        pm.fill(QColor(255, 255, 255));
-        QPainter p(&pm);
-        p.setRenderHint(QPainter::Antialiasing, true);
-        p.setRenderHint(QPainter::TextAntialiasing, true);
-        p.setRenderHint(QPainter::SmoothPixmapTransform, true);
-        for (const PptxEngine::Box &b : ps.boxes) {
-            QRectF box(b.x, b.y, b.w, b.h);
-            if (b.kind == PptxEngine::Box::Image) {
-                QImage img(b.imagePath);
-                if (!img.isNull())
-                    Renderer::drawImageFit(p, img, box.toRect(), Qt::KeepAspectRatio);
-            } else if (b.kind == PptxEngine::Box::Shape) {
-                QBrush fill(QColor(30, 60, 140, 200));
-                QPen pen(QColor(60, 140, 255), 3);
-                if (b.prst == QStringLiteral("ellipse"))
-                    p.setBrush(fill), p.setPen(pen), p.drawEllipse(box);
-                else if (b.prst == QStringLiteral("roundRect"))
-                    p.setBrush(fill), p.setPen(pen), p.drawRoundedRect(box, 18, 18);
-                else
-                    p.setBrush(fill), p.setPen(pen), p.drawRect(box);
-            } else {
-                TextStyle st = theme.body;
-                st.pointSize = b.fontSize;
-                st.bold = b.bold;
-                st.italic = b.italic;
-                st.color = QColor(b.color);
-                st.align = b.align;
-                st.shadow = true;
-                Renderer::drawStyledText(p, st, b.text, box, 1.0);
-            }
-        }
-        p.end();
-        const QString png = m_importDir + QStringLiteral("render_%1.png")
-                .arg(QDateTime::currentMSecsSinceEpoch() + m_rendered.size());
-        pm.save(png, "PNG");
-        Slide s;
-        s.kind = Slide::Pptx;
-        s.title = QFileInfo(f).completeBaseName();
-        s.refLabel = QStringLiteral("Slide %1/%2").arg(m_rendered.size() + 1).arg(m_slides.size());
-        s.mediaPath = png;
-        m_rendered.append(s);
-    }
+    m_rendered = PptxEngine::renderToSlides(m_slides, m_slideSize, theme,
+                                            QFileInfo(f).completeBaseName());
 
     // Lista + previews
     m_list->clear();

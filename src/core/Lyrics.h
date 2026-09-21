@@ -25,14 +25,6 @@ public:
         QVector<SlideLine> lines;
     };
 
-    static const QRegularExpression &tagRegex()
-    {
-        static const QRegularExpression re(
-            QStringLiteral("^\\s*\\[(?!(?:[A-G](?:#|b)|(?:Do|Re|Mi|Fa|Sol|La|Si))[^\\]]*\\]\\s*$)?([^\\]]{1,40})\\]\\s*$"),
-            QRegularExpression::CaseInsensitiveOption);
-        return re;
-    }
-
     // Parsea la letra cruda en secciones etiquetadas
     static QVector<Section> parse(const QString &raw)
     {
@@ -129,16 +121,19 @@ public:
         for (int i = 0; i < blocks.size(); ++i)
             if (blocks.at(i).tag.compare(QStringLiteral("coro"), Qt::CaseInsensitive) == 0) { chorusIdx = i; break; }
 
-        for (int bi = 0; bi < blocks.size(); ++bi) {
-            const Section &sec = blocks.at(bi);
-            Slide s = sectionToSlide(sec, song, opt);
-            out.append(s);
-            // Modo Hinario: tras cada verso (no coro), inserta el coro
-            if (opt.chorusInterleave && chorusIdx >= 0 &&
-                sec.tag.compare(QStringLiteral("coro"), Qt::CaseInsensitive) != 0 &&
-                bi != blocks.size() - 1) {
-                out.append(sectionToSlide(blocks.at(chorusIdx), song, opt));
+        if (opt.chorusInterleave && chorusIdx >= 0) {
+            // Modo Hinario (v1.1.0 mejorado): el coro se intercala tras CADA
+            // verso (incluido el último) y el bloque de coro independiente se
+            // omite para no cantarlo dos veces seguidas: V1 C V2 C.
+            const Section &chorus = blocks.at(chorusIdx);
+            for (const Section &sec : blocks) {
+                if (sec.tag.compare(QStringLiteral("coro"), Qt::CaseInsensitive) == 0) continue;
+                out.append(sectionToSlide(sec, song, opt));
+                out.append(sectionToSlide(chorus, song, opt));
             }
+        } else {
+            for (const Section &sec : blocks)
+                out.append(sectionToSlide(sec, song, opt));
         }
 
         if (opt.endBlank) {

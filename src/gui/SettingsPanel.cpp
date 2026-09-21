@@ -67,6 +67,44 @@ void SettingsPanel::buildUi()
     f3->addRow(m_stageWithChords);
     lay->addWidget(grpGen);
 
+    // v1.1.0: ajustes de canciones (spec: Modo Hinario, densidad de slides)
+    auto *grpSongs = new QGroupBox(QStringLiteral("Canciones"), this);
+    auto *f4 = new QFormLayout(grpSongs);
+    m_titleSlide = new QCheckBox(QStringLiteral("Incluir slide de título al proyectar"), grpSongs);
+    m_titleSlide->setChecked(true);
+    f4->addRow(m_titleSlide);
+    m_hinarioMode = new QCheckBox(QStringLiteral("Modo Hinario (intercalar el coro tras cada verso)"), grpSongs);
+    m_hinarioMode->setToolTip(QStringLiteral("Formato tradicional: después de cada verso se proyecta "
+                                            "automáticamente el coro de la canción."));
+    f4->addRow(m_hinarioMode);
+    m_maxLines = new QSpinBox(grpSongs);
+    m_maxLines->setRange(2, 8);
+    m_maxLines->setSuffix(QStringLiteral(" líneas por slide"));
+    m_maxLines->setValue(4);
+    f4->addRow(QStringLiteral("Densidad de proyección:"), m_maxLines);
+    lay->addWidget(grpSongs);
+
+    // v1.1.0: token opcional de la API HTTP (espec Holyrics)
+    auto *grpApi = new QGroupBox(QStringLiteral("API HTTP (integraciones / Companion)"), this);
+    auto *f5 = new QFormLayout(grpApi);
+    m_apiToken = new QLineEdit(grpApi);
+    m_apiToken->setPlaceholderText(QStringLiteral("(vacío = sin autenticación en la red local)"));
+    m_apiToken->setEchoMode(QLineEdit::Password);
+    f5->addRow(QStringLiteral("Token de la API:"), m_apiToken);
+    QLabel *apiHelp = new QLabel(QStringLiteral(
+        "Endpoints: <code>/api/cmd?c=next|prev|black|clear|logo|goto|i=N|qnext|qprev|alert&text=…</code> · "
+        "<code>/api/live.txt</code> (fuente de texto para OBS) · <code>/api/state</code>"), grpApi);
+    apiHelp->setWordWrap(true);
+    apiHelp->setTextFormat(Qt::RichText);
+    f5->addRow(apiHelp);
+    lay->addWidget(grpApi);
+
+    // v1.1.0: cargar los valores guardados de los nuevos ajustes
+    m_hinarioMode->setChecked(m_ctx->db->setting(QStringLiteral("song_hinario"), QStringLiteral("0")) == QStringLiteral("1"));
+    m_maxLines->setValue(m_ctx->db->setting(QStringLiteral("song_maxlines"), QStringLiteral("4")).toInt());
+    m_titleSlide->setChecked(m_ctx->db->setting(QStringLiteral("song_title_slide"), QStringLiteral("1")) == QStringLiteral("1"));
+    m_apiToken->setText(m_ctx->db->setting(QStringLiteral("api_token")));
+
     auto *row = new QHBoxLayout();
     auto *bApply = new QPushButton(QStringLiteral("💾 Aplicar configuración"), this);
     bApply->setStyleSheet(QStringLiteral("QPushButton{background:#1E6FD9;color:white;font-weight:bold;padding:8px 16px;}"));
@@ -121,6 +159,11 @@ void SettingsPanel::apply()
     m_ctx->db->setSetting(QStringLiteral("default_theme"), QString::number(m_defaultTheme->currentData().toInt()));
     m_ctx->db->setSetting(QStringLiteral("server_autostart"), m_autoStart->isChecked() ? QStringLiteral("1") : QStringLiteral("0"));
     m_ctx->db->setSetting(QStringLiteral("stage_chords"), m_stageWithChords->isChecked() ? QStringLiteral("1") : QStringLiteral("0"));
+    // v1.1.0: ajustes de canciones + API
+    m_ctx->db->setSetting(QStringLiteral("song_hinario"), m_hinarioMode->isChecked() ? QStringLiteral("1") : QStringLiteral("0"));
+    m_ctx->db->setSetting(QStringLiteral("song_maxlines"), QString::number(m_maxLines->value()));
+    m_ctx->db->setSetting(QStringLiteral("song_title_slide"), m_titleSlide->isChecked() ? QStringLiteral("1") : QStringLiteral("0"));
+    m_ctx->db->setSetting(QStringLiteral("api_token"), m_apiToken->text().trimmed());
     emit settingsApplied();
     QMessageBox::information(this, QStringLiteral("Ajustes"), QStringLiteral("Configuración aplicada."));
 }

@@ -56,7 +56,10 @@ private slots:
     void showBlack();
     void showClear();
     void showLogo();
+    void exportLivePdf();          // v1.1.0: exportar escenario en vivo a PDF
+    void runQueueAt(int row);      // v1.1.0: ejecutar item N de la cola del culto
     void quickVerse();
+    void quickLowerThird();        // v1.1.0: superposición Lower Third (F10/diálogo)
     void closeOverlay();
     // Medios
     void onPlayMedia(const QString &path, bool asBackground, bool loop, int fitMode, bool isVideo);
@@ -81,6 +84,7 @@ private:
     void buildUi();
     void buildShortcuts();
     void applyTheme(int themeId);
+    void goLiveSong(const Song &s, int refKind, int refId);   // v1.1.0: proyección de canción con ajustes
     static QString s_titleOf(int book, int ch);
     void updatePreview();
     void updateSlideList();
@@ -106,6 +110,7 @@ private:
     QString m_savedLabel;
     QString m_lastAlert;
     QDateTime m_lastAlertAt;
+    int m_stageTranspose = 0;      // v1.1.0: transposicion en vivo del Stage View
 
     // Ventanas de salida
     OutputWindow *m_output = nullptr;

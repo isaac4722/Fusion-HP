@@ -13,6 +13,7 @@
 #define LUMINA_PPTXENGINE_H
 
 #include "Models.h"
+#include "Renderer.h"
 
 #include <QString>
 #include <QVector>
@@ -313,6 +314,69 @@ private:
                 }
             }
         }
+    }
+
+public:
+    // --------------------------------------------------------------------
+    // v1.1.0: rasteriza slides PPTX importadas a Slide::Pptx (PNG temporal).
+    // Unica implementacion compartida por el panel y por la ejecucion de
+    // items de culto en cola (antes el item guardado no podia ejecutarse).
+    // --------------------------------------------------------------------
+    static QVector<Slide> renderToSlides(const QVector<PptxSlide> &slides,
+                                         const QSize &slideSizePx, const Theme &theme,
+                                         const QString &nameForTitle)
+    {
+        QVector<Slide> out;
+        if (slides.isEmpty()) return out;
+        const QString dir = QDir::tempPath() + QStringLiteral("/LuminaImports/");
+        QDir().mkpath(dir);
+        const qint64 stamp = QDateTime::currentMSecsSinceEpoch();
+        for (int si = 0; si < slides.size(); ++si) {
+            const PptxSlide &ps = slides.at(si);
+            QPixmap pm(slideSizePx);
+            pm.fill(QColor(255, 255, 255));
+            QPainter p(&pm);
+            p.setRenderHint(QPainter::Antialiasing, true);
+            p.setRenderHint(QPainter::TextAntialiasing, true);
+            p.setRenderHint(QPainter::SmoothPixmapTransform, true);
+            for (const Box &b : ps.boxes) {
+                QRectF box(b.x, b.y, b.w, b.h);
+                if (b.kind == Box::Image) {
+                    QImage img(b.imagePath);
+                    if (!img.isNull())
+                        Renderer::drawImageFit(p, img, box.toRect(), Qt::KeepAspectRatio);
+                } else if (b.kind == Box::Shape) {
+                    QBrush fill(QColor(30, 60, 140, 200));
+                    QPen pen(QColor(60, 140, 255), 3);
+                    if (b.prst == QStringLiteral("ellipse"))
+                        p.setBrush(fill), p.setPen(pen), p.drawEllipse(box);
+                    else if (b.prst == QStringLiteral("roundRect"))
+                        p.setBrush(fill), p.setPen(pen), p.drawRoundedRect(box, 18, 18);
+                    else
+                        p.setBrush(fill), p.setPen(pen), p.drawRect(box);
+                } else {
+                    TextStyle st = theme.body;
+                    st.pointSize = b.fontSize;
+                    st.bold = b.bold;
+                    st.italic = b.italic;
+                    st.color = QColor(b.color);
+                    st.align = b.align;
+                    st.shadow = true;
+                    Renderer::drawStyledText(p, st, b.text, box, 1.0);
+                }
+            }
+            p.end();
+            const QString png = dir + QStringLiteral("render_%1_%2.png")
+                                    .arg(stamp + si).arg(QDateTime::currentMSecsSinceEpoch());
+            pm.save(png, "PNG");
+            Slide s;
+            s.kind = Slide::Pptx;
+            s.title = nameForTitle;
+            s.refLabel = QStringLiteral("Slide %1/%2").arg(si + 1).arg(slides.size());
+            s.mediaPath = png;
+            out.append(s);
+        }
+        return out;
     }
 
 public:

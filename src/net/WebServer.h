@@ -22,6 +22,7 @@
 #include <QDateTime>
 #include <QFile>
 #include <QUrl>
+#include <QUrlQuery>
 #include <QDebug>
 
 class WebServer : public QObject
@@ -60,17 +61,28 @@ public:
     {
         if (m_ws) { m_ws->close(); }
         if (m_http) { m_http->close(); }
+        for (QWebSocket *c : qAsConst(m_clients))
+            if (c) c->close();
     }
 
     bool running() const { return m_ws != nullptr; }
     quint16 wsPort() const { return m_ws ? m_ws->serverPort() : 0; }
     quint16 httpPort() const { return m_http ? m_http->serverPort() : 0; }
 
+    // v1.1.0: token opcional de la API HTTP (spec Holyrics: autenticacion
+    // por token). Si esta vacio, la API local no exige token (red LAN).
+    void setApiToken(const QString &token) { m_apiToken = token; }
+
 public slots:
     // Estado actual (lo publica MainWindow)
     void setLiveState(const QJsonObject &state)
     {
         m_state = state;
+        // v1.1.0: cache de texto plano para /api/live.txt (OBS)
+        m_liveText.clear();
+        for (const QJsonValue &v : state.value(QStringLiteral("lines")).toArray())
+            m_liveText += (m_liveText.isEmpty() ? QString() : QStringLiteral("\n")) + v.toString();
+        m_liveTextMode = state.value(QStringLiteral("mode")).toString() == QStringLiteral("content");
         broadcastState();
     }
 
@@ -125,10 +137,57 @@ private:
         const QByteArray reqLine = request.left(lineEnd < 0 ? request.size() : lineEnd);
         const QList<QByteArray> parts = reqLine.split(' ');
         if (parts.size() < 2) { sock->disconnectFromHost(); return; }
-        QString path = QUrl::fromPercentEncoding(parts.at(1));
+        const QByteArray rawTarget = parts.at(1);
+        QString path = QUrl::fromPercentEncoding(rawTarget);
         const int qm = path.indexOf(QChar('?'));
+        // CORRECCION v1.1.0: QUrlQuery NO elimina la ruta del string — si se
+        // le pasa "/api/cmd?c=next" el primer par quedaba como clave
+        // "/api/cmd?c" y queryItemValue("c") devolvia vacio. Hay que extraer
+        // SOLO la parte posterior al '?'.
+        QUrlQuery query(qm >= 0 ? QString::fromUtf8(rawTarget.mid(qm + 1)) : QString());
         if (qm >= 0) path = path.left(qm);
         if (path == QStringLiteral("/")) path = QStringLiteral("/remote.html");
+
+        // ----------------------------------------------------------------
+        // v1.1.0: API HTTP de comandos (spec Componente 3: "puntos de
+        // conexión HTTP simples para permitir el control remoto").
+        //   GET /api/cmd?c=next|prev|black|clear|logo|goto|alert|qnext|qprev
+        //        [&i=N] [&text=...] [&token=...]
+        //   GET /api/live.txt  -> texto plano del slide actual (fuente de
+        //        texto de OBS Studio / integraciones simples)
+        // ----------------------------------------------------------------
+        if (path == QStringLiteral("/api/cmd")) {
+            if (!apiTokenOk(query)) {
+                sendHttp(sock, 401, "application/json; charset=utf-8",
+                         "{\"ok\":false,\"error\":\"token invalido\"}", true);
+                return;
+            }
+            const QString cmd = query.queryItemValue(QStringLiteral("c"));
+            QJsonObject data;
+            const QString idx = query.queryItemValue(QStringLiteral("i"));
+            if (!idx.isEmpty()) data["index"] = idx.toInt();
+            const QString text = query.queryItemValue(QStringLiteral("text"));
+            if (!text.isEmpty()) data["text"] = text;
+            emit remoteCommand(cmd, data);
+            sendHttp(sock, 200, "application/json; charset=utf-8",
+                     "{\"ok\":true}", true);
+            return;
+        }
+        if (path == QStringLiteral("/api/live.txt")) {
+            if (!apiTokenOk(query)) {
+                sendHttp(sock, 401, "text/plain; charset=utf-8", "token invalido\n", true);
+                return;
+            }
+            QString txt;
+            if (m_liveTextMode)
+                txt = m_liveText;
+            else if (!m_state.value(QStringLiteral("lines")).toArray().isEmpty()) {
+                for (const QJsonValue &v : m_state.value(QStringLiteral("lines")).toArray())
+                    txt += (txt.isEmpty() ? QString() : QStringLiteral("\n")) + v.toString();
+            }
+            sendHttp(sock, 200, "text/plain; charset=utf-8", (txt + QChar('\n')).toUtf8(), true);
+            return;
+        }
 
         QByteArray contentType = "text/html; charset=utf-8";
         QByteArray body;
@@ -155,19 +214,33 @@ private:
             body = "<html><body><h3>LuminaPresentation Suite</h3>"
                    "<p>Control remoto: <a href=\"/remote.html\">/remote.html</a> | "
                    "Overlay OBS: <a href=\"/overlay.html\">/overlay.html</a> | "
-                   "API: <a href=\"/api/state\">/api/state</a></p></body></html>";
+                   "API: <a href=\"/api/state\">/api/state</a> · "
+                   "<a href=\"/api/live.txt\">/api/live.txt</a> · "
+                   "<code>/api/cmd?c=next</code></p></body></html>";
         }
+        sendHttp(sock, 200, contentType, body, isJson);
+    }
 
+    static void sendHttp(QTcpSocket *sock, int status, const QByteArray &contentType,
+                         const QByteArray &body, bool cors)
+    {
         QByteArray resp;
-        resp += "HTTP/1.1 200 OK\r\n";
+        resp += QByteArray("HTTP/1.1 ") + QByteArray::number(status) +
+                (status == 200 ? QByteArray(" OK") : QByteArray(" Error")) + "\r\n";
         resp += "Content-Type: " + contentType + "\r\n";
-        if (isJson) resp += "Access-Control-Allow-Origin: *\r\n";
+        if (cors) resp += "Access-Control-Allow-Origin: *\r\n";
         resp += "Content-Length: " + QByteArray::number(body.size()) + "\r\n";
         resp += "Connection: close\r\n\r\n";
         resp += body;
         sock->write(resp);
         sock->flush();
         sock->disconnectFromHost();
+    }
+
+    bool apiTokenOk(const QUrlQuery &query) const
+    {
+        if (m_apiToken.isEmpty()) return true;      // sin token configurado
+        return query.queryItemValue(QStringLiteral("token")) == m_apiToken;
     }
 
     static QByteArray resource(const QString &path)
@@ -195,6 +268,9 @@ private:
     QVector<QWebSocket *> m_clients;
     QHash<QTcpSocket *, QByteArray> m_buffer;
     QJsonObject m_state;
+    QString m_apiToken;
+    QString m_liveText;
+    bool m_liveTextMode = false;
 };
 
 #endif // LUMINA_WEBSERVER_H

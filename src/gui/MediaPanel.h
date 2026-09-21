@@ -29,11 +29,15 @@ signals:
     void stopMedia();
     void volumeChanged(int vol);
 
+public slots:
+    // v1.1.0: ahora publicas — MainWindow las conecta a MediaEngine
+    // (antes eran privadas y NUNCA se conectaban: barra/tiempo muertos)
+    void onPosition(qint64 t, qint64 len);
+    void onMediaState(int st);
+
 private slots:
     void onOpen();
     void onPlay();
-    void onPosition(qint64 t, qint64 len);
-    void onMediaState(int st);
 
 private:
     void buildUi();

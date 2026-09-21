@@ -181,6 +181,10 @@ public:
     bool playBackground(const QString &path)
     {
         if (!m_ok) return false;
+        // CORRECCION v1.1.0: si el mismo video ya esta en reproduccion como
+        // fondo, NO reiniciarlo (antes cada cambio de slide reiniciaba el
+        // bucle y producia un parpadeo visible con fondos de video).
+        if (m_bg && m_bgPath == path) return true;
         stopBackground();
         libvlc_media_t *md = createMedia(path, true);
         if (!md) return false;
@@ -188,6 +192,7 @@ public:
         p_libvlc_media_release(md);
         if (!m_bg) return false;
         p_libvlc_audio_set_volume(m_bg, 0);     // fondo sin audio
+        m_bgPath = path;
         return true;
     }
 
@@ -208,6 +213,7 @@ public:
             p_libvlc_media_player_release(m_bg);
             m_bg = nullptr;
         }
+        m_bgPath.clear();
     }
 
     // ------------------------------ Volumen ---------------------------------
@@ -298,6 +304,7 @@ private:
     libvlc_instance_t *m_vlc = nullptr;
     libvlc_media_player_t *m_main = nullptr;
     libvlc_media_player_t *m_bg = nullptr;
+    QString m_bgPath;
     QTimer *m_poll = nullptr;
     State m_state = Stopped;
     int m_volume = 90;

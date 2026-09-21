@@ -13,8 +13,8 @@ agilidad operativa de Holyrics y la potencia de composición vectorial de PowerP
 
 1. Ir a **[Releases](https://github.com/isaac4722/Fusion-HP/releases)**.
 2. Descargar el paquete para tu arquitectura:
-   - `LuminaPresentationSuite-1.0.3-win64-portable.zip` (Windows 7 SP1 … Windows 11, 64 bits)
-   - `LuminaPresentationSuite-1.0.3-win32-portable.zip` (Windows 7 SP1 … Windows 10, 32 bits)
+   - `LuminaPresentationSuite-1.1.0-win64-portable.zip` (Windows 7 SP1 … Windows 11, 64 bits)
+   - `LuminaPresentationSuite-1.1.0-win32-portable.zip` (Windows 7 SP1 … Windows 10, 32 bits)
 3. Descomprimir en cualquier carpeta y ejecutar `LuminaPresentationSuite.exe`.
    **Todo va incluido**: Qt, LibVLC con codecs, Biblia RVR1909 completa y la base de datos se
    crea sola en el primer arranque. No requiere permisos de administrador ni conexión a internet.
@@ -23,16 +23,19 @@ agilidad operativa de Holyrics y la potencia de composición vectorial de PowerP
 
 | Módulo | Detalle |
 |---|---|
-| 🎵 **Canciones** | SQLite + FTS5: búsqueda instantánea por título/autor/letra, editor con etiquetas `[Verso]/[Coro]`, **transposición de acordes**, Modo Hinario (coro intercalado), **🏷 sistema de etiquetas semánticas** (tags) para filtrado por categoría (lento, navidad, entrada, ofrenda…) |
-| 📖 **Biblia** | **RVR1909 completa incluida** (dominio público), comandos tipados `Jn 3:16`, hasta **3 versiones en paralelo**, búsqueda por palabras FTS |
-| 📽 **PowerPoint** | Importación **.pptx nativa (OpenXML)** sin Office: textos, formas e imágenes; exportación .pptx básica |
+| 🎵 **Canciones** | SQLite + FTS5: búsqueda instantánea por título/autor/letra, editor con etiquetas `[Verso]/[Coro]`, **transposición de acordes EN VIVO en el Stage View**, **Modo Hinario configurable** (coro intercalado), densidad 2–8 líneas/slide, **🏷 sistema de etiquetas semánticas** (tags) para filtrado por categoría (lento, navidad, entrada, ofrenda…) |
+| 📖 **Biblia** | **RVR1909 completa incluida** (dominio público), comandos tipados `Jn 3:16`, hasta **3 versiones en paralelo**, búsqueda por palabras FTS, **✨ resaltado de palabras en dorado** (insensible a acentos/mayúsculas) |
+| 📽 **PowerPoint** | Importación **.pptx nativa (OpenXML)** sin Office: textos, formas e imágenes; exportación .pptx básica; **exportación a PDF** del escenario en vivo; items PPTX ejecutables desde la cola del culto |
+| 🧾 **Exportación** | Escenario en vivo → **.pptx** (texto real) y **.pdf** (páginas 16:9 rasterizadas) — sin Office |
+| 📌 **Lower Third** | Superposición inferior semitransparente con barra dorada (título + texto) — botón directo en la barra de herramientas |
 | 🖥 **Salidas** | Audiencia + **Stage View** + overlay web; enrutamiento multipantalla con recuperación ante desconexión |
-| 🎚 **Stage View** | Alto contraste, acordes sobre el texto, reloj, cuenta regresiva, siguiente estrofa, alertas |
-| 🎬 **Medios** | LibVLC embebido (DXVA2/D3D11VA), video de fondo en bucle, modos Llenar/Ajustar/Centrar (videos verticales) |
-| 📱 **Control remoto** | Servidor WebSocket/HTTP embebido: panel móvil y **overlay HTML5 transparente para OBS/vMix** (`http://<pc>:8088/overlay.html`) |
+| 🎚 **Stage View** | Alto contraste, acordes sobre el texto con **transposición en tiempo real**, reloj, cuenta regresiva, siguiente estrofa, alertas |
+| 🎬 **Medios** | LibVLC embebido (DXVA2/D3D11VA), video de fondo en bucle (sin reinicio al cambiar de slide), modos Llenar/Ajustar/Centrar (videos verticales) |
+| 📱 **Control remoto** | Servidor WebSocket/HTTP embebido: panel móvil (con **navegación de la cola del culto**) y **overlay HTML5 transparente para OBS/vMix** (`http://<pc>:8088/overlay.html`) |
+| 🌐 **API HTTP** | `GET /api/cmd?c=next\|prev\|black\|clear\|logo\|goto\|qnext\|qprev\|alert` con **token opcional** (Ajustes) · `/api/live.txt` (texto plano para OBS) · `/api/state` (JSON) |
 | 🎨 **Temas** | Plantillas maestras desacopladas (fondo/gradiente/imagen/video, tipografía, contorno, sombra) aplicadas en vivo |
 | 🖌 **Lienzo libre** | Editor vectorial (texto, formas, imágenes) estilo PowerPoint con guardado JSON |
-| 🗓 **Cultos** | Playlists ordenadas (canciones, biblia, avisos), exportación CSV |
+| 🗓 **Cultos** | Playlists ordenadas (canciones, biblia, avisos, pptx), exportación CSV, control remoto de la cola |
 | 📣 **Comunicación** | Alertas al escenario, temporizador de sermón, bandeja **Telegram** |
 | ⚙ **Triggers** | Webhooks HTTP, **OBS WebSocket v5** (cambio de escena automático), **MIDI Out** (winmm) |
 | 📊 **Historial** | Estadísticas de uso y reportes CSV/PDF |
@@ -49,6 +52,21 @@ agilidad operativa de Holyrics y la potencia de composición vectorial de PowerP
 | `L` | Logo |
 | `F9` | Versículo rápido (no interrumpe la canción) |
 | `Esc` | Cerrar versículo rápido |
+
+## 🌐 API HTTP embebida
+
+El servidor local (puerto HTTP 8088 por defecto) expone:
+
+| Endpoint | Descripción |
+|---|---|
+| `GET /api/cmd?c=next` | Comandos: `next`, `prev`, `black`, `clear`, `logo`, `alert` (`&text=…`), `goto` (`&i=N`), `qnext`, `qprev` (cola del culto) |
+| `GET /api/live.txt` | Texto plano del slide proyectado — pégalo como **fuente de texto** en OBS Studio |
+| `GET /api/state` | Estado completo en JSON (mismo payload del overlay) |
+| `GET /overlay.html` | Overlay HTML5 con transparencia (Alpha Key) para OBS/vMix |
+| `GET /remote.html` | Panel de control remoto para móvil/tablet |
+
+Si defines un **Token de la API** en Ajustes, los endpoints `/api/cmd` y `/api/live.txt`
+exigen `&token=…` (estilo Holyrics). Sin token, quedan abiertos para la red local.
 
 ## 🏗 Compilar desde fuente
 

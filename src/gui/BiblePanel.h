@@ -27,8 +27,10 @@ public:
     QString currentReference() const;
 
 signals:
-    // Pide proyectar un rango biblico: versiones seleccionadas + texto
-    void requestProjectVerses(const QStringList &versions, int book, int chapter, int from, int to);
+    // Pide proyectar un rango biblico: versiones seleccionadas + texto.
+    // v1.1.0: 'highlight' = palabras a destacar en dorado (spec Holyrics).
+    void requestProjectVerses(const QStringList &versions, int book, int chapter, int from, int to,
+                              const QString &highlight);
     void requestAddVerseToService(const QStringList &versions, int book, int chapter, int from, int to);
 
 private slots:
@@ -53,6 +55,7 @@ private:
     QComboBox *m_v3 = nullptr;
     QLineEdit *m_quick = nullptr;
     QLineEdit *m_wordSearch = nullptr;
+    QLineEdit *m_highlight = nullptr;   // v1.1.0: palabras a destacar
     QListWidget *m_list = nullptr;
     QLabel *m_status = nullptr;
 };

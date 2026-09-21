@@ -19,8 +19,8 @@ permissions:
 env:
   APP_NAME: LuminaPresentationSuite
   # Version dinamica: nombre del tag (vN.N.N) al hacer push de tags;
-  # fallback v1.0.3 en pushes a main (solo artefactos) y workflow_dispatch.
-  APP_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.0.3' }}
+  # fallback v1.1.0 en pushes a main (solo artefactos) y workflow_dispatch.
+  APP_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.1.0' }}
   VLC_VERSION: "3.0.21"
 
 jobs:
@@ -242,7 +242,7 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v1.0.3' }}
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v1.1.0' }}
           name: LuminaPresentation Suite ${{ env.APP_VERSION }}
           draft: false
           prerelease: false
@@ -262,27 +262,41 @@ jobs:
             - Incluye: motor Qt + **runtime MinGW**, **LibVLC 3.0.21** (todos los codecs), **Biblia RVR1909 completa** y temas.
             - Verifica la integridad con `SHA256SUMS.txt`.
             - Control remoto móvil: `http://<ip-del-pc>:8088/remote.html` · Overlay OBS: `http://<ip>:8088/overlay.html`
-            - Nota: el trigger Telegram requiere HTTPS; sin OpenSSL embebido se degrada con aviso (Webhook/OBS/MIDI al 100%).
+
+            ### Novedades v1.1.0 — funciones nuevas (specs Holyrics + PowerPoint)
+            - **🌐 API HTTP de comandos** (Componente 3 del spec): `GET /api/cmd?c=next|prev|black|clear|logo|goto|i=N|qnext|qprev|alert&text=…` con **token opcional** configurable en Ajustes (estilo Holyrics). Endpoint `/api/live.txt` en **texto plano** para usar como fuente de texto en OBS Studio / integraciones simples.
+            - **🧾 Exportación a PDF** del escenario en vivo (spec: exportar a «PPTX y PDF»): cada diapositiva se rasteriza a página 16:9 desde el panel PowerPoint.
+            - **📌 Lower Third** (Componente 2 del spec): superposición inferior semitransparente con barra dorada, título y texto — botón directo en la barra de herramientas.
+            - **✨ Resaltado de palabras bíblicas** (spec Holyrics: «destacar palabras específicas»): campo «Destacar» en el panel Biblia; las palabras se proyectan en dorado (búsqueda insensible a acentos y mayúsculas).
+            - **🎵 Modo Hinario configurable** (coro intercalado tras cada verso, incluido el último) + **densidad de proyección** (2–8 líneas por slide) en Ajustes › Canciones.
+            - **🎼 Transposición en vivo del Stage View**: el selector de semitonos en Canciones ahora aplica la transposición REAL a las cifras del monitor de músicos y se persiste (antes solo mostraba un mensaje).
+            - **⏭ Cola del culto desde el móvil**: botones «Culto: siguiente / anterior» en el control remoto (`qnext`/`qprev` también por API HTTP).
+            - **＋ A culto en PowerPoint**: los items PPTX ahora guardan la ruta del archivo y se ejecutan desde la cola del culto (antes la señal existía pero nunca se emitía y los items no podían reproducirse).
+
+            ### Correcciones v1.1.0
+            - **Referencias bíblicas con espacio tras la coma** (`1 Co 13, 4-7`): el parser las rechazaba en silencio; ahora se normalizan correctamente.
+            - **Modo Hinario**: ya no se canta el coro dos veces seguidas (el bloque suelto se omite al intercalar).
+            - **Versículo rápido (F9) doble**: un segundo F9 machacaba el estado guardado y `Esc` restauraba la diapositiva equivocada.
+            - **Parseo de query HTTP**: `QUrlQuery` no elimina la ruta — los parámetros (`c=`, `token=`) llegaban vacíos; ahora se extrae solo la parte posterior a `?`.
+            - **Panel de Medios conectado**: la señal `positionChanged` nunca estaba conectada (barra de progreso y tiempo muertos); además el fin del medio limpia la salida y dispara el trigger `media_stop`.
+            - **Fondos de video**: al cambiar de diapositiva el video de fondo se reiniciaba (parpadeo); ahora continúa si es el mismo archivo.
+            - **Ajustes ↔ Toolbar**: la pantalla elegida en Ajustes ahora se refleja y aplica en los selectores de la barra.
+            - Barra de estado muestra la versión real del programa.
 
             ### Novedades v1.0.3
-            - **🏷 Sistema de etiquetas semánticas para canciones** (feature del spec Holyrics descrito como "inteligente y subestimado"): asigna palabras clave a cada canción (ej: `lento`, `navidad`, `entrada`, `ofrenda`) desde el editor y filtra la biblioteca completa con un clic. Las etiquetas también se importan automáticamente desde archivos `.txt` con la directiva `@tags a,b,c`. Búsqueda FTS por texto + filtro por etiqueta funcionan de forma combinada.
-            - Completador inteligente en el editor de etiquetas (sugiere las ya usadas en la biblioteca).
-            - Duplicar canción ahora copia también sus etiquetas.
-            - Versión bump 1.0.2 → 1.0.3.
+            - **🏷 Sistema de etiquetas semánticas para canciones**: asigna palabras clave a cada canción (ej: `lento`, `navidad`, `entrada`, `ofrenda`) y filtra la biblioteca con un clic. Directiva `@tags a,b,c` en importación `.txt`.
 
             ### Correcciones v1.0.2
-            - **FIX CRÍTICO — arranque en Windows limpio**: los paquetes v1.0.1 omitían el runtime de MinGW (`libwinpthread-1.dll`, `libstdc++-6.dll`, `libgcc_s_dw2-1/seh-1.dll`) que las DLLs de Qt importan de forma dinámica → al ejecutar el programa en un PC sin MinGW instalado aparecía «El código de ejecución no puede continuar porque no se encontró libwinpthread-1.dll». Ahora el runtime viaja DENTRO del paquete.
-            - **Gate de dependencias en CI**: nuevo paso `verify_portable` que audita las tablas de imports PE de los 380+ binarios del paquete y **falla el build** si falta cualquier DLL no-sistema — este defecto jamás podrá volver a publicarse.
-            - Verificación de arquitectura: el gate también comprueba que el paquete x86 solo contenga PE de 32 bits (y x64 solo de 64 bits).
+            - **FIX CRÍTICO — arranque en Windows limpio**: los paquetes v1.0.1 omitían el runtime de MinGW (`libwinpthread-1.dll`, `libstdc++-6.dll`, `libgcc_s_dw2-1/seh-1.dll`) que las DLLs de Qt importan de forma dinámica. Ahora el runtime viaja DENTRO del paquete.
+            - **Gate de dependencias en CI**: `verify_portable` audita las tablas de imports PE de los 380+ binarios del paquete y **falla el build** si falta cualquier DLL no-sistema.
+            - Verificación de arquitectura x86/x64 de todos los PE del paquete.
 
             ### Correcciones v1.0.1 (sobre v1.0.0)
-            - **Importación PPTX arreglada**: el parser XML ignoraba el texto y las posiciones de las cajas (comparación de nombres con prefijo de namespace que nunca coincidía + doble conversión EMU→px)
-            - **Búsqueda de canciones arreglada**: `ORDER BY rank` inválido en la query externa hacía que toda búsqueda FTS devolviera 0 resultados
-            - **Biblia con acentos arreglada**: `stripAccents` roto impedía resolver «Génesis», «Éxodo», «Levítico»...
-            - **Exportación PPTX con texto real** (antes exportaba imágenes sin texto)
-            - Acordes: eliminada fuga de estado entre canciones parseadas
-            - Control remoto: puerto WebSocket ahora dinámico (respeta el configurado en Ajustes)
-            - Lienzo: rectángulos redondeados reales y corrección de fuga de memoria al borrar
+            - **Importación PPTX arreglada** (parser XML con nombres locales + conversión EMU→px)
+            - **Búsqueda de canciones arreglada** (`ORDER BY rank` en subquery FTS5)
+            - **Biblia con acentos arreglada** (NFD + filtrado de marcas combinantes)
+            - **Exportación PPTX con texto real** · acordes sin fuga de estado · puerto WS dinámico en el remoto
+            - Lienzo: rectángulos redondeados reales y corrección de fuga de memoria
             - Crossfade sin asignaciones por frame + cierre ordenado del servidor embebido
             - FTS robusto ante términos con guiones/paréntesis/AND
           files: |

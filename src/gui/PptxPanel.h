@@ -23,9 +23,12 @@ public:
 signals:
     // Proyecta la lista de slides convertida (Slide::Pptx con imagen renderizada)
     void requestProjectPptx(const QVector<Slide> &slides);
-    void requestAddPptxToService(const QString &name, const QVector<Slide> &slides);
+    // v1.1.0: envia al culto la RUTA del archivo (la cola puede re-ejecutarlo)
+    void requestAddPptxToService(const QString &filePath);
     // Exportar el contenido EN VIVO actual (canción/biblia proyectada) a .pptx
     void requestExportLive();
+    // v1.1.0: exportar el escenario en vivo a PDF (spec: "PPTX y PDF")
+    void requestExportPdf();
 
 private slots:
     void onOpen();

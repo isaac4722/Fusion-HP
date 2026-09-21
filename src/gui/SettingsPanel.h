@@ -15,6 +15,7 @@
 #include <QPushButton>
 #include <QLabel>
 #include <QCheckBox>
+#include <QLineEdit>
 
 class SettingsPanel : public QWidget
 {
@@ -41,6 +42,11 @@ private:
     QComboBox *m_defaultTheme = nullptr;
     QCheckBox *m_autoStart = nullptr;
     QCheckBox *m_stageWithChords = nullptr;
+    // v1.1.0: ajustes de canciones + API
+    QCheckBox *m_hinarioMode = nullptr;
+    QSpinBox *m_maxLines = nullptr;
+    QCheckBox *m_titleSlide = nullptr;
+    QLineEdit *m_apiToken = nullptr;
     QLabel *m_sysInfo = nullptr;
 };
 
