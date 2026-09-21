@@ -1,0 +1,292 @@
+// ============================================================================
+//  LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
+// ============================================================================
+//  Triggers.h : Sistema de automatizacion de eventos.
+//  - Webhook HTTP (GET/POST) con plantillas {event}/{slide}/{song}
+//  - Cliente OBS WebSocket v5 (obs-websocket) con autenticacion SHA-256
+//    para cambio automatico de escenas al proyectar.
+//  - MIDI Out (winmm) para mesas DMX.
+//  - Bot de Telegram: recepcion de peticiones y envio de avisos.
+// ============================================================================
+#ifndef LUMINA_TRIGGERS_H
+#define LUMINA_TRIGGERS_H
+
+#include "MidiOut.h"
+
+#include <QObject>
+#include <QNetworkAccessManager>
+#include <QNetworkRequest>
+#include <QNetworkReply>
+#include <QWebSocket>
+#include <QTimer>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
+#include <QCryptographicHash>
+#include <QByteArray>
+#include <QUrlQuery>
+#include <QUrl>
+#include <QDebug>
+
+// ---------------------------------------------------------------------------
+// Cliente OBS WebSocket v5 (obs-websocket >= 5.0)
+// ---------------------------------------------------------------------------
+class ObsClient : public QObject
+{
+    Q_OBJECT
+public:
+    explicit ObsClient(QObject *parent = nullptr) : QObject(parent)
+    {
+        connect(&m_ws, &QWebSocket::connected, this, &ObsClient::onConnected);
+        connect(&m_ws, &QWebSocket::disconnected, this, [this]() { m_authed = false; });
+        connect(&m_ws, &QWebSocket::textMessageReceived, this, &ObsClient::onMessage);
+        m_reconnect.setInterval(15000);
+        connect(&m_reconnect, &QTimer::timeout, this, [this]() { if (m_enabled) connectTo(m_host, m_port, m_password); });
+    }
+
+    void configure(bool enabled, const QString &host, quint16 port, const QString &password)
+    {
+        m_enabled = enabled;
+        m_host = host; m_port = port; m_password = password;
+        if (enabled) connectTo(host, port, password);
+        else { m_ws.close(); m_reconnect.stop(); }
+    }
+
+    bool connected() const { return m_authed; }
+
+    void setScene(const QString &sceneName)
+    {
+        if (!m_authed) return;
+        QJsonObject req;
+        req["requestType"] = QStringLiteral("SetCurrentProgramScene");
+        QJsonObject data; data["sceneName"] = sceneName;
+        req["requestData"] = data;
+        req["requestId"] = QStringLiteral("scene-%1").arg(++m_reqId);
+        m_ws.sendTextMessage(QString::fromUtf8(QJsonDocument(req).toJson(QJsonDocument::Compact)));
+    }
+
+signals:
+    void connectionChanged(bool ok);
+
+private slots:
+    void onConnected()
+    {
+        // Espera Hello (op 0) con challenge
+    }
+    void onMessage(const QString &msg)
+    {
+        const QJsonObject obj = QJsonDocument::fromJson(msg.toUtf8()).object();
+        const int op = obj.value(QStringLiteral("op")).toInt(-1);
+        const QJsonObject d = obj.value(QStringLiteral("d")).toObject();
+        if (op == 0) {
+            // Hello -> Identify
+            const QString challenge = d.value(QStringLiteral("authentication")).toObject()
+                                          .value(QStringLiteral("challenge")).toString();
+            const QString salt = d.value(QStringLiteral("authentication")).toObject()
+                                     .value(QStringLiteral("salt")).toString();
+            QJsonObject ident;
+            ident["rpcVersion"] = 1;
+            if (!salt.isEmpty()) {
+                const QByteArray secret = QCryptographicHash::hash(
+                    (m_password + salt).toUtf8(), QCryptographicHash::Sha256).toBase64();
+                const QByteArray auth = QCryptographicHash::hash(
+                    secret + challenge.toUtf8(), QCryptographicHash::Sha256).toBase64();
+                ident["authentication"] = QString::fromUtf8(auth);
+            }
+            QJsonObject out;
+            out["op"] = 1; out["d"] = ident;
+            m_ws.sendTextMessage(QString::fromUtf8(QJsonDocument(out).toJson(QJsonDocument::Compact)));
+        } else if (op == 2) {
+            m_authed = true;
+            m_reconnect.stop();
+            emit connectionChanged(true);
+            qInfo() << "[OBS] Conectado y autenticado (obs-websocket v5)";
+        }
+    }
+
+private:
+    void connectTo(const QString &host, quint16 port, const QString &)
+    {
+        if (m_ws.state() == QAbstractSocket::ConnectedState) return;
+        const QUrl url(QStringLiteral("ws://%1:%2").arg(host).arg(port));
+        m_ws.open(url);
+        m_reconnect.start();
+    }
+
+    QWebSocket m_ws;
+    QTimer m_reconnect;
+    bool m_enabled = false, m_authed = false;
+    QString m_host;
+    quint16 m_port = 4455;
+    QString m_password;
+    int m_reqId = 0;
+};
+
+// ---------------------------------------------------------------------------
+// Bot de Telegram (recepcion de peticiones / envio de avisos)
+// ---------------------------------------------------------------------------
+class TelegramBot : public QObject
+{
+    Q_OBJECT
+public:
+    explicit TelegramBot(QObject *parent = nullptr) : QObject(parent)
+    {
+        connect(&m_nam, &QNetworkAccessManager::finished, this, &TelegramBot::onReply);
+        m_poll.setInterval(2500);
+        connect(&m_poll, &QTimer::timeout, this, &TelegramBot::poll);
+    }
+
+    void configure(bool enabled, const QString &token, const QString &chatId)
+    {
+        m_token = token; m_chatId = chatId;
+        if (enabled && !token.isEmpty()) m_poll.start();
+        else m_poll.stop();
+    }
+
+    bool running() const { return m_poll.isActive(); }
+
+    void sendMessage(const QString &text)
+    {
+        if (m_token.isEmpty() || m_chatId.isEmpty()) return;
+        QUrl url(QStringLiteral("https://api.telegram.org/bot%1/sendMessage").arg(m_token));
+        QUrlQuery q;
+        q.addQueryItem(QStringLiteral("chat_id"), m_chatId);
+        q.addQueryItem(QStringLiteral("text"), text);
+        url.setQuery(q);
+        m_nam.get(QNetworkRequest(url));
+    }
+
+signals:
+    void messageReceived(const QString &from, const QString &text);
+
+private slots:
+    void poll()
+    {
+        QUrl url(QStringLiteral("https://api.telegram.org/bot%1/getUpdates").arg(m_token));
+        QUrlQuery q;
+        q.addQueryItem(QStringLiteral("timeout"), QStringLiteral("0"));
+        q.addQueryItem(QStringLiteral("offset"), QString::number(m_offset));
+        q.addQueryItem(QStringLiteral("limit"), QStringLiteral("10"));
+        url.setQuery(q);
+        m_nam.get(QNetworkRequest(url));
+    }
+
+    void onReply(QNetworkReply *rep)
+    {
+        rep->deleteLater();
+        if (rep->error() != QNetworkReply::NoError) return;
+        const QJsonObject obj = QJsonDocument::fromJson(rep->readAll()).object();
+        if (!obj.value(QStringLiteral("ok")).toBool()) return;
+        const QJsonArray updates = obj.value(QStringLiteral("result")).toArray();
+        for (const QJsonValue &v : updates) {
+            const QJsonObject u = v.toObject();
+            const qint64 id = u.value(QStringLiteral("update_id")).toVariant().toLongLong();
+            if (id >= m_offset) m_offset = id + 1;
+            const QJsonObject message = u.value(QStringLiteral("message")).toObject();
+            if (message.isEmpty()) continue;
+            const QString from = message.value(QStringLiteral("from")).toObject()
+                                     .value(QStringLiteral("first_name")).toString();
+            const QString text = message.value(QStringLiteral("text")).toString();
+            if (!text.isEmpty()) emit messageReceived(from, text);
+        }
+    }
+
+private:
+    QNetworkAccessManager m_nam;
+    QTimer m_poll;
+    QString m_token, m_chatId;
+    qint64 m_offset = 0;
+};
+
+// ---------------------------------------------------------------------------
+// Orquestador de triggers
+// ---------------------------------------------------------------------------
+class Triggers : public QObject
+{
+    Q_OBJECT
+public:
+    struct Config
+    {
+        bool   webhookEnabled = false;
+        QString webhookUrl;             // plantilla: {event} {slide} {song} {item}
+        bool   obsEnabled = false;
+        QString obsHost = QStringLiteral("127.0.0.1");
+        quint16 obsPort = 4455;
+        QString obsPassword;
+        QString obsSceneOnSlide = QStringLiteral("Proyeccion");
+        QString obsSceneOnClear = QStringLiteral("Camara");
+        bool   midiEnabled = false;
+        int    midiProgramOnSlide = 0;
+        bool   telegramEnabled = false;
+        QString telegramToken;
+        QString telegramChatId;
+    };
+
+    explicit Triggers(QObject *parent = nullptr) : QObject(parent)
+    {
+        connect(&m_obs, &ObsClient::connectionChanged, this, &Triggers::obsConnectionChanged);
+    }
+
+    void applyConfig(const Config &c)
+    {
+        m_cfg = c;
+        m_obs.configure(c.obsEnabled, c.obsHost, c.obsPort, c.obsPassword);
+        m_telegram.configure(c.telegramEnabled, c.telegramToken, c.telegramChatId);
+    }
+    const Config &config() const { return m_cfg; }
+
+    TelegramBot *telegram() { return &m_telegram; }
+
+    // Dispara un evento por nombre: "slide_next","slide_prev","media_play",
+    // "media_stop","black","clear","logo","golive","alert"
+    void fireEvent(const QString &event, const QVariantMap &data = QVariantMap())
+    {
+        // 1) Webhook HTTP
+        if (m_cfg.webhookEnabled && !m_cfg.webhookUrl.isEmpty()) {
+            QString urlStr = m_cfg.webhookUrl;
+            urlStr.replace(QStringLiteral("{event}"), event);
+            urlStr.replace(QStringLiteral("{slide}"), data.value(QStringLiteral("slide")).toString());
+            urlStr.replace(QStringLiteral("{song}"), data.value(QStringLiteral("song")).toString());
+            urlStr.replace(QStringLiteral("{item}"), data.value(QStringLiteral("item")).toString());
+            QUrl url(urlStr);
+            if (url.isValid()) {
+                QNetworkRequest req(url);
+                req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
+                QJsonObject payload;
+                payload["event"] = event;
+                for (auto it = data.constBegin(); it != data.constEnd(); ++it)
+                    payload[it.key()] = QJsonValue::fromVariant(it.value());
+                m_nam.post(req, QJsonDocument(payload).toJson(QJsonDocument::Compact));
+            }
+        }
+        // 2) OBS escena
+        if (m_cfg.obsEnabled) {
+            if (event == QStringLiteral("slide") && !m_cfg.obsSceneOnSlide.isEmpty())
+                m_obs.setScene(m_cfg.obsSceneOnSlide);
+            else if ((event == QStringLiteral("clear") || event == QStringLiteral("black")) &&
+                     !m_cfg.obsSceneOnClear.isEmpty())
+                m_obs.setScene(m_cfg.obsSceneOnClear);
+        }
+        // 3) MIDI
+        if (m_cfg.midiEnabled && event == QStringLiteral("slide"))
+            m_midi.sendProgramChange(m_cfg.midiProgramOnSlide);
+    }
+
+    void testAll()
+    {
+        fireEvent(QStringLiteral("test"), QVariantMap{ { QStringLiteral("note"), QStringLiteral("LuminaPresentation trigger test") } });
+        m_telegram.sendMessage(QStringLiteral("LuminaPresentation Suite: prueba de Telegram OK"));
+    }
+
+signals:
+    void obsConnectionChanged(bool ok);
+
+private:
+    QNetworkAccessManager m_nam;
+    ObsClient m_obs;
+    TelegramBot m_telegram;
+    MidiOut m_midi;
+    Config m_cfg;
+};
+
+#endif // LUMINA_TRIGGERS_H

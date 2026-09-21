@@ -1,0 +1,151 @@
+// ============================================================================
+//  LuminaPresentation Suite - MediaPanel.cpp
+// ============================================================================
+#include "MediaPanel.h"
+#include "core/Database.h"
+#include "core/MediaEngine.h"
+
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QFileDialog>
+#include <QGroupBox>
+#include <QTime>
+
+MediaPanel::MediaPanel(AppContext *ctx, QWidget *parent)
+    : QWidget(parent), m_ctx(ctx)
+{
+    buildUi();
+    updateVlcStatus();
+}
+
+void MediaPanel::updateVlcStatus()
+{
+    if (m_ctx->media && m_ctx->media->available())
+        m_status->setText(QStringLiteral("✅ Motor LibVLC embebido activo"));
+    else
+        m_status->setText(QStringLiteral("⚠ LibVLC no disponible: la proyección de texto sigue operativa.\n"
+                                         "Copia la carpeta 'vlc/' (libvlc.dll + plugins) junto al ejecutable."));
+}
+
+void MediaPanel::buildUi()
+{
+    auto *lay = new QVBoxLayout(this);
+    lay->setContentsMargins(12, 12, 12, 12);
+
+    auto *grp = new QGroupBox(QStringLiteral("Medios (video / audio / imágenes)"), this);
+    auto *glay = new QVBoxLayout(grp);
+
+    auto *row1 = new QHBoxLayout();
+    m_path = new QLineEdit(grp);
+    m_path->setPlaceholderText(QStringLiteral("Ruta del archivo de medios…"));
+    auto *bBrowse = new QPushButton(QStringLiteral("Explorar…"), grp);
+    connect(bBrowse, &QPushButton::clicked, this, &MediaPanel::onOpen);
+    row1->addWidget(m_path, 1);
+    row1->addWidget(bBrowse);
+    glay->addLayout(row1);
+
+    auto *row2 = new QHBoxLayout();
+    m_bPlay = new QPushButton(QStringLiteral("▶  Reproducir"), grp);
+    m_bPlay->setStyleSheet(QStringLiteral("QPushButton{background:#1E6FD9;color:white;font-weight:bold;padding:6px 14px;}"));
+    m_bStop = new QPushButton(QStringLiteral("■  Detener"), grp);
+    connect(m_bPlay, &QPushButton::clicked, this, &MediaPanel::onPlay);
+    connect(m_bStop, &QPushButton::clicked, this, [this]() { emit stopMedia(); });
+    row2->addWidget(m_bPlay);
+    row2->addWidget(m_bStop);
+    row2->addStretch();
+    glay->addLayout(row2);
+
+    auto *row3 = new QHBoxLayout();
+    m_background = new QCheckBox(QStringLiteral("Usar como FONDO en bucle (texto encima)"), grp);
+    m_loop = new QCheckBox(QStringLiteral("Repetir en bucle"), grp);
+    m_loop->setChecked(true);
+    row3->addWidget(m_background);
+    row3->addWidget(m_loop);
+    row3->addStretch();
+    glay->addLayout(row3);
+
+    auto *row4 = new QHBoxLayout();
+    row4->addWidget(new QLabel(QStringLiteral("Encuadre (video vertical):"), grp));
+    m_fit = new QComboBox(grp);
+    m_fit->addItem(QStringLiteral("Llenar (recortar bordes)"), 0);
+    m_fit->addItem(QStringLiteral("Ajustar (barras laterales)"), 1);
+    m_fit->addItem(QStringLiteral("Centrar (tamaño nativo)"), 2);
+    row4->addWidget(m_fit);
+    row4->addWidget(new QLabel(QStringLiteral("Volumen:"), grp));
+    m_volume = new QSlider(Qt::Horizontal, grp);
+    m_volume->setRange(0, 100);
+    m_volume->setValue(90);
+    m_volume->setMaximumWidth(180);
+    connect(m_volume, &QSlider::valueChanged, this, &MediaPanel::volumeChanged);
+    row4->addWidget(m_volume);
+    row4->addStretch();
+    glay->addLayout(row4);
+
+    m_seek = new QSlider(Qt::Horizontal, grp);
+    m_seek->setRange(0, 10000);
+    m_seek->setEnabled(false);
+    connect(m_seek, &QSlider::sliderPressed, this, [this]() { m_seeking = true; });
+    connect(m_seek, &QSlider::sliderReleased, this, [this]() {
+        m_seeking = false;
+        if (m_ctx->media && m_ctx->media->available()) {
+            const qint64 len = m_ctx->media->mainLength();
+            if (len > 0)
+                m_ctx->media->seekMain(qint64(m_seek->value()) * len / 10000);
+        }
+    });
+    glay->addWidget(m_seek);
+    m_time = new QLabel(QStringLiteral("00:00 / 00:00"), grp);
+    glay->addWidget(m_time);
+
+    lay->addWidget(grp);
+
+    // Nota BPM
+    auto *note = new QLabel(
+        QStringLiteral("Sugerencia: sincroniza la velocidad del fondo con el BPM de la alabanza "
+                       "ajustando la duración del clip o usando bucles cortos (4/8 compases)."), this);
+    note->setWordWrap(true);
+    note->setStyleSheet(QStringLiteral("color: #8FA3C8;"));
+    lay->addWidget(note);
+
+    lay->addStretch();
+    m_status = new QLabel(QString(), this);
+    lay->addWidget(m_status);
+}
+
+void MediaPanel::onOpen()
+{
+    const QString f = QFileDialog::getOpenFileName(
+        this, QStringLiteral("Abrir medios"), QString(),
+        QStringLiteral("Medios (*.mp4 *.avi *.mkv *.mov *.webm *.mp3 *.wav *.m4a *.ogg *.png *.jpg *.jpeg);;Todos (*)"));
+    if (f.isEmpty()) return;
+    m_path->setText(f);
+    const QString ext = QFileInfo(f).suffix().toLower();
+    m_isVideo = !(ext == QStringLiteral("mp3") || ext == QStringLiteral("wav") ||
+                  ext == QStringLiteral("m4a") || ext == QStringLiteral("ogg"));
+}
+
+void MediaPanel::onPlay()
+{
+    const QString f = m_path->text().trimmed();
+    if (f.isEmpty()) return;
+    if (m_isVideo) {
+        emit playMedia(f, m_background->isChecked(), m_loop->isChecked(), m_fit->currentData().toInt(), true);
+    } else {
+        emit playMedia(f, false, m_loop->isChecked(), 0, false);    // audio: salida principal
+    }
+    m_seek->setEnabled(true);
+}
+
+void MediaPanel::onPosition(qint64 t, qint64 len)
+{
+    if (m_seeking || len <= 0) return;
+    m_seek->setValue(int(t * 10000 / len));
+    m_time->setText(QStringLiteral("%1 / %2")
+                        .arg(QTime(0, 0).addMSecs(int(t)).toString(QStringLiteral("mm:ss")),
+                             QTime(0, 0).addMSecs(int(len)).toString(QStringLiteral("mm:ss"))));
+}
+
+void MediaPanel::onMediaState(int st)
+{
+    Q_UNUSED(st)
+}
