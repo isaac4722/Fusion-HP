@@ -89,8 +89,16 @@ set(LUMINA_THIRD_PARTY
 )
 
 # Recurso de icono/version para Windows
+# Se genera via configure_file con ruta ABSOLUTA del icono (barras normales):
+# windres resuelve rutas relativas desde el directorio de build, lo que
+# rompia la compilacion del .rc en CI (no en builds in-source).
 if (WIN32)
-    set(LUMINA_RC windows/app.rc)
+    set(ICON_RC_PATH "${CMAKE_CURRENT_SOURCE_DIR}/resources/img/app.ico")
+    configure_file(
+        ${CMAKE_CURRENT_SOURCE_DIR}/windows/app.rc.in
+        ${CMAKE_CURRENT_BINARY_DIR}/app.rc
+        @ONLY)
+    set(LUMINA_RC ${CMAKE_CURRENT_BINARY_DIR}/app.rc)
 endif()
 
 add_executable(LuminaPresentationSuite WIN32
