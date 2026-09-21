@@ -141,3 +141,15 @@
 - Gates: build=OK local Linux Qt 5.15.2 gcc (0 errores / 0 warnings) · harness=39/39 OK (Chords 10 · BibleRef 5 · Lyrics/Hinario 5 · Renderer 4 · Database 8 · WebServer 7) · smoke offscreen OK (arranque, seed 5 canciones + Biblia, WS 8765 + HTTP 8088, /api/state versión 1.2.0) · CI Windows x86+x64 → pendiente del run del tag v1.2.0
 - Bloqueos: ninguno (2 hallazgos del harness resultaron ser datos de prueba ambiguos — "c1..c5" y "a"/"b" son tokens de acorde válidos y el parser los consume como cifras; documentado en el propio harness)
 - Siguiente: tag v1.2.0 → CI verde (build+release con gates nuevos) → verificación final de la release publicada (API + descarga + SHA256 + verify_portable)
+
+---
+## [CIERRE-2026-09-21-F] v1.2.0 publicada y verificada de extremo a extremo · 2026-09-21 UTC
+- Agente: Super Z (GLM) — cierre del ciclo (pasos 8-9 de AGENT.md)
+- Hecho:
+  - Run 35622138524 del tag v1.2.0: **success** en los 3 jobs (Build x64, Build x86, Create GitHub Release) — 0 errores, 0 warnings.
+  - **GATES nuevos en verde**: "Purge stale draft releases for this tag" (limpieza previa) y "Verify published release (gate anti draft-fantasma)" (verificación post-publicación).
+  - **Release v1.2.0 PUBLICADA** (id 393096568, draft=false, publicada 2026-09-21T15:57:18Z): los 3 assets subidos — `LuminaPresentationSuite-v1.2.0-x64-portable.zip` (86.7 MB), `-x86-portable.zip` (82.2 MB) y `SHA256SUMS.txt`. Página pública HTTP 200. Listado de releases limpio (draft residual del experimento de diagnóstico eliminado, HTTP 204).
+  - **Verificación post-publicación (descarga real)**: descargados ambos zips desde la release; **SHA256 idénticos** a los publicados (355b5634… x64 · 67a1b28e… x86); extraídos 397 archivos por paquete; **gate `verify_portable.py` ejecutado sobre ambos: 390 binarios PE auditados por arquitectura, todas las dependencias satisfechas dentro del paquete**; runtime MinGW (libgcc/libstdc++/libwinpthread) presente en ambos; LibVLC con plugins completa; **FileVersion 1.2.0.0** confirmado en ambos .exe.
+- Gates: CI=success (3/3 jobs, 2 gates nuevos) · release=publicada con 3 assets · SHA256=exactos · verify_portable=OK x64 y x86 · versión exe=1.2.0.0
+- Bloqueos: ninguno
+- Siguiente: ninguna — v1.2.0 cerrada: defecto raíz de la release fantasma corregido y blindado, base funcional completa
