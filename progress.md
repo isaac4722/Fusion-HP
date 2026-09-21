@@ -3,6 +3,17 @@
 > Registro acumulativo de trabajo (append-only). Formato definido en `AGENT.md`.
 
 ---
+## [CIERRE-2026-09-21-H] v1.3.0 «AURORA» publicada y verificada de extremo a extremo · 2026-09-21 UTC
+- Agente: Super Z (GLM) — cierre del ciclo
+- Hecho:
+  - Runs del tag v1.3.0 (35631644269) y de main (35631641674): **success** — compilación Windows x86+x64 con 0 errores.
+  - **Release v1.3.0 PUBLICADA** (id 393153989, draft=false, 17:25:48Z) con sus 3 assets: `LuminaPresentationSuite-v1.3.0-x64-portable.zip` (86.8 MB), `-x86-portable.zip` (82.2 MB) y `SHA256SUMS.txt`.
+  - **Verificación post-publicación (descarga real)**: ambos zips descargados; **SHA256 idénticos** a los publicados; **gate `verify_portable.py` OK en ambos** (390 binarios PE auditados por arquitectura, todas las dependencias satisfechas dentro del paquete); **FileVersion 1.3.0.0** confirmado en ambos .exe; **aurora.qss embebida** verificada en el binario.
+- Gates: CI=success (2/2 runs) · release=publicada con 3 assets · SHA256=exactos · verify_portable=OK x64 y x86 · versión exe=1.3.0.0
+- Bloqueos: ninguno
+- Siguiente: ninguna — v1.3.0 «AURORA» cerrada: GUI completa rediseñada + 9 features de los MDs implementadas y verificadas
+
+---
 ## [FEAT-2026-09-21-G] v1.2.0 → v1.3.0 «AURORA» · Nueva GUI completa + 9 features de los MDs · 2026-09-21 UTC
 - Agente: Super Z (GLM) — ciclo super plan: análisis de MDs → plan → implementación → verificación
 - Hecho:
