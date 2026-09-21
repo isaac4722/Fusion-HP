@@ -67,11 +67,13 @@ background:#101728;color:#e6ecf8;font-size:15px}
 <div id="toast"><span class="t" id="toastTitle">Mensaje del operador</span><span id="toastText"></span></div>
 
 <script>
+// v1.6.0 (M2): reenvio del token de la API si la pagina se abrio con ?token=...
+const TOKEN=new URLSearchParams(location.search).get('token')||'';
 let ws=null, retry=0;
 function connect(){
   // %%WSPORT%% lo sustituye el servidor embebido con el puerto WS real
   const wsPort=(typeof WSPORT!=='undefined')?WSPORT:%%WSPORT%%;
-  ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.hostname+':'+wsPort);
+  ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.hostname+':'+wsPort+(TOKEN?('?token='+encodeURIComponent(TOKEN)):''));
   ws.onopen=()=>{document.getElementById('conn').classList.add('on');document.getElementById('status').textContent='conectado';retry=0;};
   ws.onclose=()=>{document.getElementById('conn').classList.remove('on');document.getElementById('status').textContent='reconectando…';
     setTimeout(connect, Math.min(3000*Math.pow(1.5,retry++),15000));};

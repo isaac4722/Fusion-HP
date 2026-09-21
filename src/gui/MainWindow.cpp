@@ -94,6 +94,10 @@ MainWindow::MainWindow(AppContext *ctx, QWidget *parent)
     m_clockTimer->start(500);
     m_srvChip = new QLabel(QString(), this);
     m_srvChip->setObjectName(QStringLiteral("SrvChip"));
+    // CORRECCION v1.6.0 (B9): la propiedad debe inicializarse al valor
+    // OPUESTO al estado real del primer updateSrvChip() — si el servidor
+    // arrancó apagado, el chip «● Servidor apagado» no aparecía nunca.
+    m_srvChip->setProperty("on", true);
     statusBar()->addPermanentWidget(m_srvChip);
     updateSrvChip();
 
@@ -108,6 +112,11 @@ MainWindow::MainWindow(AppContext *ctx, QWidget *parent)
              m_ctx.db->setting(QStringLiteral("screen_stage"), QStringLiteral("auto"))));
 
     pushWebState();     // estado inicial para overlay OBS / control remoto
+    // CORRECCION v1.6.0 (M19): las pantallas guardadas se reflejan en la
+    // toolbar DESDE EL ARRANQUE (antes solo al aplicar Ajustes — con 3+
+    // monitores, tras reiniciar la salida volvía a la pantalla 2 a pesar del
+    // aviso de la barra de estado).
+    syncScreenCombosFromSettings();
     updateDirector();   // v1.5.0: estado inicial de la Pantalla Director (campos
                         // presentes desde el arranque — /api/director.json)
 }
@@ -308,7 +317,7 @@ void MainWindow::buildUi()
     colNext->addWidget(lblNext);
     colNext->addWidget(m_nextPreview);
     auto *colStage = new QVBoxLayout();
-    auto *lblStage = new QLabel(QStringLiteral("ESCEENARIO (musicos)"), liveWidget);
+    auto *lblStage = new QLabel(QStringLiteral("ESCENARIO (músicos)"), liveWidget);
     lblStage->setObjectName(QStringLiteral("SectionLabel"));
     m_stageMini = new QLabel(QStringLiteral("—"), liveWidget);
     m_stageMini->setObjectName(QStringLiteral("StageMini"));
@@ -567,6 +576,12 @@ void MainWindow::buildUi()
             m_queueList->addItem(li);
         }
         statusBar()->showMessage(QStringLiteral("Culto cargado: %1 items.").arg(items.size()), 4000);
+        // CORRECCION v1.6.0 (M17): sin setCurrentRow, currentRow() quedaba en
+        // -1 y el PRIMER qnext remoto/MIDI ejecutaba row 0 de nuevo (repetía
+        // el ítem 1 ya en vivo en vez de avanzar al 2).
+        m_loadedPlaylistId = playlistId;
+        if (!m_queueData.isEmpty())
+            m_queueList->setCurrentRow(0);
         if (!items.isEmpty()) runServiceItem(items.first());
     });
     connect(m_servicePanel, &ServicePanel::requestRunItem, this, &MainWindow::runServiceItem);
@@ -593,12 +608,9 @@ void MainWindow::buildUi()
         // FIX v1.1.0: los combos de la toolbar quedaban desincronizados tras
         // aplicar Ajustes (la pantalla elegida en Ajustes no se reflejaba).
         rebuildScreenCombos();
-        const int outScr = m_ctx.db->setting(QStringLiteral("screen_output"), QStringLiteral("-1")).toInt();
-        const int stgScr = m_ctx.db->setting(QStringLiteral("screen_stage"), QStringLiteral("0")).toInt();
-        if (m_comboOutputScreen->findData(outScr) >= 0)
-            m_comboOutputScreen->setCurrentIndex(m_comboOutputScreen->findData(outScr));
-        if (m_comboStageScreen->findData(stgScr) >= 0)
-            m_comboStageScreen->setCurrentIndex(m_comboStageScreen->findData(stgScr));
+        // v1.6.0 (M19): sincronización extraída a helper compartido con el
+        // arranque — las pantallas guardadas se reflejan en la toolbar.
+        syncScreenCombosFromSettings();
         reassignOutputs();
         // CORRECCION v1.2.0: el "Tema activo" elegido en Ajustes ahora se
         // aplica EN VIVO (antes solo surtía efecto tras reiniciar la app).
@@ -639,7 +651,14 @@ void MainWindow::buildUi()
     // Pantallas
     connect(m_comboOutputScreen, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int) { reassignOutputs(); });
     connect(m_comboStageScreen, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int) { reassignOutputs(); });
-    connect(m_comboDirectorScreen, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int) { reassignOutputs(); });   // v1.5.0
+    // v1.6.0 (M19): la pantalla del Director elegida en la toolbar se
+    // persiste (antes era solo de sesión) para restaurarla al arrancar.
+    connect(m_comboDirectorScreen, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int) {
+        if (m_ctx.db && m_comboDirectorScreen->currentData().isValid())
+            m_ctx.db->setSetting(QStringLiteral("screen_director"),
+                                 QString::number(m_comboDirectorScreen->currentData().toInt()));
+        reassignOutputs();
+    });
 
     // Triggers por defecto desde DB
     const QString tj = m_ctx.db->setting(QStringLiteral("triggers"));
@@ -658,6 +677,17 @@ void MainWindow::buildUi()
         c.telegramEnabled = o.value(QStringLiteral("tgOn")).toBool(false);
         c.telegramToken = o.value(QStringLiteral("tgToken")).toString();
         c.telegramChatId = o.value(QStringLiteral("tgChat")).toString();
+        // CORRECCION v1.6.0 (M15): el parseo del arranque ignoraba MIDI In
+        // (CommsPanel sí lo persiste) — tras reiniciar, el pedal MIDI dejaba
+        // de responder hasta re-guardar en Comunicación. Mismo JSON, mismo
+        // significado: un solo vocabulario.
+        c.midiInEnabled = o.value(QStringLiteral("midiInOn")).toBool(false);
+        const QJsonArray midiMap = o.value(QStringLiteral("midiInMap")).toArray();
+        for (const QJsonValue &mv : midiMap) {
+            const QJsonObject mo = mv.toObject();
+            c.midiInMap.append(qMakePair(mo.value(QStringLiteral("note")).toInt(-1),
+                                         mo.value(QStringLiteral("cmd")).toString()));
+        }
         m_ctx.triggers->applyConfig(c);
     }
 }
@@ -874,6 +904,21 @@ void MainWindow::showSlideIndex(int idx, bool fireTriggers)
     // CORRECCION v1.2.0: el closeOverlay() que estaba aquí destruía el flujo
     // del versículo rápido (ver goLive). El cierre del overlay ahora ocurre
     // únicamente en goLive() y en closeOverlay() (tecla Esc).
+    // CORRECCION v1.6.0 (M14): un VIDEO principal en curso tapaba la nueva
+    // proyección — el VideoHost es opaco y quedó raised sobre la salida, así
+    // que al ejecutar el siguiente ítem de la cola la audiencia seguía viendo
+    // el video anterior. Si hay un medio reproduciendo con el host de video
+    // VISIBLE, se detiene y se oculta antes de proyectar. El audio puro
+    // (host invisible, p. ej. pista sonora bajo las letras) NO se toca: ese
+    // flujo es intencional y debe continuar entre slides.
+    if (m_ctx.media && m_output->isVideoVisible()) {
+        const MediaEngine::State ms = m_ctx.media->state();
+        if (ms == MediaEngine::Playing || ms == MediaEngine::Paused ||
+            ms == MediaEngine::Buffering || ms == MediaEngine::Opening) {
+            m_ctx.media->stopMain();
+            m_output->setVideoVisible(false);
+        }
+    }
     m_liveIndex = idx;
     const Slide &s = m_liveSlides.at(idx);
 
@@ -1091,8 +1136,20 @@ void MainWindow::closeOverlay()
     m_liveLabel = m_savedLabel;
     m_liveInfo->setText(m_liveLabel);
     updateSlideList();
-    if (m_liveIndex >= 0 && m_liveIndex < m_liveSlides.size())
+    if (m_liveIndex >= 0 && m_liveIndex < m_liveSlides.size()) {
         showSlideIndex(m_liveIndex, false);
+    } else {
+        // CORRECCION v1.6.0 (M20): F9 sin contenido en vivo previo — Esc
+        // dejaba la salida congelada con el versículo, el estado web
+        // desincronizado y ninguna forma de recuperarla (solo Negro/Logo).
+        // El estado restaurado es vacío: la salida queda limpia con el fondo
+        // del tema y el índice vuelve a -1 (coherencia total).
+        m_liveIndex = -1;
+        m_output->setThemeBackground(m_theme);
+    }
+    // M20: el estado web/overlay se sincroniza SIEMPRE (antes solo via
+    // showSlideIndex; la rama vacía dejaba el versículo publicado en OBS).
+    pushWebState();
 }
 
 // ---------------------------------------------------------------------------
@@ -1287,6 +1344,27 @@ void MainWindow::toggleDirectorView()
 // ---------------------------------------------------------------------------
 // v1.5.0: estado del director — ventana nativa + /api/director.json
 // ---------------------------------------------------------------------------
+// v1.6.0 (M19): refleja las pantallas guardadas (screen_output/screen_stage)
+// en los combos de la toolbar. Reutilizado por el arranque y por Ajustes.
+// screen_director solo se aplica si existe (elegido en toolbar y persistido
+// desde v1.6.0); sin ajuste previo manda la sugerencia de rebuildScreenCombos.
+void MainWindow::syncScreenCombosFromSettings()
+{
+    if (!m_ctx.db) return;
+    const int outScr = m_ctx.db->setting(QStringLiteral("screen_output"), QStringLiteral("-1")).toInt();
+    const int stgScr = m_ctx.db->setting(QStringLiteral("screen_stage"), QStringLiteral("0")).toInt();
+    if (m_comboOutputScreen->findData(outScr) >= 0)
+        m_comboOutputScreen->setCurrentIndex(m_comboOutputScreen->findData(outScr));
+    if (m_comboStageScreen->findData(stgScr) >= 0)
+        m_comboStageScreen->setCurrentIndex(m_comboStageScreen->findData(stgScr));
+    const QString dirRaw = m_ctx.db->setting(QStringLiteral("screen_director"));
+    if (!dirRaw.isEmpty()) {
+        const int dirScr = dirRaw.toInt();
+        if (m_comboDirectorScreen->findData(dirScr) >= 0)
+            m_comboDirectorScreen->setCurrentIndex(m_comboDirectorScreen->findData(dirScr));
+    }
+}
+
 void MainWindow::updateDirector()
 {
     // Ítem actual y siguiente de la cola del culto
@@ -1314,8 +1392,13 @@ void MainWindow::updateDirector()
     }
     if (curItem.isEmpty()) curItem = m_liveLabel;
 
-    if (m_directorOn && m_director->isVisible())
+    if (m_directorOn && m_director->isVisible()) {
+        // CORRECCION v1.6.0 (B12): el acento del tema colorea el ítem actual
+        // (DirectorWindow::applyAccent existía desde v1.5.0 pero nadie la
+        // invocaba — la pantalla ignoraba el color prometido).
+        m_director->applyAccent(m_theme.stageChord);
         m_director->updateInfo(curItem, curText, nextItem, nextText, notes);
+    }
 
     // Estado web (Pantalla HTML / Instrucciones en navegador — spec §3.3)
     QJsonObject dir;
@@ -1327,10 +1410,8 @@ void MainWindow::updateDirector()
     m_ctx.web->setDirectorState(dir);
 }
 
-void MainWindow::publishDirectorState()
-{
-    updateDirector();
-}
+// v1.6.0 (B12): publishDirectorState() era código muerto (solo delegaba en
+// updateDirector(), que es lo que todos los llamadores usan) — eliminado.
 
 // v1.5.0: lazy loading (spec §2.5): precarga SOLO el elemento actual y el
 // inmediato siguiente (imagen de slide y de fondo del próximo ítem).
@@ -1573,8 +1654,13 @@ void MainWindow::onPcoImportItems(const QVector<PcoItem> &items)
         return;
     }
     int plId = activePlaylistId();
-    if (plId <= 0)
+    if (plId <= 0) {
         plId = m_ctx.db->createPlaylist(QStringLiteral("Culto PCO"));
+        // CORRECCION v1.6.0 (M18): el culto fallback debe aparecer en el
+        // combo del ServicePanel — sin esto, el siguiente «＋ A culto» iba a
+        // otro culto (o recreaba otro).
+        m_servicePanel->reloadPlaylists(plId);
+    }
 
     // Normalización de títulos para el matching (mayúsculas/acentos/espacios)
     auto norm = [](const QString &t) {
@@ -1611,17 +1697,27 @@ void MainWindow::onPcoImportItems(const QVector<PcoItem> &items)
             ++texts;
         }
         m_ctx.db->addPlaylistItem(plId, it);
-        // Reflejo inmediato en la cola del dock
-        m_queueData.append(it);
-        auto *li = new QListWidgetItem(it.label);
-        QVariant v;
-        v.setValue(it);
-        li->setData(Qt::UserRole, v);
-        m_queueList->addItem(li);
+        // CORRECCION v1.6.0 (M18): el reflejo en el dock solo si el culto
+        // destino ES el cargado en vivo. Antes, importar con otro culto
+        // seleccionado en el combo mezclaba ítems A+PCO en la cola en
+        // ejecución (secuencia que no existe en ninguna playlist de la BD).
+        if (plId == m_loadedPlaylistId) {
+            m_queueData.append(it);
+            auto *li = new QListWidgetItem(it.label);
+            QVariant v;
+            v.setValue(it);
+            li->setData(Qt::UserRole, v);
+            m_queueList->addItem(li);
+        }
     }
+    // CORRECCION v1.6.0 (M18): mensaje único (dos showMessage consecutivos se
+    // pisan — solo el segundo llegaba a verse).
     statusBar()->showMessage(QStringLiteral(
-        "Plan PCO importado: %1 canción(es) locales, %2 texto(s), %3 sin coincidencia.")
-        .arg(songs).arg(texts).arg(unmatched), 8000);
+        "Plan PCO importado: %1 canción(es) locales, %2 texto(s), %3 sin coincidencia.%4")
+        .arg(songs).arg(texts).arg(unmatched)
+        .arg(plId != m_loadedPlaylistId
+            ? QStringLiteral(" Destino: culto seleccionado (la cola en vivo no cambió).")
+            : QString()), 8000);
     updateDirector();
 }
 

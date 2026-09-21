@@ -255,6 +255,23 @@ CREATE TABLE IF NOT EXISTS tag_rules (
         if (error) *error = m_lastError;
         return false;
     }
+
+    // M21: migración UNICA de dedupe + índice UNIQUE sobre (version,book,
+    // chapter,verse). El ORDEN IMPORTA: primero se deduplica y DESPUÉS se
+    // crea el índice (si se creara antes, los duplicados residuales de
+    // re-importes anteriores harían fallar la creación). Además el dedupe
+    // es costoso en BD grandes: solo se ejecuta cuando el índice aún no
+    // existe (primera migración); en aperturas siguientes es un no-op.
+    if (scalar(QStringLiteral("SELECT COUNT(*) FROM sqlite_master "
+                              "WHERE type='index' AND name='idx_bible_unique'")) == 0) {
+        // Conserva la primera copia (MIN(rowid)) de cada versículo repetido;
+        // el trigger bible_ad se dispara por cada fila borrada y mantiene
+        // bible_fts (external content) consistente con lo que queda vivo.
+        exec(QStringLiteral("DELETE FROM bible WHERE rowid NOT IN "
+                            "(SELECT MIN(rowid) FROM bible GROUP BY version, book, chapter, verse)"));
+        exec(QStringLiteral("CREATE UNIQUE INDEX IF NOT EXISTS idx_bible_unique "
+                            "ON bible(version, book, chapter, verse)"));
+    }
     return true;
 }
 
@@ -370,11 +387,17 @@ QVector<SongRow> Database::searchSongs(const QString &term, int limit)
     // (tabla songs, que no tiene columna rank) — la busqueda de canciones
     // fallaba en silencio y devolvia SIEMPRE 0 resultados. El rank pertenece
     // al subquery de songs_fts.
+    // B2: MATCH ? y LIMIT ? con bind parameters — el encadenado .arg()
+    // corrompía la SQL si el término del usuario contenía "%1"/"%2".
     sqlite3_stmt *st = prepare(QStringLiteral(
         "SELECT s.id, s.title, s.artist, s.key, s.bpm FROM songs s WHERE s.id IN "
-        "(SELECT rowid FROM songs_fts WHERE songs_fts MATCH '%1' ORDER BY rank) "
-        "ORDER BY s.title COLLATE NOCASE LIMIT %2").arg(match).arg(limit));
-    return rowsFromStmt(st);
+        "(SELECT rowid FROM songs_fts WHERE songs_fts MATCH ? ORDER BY rank) "
+        "ORDER BY s.title COLLATE NOCASE LIMIT ?"));
+    if (st) {
+        sqlite3_bind_text(st, 1, match.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int(st, 2, limit);
+    }
+    return rowsFromStmt(st);    // rowsFromStmt finaliza el stmt (también si es null)
 }
 
 QVector<SongRow> Database::allSongs()
@@ -419,16 +442,19 @@ int Database::addTag(const QString &name)
 bool Database::setSongTags(int songId, const QStringList &tagNames)
 {
     if (!begin()) return false;
-    stmtExec("DELETE FROM song_tags WHERE song_id=?", { songId });
+    // B5: ante cualquier fallo a mitad, rollback (antes se comiteaba estado parcial)
+    bool ok = stmtExec("DELETE FROM song_tags WHERE song_id=?", { songId });
     for (const QString &raw : tagNames) {
+        if (!ok) break;
         const QString n = raw.trimmed();
         if (n.isEmpty()) continue;
         const int tagId = addTag(n);
-        if (tagId > 0)
-            stmtExec("INSERT OR IGNORE INTO song_tags(song_id, tag_id) VALUES(?,?)",
-                     { songId, tagId });
+        if (tagId <= 0) { ok = false; break; }      // fallo de BD al crear el tag
+        if (!stmtExec("INSERT OR IGNORE INTO song_tags(song_id, tag_id) VALUES(?,?)",
+                      { songId, tagId }))
+            ok = false;
     }
-    return commit();
+    return ok ? commit() : rollback();
 }
 
 QStringList Database::songTags(int songId)
@@ -464,14 +490,18 @@ QVector<QPair<int, QString>> Database::allTags()
 
 QVector<SongRow> Database::searchByTag(const QString &tag)
 {
-    const QString t = tag.trimmed().replace('\'', QStringLiteral("''"));
+    const QString t = tag.trimmed();
     if (t.isEmpty()) return allSongs();
+    // B2: bind parameters — el escape manual de comillas no protegía contra
+    // términos con "%1" (corrompían la SQL vía .arg()).
     sqlite3_stmt *st = prepare(QStringLiteral(
         "SELECT s.id, s.title, s.artist, s.key, s.bpm FROM songs s "
         "WHERE s.id IN (SELECT st.song_id FROM song_tags st "
-        "               INNER JOIN tags t ON t.id=st.tag_id "
-        "               WHERE t.name='%1' COLLATE NOCASE) "
-        "ORDER BY s.title COLLATE NOCASE").arg(t));
+        "               INNER JOIN tags tg ON tg.id=st.tag_id "
+        "               WHERE tg.name=? COLLATE NOCASE) "
+        "ORDER BY s.title COLLATE NOCASE"));
+    if (st)
+        sqlite3_bind_text(st, 1, t.toUtf8().constData(), -1, SQLITE_TRANSIENT);
     return rowsFromStmt(st);
 }
 
@@ -501,17 +531,20 @@ bool Database::setThemeTags(int themeId, const QStringList &tagNames)
 {
     if (themeId <= 0) return false;
     if (!begin()) return false;
-    stmtExec("DELETE FROM resource_tags WHERE kind='theme' AND key=?",
-             { QString::number(themeId) });
+    // B5: ante cualquier fallo a mitad, rollback (antes se comiteaba estado parcial)
+    bool ok = stmtExec("DELETE FROM resource_tags WHERE kind='theme' AND key=?",
+                       { QString::number(themeId) });
     for (const QString &raw : tagNames) {
+        if (!ok) break;
         const QString n = raw.trimmed();
         if (n.isEmpty()) continue;
         const int tagId = addTag(n);
-        if (tagId > 0)
-            stmtExec("INSERT OR IGNORE INTO resource_tags(kind, key, tag_id) VALUES('theme',?,?)",
-                     { QString::number(themeId), tagId });
+        if (tagId <= 0) { ok = false; break; }      // fallo de BD al crear el tag
+        if (!stmtExec("INSERT OR IGNORE INTO resource_tags(kind, key, tag_id) VALUES('theme',?,?)",
+                      { QString::number(themeId), tagId }))
+            ok = false;
     }
-    return commit();
+    return ok ? commit() : rollback();
 }
 
 QStringList Database::themeTags(int themeId)
@@ -555,9 +588,10 @@ bool Database::removeMedia(const QString &path)
 {
     const QString p = QDir::toNativeSeparators(path.trimmed());
     if (!begin()) return false;
-    stmtExec("DELETE FROM media WHERE path=?", { p });
-    stmtExec("DELETE FROM resource_tags WHERE kind='media' AND key=?", { p });
-    return commit();
+    // B5: si el segundo DELETE falla, rollback (antes se comiteaba medio estado)
+    bool ok = stmtExec("DELETE FROM media WHERE path=?", { p });
+    if (ok) ok = stmtExec("DELETE FROM resource_tags WHERE kind='media' AND key=?", { p });
+    return ok ? commit() : rollback();
 }
 
 QVector<Database::MediaRow> Database::mediaLibrary()
@@ -581,16 +615,19 @@ bool Database::setMediaTags(const QString &path, const QStringList &tagNames)
     const QString p = QDir::toNativeSeparators(path.trimmed());
     if (p.isEmpty()) return false;
     if (!begin()) return false;
-    stmtExec("DELETE FROM resource_tags WHERE kind='media' AND key=?", { p });
+    // B5: ante cualquier fallo a mitad, rollback (antes se comiteaba estado parcial)
+    bool ok = stmtExec("DELETE FROM resource_tags WHERE kind='media' AND key=?", { p });
     for (const QString &raw : tagNames) {
+        if (!ok) break;
         const QString n = raw.trimmed();
         if (n.isEmpty()) continue;
         const int tagId = addTag(n);
-        if (tagId > 0)
-            stmtExec("INSERT OR IGNORE INTO resource_tags(kind, key, tag_id) VALUES('media',?,?)",
-                     { p, tagId });
+        if (tagId <= 0) { ok = false; break; }      // fallo de BD al crear el tag
+        if (!stmtExec("INSERT OR IGNORE INTO resource_tags(kind, key, tag_id) VALUES('media',?,?)",
+                      { p, tagId }))
+            ok = false;
     }
-    return commit();
+    return ok ? commit() : rollback();
 }
 
 QStringList Database::mediaTags(const QString &path)
@@ -613,14 +650,17 @@ QStringList Database::mediaTags(const QString &path)
 QVector<Database::MediaRow> Database::mediaByTag(const QString &tag)
 {
     QVector<MediaRow> out;
-    const QString t = tag.trimmed().replace('\'', QStringLiteral("''"));
+    const QString t = tag.trimmed();
     if (t.isEmpty()) return out;
+    // B2: bind parameters (mismo patrón que searchByTag)
     StmtGuard st(prepare(QStringLiteral(
         "SELECT m.path, m.kind FROM media m "
         "WHERE m.path IN (SELECT rt.key FROM resource_tags rt "
         "                 INNER JOIN tags tg ON tg.id=rt.tag_id "
-        "                 WHERE rt.kind='media' AND tg.name='%1' COLLATE NOCASE) "
-        "ORDER BY m.path COLLATE NOCASE").arg(t)));
+        "                 WHERE rt.kind='media' AND tg.name=? COLLATE NOCASE) "
+        "ORDER BY m.path COLLATE NOCASE")));
+    if (st)
+        sqlite3_bind_text(st.get(), 1, t.toUtf8().constData(), -1, SQLITE_TRANSIENT);
     if (st) {
         while (sqlite3_step(st.get()) == SQLITE_ROW) {
             MediaRow r;
@@ -690,9 +730,27 @@ QStringList Database::bibleVersions()
 bool Database::importBibleFromJsonResource(const QString &resourcePath, const QString &versionCode,
                                            const QString &licenseNote, QString *error)
 {
-    if (scalar(QStringLiteral("SELECT COUNT(*) FROM bible WHERE version='%1'")
-                   .arg(QString(versionCode).replace(QChar('\''), QStringLiteral("''")))) > 0)
-        return true;    // ya importada
+    // M21 (e): validar versionCode no vacío antes de tocar la BD
+    const QString code = versionCode.trimmed();
+    if (code.isEmpty()) {
+        if (error) *error = QStringLiteral("El código de versión de la Biblia está vacío.");
+        return false;
+    }
+    // M21 (b): guard anti-duplicado con bind parameters (B2) — si la versión
+    // ya existe, devolver mensaje amistoso sin duplicar versículos.
+    {
+        qint64 existing = 0;
+        StmtGuard st(prepare(QStringLiteral("SELECT COUNT(*) FROM bible WHERE version=?")));
+        if (st) {
+            sqlite3_bind_text(st.get(), 1, code.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+            if (sqlite3_step(st.get()) == SQLITE_ROW)
+                existing = sqlite3_column_int64(st.get(), 0);
+        }
+        if (existing > 0) {
+            if (error) *error = QStringLiteral("La Biblia «%1» ya está importada; no se duplicaron versículos.").arg(code);
+            return true;    // ya importada
+        }
+    }
 
     QFile f(resourcePath);
     if (!f.open(QIODevice::ReadOnly)) {
@@ -710,18 +768,27 @@ bool Database::importBibleFromJsonResource(const QString &resourcePath, const QS
 
     // Importacion masiva: transaccion atomica + synchronous OFF (per spec)
     exec(QStringLiteral("PRAGMA synchronous=OFF"));
-    begin();
+    // B5: begin() ignorado — si falla, abortar (no hay transacción activa)
+    if (!begin()) {
+        exec(QStringLiteral("PRAGMA synchronous=NORMAL"));
+        if (error) *error = QStringLiteral("No se pudo iniciar la transacción de importación: %1").arg(lastError());
+        return false;
+    }
     bool ok = true;
     for (const QJsonValue &bv : books) {
+        if (!ok) break;             // no seguir insertando tras el primer fallo
         const QJsonObject bo = bv.toObject();
         const int bookNum = bo.value(QStringLiteral("n")).toInt();
         const QJsonArray chapters = bo.value(QStringLiteral("chapters")).toArray();
         for (int ci = 0; ci < chapters.size(); ++ci) {
+            if (!ok) break;
             const QJsonArray verses = chapters.at(ci).toArray();
             for (int vi = 0; vi < verses.size(); ++vi) {
                 const QString text = verses.at(vi).toString();
-                if (!stmtExec("INSERT INTO bible(version,book,chapter,verse,text) VALUES(?,?,?,?,?)",
-                              { versionCode, bookNum, ci + 1, vi + 1, text })) {
+                // M21 (c): INSERT OR IGNORE — el índice UNIQUE idx_bible_unique
+                // protege contra duplicados residuales (se ignoran, no fallan).
+                if (!stmtExec("INSERT OR IGNORE INTO bible(version,book,chapter,verse,text) VALUES(?,?,?,?,?)",
+                              { code, bookNum, ci + 1, vi + 1, text })) {
                     ok = false;
                     break;
                 }
@@ -730,7 +797,7 @@ bool Database::importBibleFromJsonResource(const QString &resourcePath, const QS
     }
     if (ok) commit(); else rollback();
     exec(QStringLiteral("PRAGMA synchronous=NORMAL"));
-    qInfo() << "[DB] Biblia" << versionCode << "importada. Licencia:" << licenseNote;
+    qInfo() << "[DB] Biblia" << code << "importada. Licencia:" << licenseNote;
     return ok;
 }
 
@@ -809,25 +876,26 @@ QVector<QPair<BibleRef::VerseRef, QString>> Database::bibleWordSearch(const QStr
     }
     if (words.isEmpty()) return out;
     const QString match = words.join(QStringLiteral(" "));
-    QString verSafe = version;
-    verSafe.replace(QChar('\''), QStringLiteral("''"));
-    sqlite3_stmt *st = nullptr;
-    const QString sql = QStringLiteral(
+    // B2: MATCH ?, version=? y LIMIT ? con bind parameters — el encadenado
+    // .arg() corrompía la SQL si el término contenía "%1"/"%2"/"%3".
+    StmtGuard st(prepare(QStringLiteral(
         "SELECT b.book,b.chapter,b.verse,b.text FROM bible b WHERE b.id IN "
-        "(SELECT rowid FROM bible_fts WHERE bible_fts MATCH '%1' AND version='%2') "
-        "AND b.version='%2' ORDER BY b.book,b.chapter,b.verse LIMIT %3")
-            .arg(match).arg(verSafe).arg(limit);
-    if (sqlite3_prepare_v2(m_db, sql.toUtf8().constData(), -1, &st, nullptr) == SQLITE_OK) {
-        while (sqlite3_step(st) == SQLITE_ROW) {
+        "(SELECT rowid FROM bible_fts WHERE bible_fts MATCH ? AND version=?) "
+        "AND b.version=? ORDER BY b.book,b.chapter,b.verse LIMIT ?")));
+    if (st) {
+        sqlite3_bind_text(st.get(), 1, match.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(st.get(), 2, version.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(st.get(), 3, version.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int(st.get(), 4, limit);
+        while (sqlite3_step(st.get()) == SQLITE_ROW) {
             BibleRef::VerseRef r;
-            r.book = sqlite3_column_int(st, 0);
-            r.chapter = sqlite3_column_int(st, 1);
-            r.verse = sqlite3_column_int(st, 2);
+            r.book = sqlite3_column_int(st.get(), 0);
+            r.chapter = sqlite3_column_int(st.get(), 1);
+            r.verse = sqlite3_column_int(st.get(), 2);
             const QVector<BibleRef::BookInfo> &tb = BibleRef::books();
             if (r.book >= 1 && r.book <= tb.size()) r.bookName = tb.at(r.book - 1).name;
-            out.append({ r, QString::fromUtf8((const char*)sqlite3_column_text(st, 3)) });
+            out.append({ r, QString::fromUtf8((const char*)sqlite3_column_text(st.get(), 3)) });
         }
-        sqlite3_finalize(st);
     }
     return out;
 }
@@ -1115,9 +1183,11 @@ bool Database::importBibleFromZefaniaXml(const QString &filePath, QString *error
     int verseNum = 0;
 
     // Importacion atomica: transaccion + synchronous OFF (mismo patron que JSON)
+    // M21/B5: begin() se hace al conocer el versionCode (tras <XMLBIBLE>) para
+    // poder aplicar el guard anti-duplicado ANTES de abrir la transacción.
     exec(QStringLiteral("PRAGMA synchronous=OFF"));
-    begin();
     bool ok = true;
+    bool inTransaction = false;   // B5: evita rollback sin transacción activa
 
     while (!xml.atEnd()) {
         const QXmlStreamReader::TokenType tok = xml.readNext();
@@ -1130,10 +1200,55 @@ bool Database::importBibleFromZefaniaXml(const QString &filePath, QString *error
                     if (a.name() == QLatin1String("biblename"))
                         description = a.value().toString().trimmed();
                 }
-                versionCode = QFileInfo(filePath).completeBaseName().toUpper();
+                // B6: el código de versión se deriva del biblename (descripción
+                // real de la versión), no del nombre de archivo (que suele ser
+                // genérico). Mismo saneado: mayúsculas + solo alfanuméricos.
+                versionCode = description.toUpper();
                 versionCode.remove(QRegularExpression(QStringLiteral("[^A-Z0-9]")));
                 if (versionCode.size() > 16) versionCode = versionCode.left(16);
-                if (versionCode.isEmpty()) versionCode = QStringLiteral("ZEFANIA");
+                // Si el biblename no produce un código usable (vacío o solo
+                // dígitos), caer al nombre de archivo con el mismo saneado.
+                const bool soloDigitos = !versionCode.isEmpty()
+                        && !versionCode.contains(QRegularExpression(QStringLiteral("[A-Z]")));
+                if (versionCode.isEmpty() || soloDigitos) {
+                    versionCode = QFileInfo(filePath).completeBaseName().toUpper();
+                    versionCode.remove(QRegularExpression(QStringLiteral("[^A-Z0-9]")));
+                    if (versionCode.size() > 16) versionCode = versionCode.left(16);
+                }
+                // M21 (e): versionCode vacío → error amistoso (sin "ZEFANIA" mudo)
+                if (versionCode.isEmpty()) {
+                    f.close();
+                    exec(QStringLiteral("PRAGMA synchronous=NORMAL"));
+                    if (error) *error = QStringLiteral("No se pudo determinar el código de la versión bíblica "
+                                                       "(revisa el biblename del XML o el nombre del archivo).");
+                    return false;
+                }
+                // M21 (b): guard anti-duplicado — mismo patrón que el importador
+                // JSON: si la versión ya existe, mensaje amistoso sin duplicar.
+                {
+                    qint64 existing = 0;
+                    StmtGuard stq(prepare(QStringLiteral("SELECT COUNT(*) FROM bible WHERE version=?")));
+                    if (stq) {
+                        sqlite3_bind_text(stq.get(), 1, versionCode.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+                        if (sqlite3_step(stq.get()) == SQLITE_ROW)
+                            existing = sqlite3_column_int64(stq.get(), 0);
+                    }
+                    if (existing > 0) {
+                        f.close();
+                        exec(QStringLiteral("PRAGMA synchronous=NORMAL"));
+                        if (error) *error = QStringLiteral("La Biblia «%1» ya está importada; no se duplicaron versículos.")
+                                                 .arg(description.isEmpty() ? versionCode : description);
+                        return true;
+                    }
+                }
+                // B5: begin() puede fallar → abortar (antes se ignoraba el resultado)
+                if (!begin()) {
+                    f.close();
+                    exec(QStringLiteral("PRAGMA synchronous=NORMAL"));
+                    if (error) *error = QStringLiteral("No se pudo iniciar la transacción de importación: %1").arg(lastError());
+                    return false;
+                }
+                inTransaction = true;
             } else if (name == QLatin1String("BIBLEBOOK")) {
                 book = xml.attributes().value(QLatin1String("bnumber")).toInt();
             } else if (name == QLatin1String("CHAPTER")) {
@@ -1157,7 +1272,9 @@ bool Database::importBibleFromZefaniaXml(const QString &filePath, QString *error
                 if (book > 0 && chapter > 0 && verseNum > 0) {
                     const QString txt = verseText.simplified();
                     if (!txt.isEmpty()) {
-                        if (!stmtExec("INSERT INTO bible(version,book,chapter,verse,text) VALUES(?,?,?,?,?)",
+                        // M21 (c): INSERT OR IGNORE — el índice UNIQUE idx_bible_unique
+                        // protege contra duplicados residuales (se ignoran, no fallan).
+                        if (!stmtExec("INSERT OR IGNORE INTO bible(version,book,chapter,verse,text) VALUES(?,?,?,?,?)",
                                       { versionCode, book, chapter, verseNum, txt })) {
                             ok = false;
                             break;
@@ -1171,13 +1288,13 @@ bool Database::importBibleFromZefaniaXml(const QString &filePath, QString *error
     f.close();
 
     if (xml.hasError()) {
-        rollback();
+        if (inTransaction) rollback();    // B5: solo si hay transacción activa
         exec(QStringLiteral("PRAGMA synchronous=NORMAL"));
         if (error) *error = QStringLiteral("XML inválido (ZEFania): %1").arg(xml.errorString());
         return false;
     }
     if (!ok || inserted == 0) {
-        rollback();
+        if (inTransaction) rollback();    // B5: solo si hay transacción activa
         exec(QStringLiteral("PRAGMA synchronous=NORMAL"));
         if (error) *error = QStringLiteral("No se encontraron versículos válidos en el archivo.");
         return false;

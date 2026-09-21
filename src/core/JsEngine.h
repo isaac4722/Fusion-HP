@@ -79,6 +79,11 @@ public:
         }
         QNetworkRequest req(u);
         req.setTransferTimeout(15000);      // qt-cpp-review ERR: timeout obligatorio
+        // v1.6.0 (M11): seguir redirecciones «no menos seguras» (igual que
+        // PlanningCenter) — sin esto un httpGet a una URL que responde 3xx
+        // terminaba sin cuerpo ni estado útil para el callback JS.
+        req.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
+                         QNetworkRequest::NoLessSafeRedirectPolicy);
         QNetworkReply *rep = m_nam.get(req);
         connect(rep, &QNetworkReply::finished, this, [this, rep, callback]() {
             rep->deleteLater();
@@ -381,6 +386,12 @@ public:
 
 signals:
     void modulesChanged();
+    // v1.6.0 (M4): señales estables del motor — JsLibHost se destruye y se
+    // recrea en cada reload(), de modo que las conexiones externas
+    // (CommsPanel) apuntan a ESTAS señales y no mueren con el host de turno.
+    // JsEngine retransmite (hilo GUI) lo que el host emite.
+    void jsLogChanged();
+    void jsNotify(const QString &title, const QString &text);
 
 private:
     void recreate()
@@ -388,10 +399,23 @@ private:
         if (m_host) {
             m_host->disconnectAll();
             delete m_host;      // destruye sockets/timers hijos antes del engine
+            m_host = nullptr;
+        }
+        // v1.6.0 (M3): liberar también el QJSEngine anterior — quedaba vivo
+        // (hijo de this) acumulando memoria y envoltorios JS en cada reload().
+        // GC previo para soltar los QJSValue que aún referencian al host viejo.
+        if (m_engine) {
+            m_engine->collectGarbage();
+            delete m_engine;
+            m_engine = nullptr;
         }
         m_engine = new QJSEngine(this);
         m_host = new JsLibHost(this);
         m_host->engine = m_engine;
+        // v1.6.0 (M4): retransmisión del host nuevo — se conecta en cada
+        // recreate() (host nuevo cada vez => sin conexiones duplicadas).
+        connect(m_host, &JsLibHost::logChanged, this, &JsEngine::jsLogChanged);
+        connect(m_host, &JsLibHost::jsNotify, this, &JsEngine::jsNotify);
         // jslib en el global object. newQObject SIN padre para el host
         // implicaría transferencia de ownership al engine; el host ya es
         // hijo de JsEngine => C++ conserva la propiedad (sin doble delete).

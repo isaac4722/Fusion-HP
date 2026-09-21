@@ -20,7 +20,7 @@ env:
   APP_NAME: LuminaPresentationSuite
   # Version dinamica: nombre del tag (vN.N.N) al hacer push de tags;
   # fallback v1.5.0 en pushes a main (solo artefactos) y workflow_dispatch.
-  APP_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.5.0' }}
+  APP_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.6.0' }}
   VLC_VERSION: "3.0.21"
 
 jobs:
@@ -290,6 +290,25 @@ jobs:
             - Incluye: motor Qt + **runtime MinGW**, **LibVLC 3.0.21** (todos los codecs), **Biblia RVR1909 completa** y temas.
             - Verifica la integridad con `SHA256SUMS.txt`.
             - Control remoto móvil: `http://<ip-del-pc>:8088/remote.html` · Overlay OBS: `http://<ip>:8088/overlay.html`
+
+            ### 🛡 Novedades v1.6.0 «ESTABILIDAD» — auditoría profunda: 3 críticos + 19 medios + 15 bajos corregidos
+            - **🔥 FIX CRÍTICO — servidor remoto (doble free)**: reiniciar el servidor (Ajustes › Aplicar) con un móvil/tablet conectado por WebSocket **corrompía la memoria y colgaba el proceso** (SIGABRT reproducido). Los clientes ahora se cierran y desacoplan de forma segura en cada start()/stop().
+            - **🔥 FIX CRÍTICO — crash al terminar cualquier video/audio**: el monitor de estado usaba el reproductor LibVLC justo después de que el manejador de fin lo liberaba (desreferencia NULL en builds release de Windows).
+            - **🔥 FIX CRÍTICO — PPTX en blanco en la cola del culto**: las slides rasterizadas del PowerPoint se creaban con un tipo interno que el proyector no dibuja — proyectar un PPTX desde la cola mostraba solo el fondo. Ahora se proyecta la imagen renderizada (mismo camino probado del lienzo libre).
+            - **🛡 Servidor remoto endurecido**: con token configurado, **también el WebSocket y los endpoints de estado** lo exigen (antes solo /api/cmd); buffer HTTP limitado a 64 KB (antes un cliente malicioso podía agotar la RAM); rutas desconocidas responden 404 (antes 200); el token se reenvía desde remote.html/overlay.html/director.html.
+            - **☁ Google Drive**: subida **resumable en streaming** (el multipart anterior fallaba con vaults > 5 MB y duplicaba el archivo en RAM); la reconexión de cuenta ya no borra el refresh token si cancelas el navegador; la rotación usa el token correcto y registra sus errores.
+            - **⚙ Módulos JS**: recargar módulos ya no fuga un motor QJS por recarga y el **registro en vivo vuelve a funcionar** tras la primera recarga; `httpGet` sigue redirecciones HTTP→HTTPS.
+            - **🎹 MIDI In persistente**: el mapa nota→comando y el interruptor se restauran al arrancar (antes el pedal dejaba de funcionar tras reiniciar hasta re-guardar).
+            - **📺 Video que no tapa la proyección**: ejecutar el siguiente ítem del culto (o proyectar canción/versículo) con un video en pantalla lo detiene y oculta — antes la audiencia seguía viendo el video anterior. El audio puro (pista bajo las letras) NO se interrumpe.
+            - **🎵 Modo Hinario corregido**: canciones cuyo único bloque es [Coro] ya no se proyectan vacías; letras con [Coro] repetido tras cada verso ya no lo cantan N veces seguidas (V1 C V2 C exacto).
+            - **📖 Importador de Biblias**: reimportar el mismo ZEFania ya no duplica todos los versículos (índice UNIQUE + guard amistoso + dedupe automático de BDs antiguas); el código de versión sale del biblename real (dos traducciones distintas ya no se mezclan).
+            - **🔍 Búsquedas**: términos con «%1»/«%2» (ej. «100%1») ya no corrompen el SQL de FTS (parámetros enlazados).
+            - **🖼 Proyección nítida en escalados de Windows 125–150 %**: la salida ahora se rasteriza al devicePixelRatio real (antes texto y fondos se reescalaban borrosos); el resaltado bíblico recupera el contorno y la sombra del tema.
+            - **📊 PPTX**: importación acotada en memoria (videos embebidos de cientos de MB ya no van a RAM); exportación verifica cada escritura, emite txBody válido para slides sin texto (PowerPoint ya no pide reparar) y limpia caracteres de control; grupos y tablas mejor soportados.
+            - **🧭 Pantalla Director**: recupera el acento de color del tema (código muerto conectado); la pantalla elegida se recuerda entre sesiones; las pantallas guardadas se restauran en la toolbar desde el arranque.
+            - **⌨ Cola del culto**: el primer «siguiente» del móvil/MIDI tras iniciar el culto avanza al ítem 2 (antes repetía el 1); importar un plan de Planning Center con otro culto seleccionado ya no mezcla colas.
+            - **🚀 Rendimiento**: Stage View ya no re-pule todo su QSS en cada slide; cache de imágenes con recencia real (fondo + actual + siguiente).
+            - **✅ Suite de regresión**: 45 checks automatizados — incluida la re-entrada del servidor con clientes conectados y el hinario — todos en verde.
 
             ### 🌐 Novedades v1.5.0 «NEXO» — integraciones de la especificación completa
             - **🧭 Pantalla 3 «Director / Instrucciones»** (spec §3.3 multiview): tercera salida independiente para el director del servicio — ítem actual y SIGUIENTE con preview, notas, reloj, temporizador y **registro persistente de mensajes del operador**; también vía navegador en `http://<ip>:8088/director.html`.

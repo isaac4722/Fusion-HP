@@ -27,6 +27,9 @@ html,body{background:transparent !important;width:100%;height:100%;overflow:hidd
   <div id="text"></div>
 </div>
 <script>
+// v1.6.0 (M2): reenvio del token de la API si la pagina se abrio con ?token=...
+const TOKEN=new URLSearchParams(location.search).get('token')||'';
+const TOKQ=TOKEN?('?token='+encodeURIComponent(TOKEN)):'';
 let last='';
 const REF=document.getElementById('ref'), TXT=document.getElementById('text'),
       WRAP=document.getElementById('wrap'), AL=document.getElementById('alert');
@@ -34,7 +37,7 @@ let alertTimer=null;
 
 async function poll(){
   try{
-    const r=await fetch('/api/overlay.json',{cache:'no-store'});
+    const r=await fetch('/api/overlay.json'+TOKQ,{cache:'no-store'});
     const st=await r.json();
     const lines=(st.lines||[]).join('\n');
     const sig=JSON.stringify([st.mode,st.ref,lines,st.alert]);

@@ -39,12 +39,23 @@ class Renderer
 public:
     using Options = RenderOptions;
 
+    // Interlineado comun del bloque de texto (ruta normal). La ruta rich
+    // (QTextDocument, resaltado biblico) usa el MISMO factor para que la
+    // medicion del auto-ajuste y el espaciado sean consistentes con o sin
+    // palabras destacadas (B1).
+    static constexpr qreal kLineSpacing = 1.18;
+
     // -----------------------------------------------------------------
-    // v1.5.0 — Lazy loading (spec §2.5): cache de EXACTAMENTE 2 entradas
-    // (elemento actual + inmediato siguiente) para equipos de 4 GB RAM.
+    // v1.5.0 — Lazy loading (spec §2.5). B7: cache de EXACTAMENTE 3 entradas
+    // = fondo de imagen + slide actual + inmediato siguiente. La spec pide
+    // «actual e inmediato siguiente», pero el fondo de imagen se usa en TODAS
+    // las slides: con 2 entradas cada avance desalojaba la entrada útil y la
+    // decodificación del fondo se repetía en cada render. 3 entradas es el
+    // mínimo que cumple la intención sin desalojar nada útil, manteniendo la
+    // memoria acotada (equipos de 4 GB RAM: nunca hay más de 3 imágenes
+    // residentes + la activa).
     // MainWindow llama preloadImage() al cambiar de slide; render() usa
-    // cachedImage(). Fuera de cache se decodifica bajo demanda SIN cachear
-    // (memoria acotada: nunca hay más de 2 imágenes residentes + la activa).
+    // cachedImage(). Fuera de cache se decodifica bajo demanda SIN cachear.
     // -----------------------------------------------------------------
     struct ImgCacheEntry { QString path; QImage img; };
     inline static QVector<ImgCacheEntry> s_imgCache;   // C++17 inline static
@@ -57,14 +68,21 @@ public:
         QImage img(path);
         if (img.isNull()) return;                     // falla silenciosa: render usará fondo
         s_imgCache.prepend(ImgCacheEntry{ path, img });
-        while (s_imgCache.size() > 2)
-            s_imgCache.removeLast();
+        while (s_imgCache.size() > 3)
+            s_imgCache.removeLast();                  // expulsa el menos reciente
     }
 
     static QImage cachedImage(const QString &path)
     {
-        for (int i = 0; i < s_imgCache.size(); ++i)
-            if (s_imgCache.at(i).path == path) return s_imgCache.at(i).img;
+        for (int i = 0; i < s_imgCache.size(); ++i) {
+            if (s_imgCache.at(i).path == path) {
+                // B7: un hit es recencia real -> mover al frente para que
+                // removeLast() expulse de verdad el elemento menos usado y
+                // no la entrada recien precargada.
+                if (i > 0) s_imgCache.move(i, 0);
+                return s_imgCache.at(0).img;
+            }
+        }
         return QImage(path);                          // lazy: sin cachear
     }
 
@@ -112,38 +130,55 @@ public:
         return ContrastLevel::Fail;
     }
 
-    // Renderiza una slide completa a la resolucion pedida
-    static QPixmap render(const Theme &theme, const Slide &slide, const QSize &size,
-                          const Options &opt = Options())
+    // M22: tamano fisico (device pixels) equivalente a un tamano logico + dpr
+    static QSize physSize(const QSize &logical, qreal dpr)
     {
-        QPixmap pm(size);
+        if (dpr <= 1.0) return logical;
+        return QSize(qRound(logical.width() * dpr), qRound(logical.height() * dpr));
+    }
+
+    // Renderiza una slide completa a la resolucion pedida.
+    // M22: 'dpr' es el devicePixelRatio del destino (ventana de salida). El
+    // bitmap se crea a resolucion FISICA (size*dpr) y se le asigna ese dpr:
+    // el painter sigue trabajando en coordenadas LOGICAS (layouts y tamanos
+    // de texto intactos) pero el raster final sale nitido con escalado de
+    // Windows 125-150%. Con dpr=1.0 el comportamiento es el historico, por lo
+    // que previews y demas llamadores no necesitan cambios.
+    static QPixmap render(const Theme &theme, const Slide &slide, const QSize &size,
+                          const Options &opt = Options(), qreal dpr = 1.0)
+    {
+        QPixmap pm(physSize(size, dpr));
+        pm.setDevicePixelRatio(dpr);
         pm.fill(Qt::black);
         QPainter p(&pm);
         p.setRenderHint(QPainter::Antialiasing, true);
         p.setRenderHint(QPainter::TextAntialiasing, true);
         p.setRenderHint(QPainter::SmoothPixmapTransform, true);
-        paintBackground(p, theme.background, size);
-        paintSlideContent(p, theme, slide, size, opt);
+        paintBackground(p, theme.background, size, dpr);
+        paintSlideContent(p, theme, slide, size, opt, dpr);
         p.end();
         return pm;
     }
 
-    // Solo fondo (para Black/Clear/Logo states o previews vacios)
-    static QPixmap renderBackground(const Theme &theme, const QSize &size)
+    // Solo fondo (para Black/Clear/Logo states o previews vacios). M22: mismo
+    // tratamiento de dpr que render().
+    static QPixmap renderBackground(const Theme &theme, const QSize &size, qreal dpr = 1.0)
     {
-        QPixmap pm(size);
+        QPixmap pm(physSize(size, dpr));
+        pm.setDevicePixelRatio(dpr);
         pm.fill(Qt::black);
         QPainter p(&pm);
         p.setRenderHint(QPainter::SmoothPixmapTransform, true);
-        paintBackground(p, theme.background, size);
+        paintBackground(p, theme.background, size, dpr);
         p.end();
         return pm;
     }
 
     // Fondo con logo centrado
-    static QPixmap renderLogo(const Theme &theme, const QPixmap &logo, const QSize &size)
+    static QPixmap renderLogo(const Theme &theme, const QPixmap &logo, const QSize &size,
+                              qreal dpr = 1.0)
     {
-        QPixmap pm = renderBackground(theme, size);
+        QPixmap pm = renderBackground(theme, size, dpr);
         if (logo.isNull()) return pm;
         QPainter p(&pm);
         p.setRenderHint(QPainter::SmoothPixmapTransform, true);
@@ -159,7 +194,8 @@ public:
         return pm;
     }
 
-    static void paintBackground(QPainter &p, const BackgroundStyle &bg, const QSize &size)
+    static void paintBackground(QPainter &p, const BackgroundStyle &bg, const QSize &size,
+                                qreal dpr = 1.0)
     {
         switch (bg.type) {
         case 1: {   // gradiente
@@ -180,11 +216,12 @@ public:
             break;
         }
         case 2: {   // imagen
-            // v1.5.0: cache de 2 entradas (lazy loading, spec §2.5)
+            // v1.5.0: cache LRU de 3 entradas (B7, lazy loading, spec §2.5)
             QImage img = cachedImage(bg.imagePath);
             if (!img.isNull()) {
                 drawImageFit(p, img, QRect(0, 0, size.width(), size.height()),
-                             bg.imageFit == 0 ? Qt::KeepAspectRatioByExpanding : Qt::KeepAspectRatio);
+                             bg.imageFit == 0 ? Qt::KeepAspectRatioByExpanding : Qt::KeepAspectRatio,
+                             dpr);
             } else {
                 p.fillRect(0, 0, size.width(), size.height(), bg.color1);
             }
@@ -200,9 +237,26 @@ public:
         }
     }
 
-    // Dibuja imagen con fit cover/contain centrado (evita deformaciones)
-    static void drawImageFit(QPainter &p, const QImage &img, const QRect &rect, Qt::AspectRatioMode mode)
+    // Dibuja imagen con fit cover/contain centrado (evita deformaciones).
+    // M22: con dpr>1 se escala a resolucion fisica (rect*dpr) y se dibuja en
+    // el rectangulo logico; el painter (con dpr del destino) hace el mapeo
+    // 1:1 a device pixels, conservando el detalle real de la fuente.
+    static void drawImageFit(QPainter &p, const QImage &img, const QRect &rect,
+                             Qt::AspectRatioMode mode, qreal dpr = 1.0)
     {
+        if (dpr > 1.0) {
+            const QSize phys(qRound(rect.width() * dpr), qRound(rect.height() * dpr));
+            const QImage scaled = img.scaled(phys, mode, Qt::SmoothTransformation);
+            // Centrado en coords logicas con el tamano logico real del
+            // escalado (los offsets negativos del modo "cover" son seguros:
+            // el painter recorta al destino, ver correccion v1.2.0).
+            const qreal lw = qreal(scaled.width()) / dpr;
+            const qreal lh = qreal(scaled.height()) / dpr;
+            const qreal x = rect.x() + (rect.width() - lw) / 2.0;
+            const qreal y = rect.y() + (rect.height() - lh) / 2.0;
+            p.drawImage(QRectF(x, y, lw, lh), scaled);
+            return;
+        }
         QImage scaled = img.scaled(rect.size(), mode, Qt::SmoothTransformation);
         // CORRECCION v1.2.0: en modo "cover" (ByExpanding) la imagen escalada
         // EXCEDE el rect en una dimension -> el centrado produce offsets
@@ -215,7 +269,7 @@ public:
     }
 
     static void paintSlideContent(QPainter &p, const Theme &theme, const Slide &slide,
-                                  const QSize &size, const Options &opt)
+                                  const QSize &size, const Options &opt, qreal dpr = 1.0)
     {
         // v1.2.0: slides de imagen (lienzo libre rasterizado, fotos, PNGs de
         // PPTX): imagen a pantalla completa + pie de referencia. Antes este
@@ -225,7 +279,7 @@ public:
             QImage img = cachedImage(slide.mediaPath);   // v1.5.0: lazy loading
             if (!img.isNull())
                 drawImageFit(p, img, QRect(0, 0, size.width(), size.height()),
-                             Qt::KeepAspectRatioByExpanding);
+                             Qt::KeepAspectRatioByExpanding, dpr);
         }
 
         // v1.1.0: superposición de Lower Third (spec Componente 2: elemento
@@ -356,7 +410,7 @@ public:
     }
 
     // Dibuja UNA linea con QTextDocument (permite HTML: palabras destacadas
-    // en dorado). Mantiene sombra y alineacion del tema.
+    // en dorado). Mantiene sombra, contorno y alineacion del tema.
     static void drawRichLine(QPainter &p, const TextStyle &st, const QString &text,
                              const QRectF &lineBox, const QFont &f, Qt::Alignment hAlign,
                              const QString &highlight, qreal base)
@@ -380,17 +434,73 @@ public:
         const qreal docH = doc->size().height();
         QPointF org = lineBox.topLeft();
         org.ry() += qMax<qreal>(0, (lineBox.height() - docH) / 2.0);
+
+        // B1: contorno por silueta. La ruta rich no puede usar drawText() con
+        // pluma gruesa (QTextDocument pinta con sus propios formatos), asi que
+        // se rasteriza la linea a una QImage transparente, se extrae la
+        // silueta con CompositionMode_SourceIn relleno del color de contorno
+        // y se estampa desplazada en 8 direcciones antes del texto real.
+        // Coste aceptable: es por-slide (queda cacheado en el pixmap de
+        // salida), no por-frame. La imagen intermedia se rasteriza al
+        // devicePixelRatio del painter (M22) para que el contorno salga
+        // nitido al proyectar con escalado de Windows.
+        QImage lineImg, sil;
+        if (st.outlineWidth > 0) {
+            const qreal dpr = p.device() ? qMax<qreal>(1.0, p.device()->devicePixelRatioF()) : 1.0;
+            const int imgW = int(std::ceil(lineBox.width() * dpr));
+            const int imgH = int(std::ceil(docH * dpr));
+            // Limites de seguridad: ante una linea gigante (documento enorme)
+            // se degrada a dibujar SIN contorno antes de arriesgar una
+            // asignacion de memoria desmedida.
+            if (imgW > 0 && imgH > 0 && imgW <= 8192 && imgH <= 8192) {
+                lineImg = QImage(imgW, imgH, QImage::Format_ARGB32_Premultiplied);
+                if (!lineImg.isNull()) {
+                    lineImg.fill(Qt::transparent);
+                    {
+                        QPainter ip(&lineImg);
+                        ip.scale(dpr, dpr);              // pintar en coords logicas
+                        doc->drawContents(&ip);
+                        ip.end();
+                    }
+                    lineImg.setDevicePixelRatio(dpr);
+
+                    sil = lineImg;                       // copia profunda al pintar
+                    QPainter sp(&sil);
+                    sp.setCompositionMode(QPainter::CompositionMode_SourceIn);
+                    sp.fillRect(sil.rect(), st.outlineColor);
+                    sp.end();
+                }
+                // lineImg nulo (asignacion fallida): cae al dibujo vectorial
+                // del final, sin contorno (comportamiento historico).
+            }
+        }
+
+        // Sombra (primero, igual que la ruta normal: sombra -> contorno -> texto).
+        // B1: la sombra usaba un negro fijo; respeta el color del tema.
         if (st.shadow) {
-            QTextDocument *sd = makeDoc(bodyHtml, QColor(0, 0, 0, 170));
+            QTextDocument *sd = makeDoc(bodyHtml, st.shadowColor);
             p.save();
             p.translate(org.x() + st.shadowOffset * base, org.y() + st.shadowOffset * base);
             sd->drawContents(&p);
             p.restore();
             delete sd;
         }
+        // Contorno: silueta desplazada en 8 direcciones (N, NE, E, SE, S, SO, O, NO)
+        if (!sil.isNull()) {
+            const qreal ow = st.outlineWidth * base;
+            for (int dy = -1; dy <= 1; ++dy) {
+                for (int dx = -1; dx <= 1; ++dx) {
+                    if (dx == 0 && dy == 0) continue;
+                    p.drawImage(QPointF(org.x() + dx * ow, org.y() + dy * ow), sil);
+                }
+            }
+        }
         p.save();
         p.translate(org);
-        doc->drawContents(&p);
+        if (!lineImg.isNull())
+            p.drawImage(QPoint(0, 0), lineImg);          // ya rasterizado con silueta lista
+        else
+            doc->drawContents(&p);                       // sin contorno: vectorial directo
         p.restore();
         delete doc;
     }
@@ -423,7 +533,11 @@ public:
         doc.setHtml(QStringLiteral("<div style=\"color:white;\">%1</div>")
                         .arg(highlightToHtml(htmlEscape(text), highlight)));
         doc.setTextWidth(box.width());
-        return doc.size().height();
+        // B1: la ruta normal multiplica por el interlineado comun (kLineSpacing);
+        // la ruta QTextDocument debe usar el MISMO factor para que el
+        // auto-ajuste (measureBlock/drawBlock) reserve la misma altura con o
+        // sin resaltado biblico.
+        return doc.size().height() * kLineSpacing;
     }
 
     // Dibuja un texto con el estilo completo (sombra + contorno) en una caja
@@ -482,10 +596,10 @@ public:
         QFontMetrics fm(f);
         const qreal chordPx = fontPx * 0.55;
         qreal total = 0;
-        const qreal lineSpacing = 1.18;
         Q_UNUSED(base)
         for (const SlideLine &l : lines)
-            total += measureLine(p, st, l, fontPx, hasChords && !l.chords.isEmpty(), box, highlight, lineSpacing);
+            total += measureLine(p, st, l, fontPx, hasChords && !l.chords.isEmpty(), box, highlight,
+                                 kLineSpacing);
         return total;
     }
 
@@ -502,8 +616,8 @@ public:
         chordFont.setItalic(true);
         const bool rich = !highlight.simplified().isEmpty();
 
-        // Altura total para centrado vertical
-        const qreal lineSpacing = 1.18;
+        // Altura total para centrado vertical (mismo interlineado comun que
+        // la medicion: kLineSpacing)
         qreal totalH = 0;
         QVector<qreal> lineH(lines.size());
         for (int i = 0; i < lines.size(); ++i) {
@@ -511,10 +625,10 @@ public:
             qreal h = 0;
             if (hasChords && !l.chords.isEmpty()) h += chordPx * 1.25;
             if (rich) {
-                h += measureTextHeight(f, st, l.text, box, highlight, lineSpacing);
+                h += measureTextHeight(f, st, l.text, box, highlight, kLineSpacing);
             } else {
                 h += fm.boundingRect(QRect(int(box.x()), 0, int(box.width()), 10000),
-                                     Qt::TextWordWrap, l.text).height() * lineSpacing;
+                                     Qt::TextWordWrap, l.text).height() * kLineSpacing;
             }
             lineH[i] = h;
             totalH += h;

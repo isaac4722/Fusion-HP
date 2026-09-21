@@ -8,12 +8,17 @@
 //  - Extrae: orden de slides, cajas de texto (posicion/tamano/color/tamano
 //    de fuente/negrita), formas (rect/redonda/elipse) e imagenes incrustadas.
 //  - Exportacion minima: slides de texto con fondo del tema.
+//  - v1.6.0: import limita la extraccion a RAM (XML/imagenes utiles, 20 MB
+//    max. por entrada), slides rasterizadas como Slide::Image (C3), parseo
+//    de grupos y tablas (B4) y export con escritura verificada (B3).
 // ============================================================================
 #ifndef LUMINA_PPTXENGINE_H
 #define LUMINA_PPTXENGINE_H
 
 #include "Models.h"
 #include "Renderer.h"
+
+#include <vector>
 
 #include <QString>
 #include <QVector>
@@ -74,13 +79,35 @@ public:
             if (error) *error = QStringLiteral("No se pudo abrir el archivo PPTX (ZIP invalido).");
             return false;
         }
-        // Extra todo a memoria para acesso aleatorio
+        // Extrae a memoria (acceso aleatorio) solo las entradas utiles.
+        // M23: un PPTX puede traer videos (mp4 de 200-500 MB), audio y
+        // fuentes embebidas que el parser NO usa; en equipos de 4 GB de RAM
+        // (spec §2.5) volcar el ZIP completo a memoria puede agotarla. Se
+        // saltan las entradas con extension ajena a XML/relaciones/imagen
+        // de dibujo y toda entrada que supere 20 MB sin comprimir.
         QMap<QString, QByteArray> files;
         const int n = int(mz_zip_reader_get_num_files(&zip));
+        const QStringList kImportExts = {
+            QStringLiteral(".xml"), QStringLiteral(".rels"),
+            QStringLiteral(".png"), QStringLiteral(".jpg"), QStringLiteral(".jpeg"),
+            QStringLiteral(".gif"), QStringLiteral(".bmp"),
+            QStringLiteral(".tif"), QStringLiteral(".tiff"),
+            QStringLiteral(".emf"), QStringLiteral(".wmf")
+        };
+        const qint64 kMaxEntryBytes = 20ll * 1024 * 1024;
         for (int i = 0; i < n; ++i) {
             mz_zip_archive_file_stat st;
             if (!mz_zip_reader_file_stat(&zip, mz_uint(i), &st)) continue;
             const QString name = QString::fromUtf8(st.m_filename);
+            // El filtro por extension ya cubre los XML necesarios:
+            // [Content_Types].xml, _rels/*, ppt/* y docProps/*.
+            const QString lower = name.toLower();
+            bool allowed = false;
+            for (const QString &ext : kImportExts) {
+                if (lower.endsWith(ext)) { allowed = true; break; }
+            }
+            if (!allowed) continue;                                    // video/audio/fuente: fuera
+            if (qint64(st.m_uncomp_size) > kMaxEntryBytes) continue;   // entrada gigante: fuera
             size_t sz = 0;
             char *data = (char *)mz_zip_reader_extract_to_heap(&zip, mz_uint(i), &sz, 0);
             if (data) { files.insert(name, QByteArray(data, int(sz))); mz_free(data); }
@@ -253,6 +280,68 @@ private:
             c.runText.clear();
         };
 
+        // B4b: anexa la caja en curso (con geometria por defecto si hereda
+        // del layout y no tiene xfrm propio) y reinicia el contexto. Lo
+        // usan las formas (sp), las imagenes (pic), la caja "virtual" de
+        // las tablas (a:tbl) y el flush final del documento.
+        auto appendCurrentBox = [&]() {
+            flushParagraph();
+            if ((c.cur.kind == Box::Image && !c.cur.imagePath.isEmpty()) ||
+                (c.cur.kind == Box::Text && !c.cur.text.simplified().isEmpty())) {
+                // Cajas sin xfrm explicito (heredan de layout): geometria
+                // por defecto centrada para que el texto sea visible.
+                if (c.cur.w <= 0 || c.cur.h <= 0) {
+                    c.cur.x = 1920.0 * 0.07;
+                    c.cur.y = 1080.0 * 0.25;
+                    c.cur.w = 1920.0 * 0.86;
+                    c.cur.h = 1080.0 * 0.5;
+                }
+                out->boxes.append(c.cur);
+            }
+            c = Ctx();
+        };
+
+        // B4a: pila de transformaciones de grupos (<p:grpSp>). Las formas
+        // hijas de un grupo expresan sus coordenadas en el espacio
+        // chOff/chExt del grupo: hay que remapearlas con el factor
+        // ext/chExt al espacio de la slide (protegiendo la division por
+        // cero: chExt==0 => factor 1) ANTES de convertir EMU->px. Se aplica
+        // de adentro (grupo mas interno) hacia afuera.
+        struct GrpXf {
+            double offX = 0, offY = 0;       // <a:off>   del grupo (EMU)
+            double extX = 0, extY = 0;       // <a:ext>   del grupo (EMU)
+            double chOffX = 0, chOffY = 0;   // <a:chOff> del grupo (EMU)
+            double chExtX = 0, chExtY = 0;   // <a:chExt> del grupo (EMU)
+            bool collecting = true;          // xfrm del grupo aun incompleto
+        };
+        // std::vector en vez de QVector: evita el falso positivo de GCC
+        // -Wstringop-overflow con QVector<T>::append de structs pequeños.
+        std::vector<GrpXf> grpStack;
+        // Punto (EMU) del espacio hijo -> espacio de la slide (EMU):
+        // nuevoX = offX + (hijoX - chOffX) * extX/chExtX (idem Y).
+        auto mapEmuPoint = [&grpStack](double ex, double ey, double &mx, double &my) {
+            for (int gi = grpStack.size() - 1; gi >= 0; --gi) {
+                const GrpXf &g = grpStack.at(gi);
+                const double fx = (g.chExtX != 0.0) ? g.extX / g.chExtX : 1.0;
+                const double fy = (g.chExtY != 0.0) ? g.extY / g.chExtY : 1.0;
+                ex = g.offX + (ex - g.chOffX) * fx;
+                ey = g.offY + (ey - g.chOffY) * fy;
+            }
+            mx = ex;
+            my = ey;
+        };
+        // Tamano (EMU) hijo -> slide: solo escala (los off/chOff no aplican
+        // a dimensiones), factor ext/chExt por eje.
+        auto mapEmuSize = [&grpStack](double ex, double ey, double &mx, double &my) {
+            for (int gi = grpStack.size() - 1; gi >= 0; --gi) {
+                const GrpXf &g = grpStack.at(gi);
+                ex *= (g.chExtX != 0.0) ? g.extX / g.chExtX : 1.0;
+                ey *= (g.chExtY != 0.0) ? g.extY / g.chExtY : 1.0;
+            }
+            mx = ex;
+            my = ey;
+        };
+
         while (!xr.atEnd()) {
             xr.readNext();
             if (xr.hasError()) break;
@@ -265,26 +354,65 @@ private:
             if (xr.isStartElement()) {
                 if (name == QStringLiteral("sp")) {
                     // Nueva forma / caja de texto
-                    flushParagraph();
-                    if (c.cur.kind == Box::Text && !c.cur.text.isEmpty()) out->boxes.append(c.cur);
-                    c = Ctx();
+                    if (!grpStack.empty()) grpStack.back().collecting = false;
+                    appendCurrentBox();
                     c.cur.kind = Box::Text;
                 } else if (name == QStringLiteral("pic")) {
-                    flushParagraph();
-                    if (c.cur.kind == Box::Text && !c.cur.text.isEmpty()) out->boxes.append(c.cur);
-                    c = Ctx();
+                    if (!grpStack.empty()) grpStack.back().collecting = false;
+                    appendCurrentBox();
                     c.cur.kind = Box::Image;
+                } else if (name == QStringLiteral("grpSp")) {
+                    // B4a: forma agrupada — push de transformacion. El xfrm
+                    // del grupo (off/ext/chOff/chExt) llega justo despues y
+                    // NO debe tomarse como geometria de una caja.
+                    if (!grpStack.empty()) grpStack.back().collecting = false;
+                    grpStack.emplace_back();
                 } else if (name == QStringLiteral("off")) {
-                    // Solo la primera transform dentro de la forma actual
-                    if (c.cur.w == 0 && c.cur.h == 0) {
-                        c.cur.x = emuToPx(xr.attributes().value(QStringLiteral("x")).toLongLong()) * scale + offX;
-                        c.cur.y = emuToPx(xr.attributes().value(QStringLiteral("y")).toLongLong()) * scale + offY;
+                    if (!grpStack.empty() && grpStack.back().collecting) {
+                        // B4a: es el <a:off> del propio grupo
+                        grpStack.back().offX = double(xr.attributes().value(QStringLiteral("x")).toLongLong());
+                        grpStack.back().offY = double(xr.attributes().value(QStringLiteral("y")).toLongLong());
+                    } else if (c.cur.w == 0 && c.cur.h == 0) {
+                        // Solo la primera transform dentro de la forma actual
+                        double mx = 0.0, my = 0.0;
+                        mapEmuPoint(double(xr.attributes().value(QStringLiteral("x")).toLongLong()),
+                                    double(xr.attributes().value(QStringLiteral("y")).toLongLong()), mx, my);
+                        c.cur.x = emuToPx(qRound64(mx)) * scale + offX;
+                        c.cur.y = emuToPx(qRound64(my)) * scale + offY;
                     }
                 } else if (name == QStringLiteral("ext")) {
-                    if (c.cur.w == 0 && c.cur.h == 0) {
-                        c.cur.w = emuToPx(xr.attributes().value(QStringLiteral("cx")).toLongLong()) * scale;
-                        c.cur.h = emuToPx(xr.attributes().value(QStringLiteral("cy")).toLongLong()) * scale;
+                    if (!grpStack.empty() && grpStack.back().collecting) {
+                        // B4a: es el <a:ext> del propio grupo
+                        grpStack.back().extX = double(xr.attributes().value(QStringLiteral("cx")).toLongLong());
+                        grpStack.back().extY = double(xr.attributes().value(QStringLiteral("cy")).toLongLong());
+                    } else if (c.cur.w == 0 && c.cur.h == 0) {
+                        double mx = 0.0, my = 0.0;
+                        mapEmuSize(double(xr.attributes().value(QStringLiteral("cx")).toLongLong()),
+                                   double(xr.attributes().value(QStringLiteral("cy")).toLongLong()), mx, my);
+                        c.cur.w = emuToPx(qRound64(mx)) * scale;
+                        c.cur.h = emuToPx(qRound64(my)) * scale;
                     }
+                } else if (name == QStringLiteral("chOff")) {
+                    // B4a: origen del espacio de coordenadas de los hijos
+                    if (!grpStack.empty() && grpStack.back().collecting) {
+                        grpStack.back().chOffX = double(xr.attributes().value(QStringLiteral("x")).toLongLong());
+                        grpStack.back().chOffY = double(xr.attributes().value(QStringLiteral("y")).toLongLong());
+                    }
+                } else if (name == QStringLiteral("chExt")) {
+                    if (!grpStack.empty() && grpStack.back().collecting) {
+                        grpStack.back().chExtX = double(xr.attributes().value(QStringLiteral("cx")).toLongLong());
+                        grpStack.back().chExtY = double(xr.attributes().value(QStringLiteral("cy")).toLongLong());
+                        // xfrm del grupo completo: los off/ext que siguen ya
+                        // pertenecen a las formas hijas.
+                        grpStack.back().collecting = false;
+                    }
+                } else if (name == QStringLiteral("tbl")) {
+                    // B4b: tabla (a:tbl) — caja de texto "virtual": cada
+                    // parrafo/celda se acumula como linea de la misma caja
+                    // (antes el texto de las tablas se perdia).
+                    if (!grpStack.empty()) grpStack.back().collecting = false;
+                    appendCurrentBox();
+                    c.cur.kind = Box::Text;
                 } else if (name == QStringLiteral("prstGeom")) {
                     c.cur.prst = xr.attributes().value(QStringLiteral("prst")).toString();
                 } else if (name == QStringLiteral("r")) {
@@ -321,30 +449,34 @@ private:
                 else if (name == QStringLiteral("r")) { c.inRun = false; }
                 else if (name == QStringLiteral("p")) { flushParagraph(); }
                 else if (name == QStringLiteral("sp") || name == QStringLiteral("pic")) {
-                    flushParagraph();
-                    if ((c.cur.kind == Box::Image && !c.cur.imagePath.isEmpty()) ||
-                        (c.cur.kind == Box::Text && !c.cur.text.simplified().isEmpty())) {
-                        // Cajas sin xfrm explicito (heredan de layout): geometria
-                        // por defecto centrada para que el texto sea visible.
-                        if (c.cur.w <= 0 || c.cur.h <= 0) {
-                            c.cur.x = 1920.0 * 0.07;
-                            c.cur.y = 1080.0 * 0.25;
-                            c.cur.w = 1920.0 * 0.86;
-                            c.cur.h = 1080.0 * 0.5;
-                        }
-                        out->boxes.append(c.cur);
-                    }
-                    c = Ctx();
+                    appendCurrentBox();
+                }
+                else if (name == QStringLiteral("grpSp")) {
+                    // B4a: fin de grupo — pop de la transformacion
+                    if (!grpStack.empty()) grpStack.pop_back();
+                }
+                else if (name == QStringLiteral("tbl")) {
+                    // B4b: fin de tabla — anexa la caja virtual acumulada
+                    appendCurrentBox();
                 }
             }
         }
+        // B4b: flush final — si quedo texto pendiente al terminar el
+        // documento (XML truncado o caja sin cerrar), se anade como caja
+        // del slide en vez de perderse.
+        appendCurrentBox();
     }
 
 public:
     // --------------------------------------------------------------------
-    // v1.1.0: rasteriza slides PPTX importadas a Slide::Pptx (PNG temporal).
-    // Unica implementacion compartida por el panel y por la ejecucion de
-    // items de culto en cola (antes el item guardado no podia ejecutarse).
+    // v1.1.0: rasteriza slides PPTX importadas a PNG temporal para poder
+    // proyectarlas. Unica implementacion compartida por el panel y por la
+    // ejecucion de items de culto en cola (antes el item guardado no podia
+    // ejecutarse).
+    // C3: las slides resultantes se marcan Slide::Image — Renderer y
+    // DisplayEngine solo dibujan el mediaPath cuando kind == Slide::Image;
+    // con el kind antiguo (Slide::Pptx) el PPTX proyectado salia en blanco
+    // (solo fondo+titulo). Patron identico al de CustomPanel v1.2.0.
     // --------------------------------------------------------------------
     static QVector<Slide> renderToSlides(const QVector<PptxSlide> &slides,
                                          const QSize &slideSizePx, const Theme &theme,
@@ -394,7 +526,9 @@ public:
                                     .arg(stamp + si).arg(QDateTime::currentMSecsSinceEpoch());
             pm.save(png, "PNG");
             Slide s;
-            s.kind = Slide::Pptx;
+            // C3: kind Image para que Renderer/DisplayEngine dibujen el PNG
+            // de mediaPath; titulo y refLabel se conservan igual.
+            s.kind = Slide::Image;
             s.title = nameForTitle;
             s.refLabel = QStringLiteral("Slide %1/%2").arg(si + 1).arg(slides.size());
             s.mediaPath = png;
@@ -423,9 +557,17 @@ public:
             if (error) *error = QStringLiteral("No se pudo crear el archivo de salida.");
             return false;
         }
+        // B3a: addFile comprueba el retorno de mz_zip_writer_add_mem; si
+        // falla (disco lleno, error de E/S) se aborta la exportacion.
         auto addFile = [&](const char *name, const QByteArray &data) {
-            return mz_zip_writer_add_mem(&zip, name, data.constData(), size_t(data.size()), MZ_DEFAULT_COMPRESSION);
+            if (!mz_zip_writer_add_mem(&zip, name, data.constData(), size_t(data.size()), MZ_DEFAULT_COMPRESSION)) {
+                if (error) *error = QStringLiteral("Fallo al escribir «%1» en el ZIP.").arg(QString::fromUtf8(name));
+                return false;
+            }
+            return true;
         };
+        // Cierra el escritor y aborta (sin finalize: el ZIP quedaria trunco).
+        auto abortExport = [&zip]() { mz_zip_writer_end(&zip); return false; };
 
         // [Content_Types].xml — v1.5.0: incluye theme + slideMaster +
         // slideLayout (herencia de 4 niveles, spec §4.3).
@@ -441,18 +583,18 @@ public:
         for (int i = 0; i < slides.size(); ++i)
             ct += QString("<Override PartName=\"/ppt/slides/slide%1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.slide+xml\"/>").arg(i + 1).toUtf8();
         ct += "</Types>";
-        addFile("[Content_Types].xml", ct);
+        if (!addFile("[Content_Types].xml", ct)) return abortExport();
 
-        addFile("_rels/.rels",
+        if (!addFile("_rels/.rels",
             "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
             "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
             "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"ppt/presentation.xml\"/>"
-            "</Relationships>");
+            "</Relationships>")) return abortExport();
 
         // v1.5.0: el maestro es rId1 y las slides empiezan en rId2 (el orden
         // del esquema exige sldMasterIdLst ANTES de sldIdLst; el id del
         // maestro debe ser >= 2147483648).
-        addFile("ppt/presentation.xml",
+        if (!addFile("ppt/presentation.xml",
             QString("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
             "<p:presentation xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" "
             "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" "
@@ -465,7 +607,7 @@ public:
                 for (int i = 0; i < slides.size(); ++i)
                     ids += QString("<p:sldId id=\"%1\" r:id=\"rId%2\"/>").arg(256 + i).arg(i + 2);
                 return ids;
-            }()).toUtf8());
+            }()).toUtf8())) return abortExport();
 
         QByteArray prels = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
             "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
@@ -474,7 +616,7 @@ public:
             prels += QString("<Relationship Id=\"rId%1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide\" Target=\"slides/slide%2.xml\"/>")
                         .arg(i + 2).arg(i + 1).toUtf8();
         prels += "</Relationships>";
-        addFile("ppt/_rels/presentation.xml.rels", prels);
+        if (!addFile("ppt/_rels/presentation.xml.rels", prels)) return abortExport();
 
         // ----------------- v1.5.0: NIVEL 1 — TEMA (theme1.xml) -----------------
         // Paleta derivada del tema activo (spec §4.3: Tema -> Maestro ->
@@ -484,7 +626,7 @@ public:
             const QString dk = theme.body.color.name().mid(1);
             const QString lt = theme.background.color1.name().mid(1);
             const QString ac = theme.title.color.name().mid(1);
-            addFile("ppt/theme/theme1.xml",
+            if (!addFile("ppt/theme/theme1.xml",
                 QStringLiteral(
                 "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
                 "<a:theme xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" name=\"Lumina\">"
@@ -541,11 +683,11 @@ public:
                 "</a:fmtScheme>"
                 "</a:themeElements>"
                 "<a:objectDefaults/><a:extraClrSchemeLst/></a:theme>")
-                    .arg(dk, lt, ac).toUtf8());
+                    .arg(dk, lt, ac).toUtf8())) return abortExport();
 
             // ------------- v1.5.0: NIVEL 2 — MAESTRO (slideMaster1.xml) --------
             // Fondo heredado del tema (lt1); clrMap estándar; layout rId1.
-            addFile("ppt/slideMasters/slideMaster1.xml",
+            if (!addFile("ppt/slideMasters/slideMaster1.xml",
                 QStringLiteral(
                 "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
                 "<p:sldMaster xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" "
@@ -565,19 +707,19 @@ public:
                 "<p:titleStyle><a:lvl1pPr><a:defRPr sz=\"4000\"/></a:lvl1pPr></p:titleStyle>"
                 "<p:bodyStyle><a:lvl1pPr><a:defRPr sz=\"2400\"/></a:lvl1pPr></p:bodyStyle>"
                 "<p:otherStyle><a:lvl1pPr><a:defRPr sz=\"2400\"/></a:lvl1pPr></p:otherStyle>"
-                "</p:txStyles></p:sldMaster>").toUtf8());
-            addFile("ppt/slideMasters/_rels/slideMaster1.xml.rels",
+                "</p:txStyles></p:sldMaster>").toUtf8())) return abortExport();
+            if (!addFile("ppt/slideMasters/_rels/slideMaster1.xml.rels",
                 "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
                 "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
                 "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout\" Target=\"../slideLayouts/slideLayout1.xml\"/>"
                 "<Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme\" Target=\"../theme/theme1.xml\"/>"
-                "</Relationships>");
+                "</Relationships>")) return abortExport();
 
             // ------------- v1.5.0: NIVEL 3 — DISEÑO (slideLayout1.xml) ----------
             // Diseño "blank" heredando TODO del maestro (la cascada completa:
             // slide -> layout -> master -> theme; la slide conserva su
             // override de fondo sólido como dicta el modelo de herencia).
-            addFile("ppt/slideLayouts/slideLayout1.xml",
+            if (!addFile("ppt/slideLayouts/slideLayout1.xml",
                 "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
                 "<p:sldLayout xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" "
                 "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" "
@@ -587,12 +729,12 @@ public:
                 "<p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>"
                 "<p:grpSpPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"0\" cy=\"0\"/>"
                 "<a:chOff x=\"0\" y=\"0\"/><a:chExt cx=\"0\" cy=\"0\"/></a:xfrm></p:grpSpPr>"
-                "</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sldLayout>");
-            addFile("ppt/slideLayouts/_rels/slideLayout1.xml.rels",
+                "</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sldLayout>")) return abortExport();
+            if (!addFile("ppt/slideLayouts/_rels/slideLayout1.xml.rels",
                 "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
                 "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
                 "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster\" Target=\"../slideMasters/slideMaster1.xml\"/>"
-                "</Relationships>");
+                "</Relationships>")) return abortExport();
         }
 
         for (int i = 0; i < slides.size(); ++i) {
@@ -607,6 +749,11 @@ public:
                             .arg(theme.body.color.name().mid(1))
                             .arg(xmlEscape(l.text));
             }
+            // B3b: un txBody sin ningun <a:p> (slide sin lineas, p.ej. una
+            // slide de imagen) produce un PPTX que PowerPoint pide reparar:
+            // emitir siempre al menos un parrafo vacio valido.
+            if (body.isEmpty())
+                body = QStringLiteral("<a:p><a:endParaRPr lang=\"es-VE\"/></a:p>");
             const QString bg = theme.background.color1.name().mid(1);
             const QString xml =
                 QString("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
@@ -624,14 +771,15 @@ public:
                 "<p:txBody><a:bodyPr anchor=\"ctr\"/><a:lstStyle/>%2</p:txBody></p:sp>"
                 "</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>")
                     .arg(bg).arg(body);
-            addFile(QString("ppt/slides/slide%1.xml").arg(i + 1).toUtf8().constData(), xml.toUtf8());
-            // v1.5.0: rel de la slide -> slideLayout1 (nivel 4 de la cascada)
-            addFile(QString("ppt/slides/_rels/slide%1.xml.rels").arg(i + 1).toUtf8().constData(),
+            if (!addFile(QString("ppt/slides/slide%1.xml").arg(i + 1).toUtf8().constData(), xml.toUtf8()) ||
+                // v1.5.0: rel de la slide -> slideLayout1 (nivel 4 de la cascada)
+                !addFile(QString("ppt/slides/_rels/slide%1.xml.rels").arg(i + 1).toUtf8().constData(),
                 "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
                 "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
                 "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout\" "
                 "Target=\"../slideLayouts/slideLayout1.xml\"/>"
-                "</Relationships>");
+                "</Relationships>"))
+                return abortExport();
         }
 
         if (!mz_zip_writer_finalize_archive(&zip)) {
@@ -646,7 +794,16 @@ public:
 private:
     static QString xmlEscape(const QString &s)
     {
-        QString out = s;
+        // B3c: XML 1.0 rechaza los caracteres de control 0x00-0x08, 0x0B,
+        // 0x0C y 0x0E-0x1F; si llegan aqui (texto pegado de Word, descargas,
+        // PDFs) el paquete entero deja de abrirse. Se sustituyen por espacio
+        // y solo se conserva '\n' (salto de linea real) entre los controles.
+        QString out;
+        out.reserve(s.size());
+        for (const QChar &ch : s) {
+            const ushort u = ch.unicode();
+            out += (u < 0x20 && u != 0x0A) ? QChar(0x20) : ch;
+        }
         out.replace(QChar('&'), QStringLiteral("&amp;"));
         out.replace(QChar('<'), QStringLiteral("&lt;"));
         out.replace(QChar('>'), QStringLiteral("&gt;"));

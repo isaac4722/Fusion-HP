@@ -117,6 +117,18 @@ public:
     {
         // CORRECCION v1.2.0: se ignoraban los colores del tema para el stage
         // (stageText/stageNext) y las cifras iban hardcodeadas en verde fijo.
+        // CORRECCION v1.6.0 (B15): updateStage() llama aquí en CADA slide —
+        // re-aplicar 3 setStyleSheet fuerza re-parse de QSS + re-polish del
+        // árbol completo en cada avance (parpadeo/CPU extra en Win7). Si el
+        // tema no cambió, no se toca nada.
+        if (m_appliedTheme == t.name && m_stageChordColor == t.stageChord
+                && m_textColor == t.stageText && m_nextColor == t.stageNext
+                && m_bgColor == t.stageBg)
+            return;
+        m_appliedTheme = t.name;
+        m_textColor = t.stageText;
+        m_nextColor = t.stageNext;
+        m_bgColor = t.stageBg;
         m_stageChordColor = t.stageChord;
         m_current->setStyleSheet(QStringLiteral("font-size: 34pt; color: %1; font-weight: bold;")
                                      .arg(t.stageText.name()));
@@ -187,6 +199,11 @@ private:
     QLabel *m_countdown = nullptr;
     QTimer *m_alertTimer = nullptr;         // v1.2.0: reiniciable (una alerta no borra a la siguiente)
     QColor m_stageChordColor = QColor(120, 220, 120);
+    // v1.6.0 (B15): último tema aplicado — evita re-pulir el QSS en cada slide
+    QString m_appliedTheme;
+    QColor m_textColor = QColor(255, 255, 255);
+    QColor m_nextColor = QColor(160, 160, 160);
+    QColor m_bgColor = QColor(0, 0, 0);
     const QString m_alertStyleOn  = QStringLiteral("font-size: 20pt; color: #FFD700; font-weight: bold;");
     const QString m_alertStyleOff = QStringLiteral("font-size: 20pt; color: rgba(255,215,0,60); font-weight: bold;");
     bool m_countdownActive = false;

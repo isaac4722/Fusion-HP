@@ -110,7 +110,7 @@ private:
     void updateSlideList();
     void updateStage();
     void updateDirector();           // v1.5.0: pantalla 3 + estado web del director
-    void publishDirectorState();     // v1.5.0: /api/director.json
+    void syncScreenCombosFromSettings();   // v1.6.0 (M19): refleja screen_* en la toolbar
     void preloadNextImages();        // v1.5.0: lazy loading actual+siguiente (spec §2.5)
     void playThemeBackgroundVideo(const Theme &theme);
     void stopBackgroundVideo();
@@ -127,6 +127,7 @@ private:
     QString m_liveLabel;
     int m_liveRefKind = -1;
     int m_liveRefId = 0;
+    int m_loadedPlaylistId = 0;      // v1.6.0 (M18): culto CARGADO en la cola del dock
 
     // Overlay de versiculo rapido (F9)
     bool m_overlayActive = false;

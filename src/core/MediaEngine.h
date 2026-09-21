@@ -87,6 +87,7 @@ public:
         LUMINA_SYM(libvlc_media_player_release)
         LUMINA_SYM(libvlc_media_player_play)
         LUMINA_SYM(libvlc_media_player_pause)
+        LUMINA_SYM(libvlc_media_player_set_pause)
         LUMINA_SYM(libvlc_media_player_stop)
         LUMINA_SYM(libvlc_media_player_set_hwnd)
         LUMINA_SYM(libvlc_media_player_set_xwindow)
@@ -148,10 +149,18 @@ public:
         return true;
     }
 
+    // CORRECCION v1.6.0 (B8): pauseMain(on) ignoraba el parametro porque
+    // libvlc_media_player_pause() es un TOGGLE. Se usa set_pause con la
+    // semantica pedida (true=pause, false=reanudar) con fallback al toggle
+    // si el simbolo no resolviera en alguna version vieja de LibVLC.
     void pauseMain(bool on)
     {
-        if (m_main && p_libvlc_media_player_pause) p_libvlc_media_player_pause(m_main);
-        Q_UNUSED(on)
+        if (!m_main) return;
+        if (p_libvlc_media_player_set_pause) {
+            p_libvlc_media_player_set_pause(m_main, on ? 1 : 0);
+        } else if (p_libvlc_media_player_pause) {
+            p_libvlc_media_player_pause(m_main);
+        }
     }
 
     void stopMain()
@@ -253,11 +262,18 @@ private slots:
             emit stateChanged(int(ns));
             if (ns == Ended || ns == Error) {
                 m_poll->stop();
+                // CORRECCION v1.6.0 (C2): finished() puede ser atendido en
+                // linea (conexion directa) y el slot llama stopMain(), que
+                // libera m_main y lo deja en nullptr. La emision final de
+                // positionChanged debe protegerse: con m_main liberado,
+                // libvlc_media_player_get_time desreferenciaria NULL
+                // (segfault en builds release de Windows).
                 emit finished();
             }
         }
-        emit positionChanged(p_libvlc_media_player_get_time(m_main),
-                             p_libvlc_media_player_get_length(m_main));
+        if (m_main)  // C2: pudo ser liberado por el slot de finished()
+            emit positionChanged(p_libvlc_media_player_get_time(m_main),
+                                 p_libvlc_media_player_get_length(m_main));
     }
 
 private:
@@ -302,6 +318,7 @@ private:
     void (*p_libvlc_media_player_release)(libvlc_media_player_t *) = nullptr;
     int (*p_libvlc_media_player_play)(libvlc_media_player_t *) = nullptr;
     void (*p_libvlc_media_player_pause)(libvlc_media_player_t *) = nullptr;
+    void (*p_libvlc_media_player_set_pause)(libvlc_media_player_t *, int) = nullptr;
     void (*p_libvlc_media_player_stop)(libvlc_media_player_t *) = nullptr;
     void (*p_libvlc_media_player_set_hwnd)(libvlc_media_player_t *, void *) = nullptr;
     void (*p_libvlc_media_player_set_xwindow)(libvlc_media_player_t *, uint32_t) = nullptr;

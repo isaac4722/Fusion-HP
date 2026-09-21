@@ -93,6 +93,9 @@ public:
     // v1.3.0: importador de Biblias en formato ZEFania XML (.xml) — el formato
     // estándar del ecosistema Holyrics (miles de versiones libres disponibles).
     // <XMLBIBLE><BIBLEBOOK bnumber><CHAPTER cnumber><VERSE vnumber>texto.
+    // M21/B6: el código de versión se deriva del atributo biblename (fallback:
+    // nombre de archivo saneado); guard anti-duplicado + índice UNIQUE
+    // (version,book,chapter,verse) creado en ensureSchema.
     bool importBibleFromZefaniaXml(const QString &filePath, QString *error);
     QVector<BibleRef::Verse> bibleChapter(const QString &version, int book, int chapter);
     BibleRef::Verse bibleVerse(const QString &version, int book, int chapter, int verse);

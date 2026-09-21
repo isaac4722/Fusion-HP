@@ -41,9 +41,16 @@ CommsPanel::CommsPanel(AppContext *ctx, QWidget *parent)
                 [this](bool ok, const QString &err, const QVector<PcoServiceType> &types) {
             if (!ok) { m_pcoStatus->setText(err); return; }
             m_pcoServiceType->setEnabled(true);
+            // CORRECCION v1.6.0 (B16): el primer addItem disparaba
+            // currentIndexChanged → fetchPlans, y la línea siguiente volvía a
+            // pedirlo: DOS peticiones idénticas por conexión (con repoblado
+            // doble y riesgo de respuesta obsoleta). QSignalBlocker deja un
+            // único fetch explícito.
+            QSignalBlocker blocker(m_pcoServiceType);
             m_pcoServiceType->clear();
             for (const PcoServiceType &t : types)
                 m_pcoServiceType->addItem(t.name, t.id);
+            blocker.unblock();
             m_pcoStatus->setText(QStringLiteral("%1 ministerio(s). Cargando planes del primero…")
                                      .arg(types.size()));
             if (!types.isEmpty())
@@ -75,8 +82,10 @@ CommsPanel::CommsPanel(AppContext *ctx, QWidget *parent)
     }
     // v1.5.0 — módulos JS: estado inicial + refresco del registro en vivo
     refreshJsSection();
-    if (m_ctx->js && m_ctx->js->host())
-        connect(m_ctx->js->host(), &JsLibHost::logChanged, this, [this]() { refreshJsSection(); });
+    // v1.6.0 (M4): la conexión apunta a la señal retransmisora de JsEngine —
+    // el host jslib se recrea en cada reload() y la conexión moría con él.
+    if (m_ctx->js)
+        connect(m_ctx->js, &JsEngine::jsLogChanged, this, [this]() { refreshJsSection(); });
     // Bandeja Telegram
     if (m_ctx->triggers)
         connect(m_ctx->triggers->telegram(), &TelegramBot::messageReceived, this,
@@ -628,13 +637,9 @@ void CommsPanel::refreshMidiStatus()
 // ---------------------------------------------------------------------------
 // v1.5.0 — Planning Center Online (spec §3.3)
 // ---------------------------------------------------------------------------
-static QString normalizeTitle(const QString &t)
-{
-    QString s = t.toLower().normalized(QString::NormalizationForm_KD);
-    s.remove(QRegExp(QStringLiteral("[^a-z0-9áéíóúüñ ]")));
-    s.replace(QStringLiteral("  "), QStringLiteral(" "));
-    return s.simplified();
-}
+// v1.6.0 (B11): normalizeTitle() era código muerto divergente del normalizador
+// real de MainWindow::onPcoImportItems — eliminado para que el matching PCO
+// tenga una única implementación.
 
 void CommsPanel::onPcoFetch()
 {

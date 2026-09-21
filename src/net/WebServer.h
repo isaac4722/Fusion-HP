@@ -35,6 +35,15 @@ public:
 
     bool start(quint16 wsPort, quint16 httpPort, QString *error = nullptr)
     {
+        // CORRECCION v1.6.0 (C1): re-entrada de start()/stop() con clientes WS
+        // conectados -> doble free (SIGABRT reproducido). Los QWebSocket de
+        // nextPendingConnection() son hijos del servidor: al destruirlo con
+        // deleteLater(), ~QWebSocket emite disconnected y el lambda conectado
+        // llamaba deleteLater() sobre un objeto a medio destruir. Los clientes
+        // (y sus lambdas) se desmantelan ANTES de matar los servidores, aqui
+        // y en stop().
+        closeAllClients();
+        closeHttpClients();
         // WebSocket
         if (m_ws) { m_ws->close(); m_ws->deleteLater(); m_ws = nullptr; }
         m_ws = new QWebSocketServer(QStringLiteral("LuminaRemoteServer"),
@@ -72,11 +81,14 @@ public:
     {
         // CORRECCION v1.2.0: stop() cerraba los servidores pero dejaba los
         // punteros vivos -> running() seguía devolviendo true tras parar.
+        // CORRECCION v1.6.0 (C1): los clientes se desmantelan ANTES de cerrar
+        // los servidores (ver start()); el bucle suelto con solo close() no
+        // bastaba: los sockets morian despues junto con el servidor, emitiendo
+        // disconnected->deleteLater() durante la destruccion.
+        closeAllClients();
+        closeHttpClients();
         if (m_ws) { m_ws->close(); m_ws->deleteLater(); m_ws = nullptr; }
         if (m_http) { m_http->close(); m_http->deleteLater(); m_http = nullptr; }
-        for (QWebSocket *c : qAsConst(m_clients))
-            if (c) c->close();
-        m_clients.clear();
         m_buffer.clear();
     }
 
@@ -149,6 +161,18 @@ private slots:
     {
         QWebSocket *sock = m_ws->nextPendingConnection();
         if (!sock) return;
+        // CORRECCION v1.6.0 (M2): con token configurado, el upgrade WebSocket
+        // exige ?token=... con el mismo criterio que /api/cmd. Sin token
+        // configurado, la API local queda abierta (red LAN, como hasta ahora).
+        if (!m_apiToken.isEmpty()) {
+            const QString tok = QUrlQuery(sock->requestUrl().query())
+                    .queryItemValue(QStringLiteral("token"));
+            if (tok != m_apiToken) {
+                sock->close();
+                sock->deleteLater();
+                return;
+            }
+        }
         m_clients << sock;
         // CORRECCION v1.2.0: el control remoto no recibía el estado inicial al
         // conectar — mostraba "— sin contenido —" hasta que el operador movía
@@ -171,10 +195,27 @@ private slots:
     {
         QTcpSocket *sock = m_http->nextPendingConnection();
         if (!sock) return;
+        m_httpSocks << sock;   // v1.6.0 (C1): registro para cierre seguro
         connect(sock, &QTcpSocket::readyRead, this, [this, sock]() {
             m_buffer[sock] += sock->readAll();
-            if (!m_buffer[sock].contains("\r\n\r\n")) return;
-            const QByteArray req = m_buffer.take(sock);
+            // CORRECCION v1.6.0 (M1): tope de 64 KB por peticion. Sin cabecera
+            // completa y con el buffer lleno: 400 + corte de conexion, nunca
+            // crecer sin limite (un header gigante agotaba la RAM del proceso).
+            if (!m_buffer[sock].contains("\r\n\r\n")) {
+                if (m_buffer[sock].size() > 64 * 1024) {
+                    sendHttp(sock, 400, "text/plain; charset=utf-8",
+                             "peticion demasiado grande\n", true);
+                    sock->disconnectFromHost();
+                    m_buffer.remove(sock);
+                }
+                return;
+            }
+            // CORRECCION v1.6.0 (M1): conservar el sobrante tras la cabecera
+            // (pipelining: el cliente puede encadenar la peticion siguiente)
+            // en vez de descartarlo con take().
+            const int reqEnd = m_buffer[sock].indexOf("\r\n\r\n") + 4;
+            const QByteArray req = m_buffer[sock].left(reqEnd);
+            m_buffer[sock] = m_buffer[sock].mid(reqEnd);
             handleHttpRequest(sock, req);
         });
         // CORRECCION v1.2.0: si el cliente se desconectaba antes de enviar los
@@ -184,11 +225,46 @@ private slots:
         // nueva podía reutilizar esa dirección y concatenar datos ajenos).
         connect(sock, &QAbstractSocket::disconnected, this, [this, sock]() {
             m_buffer.remove(sock);
+            m_httpSocks.removeAll(sock);
         });
         connect(sock, &QAbstractSocket::disconnected, sock, &QObject::deleteLater);
     }
 
 private:
+    // --------------------------------------------------------------------
+    // CORRECCION v1.6.0 (C1): cierre seguro de clientes conectados.
+    // Orden obligatorio por socket: 1) disconnect() de los lambdas (los que
+    // tocaban deleteLater), 2) close(), 3) setParent(nullptr) para que deje
+    // de ser hijo del servidor que se va a destruir, 4) deleteLater() con
+    // propiedad exclusiva. Asi ninguna senal emitida durante la destruccion
+    // de los servidores re-entra en este objeto y no hay doble delete.
+    // --------------------------------------------------------------------
+    void closeAllClients()
+    {
+        for (QWebSocket *c : qAsConst(m_clients)) {
+            if (!c) continue;
+            c->disconnect(this);   // mata textMessageReceived/disconnected
+            c->close();
+            c->setParent(nullptr);
+            c->deleteLater();
+        }
+        m_clients.clear();
+    }
+
+    void closeHttpClients()
+    {
+        for (QTcpSocket *s : qAsConst(m_httpSocks)) {
+            if (!s) continue;
+            s->disconnect(this);   // readyRead + disconnected (receptor this)
+            s->disconnect(s);      // auto-eliminacion disconnected->deleteLater
+            s->close();
+            s->setParent(nullptr);
+            s->deleteLater();
+        }
+        m_httpSocks.clear();
+        m_buffer.clear();
+    }
+
     void handleHttpRequest(QTcpSocket *sock, const QByteArray &request)
     {
         const int lineEnd = request.indexOf("\r\n");
@@ -196,14 +272,18 @@ private:
         const QList<QByteArray> parts = reqLine.split(' ');
         if (parts.size() < 2) { sock->disconnectFromHost(); return; }
         const QByteArray rawTarget = parts.at(1);
-        QString path = QUrl::fromPercentEncoding(rawTarget);
-        const int qm = path.indexOf(QChar('?'));
+        // CORRECCION v1.6.0 (B13): el '?' se busca sobre el target CRUDO y de
+        // ese unico indice se derivan ruta y query. Antes el indice se
+        // calculaba sobre la ruta percent-decodificada y se aplicaba al target
+        // crudo: un '%' en la ruta desplazaba el corte y partia ruta/query en
+        // posiciones equivocadas.
+        const int qm = rawTarget.indexOf('?');
+        QString path = QUrl::fromPercentEncoding(qm >= 0 ? rawTarget.left(qm) : rawTarget);
         // CORRECCION v1.1.0: QUrlQuery NO elimina la ruta del string — si se
         // le pasa "/api/cmd?c=next" el primer par quedaba como clave
         // "/api/cmd?c" y queryItemValue("c") devolvia vacio. Hay que extraer
         // SOLO la parte posterior al '?'.
         QUrlQuery query(qm >= 0 ? QString::fromUtf8(rawTarget.mid(qm + 1)) : QString());
-        if (qm >= 0) path = path.left(qm);
         if (path == QStringLiteral("/")) path = QStringLiteral("/remote.html");
 
         // ----------------------------------------------------------------
@@ -246,6 +326,16 @@ private:
             sendHttp(sock, 200, "text/plain; charset=utf-8", (txt + QChar('\n')).toUtf8(), true);
             return;
         }
+        // CORRECCION v1.6.0 (M2): los endpoints JSON de estado exigen token
+        // cuando hay uno configurado (live.txt ya lo validaba arriba).
+        if (path == QStringLiteral("/api/state") || path == QStringLiteral("/api/overlay.json")
+                || path == QStringLiteral("/api/director.json")) {
+            if (!apiTokenOk(query)) {
+                sendHttp(sock, 401, "application/json; charset=utf-8",
+                         "{\"ok\":false,\"error\":\"token invalido\"}", true);
+                return;
+            }
+        }
 
         QByteArray contentType = "text/html; charset=utf-8";
         QByteArray body;
@@ -281,13 +371,11 @@ private:
             body = resource(QStringLiteral(":/img/logo.png"));
             contentType = "image/png";
         } else {
-            body = "<html><body><h3>LuminaPresentation Suite</h3>"
-                   "<p>Control remoto: <a href=\"/remote.html\">/remote.html</a> | "
-                   "Overlay OBS: <a href=\"/overlay.html\">/overlay.html</a> | "
-                   "Director: <a href=\"/director.html\">/director.html</a><br>"
-                   "API: <a href=\"/api/state\">/api/state</a> · "
-                   "<a href=\"/api/live.txt\">/api/live.txt</a> · "
-                   "<code>/api/cmd?c=next</code></p></body></html>";
+            // CORRECCION v1.6.0 (B13): ruta desconocida = 404. Antes se servia
+            // la pagina indice con 200 y monitores/scripts no distinguian un
+            // fallo de un recurso valido.
+            sendHttp(sock, 404, "text/plain; charset=utf-8", "not found\n", true);
+            return;
         }
         sendHttp(sock, 200, contentType, body, isJson);
     }
@@ -343,6 +431,7 @@ private:
     QWebSocketServer *m_ws = nullptr;
     QTcpServer *m_http = nullptr;
     QVector<QWebSocket *> m_clients;
+    QVector<QTcpSocket *> m_httpSocks;   // v1.6.0 (C1): sockets HTTP vivos
     QHash<QTcpSocket *, QByteArray> m_buffer;
     QJsonObject m_state;
     QString m_apiToken;

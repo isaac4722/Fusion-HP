@@ -21,6 +21,9 @@
 #include <QUrl>
 #include <QUrlQuery>
 #include <QDateTime>
+#include <QMap>
+#include <QSharedPointer>
+#include <functional>
 
 struct PcoServiceType
 {
@@ -52,7 +55,9 @@ class PlanningCenter : public QObject
 public:
     static constexpr int kTimeoutMs = 15000;    // qt-cpp-review ERR: timeouts
     static constexpr int kMaxPlans = 15;
-    static constexpr int kMaxItems = 200;
+    static constexpr int kPerPage  = 100;       // v1.6.0 (M12): máximo real de la API v2
+    static constexpr int kMaxItems = 200;       // tope de ítems agregados (4 páginas)
+    static constexpr int kMaxPages = 10;        // v1.6.0 (M12): tope anti-bucle de paginación
 
     explicit PlanningCenter(QObject *parent = nullptr) : QObject(parent) {}
 
@@ -80,12 +85,18 @@ public:
     }
 
     // Paso 3: ítems de un plan (incluye las canciones relacionadas).
+    // v1.6.0 (M12): la API v2 limita per_page a 100 — antes se pedían 200 y
+    // la respuesta se truncaba silenciosamente en planes largos. Ahora se
+    // encadenan páginas siguiendo el cursor links.next (tope de seguridad de
+    // kMaxPages) y itemsReady llega UNA sola vez con la lista agregada.
     void fetchPlanItems(const QString &planId)
     {
-        get(QStringLiteral("/services/v2/plans/%1/items?include=song&per_page=%2")
-                .arg(planId).arg(kMaxItems),
-            QStringLiteral("items"),
-            planId);
+        auto items = QSharedPointer<QVector<PcoItem>>::create();
+        auto songs = QSharedPointer<QMap<QString, QString>>::create();
+        fetchItemsPage(QUrl(QStringLiteral(
+                           "https://api.planningcenteronline.com/services/v2/plans/%1/items?include=song&per_page=%2")
+                           .arg(planId).arg(kPerPage)),
+                       planId, 0, items, songs);
     }
 
 signals:
@@ -98,16 +109,16 @@ signals:
                     const QVector<PcoItem> &items);
 
 private:
-    void get(const QString &path, const QString &kind, const QString &planId = QString())
+    // v1.6.0 (M12): GET autenticado genérico por callbacks — get() lo usa con
+    // emitResult() y la paginación de ítems lo encadena página a página.
+    void getJson(const QUrl &url,
+                 const std::function<void(const QJsonDocument &)> &onOk,
+                 const std::function<void(const QString &)> &onError)
     {
         if (!hasToken()) {
-            emitResult(kind, planId, false,
-                       QStringLiteral("Falta el token de acceso (ID y secreto de la aplicación)."),
-                       QJsonDocument());
+            onError(QStringLiteral("Falta el token de acceso (ID y secreto de la aplicación)."));
             return;
         }
-        QUrl url(QStringLiteral("https://api.planningcenteronline.com") + path);
-        // QUrlQuery no aplica: path ya viene codificado y sin query dinámica.
         QNetworkRequest req(url);
         req.setRawHeader(QByteArrayLiteral("Authorization"),
                          QStringLiteral("Basic %1")
@@ -123,22 +134,100 @@ private:
             for (const QSslError &e : errs)
                 qWarning() << "[PCO] TLS:" << e.errorString();
         });
-        connect(rep, &QNetworkReply::finished, this, [this, rep, kind, planId]() {
+        connect(rep, &QNetworkReply::finished, this, [this, rep, onOk, onError]() {
             rep->deleteLater();
             if (rep->error() != QNetworkReply::NoError) {
-                emitResult(kind, planId, false, friendlyError(rep), QJsonDocument());
+                onError(friendlyError(rep));
                 return;
             }
             // ERR-2 (qt-cpp-review): JSON de respuesta validado explícitamente
             const QJsonDocument doc = QJsonDocument::fromJson(rep->readAll());
             if (doc.isNull() || !doc.isObject()) {
-                emitResult(kind, planId, false,
-                           QStringLiteral("Respuesta no válida del servidor de Planning Center."),
-                           QJsonDocument());
+                onError(QStringLiteral("Respuesta no válida del servidor de Planning Center."));
                 return;
             }
-            emitResult(kind, planId, true, QString(), doc);
+            onOk(doc);
         });
+    }
+
+    void get(const QString &path, const QString &kind, const QString &planId = QString())
+    {
+        getJson(QUrl(QStringLiteral("https://api.planningcenteronline.com") + path),
+                [this, kind, planId](const QJsonDocument &doc) {
+                    emitResult(kind, planId, true, QString(), doc);
+                },
+                [this, kind, planId](const QString &err) {
+                    emitResult(kind, planId, false, err, QJsonDocument());
+                });
+    }
+
+    // v1.6.0 (M12): una página de la paginación de ítems. Los acumuladores se
+    // comparten vía QSharedPointer para que cada fetchPlanItems lleve su
+    // propio hilo de acumulación (aun si se solicitara otro en paralelo).
+    void fetchItemsPage(const QUrl &url, const QString &planId, int page,
+                        const QSharedPointer<QVector<PcoItem>> &items,
+                        const QSharedPointer<QMap<QString, QString>> &songs)
+    {
+        getJson(url,
+                [this, planId, page, items, songs](const QJsonDocument &doc) {
+                    collectItemsPage(doc, songs, *items);
+                    // Cursor: PCO entrega la página siguiente en links.next
+                    // (URL completa o ruta relativa). Se encadena hasta que no
+                    // haya más, con tope de páginas y del máximo de ítems.
+                    const QString nextUrl = doc.object()
+                            .value(QStringLiteral("links")).toObject()
+                            .value(QStringLiteral("next")).toString();
+                    if (page + 1 < kMaxPages && items->size() < kMaxItems &&
+                        !nextUrl.isEmpty()) {
+                        QUrl next(nextUrl);
+                        if (next.scheme().isEmpty())
+                            next = QUrl(QStringLiteral("https://api.planningcenteronline.com") + nextUrl);
+                        fetchItemsPage(next, planId, page + 1, items, songs);
+                        return;
+                    }
+                    emit itemsReady(true, QString(), planId, *items);
+                },
+                [this, planId](const QString &err) {
+                    emit itemsReady(false, err, planId, QVector<PcoItem>());
+                });
+    }
+
+    // v1.6.0 (M12): parseo de una página — las canciones «included» se
+    // acumulan entre páginas (un ítem de la página N puede referenciar una
+    // canción incluida en otra) y los ítems se añaden al acumulador.
+    void collectItemsPage(const QJsonDocument &doc,
+                          const QSharedPointer<QMap<QString, QString>> &songs,
+                          QVector<PcoItem> &items) const
+    {
+        const QJsonArray included = doc.object()
+                .value(QStringLiteral("included")).toArray();
+        for (const QJsonValue &v : included) {
+            const QJsonObject o = v.toObject();
+            if (o.value(QStringLiteral("type")).toString() == QStringLiteral("Song")) {
+                songs->insert(o.value(QStringLiteral("id")).toString(),
+                              o.value(QStringLiteral("attributes")).toObject()
+                               .value(QStringLiteral("title")).toString());
+            }
+        }
+        const QJsonArray data = doc.object()
+                .value(QStringLiteral("data")).toArray();
+        for (const QJsonValue &v : data) {
+            const QJsonObject o = v.toObject();
+            const QJsonObject a = o.value(QStringLiteral("attributes")).toObject();
+            PcoItem it;
+            it.title = a.value(QStringLiteral("title")).toString();
+            it.description = a.value(QStringLiteral("description")).toString();
+            it.sequence = a.value(QStringLiteral("sequence")).toInt();
+            const QJsonObject songRel = o.value(QStringLiteral("relationships"))
+                    .toObject().value(QStringLiteral("song")).toObject()
+                    .value(QStringLiteral("data")).toObject();
+            if (!songRel.isEmpty()) {
+                it.isSong = true;
+                it.songTitle = songs->value(songRel.value(QStringLiteral("id")).toString());
+                if (it.songTitle.isEmpty()) it.songTitle = it.title;
+            }
+            if (!it.title.isEmpty() || it.isSong) items.append(it);
+        }
     }
 
     QByteArray basicAuth() const
@@ -202,43 +291,10 @@ private:
                 }
             }
             emit plansReady(ok, error, plans);
-        } else if (kind == QStringLiteral("items")) {
-            QVector<PcoItem> items;
-            if (ok) {
-                // Mapa id->título de las canciones incluidas (include=song)
-                const QJsonArray included = doc.object()
-                        .value(QStringLiteral("included")).toArray();
-                QMap<QString, QString> songs;
-                for (const QJsonValue &v : included) {
-                    const QJsonObject o = v.toObject();
-                    if (o.value(QStringLiteral("type")).toString() == QStringLiteral("Song")) {
-                        songs.insert(o.value(QStringLiteral("id")).toString(),
-                                     o.value(QStringLiteral("attributes")).toObject()
-                                      .value(QStringLiteral("title")).toString());
-                    }
-                }
-                const QJsonArray data = doc.object()
-                        .value(QStringLiteral("data")).toArray();
-                for (const QJsonValue &v : data) {
-                    const QJsonObject o = v.toObject();
-                    const QJsonObject a = o.value(QStringLiteral("attributes")).toObject();
-                    PcoItem it;
-                    it.title = a.value(QStringLiteral("title")).toString();
-                    it.description = a.value(QStringLiteral("description")).toString();
-                    it.sequence = a.value(QStringLiteral("sequence")).toInt();
-                    const QJsonObject songRel = o.value(QStringLiteral("relationships"))
-                            .toObject().value(QStringLiteral("song")).toObject()
-                            .value(QStringLiteral("data")).toObject();
-                    if (!songRel.isEmpty()) {
-                        it.isSong = true;
-                        it.songTitle = songs.value(songRel.value(QStringLiteral("id")).toString());
-                        if (it.songTitle.isEmpty()) it.songTitle = it.title;
-                    }
-                    if (!it.title.isEmpty() || it.isSong) items.append(it);
-                }
-            }
-            emit itemsReady(ok, error, planId, items);
         }
+        // kind "items" ya no pasa por aquí (M12): se maneja por la paginación
+        // fetchItemsPage/collectItemsPage y se emite al final con la lista
+        // agregada completa.
     }
 
     QNetworkAccessManager m_nam;

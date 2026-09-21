@@ -146,16 +146,37 @@ public:
             //  (b) si un VERSO largo se dividía en bloques, el coro se
             //      intercalaba ENTRE los bloques del mismo verso (a mitad de
             //      la estrofa). Ahora se respeta la sección original.
+            // CORRECCION v1.6.0 (M16):
+            //  (c) canción cuyo ÚNICO bloque es [Coro] (cantos cortos): el
+            //      bucle se saltaba todas las secciones y la letra entera
+            //      desaparecía de la proyección → si no hay versos, caer al
+            //      camino lineal;
+            //  (d) letras con [Coro] repetido tras cada verso (formato común
+            //      de letras importadas): se acumulaban TODOS los bloques de
+            //      coro y se cantaban N veces seguidas tras cada verso (V1 C C
+            //      V2 C C) → usar SOLO el primer bloque de coro.
             QVector<Section> chorusBlocks;
-            for (int s = 0; s < sections.size(); ++s)
-                if (isChorusTag(sections.at(s).tag))
-                    chorusBlocks << sectionBlocks.at(s);
+            QVector<Section> verseBlocks;
             for (int s = 0; s < sections.size(); ++s) {
-                if (isChorusTag(sections.at(s).tag)) continue;
-                for (const Section &b : sectionBlocks.at(s))
+                if (isChorusTag(sections.at(s).tag)) {
+                    if (chorusBlocks.isEmpty())
+                        chorusBlocks << sectionBlocks.at(s);   // (d) primer coro únicamente
+                } else {
+                    verseBlocks << sectionBlocks.at(s);
+                }
+            }
+            if (verseBlocks.isEmpty()) {
+                // (c) solo coros: proyección lineal tal cual (el coro no se pierde)
+                for (const auto &group : sectionBlocks)
+                    for (const Section &b : group)
+                        out.append(sectionToSlide(b, song, opt));
+            } else {
+                for (const Section &b : verseBlocks) {
                     out.append(sectionToSlide(b, song, opt));
-                for (const Section &ch : chorusBlocks)
-                    out.append(sectionToSlide(ch, song, opt));
+                    // coro tras CADA verso completo (V1 C V2 C)
+                    for (const Section &ch : chorusBlocks)
+                        out.append(sectionToSlide(ch, song, opt));
+                }
             }
         } else {
             for (const auto &group : sectionBlocks)

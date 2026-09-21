@@ -29,7 +29,17 @@
 #include <QByteArray>
 #include <QUrlQuery>
 #include <QUrl>
+#include <QLoggingCategory>
 #include <QDebug>
+
+// Categoría de registro del módulo OBS (log estructurado, spec §2.6).
+// Función inline con static local: una única instancia por proceso sin
+// necesitar unidad de compilación propia.
+inline const QLoggingCategory &obsLogCat()
+{
+    static const QLoggingCategory cat("lumina.obs");
+    return cat;
+}
 
 // ---------------------------------------------------------------------------
 // Cliente OBS WebSocket v5 (obs-websocket >= 5.0)
@@ -50,8 +60,37 @@ public:
             if (m_authed) emit connectionChanged(false);
             m_authed = false;
             if (m_enabled) m_reconnect.start();
+            logCloseCause();
         });
         connect(&m_ws, &QWebSocket::textMessageReceived, this, &ObsClient::onMessage);
+        // v1.6.0 (M13): diagnóstico de la conexión — antes un fallo era mudo y
+        // el usuario no podía distinguir una dirección/puerto incorrecto de una
+        // contraseña rechazada o de un tiempo agotado. Se registra el error del
+        // socket y los cambios de estado; la causa final del cierre (close code
+        // del servidor obs-websocket v5) se reporta en logCloseCause().
+        connect(&m_ws, &QWebSocket::stateChanged, this, [](QAbstractSocket::SocketState st) {
+            qCDebug(obsLogCat(), "OBS WebSocket estado: %d", int(st));
+        });
+        // QWebSocket::error está marcada deprecated desde Qt 6.5 (errorOccurred);
+        // en 5.15 es la señal válida (mismo patrón silenciado de JsEngine.h).
+        QT_WARNING_PUSH
+        QT_WARNING_DISABLE_DEPRECATED
+        connect(&m_ws, QOverload<QAbstractSocket::SocketError>::of(&QWebSocket::error),
+                this, [this](QAbstractSocket::SocketError e) {
+            if (e == QAbstractSocket::RemoteHostClosedError)
+                return;             // cierre desde el servidor: lo reporta logCloseCause()
+            if (e == QAbstractSocket::HostNotFoundError)
+                qCWarning(obsLogCat(), "OBS: no se encontró el host «%s:%u» (¿dirección o puerto incorrectos? ¿OBS está abierto?)",
+                          qUtf8Printable(m_host), unsigned(m_port));
+            else if (e == QAbstractSocket::ConnectionRefusedError)
+                qCWarning(obsLogCat(), "OBS: conexión rechazada en «%s:%u» (¿está habilitado obs-websocket?)",
+                          qUtf8Printable(m_host), unsigned(m_port));
+            else if (e == QAbstractSocket::SocketTimeoutError)
+                qCWarning(obsLogCat(), "OBS: tiempo agotado esperando respuesta del servidor WebSocket");
+            else
+                qCWarning(obsLogCat(), "OBS: error de socket %d", int(e));
+        });
+        QT_WARNING_POP
         m_reconnect.setInterval(15000);
         connect(&m_reconnect, &QTimer::timeout, this, [this]() { if (m_enabled) connectTo(m_host, m_port, m_password); });
     }
@@ -117,6 +156,25 @@ private slots:
     }
 
 private:
+    // v1.6.0 (M13): causa de la desconexión según el close code/reason que
+    // entrega el servidor. obs-websocket v5 cierra con el código 4001 cuando
+    // la autenticación (contraseña) es rechazada; también se inspecciona el
+    // texto del motivo por si el servidor usa otra variante.
+    void logCloseCause()
+    {
+        const quint16 code = m_ws.closeCode();
+        const QString reason = m_ws.closeReason();
+        if (code == 4001 || reason.contains(QStringLiteral("auth"), Qt::CaseInsensitive)) {
+            qCWarning(obsLogCat(), "OBS: contraseña rechazada por obs-websocket (código %u) — revise la contraseña en OBS Herramientas▸WebSocket Server Settings",
+                      code);
+        } else if (code != 0 && code != QWebSocketProtocol::CloseCodeNormal) {
+            qCWarning(obsLogCat(), "OBS cerró la conexión: código %u «%s»",
+                      code, qUtf8Printable(reason));
+        }
+        // code 0 / 1005 / 1006 (sin frame de cierre): corte abrupto — típico
+        // de OBS cerrado o red caída; el reintento periódico lo cubre.
+    }
+
     void connectTo(const QString &host, quint16 port, const QString &)
     {
         if (m_ws.state() == QAbstractSocket::ConnectedState) return;
@@ -165,7 +223,10 @@ public:
         q.addQueryItem(QStringLiteral("chat_id"), m_chatId);
         q.addQueryItem(QStringLiteral("text"), text);
         url.setQuery(q);
-        m_nam.get(QNetworkRequest(url));
+        QNetworkRequest req(url);
+        // v1.6.0 (M6): sin timeout, una red caída dejaba el envío colgado.
+        req.setTransferTimeout(10000);
+        m_nam.get(req);
     }
 
 signals:
@@ -174,13 +235,25 @@ signals:
 private slots:
     void poll()
     {
+        // v1.6.0 (M6): no encolar otra encuesta si la anterior sigue en vuelo
+        // (con timeout=0 la respuesta suele llegar rápido, pero con la red
+        // degradada se acumulaban peticiones solapadas).
+        if (m_pollInFlight) return;
         QUrl url(QStringLiteral("https://api.telegram.org/bot%1/getUpdates").arg(m_token));
         QUrlQuery q;
         q.addQueryItem(QStringLiteral("timeout"), QStringLiteral("0"));
         q.addQueryItem(QStringLiteral("offset"), QString::number(m_offset));
         q.addQueryItem(QStringLiteral("limit"), QStringLiteral("10"));
         url.setQuery(q);
-        m_nam.get(QNetworkRequest(url));
+        QNetworkRequest req(url);
+        // v1.6.0 (M6): sin timeout, una red caída colgaba la encuesta y el bot
+        // dejaba de responder hasta reiniciar el programa.
+        req.setTransferTimeout(10000);
+        m_pollInFlight = true;
+        QNetworkReply *rep = m_nam.get(req);
+        // Se libera el flag cuando ESTA respuesta termina (el deleteLater del
+        // reply lo hace el onReply común del QNetworkAccessManager).
+        connect(rep, &QNetworkReply::finished, this, [this]() { m_pollInFlight = false; });
     }
 
     void onReply(QNetworkReply *rep)
@@ -196,6 +269,27 @@ private slots:
             if (id >= m_offset) m_offset = id + 1;
             const QJsonObject message = u.value(QStringLiteral("message")).toObject();
             if (message.isEmpty()) continue;
+            // v1.6.0 (M6): solo se aceptan mensajes del chat configurado — antes
+            // CUALQUIER usuario que hablara con el bot disparaba comandos.
+            // m_chatId admite un ID numérico (grupo/canal, puede ser negativo)
+            // o un @usuario público (comparación sin '@' e insensible a
+            // mayúsculas); el resto se descarta.
+            const QJsonObject chat = message.value(QStringLiteral("chat")).toObject();
+            bool fromConfiguredChat = false;
+            bool numericCfg = false;
+            const qint64 cfgNum = m_chatId.trimmed().toLongLong(&numericCfg);
+            if (numericCfg) {
+                fromConfiguredChat =
+                    chat.value(QStringLiteral("id")).toVariant().toLongLong() == cfgNum;
+            } else {
+                QString cfgUser = m_chatId.trimmed();
+                if (cfgUser.startsWith(QLatin1Char('@'))) cfgUser.remove(0, 1);
+                QString chatUser = chat.value(QStringLiteral("username")).toString();
+                if (chatUser.startsWith(QLatin1Char('@'))) chatUser.remove(0, 1);
+                fromConfiguredChat = !cfgUser.isEmpty() &&
+                                     chatUser.compare(cfgUser, Qt::CaseInsensitive) == 0;
+            }
+            if (!fromConfiguredChat) continue;
             const QString from = message.value(QStringLiteral("from")).toObject()
                                      .value(QStringLiteral("first_name")).toString();
             const QString text = message.value(QStringLiteral("text")).toString();
@@ -208,6 +302,7 @@ private:
     QTimer m_poll;
     QString m_token, m_chatId;
     qint64 m_offset = 0;
+    bool m_pollInFlight = false;      // v1.6.0 (M6): encuesta getUpdates en curso
 };
 
 #include "core/JsEngine.h"      // v1.5.0: tipo completo (fireEvent -> JS)
@@ -276,13 +371,39 @@ public:
         if (m_js) m_js->fireEvent(event, data);
         // 1) Webhook HTTP
         if (m_cfg.webhookEnabled && !m_cfg.webhookUrl.isEmpty()) {
-            QString urlStr = m_cfg.webhookUrl;
-            urlStr.replace(QStringLiteral("{event}"), event);
-            urlStr.replace(QStringLiteral("{slide}"), data.value(QStringLiteral("slide")).toString());
-            urlStr.replace(QStringLiteral("{song}"), data.value(QStringLiteral("song")).toString());
-            urlStr.replace(QStringLiteral("{item}"), data.value(QStringLiteral("item")).toString());
-            QUrl url(urlStr);
+            // v1.6.0 (M5): la sustitución cruda de placeholders rompía la URL
+            // con títulos que contienen «&», «#», «%» o espacios (cortaba
+            // parámetros o alteraba la ruta). Ahora la plantilla se separa en
+            // base + query: la ruta se re-arma con setPath() y la query se
+            // reconstruye ítem a ítem con QUrlQuery — ambos se mantienen en
+            // forma DECODIFICADA y QUrl aplica el percent-encoding al
+            // serializar (mismo enfoque que TelegramBot::sendMessage). Los
+            // placeholders {event}/{slide}/{song}/{item} siguen funcionando,
+            // ahora codificados de forma segura.
+            QUrl url(m_cfg.webhookUrl);
             if (url.isValid()) {
+                const QString ph[4] = { QStringLiteral("{event}"), QStringLiteral("{slide}"),
+                                        QStringLiteral("{song}"),  QStringLiteral("{item}") };
+                const QString val[4] = {
+                    event,
+                    data.value(QStringLiteral("slide")).toString(),
+                    data.value(QStringLiteral("song")).toString(),
+                    data.value(QStringLiteral("item")).toString()
+                };
+                auto expand = [&ph, &val](QString s) {
+                    for (int i = 0; i < 4; ++i) s.replace(ph[i], val[i]);
+                    return s;
+                };
+                // Ruta y query en dominio decodificado; el encoding lo hace QUrl
+                url.setPath(expand(url.path()));
+                QUrlQuery query;
+                // Se parsea la query DIRECTAMENTE desde el QUrl (no desde su
+                // representación en texto) para respetar los «&» y «=» que
+                // lleguen ya codificados dentro de un valor de la plantilla.
+                const auto items = QUrlQuery(url).queryItems(QUrl::FullyDecoded);
+                for (const auto &item : items)
+                    query.addQueryItem(expand(item.first), expand(item.second));
+                url.setQuery(query);
                 QNetworkRequest req(url);
                 req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
                 // ERR-5 (qt-cpp-review v1.5.0): sin timeout un webhook caído

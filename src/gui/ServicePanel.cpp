@@ -224,8 +224,11 @@ void ServicePanel::onExportCsv()
     ts.setCodec("UTF-8");
     ts << QStringLiteral("orden;item\n");
     int pos = 1;
+    // CORRECCION v1.6.0 (B14): el label puede contener ';' o comillas (los
+    // avisos toman texto libre del usuario) — CSV sin escapar desplazaba
+    // columnas. Se entrecomilla cada campo y se duplican las comillas internas.
     for (const ServiceItem &it : m_ctx->db->playlistItems(m_currentServiceId))
-        ts << QStringLiteral("%1;%2\n").arg(pos++).arg(it.label);
+        ts << QStringLiteral("%1;\"%2\"\n").arg(pos++).arg(QString(it.label).replace(QLatin1Char('"'), QStringLiteral("\"\"")));
     f.close();
     QMessageBox::information(this, QStringLiteral("CSV"), QStringLiteral("Orden exportado."));
 }

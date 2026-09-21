@@ -13,11 +13,17 @@ agilidad operativa de Holyrics y la potencia de composición vectorial de PowerP
 
 1. Ir a **[Releases](https://github.com/isaac4722/Fusion-HP/releases)**.
 2. Descargar el paquete para tu arquitectura:
-   - `LuminaPresentationSuite-v1.5.0-win64-portable.zip` (Windows 7 SP1 … Windows 11, 64 bits)
-   - `LuminaPresentationSuite-v1.5.0-win32-portable.zip` (Windows 7 SP1 … Windows 10, 32 bits)
+   - `LuminaPresentationSuite-v1.6.0-win64-portable.zip` (Windows 7 SP1 … Windows 11, 64 bits)
+   - `LuminaPresentationSuite-v1.6.0-win32-portable.zip` (Windows 7 SP1 … Windows 10, 32 bits)
 3. Descomprimir en cualquier carpeta y ejecutar `LuminaPresentationSuite.exe`.
    **Todo va incluido**: Qt, LibVLC con codecs, Biblia RVR1909 completa y la base de datos se
    crea sola en el primer arranque. No requiere permisos de administrador ni conexión a internet.
+
+> 🛡 **v1.6.0 «ESTABILIDAD»**: auditoría profunda del código (3 defectos críticos + 19 medios
+> + 15 bajos corregidos — crash del servidor remoto con clientes conectados, crash al terminar
+> videos, PPTX en blanco en la cola, seguridad del API/WS con token, Google Drive con vaults
+> grandes, Modo Hinario, importador de Biblias, proyección nítida en escalados 125–150 %…).
+> Suite de regresión automatizada de 45 checks en verde.
 
 ## ✨ Características
 

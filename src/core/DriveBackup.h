@@ -23,6 +23,8 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QFile>
+#include <QPointer>
+#include <QLoggingCategory>
 #include <QDesktopServices>
 #include <QTimer>
 #include <QDateTime>
@@ -30,6 +32,15 @@
 #include <functional>
 
 #include "core/Database.h"
+
+// Categoría de registro del módulo Drive (log estructurado, spec §2.6).
+// Función inline con static local: una única instancia por proceso sin
+// necesitar unidad de compilación propia.
+inline const QLoggingCategory &driveLogCat()
+{
+    static const QLoggingCategory cat("lumina.drive");
+    return cat;
+}
 
 class Database;
 
@@ -79,7 +90,7 @@ private:
                  const QByteArray &body, const QString &contentType,
                  const std::function<void(bool, int, const QByteArray &)> &cb);
 
-    void uploadMultipart(const QString &accessToken, const QString &dbFilePath);
+    void uploadResumable(const QString &accessToken, const QString &dbFilePath);
 
     void rotateAfterUpload(const QString &accessToken);
 
@@ -149,10 +160,14 @@ inline void DriveBackup::connectAccount(const QString &clientId, const QString &
     const quint16 port = m_loopback->serverPort();
     const QString redirect = QStringLiteral("http://127.0.0.1:%1").arg(port);
 
-    // Guardar credenciales ANTES del intercambio (el redirect las necesita)
+    // Guardar credenciales ANTES del intercambio (el redirect las necesita).
+    // v1.6.0 (M9): el token de refresco anterior NO se borra aquí — antes se
+    // vaciaba drive_refresh_token al iniciar la autorización y, si el usuario
+    // cancelaba o el intercambio fallaba, la cuenta ya conectada quedaba
+    // rota. El token nuevo solo se guarda cuando el intercambio
+    // código->tokens tiene éxito (véase onLoopbackConnection).
     storeSetting(QStringLiteral("drive_client_id"), cid);
     storeSetting(QStringLiteral("drive_client_secret"), csec);
-    storeSetting(QStringLiteral("drive_refresh_token"), QString());
 
     QUrlQuery q;
     q.addQueryItem(QStringLiteral("client_id"), cid);
@@ -187,9 +202,12 @@ inline void DriveBackup::connectAccount(const QString &clientId, const QString &
 
 inline void DriveBackup::onLoopbackConnection()
 {
+    if (!m_loopback) return;    // v1.6.0 (M10): guard — señal tras cerrar el listener
     QTcpSocket *sock = m_loopback->nextPendingConnection();
     if (!sock) return;
     sock->setParent(this);
+    // v1.6.0 (M10): cada socket aceptado se libera solo al cerrar la conexión
+    connect(sock, &QTcpSocket::disconnected, sock, &QTcpSocket::deleteLater);
     // El navegador envía "GET /?code=...&scope=... HTTP/1.1"
     connect(sock, &QTcpSocket::readyRead, this, [this, sock]() {
         const QByteArray req = sock->readAll();
@@ -347,56 +365,103 @@ inline void DriveBackup::backupNow(const QString &dbFilePath)
 {
     ensureToken([this, dbFilePath](bool ok, const QString &token) {
         if (!ok) { emit uploadResult(false, QStringLiteral("Sin acceso a Google Drive.")); return; }
-        uploadMultipart(token, dbFilePath);
+        uploadResumable(token, dbFilePath);
     });
 }
 
-inline void DriveBackup::uploadMultipart(const QString &accessToken, const QString &dbFilePath)
+// ---------------------------------------------------------------------------
+// v1.6.0 (M7): subida «uploadType=resumable». El multipart de Drive está
+// limitado a 5 MB y los vaults reales lo superan, así que el respaldo de un
+// vault grande fallaba siempre. Flujo en dos pasos:
+//  1) POST de solo metadatos -> respuesta 200 con el header «Location» que
+//     trae la URL de sesión resumable;
+//  2) PUT del archivo COMPLETO a esa URL con QNetworkAccessManager::put
+//     + QFile en ReadOnly: streaming desde disco, sin duplicar el .db en
+//     RAM (Qt coloca el header Content-Length a partir del tamaño del
+//     dispositivo).
+// El QIODevice pasado a put() NO es liberado por Qt (el llamador es el
+// dueño, verificado en la fuente de Qt 5.15): se libera en el finished y,
+// por seguridad ante un cierre del programa, queda también bajo este objeto.
+// ---------------------------------------------------------------------------
+inline void DriveBackup::uploadResumable(const QString &accessToken, const QString &dbFilePath)
 {
-    QFile f(dbFilePath);
-    if (!f.open(QIODevice::ReadOnly)) {          // ERR: comprobar open()
+    QFile *f = new QFile(dbFilePath, this);
+    if (!f->open(QIODevice::ReadOnly)) {          // ERR: comprobar open()
+        f->deleteLater();
         emit uploadResult(false, QStringLiteral("No se pudo leer el archivo de respaldo local."));
         return;
     }
-    const QByteArray dbBytes = f.readAll();
-    f.close();
-
     const QString name = QStringLiteral("lumina_backup_%1.db")
             .arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_HHmm")));
-    const QByteArray boundary = QByteArrayLiteral("lumiNa30N3xO5");
-    const QByteArray meta = QStringLiteral(
-        "{\"name\":\"%1\",\"parents\":[\"appDataFolder\"]}").arg(name).toUtf8();
-    const QByteArray head =
-        QByteArrayLiteral("--") + boundary + "\r\n"
-        "Content-Type: application/json; charset=UTF-8\r\n\r\n" + meta + "\r\n"
-        "--" + boundary + "\r\n"
-        "Content-Type: application/octet-stream\r\n\r\n";
-    const QByteArray tail = "\r\n--" + boundary + QByteArrayLiteral("--") + "\r\n";
-    const QByteArray payload = head + dbBytes + tail;
 
+    // (1) Solicitud de sesión resumable: solo el JSON de metadatos
     QUrl url(QStringLiteral(
-        "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id"));
+        "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable"));
     QNetworkRequest req(url);
     req.setRawHeader(QByteArrayLiteral("Authorization"),
                      QStringLiteral("Bearer %1").arg(accessToken).toLatin1());
+    req.setRawHeader(QByteArrayLiteral("X-Upload-Content-Type"),
+                     QByteArrayLiteral("application/octet-stream"));
+    req.setRawHeader(QByteArrayLiteral("X-Upload-Content-Length"),
+                     QByteArray::number(f->size()));
     req.setHeader(QNetworkRequest::ContentTypeHeader,
-                  QStringLiteral("multipart/related; boundary=%1").arg(QString::fromLatin1(boundary)));
-    req.setTransferTimeout(60000);              // .db puede ser grande
-    QNetworkReply *rep = m_nam.post(req, payload);
+                  QStringLiteral("application/json; charset=UTF-8"));
+    req.setTransferTimeout(60000);              // timeout largo conservado
+    QJsonObject meta;
+    meta[QStringLiteral("name")] = name;
+    meta[QStringLiteral("parents")] = QJsonArray{ QStringLiteral("appDataFolder") };
+    QNetworkReply *rep = m_nam.post(req, QJsonDocument(meta).toJson(QJsonDocument::Compact));
     connect(rep, &QNetworkReply::sslErrors, this, [rep](const QList<QSslError> &errs) {
         for (const QSslError &e : errs)
             qWarning() << "[Drive] TLS:" << e.errorString();
     });
-    connect(rep, &QNetworkReply::finished, this, [this, rep, accessToken, name]() {
+    connect(rep, &QNetworkReply::finished, this, [this, rep, f, accessToken, name]() {
+        const QByteArray sessionUrl = rep->rawHeader(QByteArrayLiteral("Location"));
+        const bool ok = rep->error() == QNetworkReply::NoError && !sessionUrl.isEmpty();
+        if (!ok) {
+            // Detalle técnico (status HTTP incluido) al log interno; al usuario
+            // solo un mensaje amistoso (spec §2.6).
+            qCWarning(driveLogCat(), "Sesión resumable falló: HTTP %d, error %d (%s)",
+                      rep->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt(),
+                      int(rep->error()), qUtf8Printable(rep->errorString()));
+        }
         rep->deleteLater();
-        if (rep->error() != QNetworkReply::NoError) {
-            emit uploadResult(false, QStringLiteral("No se pudo subir el respaldo a Drive (%1).")
-                              .arg(QString::number(int(rep->error()))));
+        if (!ok) {
+            f->deleteLater();
+            emit uploadResult(false, QStringLiteral("No se pudo iniciar la subida del respaldo a Drive. Compruebe su conexión a Internet e inténtelo de nuevo."));
             return;
         }
-        qInfo() << "[Drive] Respaldo subido:" << name;
-        rotateAfterUpload(accessToken);
-        emit uploadResult(true, QStringLiteral("Respaldo subido a Google Drive: %1").arg(name));
+        // (2) PUT del archivo completo a la URL de sesión (streaming)
+        QNetworkRequest putReq(QUrl(QString::fromUtf8(sessionUrl)));
+        putReq.setRawHeader(QByteArrayLiteral("Authorization"),
+                            QStringLiteral("Bearer %1").arg(accessToken).toLatin1());
+        putReq.setTransferTimeout(60000);       // timeout largo conservado
+        QNetworkReply *put = m_nam.put(putReq, f);
+        connect(put, &QNetworkReply::sslErrors, this, [put](const QList<QSslError> &errs) {
+            for (const QSslError &e : errs)
+                qWarning() << "[Drive] TLS:" << e.errorString();
+        });
+        connect(put, &QNetworkReply::finished, this, [this, put, f, accessToken, name]() {
+            const bool ok = put->error() == QNetworkReply::NoError;
+            if (!ok) {
+                qCWarning(driveLogCat(), "PUT resumable falló: HTTP %d, error %d (%s)",
+                          put->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt(),
+                          int(put->error()), qUtf8Printable(put->errorString()));
+            }
+            put->deleteLater();
+            f->deleteLater();
+            if (!ok) {
+                emit uploadResult(false, QStringLiteral("No se pudo subir el respaldo a Drive (la conexión se interrumpió a mitad de la subida). Compruebe su Internet e inténtelo de nuevo."));
+                return;
+            }
+            qInfo() << "[Drive] Respaldo subido:" << name;
+            // v1.6.0 (M8): la rotación es best-effort — los DELETE de copias
+            // antiguas se registran en el log con su error, pero un fallo en
+            // ellos NO invalida la subida ya completada, así que el resultado
+            // se emite inmediatamente tras INICIAR la rotación.
+            rotateAfterUpload(accessToken);
+            emit uploadResult(true, QStringLiteral("Respaldo subido a Google Drive: %1").arg(name));
+        });
     });
 }
 
@@ -414,9 +479,17 @@ inline void DriveBackup::rotateAfterUpload(const QString &accessToken)
                      QStringLiteral("Bearer %1").arg(accessToken).toLatin1());
     req.setTransferTimeout(kTimeoutMs);
     QNetworkReply *rep = m_nam.get(req);
-    connect(rep, &QNetworkReply::finished, this, [this, rep]() {
+    connect(rep, &QNetworkReply::finished, this, [this, rep, accessToken]() {
         rep->deleteLater();
-        if (rep->error() != QNetworkReply::NoError) return;
+        if (rep->error() != QNetworkReply::NoError) {
+            // v1.6.0 (M8): la rotación es best-effort — la copia nueva ya está
+            // subida y las viejas se rotarán en la siguiente; se registra el
+            // fallo con su causa (status HTTP) en el log interno.
+            qCWarning(driveLogCat(), "Rotación: no se pudo listar las copias — HTTP %d, error %d",
+                      rep->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt(),
+                      int(rep->error()));
+            return;
+        }
         const QJsonArray files = QJsonDocument::fromJson(rep->readAll())
                 .object().value(QStringLiteral("files")).toArray();
         for (int i = kKeepBackups; i < files.size(); ++i) {
@@ -424,13 +497,26 @@ inline void DriveBackup::rotateAfterUpload(const QString &accessToken)
             if (id.isEmpty()) continue;
             QNetworkRequest delReq(QUrl(QStringLiteral(
                 "https://www.googleapis.com/drive/v3/files/%1").arg(id)));
+            // v1.6.0 (M8): usar el token recibido como parámetro — antes se
+            // leía m_accessToken, que en este punto puede estar vacío o
+            // caducado aunque la subida (con su propio token) haya tenido éxito.
             delReq.setRawHeader(QByteArrayLiteral("Authorization"),
                                 QStringLiteral("Bearer %1")
-                                    .arg(m_accessToken).toLatin1());
+                                    .arg(accessToken).toLatin1());
             delReq.setTransferTimeout(kTimeoutMs);
             QNetworkReply *del = m_nam.deleteResource(delReq);
-            connect(del, &QNetworkReply::finished, del, &QObject::deleteLater);
-            qInfo() << "[Drive] Rotación: eliminada copia antigua" << id;
+            // v1.6.0 (M8): registrar el resultado real de cada DELETE (antes el
+            // reply se soltaba sin revisar y el éxito se logueaba antes de saberlo).
+            connect(del, &QNetworkReply::finished, this, [del, id]() {
+                if (del->error() != QNetworkReply::NoError)
+                    qCWarning(driveLogCat(), "Rotación: DELETE %s falló — HTTP %d, error %d",
+                              qUtf8Printable(id),
+                              del->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt(),
+                              int(del->error()));
+                else
+                    qInfo() << "[Drive] Rotación: eliminada copia antigua" << id;
+                del->deleteLater();
+            });
         }
     });
 }

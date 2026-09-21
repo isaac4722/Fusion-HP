@@ -161,7 +161,7 @@ int main(int argc, char *argv[])
     QApplication app(argc, argv);
     QApplication::setApplicationName(QStringLiteral("LuminaPresentationSuite"));
     QApplication::setOrganizationName(QStringLiteral("LuminaSoftware"));
-    QApplication::setApplicationVersion(QStringLiteral("1.5.0"));
+    QApplication::setApplicationVersion(QStringLiteral("1.6.0"));
     QApplication::setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
 
     // v1.3.0 GUI "Aurora": hoja de estilos global completa (sidebar, tablas,
@@ -235,12 +235,17 @@ int main(int argc, char *argv[])
         qWarning() << "[Media]" << vlcErr;
     }
 
-    // ---- Servidor web / triggers ----
+    // ---- Servidor web ----
     WebServer web;
-    Triggers triggers;
 
     // ---- v1.5.0: módulos JS, Planning Center y Google Drive ----
+    // v1.6.0 (B17): JsEngine se declara ANTES que Triggers — la pila se
+    // destruye en orden inverso, así Triggers muere primero y su puntero no
+    // propietario m_js nunca sobrevive al JsEngine al que apunta.
     JsEngine js;                      // spec §3.3: JSLib (sockets/automatización)
+
+    // ---- Triggers (webhook/OBS/MIDI/Telegram; usa JsEngine) ----
+    Triggers triggers;
     PlanningCenter pco;               // spec §3.3: importar planes del culto
     DriveBackup drive;                // spec §3.4: respaldo/sincronización en la nube
     drive.setDatabase(&db);

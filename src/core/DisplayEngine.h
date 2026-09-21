@@ -68,14 +68,18 @@ public:
         stopVideoInternal();
         m_mode = Content;
         m_theme = theme;
+        // M22: DPR real de la ventana de salida. El renderer crea el bitmap a
+        // resolucion fisica; aqui y en los demas puntos de entrada el widget
+        // ya esta mostrado (MainWindow llama showOutputOn antes de setSlide).
+        const qreal dpr = devicePixelRatioF();
         Renderer::Options opt;
         opt.showChords = false;             // audiencia sin cifras
         opt.showTitle = true;
-        m_current = Renderer::render(theme, slide, targetSize(), opt);
+        m_current = Renderer::render(theme, slide, targetSize(), opt, dpr);
         if (slide.kind == Slide::Image && !slide.mediaPath.isEmpty())
             m_current = renderImageSlide(slide, theme);
         if (slide.kind == Slide::Blank)
-            m_current = Renderer::renderBackground(theme, targetSize());
+            m_current = Renderer::renderBackground(theme, targetSize(), dpr);
         m_prev = m_shown;
         startFade();
     }
@@ -95,14 +99,14 @@ public:
         stopVideoInternal();
         m_mode = Content;
         m_theme = theme;
-        m_current = Renderer::renderBackground(theme, targetSize());
+        m_current = Renderer::renderBackground(theme, targetSize(), devicePixelRatioF());
         m_prev = m_shown;
         startFade();
     }
 
     void showBlack()  { stopVideoInternal(); m_mode = Black;  m_prev = m_shown; m_current = QPixmap(); startFade(); }
-    void showClear()  { stopVideoInternal(); m_mode = Clear;  m_prev = m_shown; m_current = Renderer::renderBackground(m_theme, targetSize()); startFade(); }
-    void showLogo(const QPixmap &logo) { stopVideoInternal(); m_mode = Logo; m_logo = logo; m_prev = m_shown; m_current = Renderer::renderLogo(m_theme, logo, targetSize()); startFade(); }
+    void showClear()  { stopVideoInternal(); m_mode = Clear;  m_prev = m_shown; m_current = Renderer::renderBackground(m_theme, targetSize(), devicePixelRatioF()); startFade(); }
+    void showLogo(const QPixmap &logo) { stopVideoInternal(); m_mode = Logo; m_logo = logo; m_prev = m_shown; m_current = Renderer::renderLogo(m_theme, logo, targetSize(), devicePixelRatioF()); startFade(); }
 
     // ---- Video ----
     QWidget *videoHost() const { return m_videoHost; }
@@ -164,17 +168,24 @@ private:
 
     QPixmap renderImageSlide(const Slide &slide, const Theme &theme)
     {
+        // M22: bitmap a resolucion fisica (sz*dpr) con dpr asignado; el painter
+        // trabaja en coordenadas LOGICAS (los rectangulos de layout usan sz,
+        // no pm.width() que ahora son device pixels).
+        const QSize sz = targetSize();
+        const qreal dpr = devicePixelRatioF();
         QImage img(slide.mediaPath);
-        QPixmap pm(targetSize());
+        QPixmap pm(Renderer::physSize(sz, dpr));
+        pm.setDevicePixelRatio(dpr);
         pm.fill(Qt::black);
         QPainter p(&pm);
         p.setRenderHint(QPainter::SmoothPixmapTransform, true);
         if (!img.isNull())
-            Renderer::drawImageFit(p, img, pm.rect(), Qt::KeepAspectRatioByExpanding);
+            Renderer::drawImageFit(p, img, QRect(0, 0, sz.width(), sz.height()),
+                                   Qt::KeepAspectRatioByExpanding, dpr);
         if (!slide.title.isEmpty()) {
             Renderer::drawStyledText(p, theme.title, slide.title,
-                                     QRectF(pm.width() * 0.05, pm.height() * 0.86,
-                                            pm.width() * 0.9, pm.height() * 0.1), 1.0);
+                                     QRectF(sz.width() * 0.05, sz.height() * 0.86,
+                                            sz.width() * 0.9, sz.height() * 0.1), 1.0);
         }
         p.end();
         return pm;
@@ -182,16 +193,21 @@ private:
 
     QPixmap composeImage(const QPixmap &pmIn, const Theme &theme, const QString &label)
     {
-        QPixmap pm(targetSize());
+        // M22: mismo tratamiento de dpr que renderImageSlide()
+        const QSize sz = targetSize();
+        const qreal dpr = devicePixelRatioF();
+        QPixmap pm(Renderer::physSize(sz, dpr));
+        pm.setDevicePixelRatio(dpr);
         pm.fill(Qt::black);
         QPainter p(&pm);
         p.setRenderHint(QPainter::SmoothPixmapTransform, true);
         if (!pmIn.isNull())
-            Renderer::drawImageFit(p, pmIn.toImage(), pm.rect(), Qt::KeepAspectRatio);
+            Renderer::drawImageFit(p, pmIn.toImage(), QRect(0, 0, sz.width(), sz.height()),
+                                   Qt::KeepAspectRatio, dpr);
         if (!label.isEmpty()) {
             Renderer::drawStyledText(p, theme.title, label,
-                                     QRectF(pm.width() * 0.05, pm.height() * 0.86,
-                                            pm.width() * 0.9, pm.height() * 0.1), 1.0);
+                                     QRectF(sz.width() * 0.05, sz.height() * 0.86,
+                                            sz.width() * 0.9, sz.height() * 0.1), 1.0);
         }
         p.end();
         return pm;
