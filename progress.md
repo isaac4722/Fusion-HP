@@ -3,6 +3,17 @@
 > Registro acumulativo de trabajo (append-only). Formato definido en `AGENT.md`.
 
 ---
+## [CIERRE-2026-09-22-J] v1.4.0 «PRISMA» publicada y verificada de extremo a extremo · 2026-09-22 UTC
+- Agente: Super Z (GLM) — cierre del ciclo
+- Hecho:
+  - Runs del tag v1.4.0 (35641219014) y de main (35641216067): **success** — compilación Windows x86+x64 con 0 errores, GATES de release en verde.
+  - **Release v1.4.0 PUBLICADA** (id 393214129, draft=false, 18:55:23Z) con sus 3 assets: `LuminaPresentationSuite-v1.4.0-x64-portable.zip` (86.8 MB), `-x86-portable.zip` (82.2 MB) y `SHA256SUMS.txt`. Páginas públicas HTTP 200.
+  - **Verificación post-publicación (descarga real)**: ambos zips descargados; **SHA256 idénticos** a los publicados (eaa44ab3… x64 · bd7243b8… x86); 396 archivos por paquete; **gate `verify_portable.py` OK en ambos** (390 binarios PE auditados por arquitectura, todas las dependencias satisfechas dentro del paquete); **FileVersion 1.4.0.0** confirmado en ambos exe.
+- Gates: CI=success (runs main + tag) · release=publicada con 3 assets · SHA256=exactos · verify_portable=OK x64 y x86 · versión exe=1.4.0.0
+- Bloqueos: ninguno
+- Siguiente: ninguna — v1.4.0 «PRISMA» cerrada: automatización semántica + tags extendidos + MIDI In + accesibilidad WCAG, release verificada
+
+---
 ## [FEAT-2026-09-22-I] v1.3.0 → v1.4.0 «PRISMA» · Automatización semántica + accesibilidad + MIDI In · 2026-09-22 UTC
 - Agente: Super Z (GLM) — continuación del desarrollo con skills instaladas (cpp-pro: patrones C++ de producción · hallmark: disciplina de diseño de GUI)
 - Hecho:
