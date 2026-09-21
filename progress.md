@@ -3,6 +3,18 @@
 > Registro acumulativo de trabajo (append-only). Formato definido en `AGENT.md`.
 
 ---
+## [CIERRE-2026-09-22-L] v1.5.0 «NEXO» publicada y verificada de extremo a extremo · 2026-09-22 UTC
+- Agente: Super Z (GLM) — cierre del ciclo
+- Hecho:
+  - Runs del tag v1.5.0 (35648836950) y de main (35648834126): **success** — compilación Windows x86+x64 con 0 errores y los 2 GATES de release en verde (purga de drafts + verificación post-publicación).
+  - **Release v1.5.0 PUBLICADA** (id 393260232, draft=false, 20:07:42Z) con sus 3 assets: `LuminaPresentationSuite-v1.5.0-x64-portable.zip` (89.0 MB), `-x86-portable.zip` (84.5 MB) y `SHA256SUMS.txt`. Página pública HTTP 200.
+  - **Verificación post-publicación (descarga real)**: ambos zips descargados; **SHA256 idénticos** a los publicados (19184030… x64 · f01ee4ac… x86); **gate `verify_portable.py` OK en ambos** (392 binarios PE auditados por arquitectura, todas las dependencias satisfechas dentro del paquete); **FileVersion 1.5.0.0** confirmado en ambos exe.
+  - **Componentes v1.5.0 presentes en los paquetes**: `Qt5Qml.dll` (motor JS/JSLib), `imageformats\qtiff.dll` (soporte TIF) y `director.html` embebida vía qrc en el exe — verificados en el contenido real.
+- Gates: CI=success (runs main + tag) · release=publicada con 3 assets · SHA256=exactos · verify_portable=OK x64 y x86 · versión exe=1.5.0.0 · componentes NEXO=presentes
+- Bloqueos: ninguno
+- Siguiente: ninguna — v1.5.0 «NEXO» cerrada: especificación-programa-completo.md cumplida en lo funcional (componentes 1-4 + formatos §4 + calidad §2.6) sobre el stack C++/Qt portable (decisión documentada), skills Qt instaladas y aplicadas
+
+---
 ## [FEAT-2026-09-22-K] v1.4.0 → v1.5.0 «NEXO» · Integraciones de la especificación completa (Pantalla Director + PCO + Drive + JSLib + PPTX 4 niveles) · 2026-09-22 UTC
 - Agente: Super Z (GLM) — desarrollo con las skills Qt solicitadas (qt-ui-design · qt-cpp-review · qt-cpp-docs · qt-cmake-project)
 - Hecho:
