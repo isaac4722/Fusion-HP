@@ -11,6 +11,8 @@
 #include <QLabel>
 #include <QColorDialog>
 #include <QJsonDocument>
+#include <QDir>
+#include <QDateTime>
 
 CustomPanel::CustomPanel(AppContext *ctx, QWidget *parent)
     : QWidget(parent), m_ctx(ctx)
@@ -91,7 +93,12 @@ void CustomPanel::buildUi()
     auto *bProj = new QPushButton(QStringLiteral("▶ Proyectar esta slide"), this);
     bProj->setStyleSheet(QStringLiteral("QPushButton{background:#1E6FD9;color:white;font-weight:bold;padding:8px 16px;}"));
     connect(bProj, &QPushButton::clicked, this, &CustomPanel::onProject);
+    // v1.2.0: "＋ A culto" para las slides del lienzo (antes este tipo de item
+    // no podía añadirse ni ejecutarse desde la cola del culto).
+    auto *bQueue = new QPushButton(QStringLiteral("＋ A culto"), this);
+    connect(bQueue, &QPushButton::clicked, this, &CustomPanel::onAddToService);
     right->addWidget(bProj);
+    right->addWidget(bQueue);
     lay->addLayout(right, 3);
 }
 
@@ -177,5 +184,55 @@ Slide CustomPanel::currentSlide()
 
 void CustomPanel::onProject()
 {
-    emit requestProjectCustom(currentSlide());
+    // CORRECCION v1.2.0 (DEFECTO CRÍTICO): antes se emitía un Slide::Custom
+    // cuyo JSON viajaba en mediaPath, pero NADIE renderiza ese tipo de slide
+    // (ni el Renderer ni OutputWindow) -> "Proyectar esta slide" mostraba un
+    // fondo vacío: la feature completa estaba muerta. Ahora el lienzo se
+    // rasteriza a PNG (renderTo existe y jamás se llamaba) y se proyecta como
+    // Slide::Image, ruta que el Renderer y la salida ya dibujan.
+    if (m_canvas->scenePtr()->items().isEmpty()) {
+        QMessageBox::information(this, QStringLiteral("Lienzo libre"),
+                                 QStringLiteral("El lienzo está vacío: añade texto, formas o imágenes primero."));
+        return;
+    }
+    const QPixmap pm = m_canvas->renderTo(QSize(1920, 1080));
+    const QString png = QDir::tempPath() + QStringLiteral("/lumina_custom_%1.png")
+                            .arg(QDateTime::currentMSecsSinceEpoch());
+    if (!pm.save(png, "PNG")) {
+        QMessageBox::warning(this, QStringLiteral("Lienzo libre"),
+                             QStringLiteral("No se pudo rasterizar el lienzo."));
+        return;
+    }
+    Slide s = currentSlide();          // conserva título y JSON de referencia
+    s.kind = Slide::Image;
+    s.mediaPath = png;
+    emit requestProjectCustom(s);
+}
+
+void CustomPanel::onAddToService()
+{
+    // v1.2.0: persiste la slide antes de añadirla (si es nueva) y la registra
+    // como item Custom en el culto activo.
+    if (m_currentId <= 0)
+        onSaveSlide();
+    if (m_currentId > 0)
+        emit requestAddCustomToService(m_currentId);
+}
+
+// v1.2.0: rasterizado de una slide guardada (para la cola del culto).
+Slide CustomPanel::rasterizeCustomJson(const QJsonObject &itemsJson, const QString &title)
+{
+    Slide s;
+    s.kind = Slide::Custom;
+    s.title = title;
+    VectorCanvas canvas;
+    canvas.loadItems(itemsJson.value(QStringLiteral("items")).toArray());
+    const QPixmap pm = canvas.renderTo(QSize(1920, 1080));
+    const QString png = QDir::tempPath() + QStringLiteral("/lumina_custom_%1.png")
+                            .arg(QDateTime::currentMSecsSinceEpoch());
+    if (!pm.isNull() && pm.save(png, "PNG")) {
+        s.kind = Slide::Image;
+        s.mediaPath = png;
+    }
+    return s;
 }

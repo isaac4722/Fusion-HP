@@ -105,6 +105,23 @@ void SettingsPanel::buildUi()
     m_titleSlide->setChecked(m_ctx->db->setting(QStringLiteral("song_title_slide"), QStringLiteral("1")) == QStringLiteral("1"));
     m_apiToken->setText(m_ctx->db->setting(QStringLiteral("api_token")));
 
+    // CORRECCION v1.2.0 (DEFECTO CRÍTICO — pérdida de configuración): el panel
+    // NUNCA cargaba los valores persistidos de ws_port, http_port, fade_ms,
+    // default_theme, server_autostart ni stage_chords; los combos de pantalla
+    // además se reiniciaban a "Pantalla 2"/"Pantalla 1". Escenario real: el
+    // usuario configuraba WS 9000 y fade 700 → reiniciaba → abría Ajustes (veía
+    // 8765/250) → pulsaba "Aplicar" para cambiar solo el token → TODOS los
+    // demás ajustes quedaban silenciosamente machacados con los defaults.
+    // Ahora el panel refleja el estado persistido real antes de cualquier Apply.
+    m_wsPort->setValue(m_ctx->db->setting(QStringLiteral("ws_port"), QStringLiteral("8765")).toInt());
+    m_httpPort->setValue(m_ctx->db->setting(QStringLiteral("http_port"), QStringLiteral("8088")).toInt());
+    m_fade->setValue(m_ctx->db->setting(QStringLiteral("fade_ms"), QStringLiteral("250")).toInt());
+    m_autoStart->setChecked(m_ctx->db->setting(QStringLiteral("server_autostart"), QStringLiteral("1")) == QStringLiteral("1"));
+    m_stageWithChords->setChecked(m_ctx->db->setting(QStringLiteral("stage_chords"), QStringLiteral("1")) == QStringLiteral("1"));
+    const int savedTheme = m_ctx->db->setting(QStringLiteral("default_theme"), QStringLiteral("1")).toInt();
+    if (const int tIdx = m_defaultTheme->findData(savedTheme); tIdx >= 0)
+        m_defaultTheme->setCurrentIndex(tIdx);
+
     auto *row = new QHBoxLayout();
     auto *bApply = new QPushButton(QStringLiteral("💾 Aplicar configuración"), this);
     bApply->setStyleSheet(QStringLiteral("QPushButton{background:#1E6FD9;color:white;font-weight:bold;padding:8px 16px;}"));
@@ -135,10 +152,18 @@ void SettingsPanel::refreshScreens()
         m_screenOutput->addItem(label, i);
         m_screenStage->addItem(label, i);
     }
-    if (screens.size() > 1) {
+    // CORRECCION v1.2.0: el combo ignoraba la pantalla GUARDADA y siempre
+    // forzaba "Pantalla 2"/"Pantalla 1" (perdía la selección del usuario al
+    // entrar al panel y Aplicar la machacaba). Ahora se restaura la persistida.
+    const int savedOut = m_ctx->db->setting(QStringLiteral("screen_output"), QStringLiteral("-1")).toInt();
+    const int savedStg = m_ctx->db->setting(QStringLiteral("screen_stage"), QStringLiteral("0")).toInt();
+    if (m_screenOutput->findData(savedOut) >= 0) {
+        m_screenOutput->setCurrentIndex(m_screenOutput->findData(savedOut));
+    } else if (screens.size() > 1) {
         m_screenOutput->setCurrentIndex(1);     // segunda pantalla para audiencia
-        m_screenStage->setCurrentIndex(0);
     }
+    if (m_screenStage->findData(savedStg) >= 0)
+        m_screenStage->setCurrentIndex(m_screenStage->findData(savedStg));
     // Info de sistema
     const bool vlc = m_ctx->media && m_ctx->media->available();
     m_sysInfo->setText(QStringLiteral(

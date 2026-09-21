@@ -38,6 +38,7 @@
 #include <QLineEdit>
 #include <QPlainTextEdit>
 #include <QVBoxLayout>
+#include <QJsonDocument>
 #include <QPdfWriter>
 #include <QPageSize>
 #include <functional>
@@ -214,7 +215,11 @@ void MainWindow::buildUi()
     lv->addWidget(new QLabel(QStringLiteral("<b>Slides del elemento actual</b>"), liveWidget));
     m_slideList = new QListWidget(liveWidget);
     connect(m_slideList, &QListWidget::currentRowChanged, this, [this](int row) {
-        if (row >= 0 && row < m_liveSlides.size())
+        // CORRECCION v1.2.0: showSlideIndex() sincroniza la lista con
+        // setCurrentRow(), lo que re-disparaba currentRowChanged y ejecutaba el
+        // flujo completo DOS veces por navegacion (triggers OBS/MIDI/webhook
+        // duplicados + doble render). El guard row != m_liveIndex lo corta.
+        if (row >= 0 && row < m_liveSlides.size() && row != m_liveIndex)
             showSlideIndex(row);
     });
     lv->addWidget(m_slideList, 2);
@@ -247,14 +252,17 @@ void MainWindow::buildUi()
     });
     connect(m_songPanel, &SongPanel::requestAddToService, this, [this](int songId) {
         const Song s = m_ctx.db->songById(songId);
-        const auto lists = m_ctx.db->playlists();
-        if (lists.isEmpty()) {
+        // CORRECCION v1.2.0: "A culto" añadia SIEMPRE al culto mas reciente
+        // (mayor id) en vez del culto que el usuario tiene seleccionado en el
+        // panel Cultos. Ahora se usa el culto activo del ServicePanel.
+        const int plId = activePlaylistId();
+        if (plId <= 0) {
             const int id = m_ctx.db->createPlaylist(QStringLiteral("Culto"));
             ServiceItem it; it.kind = ServiceItem::Song; it.refId = songId; it.label = s.title;
             m_ctx.db->addPlaylistItem(id, it);
         } else {
             ServiceItem it; it.kind = ServiceItem::Song; it.refId = songId; it.label = s.title;
-            m_ctx.db->addPlaylistItem(lists.first().first, it);
+            m_ctx.db->addPlaylistItem(plId, it);
         }
         statusBar()->showMessage(QStringLiteral("Canción añadida al culto activo."), 3000);
     });
@@ -302,8 +310,10 @@ void MainWindow::buildUi()
     });
     connect(m_biblePanel, &BiblePanel::requestAddVerseToService, this,
             [this](const QStringList &versions, int book, int ch, int from, int to) {
-        const auto lists = m_ctx.db->playlists();
-        if (lists.isEmpty()) return;
+        // CORRECCION v1.2.0: mismo defecto que requestAddToService — añadía al
+        // culto más reciente en lugar del culto activo seleccionado.
+        const int plId = activePlaylistId();
+        if (plId <= 0) return;
         ServiceItem it;
         it.kind = ServiceItem::Bible;
         it.label = QStringLiteral("Biblia: %1 %2:%3")
@@ -312,7 +322,7 @@ void MainWindow::buildUi()
                        .arg(ch).arg(from > 0 ? from : 1);
         it.payload = QStringLiteral("%1|%2|%3|%4|%5").arg(versions.join(QStringLiteral("+")))
                          .arg(book).arg(ch).arg(from).arg(to);
-        m_ctx.db->addPlaylistItem(lists.first().first, it);
+        m_ctx.db->addPlaylistItem(plId, it);
         statusBar()->showMessage(QStringLiteral("Versículo añadido al culto."), 3000);
     });
 
@@ -340,12 +350,13 @@ void MainWindow::buildUi()
     // FIX v1.1.0: los items PPTX añadidos al culto guardaban el ARCHIVO en
     // payload (antes solo el nombre) y nunca podian ejecutarse desde la cola.
     connect(m_pptxPanel, &PptxPanel::requestAddPptxToService, this, [this](const QString &filePath) {
-        const auto lists = m_ctx.db->playlists();
-        if (!lists.isEmpty()) {
+        // CORRECCION v1.2.0: idem — usa el culto activo del ServicePanel.
+        const int plId = activePlaylistId();
+        if (plId > 0) {
             ServiceItem it; it.kind = ServiceItem::Pptx;
             it.label = QStringLiteral("📽 %1").arg(QFileInfo(filePath).completeBaseName());
             it.payload = filePath;
-            m_ctx.db->addPlaylistItem(lists.first().first, it);
+            m_ctx.db->addPlaylistItem(plId, it);
             statusBar()->showMessage(QStringLiteral("PowerPoint añadido al culto activo."), 3000);
         }
     });
@@ -383,6 +394,26 @@ void MainWindow::buildUi()
     connect(m_customPanel, &CustomPanel::requestProjectCustom, this, [this](const Slide &s) {
         QVector<Slide> v; v.append(s);
         goLive(v, s.title.isEmpty() ? QStringLiteral("Lienzo libre") : s.title, ServiceItem::Custom, 0);
+    });
+    // v1.2.0: slides del lienzo añadibles a la cola del culto (en el culto activo).
+    connect(m_customPanel, &CustomPanel::requestAddCustomToService, this, [this](int customId) {
+        const int plId = activePlaylistId();
+        if (plId <= 0) {
+            statusBar()->showMessage(QStringLiteral("Crea o selecciona un culto en el panel Cultos primero."), 5000);
+            return;
+        }
+        bool ok = false;
+        const QJsonObject json = m_ctx.db->customSlideJson(customId, &ok);
+        if (!ok) return;
+        ServiceItem it;
+        it.kind = ServiceItem::Custom;
+        it.refId = customId;
+        it.label = QStringLiteral("🎨 Slide");
+        for (const auto &cs : m_ctx.db->customSlides())
+            if (cs.first == customId) it.label = QStringLiteral("🎨 %1").arg(cs.second);
+        it.payload = QString::fromUtf8(QJsonDocument(json).toJson(QJsonDocument::Compact));
+        m_ctx.db->addPlaylistItem(plId, it);
+        statusBar()->showMessage(QStringLiteral("Slide de lienzo añadida al culto activo."), 3000);
     });
 
     connect(m_servicePanel, &ServicePanel::startService, this, [this](int playlistId) {
@@ -426,11 +457,32 @@ void MainWindow::buildUi()
         if (m_comboStageScreen->findData(stgScr) >= 0)
             m_comboStageScreen->setCurrentIndex(m_comboStageScreen->findData(stgScr));
         reassignOutputs();
-        quint16 ws = quint16(m_ctx.db->setting(QStringLiteral("ws_port"), QStringLiteral("8765")).toInt());
-        quint16 http = quint16(m_ctx.db->setting(QStringLiteral("http_port"), QStringLiteral("8088")).toInt());
-        m_ctx.web->start(ws, http);
+        // CORRECCION v1.2.0: el "Tema activo" elegido en Ajustes ahora se
+        // aplica EN VIVO (antes solo surtía efecto tras reiniciar la app).
+        const int themeId = m_ctx.db->setting(QStringLiteral("default_theme")).toInt();
+        if (themeId > 0) applyTheme(themeId);
+        // CORRECCION v1.2.0: el arranque del servidor ignoraba el ajuste
+        // "Iniciar servidor automáticamente" (arrancaba siempre) y los errores
+        // de puerto ocupado se tragaban en silencio.
+        if (m_ctx.db->setting(QStringLiteral("server_autostart"), QStringLiteral("1")) == QStringLiteral("1")) {
+            quint16 ws = quint16(m_ctx.db->setting(QStringLiteral("ws_port"), QStringLiteral("8765")).toInt());
+            quint16 http = quint16(m_ctx.db->setting(QStringLiteral("http_port"), QStringLiteral("8088")).toInt());
+            QString err;
+            if (!m_ctx.web->start(ws, http, &err))
+                statusBar()->showMessage(QStringLiteral("Servidor remoto: %1").arg(err), 8000);
+        } else {
+            m_ctx.web->stop();
+        }
         m_ctx.web->setApiToken(m_ctx.db->setting(QStringLiteral("api_token")));   // v1.1.0
         statusBar()->showMessage(QStringLiteral("Configuración aplicada y servidor reiniciado."), 4000);
+    });
+
+    // CORRECCION v1.2.0: doble clic en la salida de audiencia = abrir/cerrar
+    // la proyección. Antes la señal outputClicked existía pero nunca estaba
+    // conectada: con la salida fullscreen en pantalla única el operador quedaba
+    // atrapado sin forma de recuperar el control (salvo matar el proceso).
+    connect(m_output, &OutputWindow::outputClicked, this, [this]() {
+        toggleOutput();
     });
 
     // Servidor remoto
@@ -479,6 +531,12 @@ QString MainWindow::s_titleOf(int book, int ch)
     return QStringLiteral("Biblia");
 }
 
+// v1.2.0: culto activo según el combo del ServicePanel (fallback: ninguno).
+int MainWindow::activePlaylistId() const
+{
+    return m_servicePanel ? m_servicePanel->activePlaylistId() : 0;
+}
+
 void MainWindow::buildShortcuts()
 {
     auto add = [this](const QKeySequence &k, std::function<void()> fn) {
@@ -488,7 +546,14 @@ void MainWindow::buildShortcuts()
     add(QKeySequence(Qt::Key_F5), [this]() {
         if (!m_liveSlides.isEmpty()) showSlideIndex(m_liveIndex < 0 ? 0 : m_liveIndex);
     });
-    add(QKeySequence(Qt::Key_Space), [this]() { nextSlide(); });
+    // CORRECCION v1.2.0: Space con WindowShortcut interceptaba la barra
+    // espaciadora incluso cuando el foco estaba en un botón/casilla (QShortcut
+    // gana al keyPress del widget) — activar/desactivar casillas con el teclado
+    // era imposible. Ahora se cede el paso si el foco está en un control.
+    add(QKeySequence(Qt::Key_Space), [this]() {
+        if (qobject_cast<QAbstractButton *>(QApplication::focusWidget())) return;
+        nextSlide();
+    });
     add(QKeySequence(Qt::Key_Right), [this]() { nextSlide(); });
     add(QKeySequence(Qt::Key_Left), [this]() { prevSlide(); });
     add(QKeySequence(Qt::Key_PageDown), [this]() { nextSlide(); });
@@ -529,8 +594,25 @@ void MainWindow::goLiveSong(const Song &s, int refKind, int refId)
     goLive(Lyrics::buildSlides(s, opt), s.title, refKind, refId);
 }
 
-void MainWindow::goLive(const QVector<Slide> &slides, const QString &label, int refKind, int refId)
+void MainWindow::goLive(const QVector<Slide> &slides, const QString &label, int refKind, int refId,
+                        bool isOverlay)
 {
+    // CORRECCION v1.2.0 (DEFECTO CRÍTICO): showSlideIndex() llamaba a
+    // closeOverlay() como PRIMERA instrucción. Flujo roto del F9:
+    //   quickVerse() guarda estado -> goLive(versiculo) -> showSlideIndex(0)
+    //   -> closeOverlay() RESTAURA la canción -> m_liveSlides.at(0) ya NO era
+    //   el versículo sino la slide 0 de la canción => el versículo rápido
+    //   proyectaba la canción equivocada, Esc no restauraba nada, y con nada
+    //   en vivo m_liveSlides.at(0) sobre vector vacío = crash/UB.
+    // Solución: el overlay se cierra AQUÍ, al cargar contenido nuevo. Si el
+    // nuevo contenido ES el overlay (isOverlay=true, F9) se conserva el punto
+    // de retorno; si el operador proyecta otra cosa, el retorno se descarta.
+    if (!isOverlay) {
+        m_overlayActive = false;
+        m_savedSlides.clear();
+        m_savedIndex = -1;
+        m_savedLabel.clear();
+    }
     m_liveSlides = slides;
     m_liveLabel = label;
     m_liveRefKind = refKind;
@@ -548,7 +630,9 @@ void MainWindow::goLive(const QVector<Slide> &slides, const QString &label, int 
 void MainWindow::showSlideIndex(int idx, bool fireTriggers)
 {
     if (idx < 0 || idx >= m_liveSlides.size()) return;
-    closeOverlay();
+    // CORRECCION v1.2.0: el closeOverlay() que estaba aquí destruía el flujo
+    // del versículo rápido (ver goLive). El cierre del overlay ahora ocurre
+    // únicamente en goLive() y en closeOverlay() (tecla Esc).
     m_liveIndex = idx;
     const Slide &s = m_liveSlides.at(idx);
 
@@ -641,7 +725,17 @@ void MainWindow::quickVerse()
     const QString v1 = m_ctx.db->bibleVersions().value(0);
     if (v1.isEmpty()) return;
     QVector<Slide> slides;
-    const QVector<BibleRef::Verse> verses = m_ctx.db->bibleRange(v1, r.book, r.chapter, r.verse, r.verse);
+    // CORRECCION v1.2.0: se ignoraba el RANGO de la referencia — "Sal 23:1-3"
+    // proyectaba únicamente el versículo 1. Ahora se resuelve el rango
+    // completo con BibleRef::rangeOf (el placeholder del diálogo lo prometía).
+    const auto rng = BibleRef::rangeOf(ref);
+    int vFrom = r.verse > 0 ? r.verse : 1;
+    int vTo = vFrom;
+    if (rng.first == r.chapter && rng.second.first > 0) {
+        vFrom = rng.second.first;
+        vTo = qMax(rng.second.second, vFrom);
+    }
+    const QVector<BibleRef::Verse> verses = m_ctx.db->bibleRange(v1, r.book, r.chapter, vFrom, vTo);
     if (verses.isEmpty()) return;
     Slide s;
     s.kind = Slide::Bible;
@@ -650,7 +744,8 @@ void MainWindow::quickVerse()
     for (const BibleRef::Verse &v : verses)
         s.lines.append(SlideLine(QStringLiteral("%1 %2").arg(v.ref.verse).arg(v.text)));
     slides.append(s);
-    goLive(slides, QStringLiteral("Versículo rápido"), ServiceItem::Bible, 0);
+    // isOverlay=true: conserva el punto de retorno de la canción (Esc).
+    goLive(slides, QStringLiteral("Versículo rápido"), ServiceItem::Bible, 0, true);
     statusBar()->showMessage(QStringLiteral("Versículo proyectado. Esc para volver a la canción."), 4000);
 }
 
@@ -876,6 +971,9 @@ void MainWindow::reassignOutputs()
 void MainWindow::toggleOutput()
 {
     if (m_output->isVisible()) {
+        // CORRECCION v1.2.0: al ocultar la salida el audio/video seguía
+        // sonando de fondo. Ahora se detiene el medio al cerrar la proyección.
+        onStopMedia();
         m_output->hide();
         statusBar()->showMessage(QStringLiteral("Salida de audiencia cerrada."), 3000);
     } else {
@@ -982,13 +1080,28 @@ void MainWindow::runServiceItem(const ServiceItem &item)
         } else {
             const BibleRef::VerseRef r = BibleRef::resolve(item.payload);
             if (r.valid()) {
+                // CORRECCION v1.2.0: esta rama (items guardados como "Jn 3:16"
+                // desde el panel Cultos) proyectaba el CAPÍTULO COMPLETO vía
+                // bibleChapter(), ignorando versículo y rango guardados. Ahora
+                // se proyecta exactamente la referencia pedida.
+                const auto rng = BibleRef::rangeOf(item.payload);
+                int vFrom = r.verse > 0 ? r.verse : 1;
+                int vTo = vFrom;
+                if (rng.first == r.chapter && rng.second.first > 0) {
+                    vFrom = rng.second.first;
+                    vTo = qMax(rng.second.second, vFrom);
+                }
                 const QString v1 = m_ctx.db->bibleVersions().value(0);
                 QVector<Slide> slides;
-                const QVector<BibleRef::Verse> verses = m_ctx.db->bibleChapter(v1, r.book, r.chapter);
+                const QVector<BibleRef::Verse> verses = m_ctx.db->bibleRange(v1, r.book, r.chapter, vFrom, vTo);
                 for (int i = 0; i < verses.size(); i += 2) {
                     Slide s;
                     s.kind = Slide::Bible;
-                    s.refLabel = BibleRef::formatRef(verses.at(i).ref);
+                    s.title = verses.value(0).ref.bookName + QStringLiteral(" %1").arg(r.chapter);
+                    s.refLabel = BibleRef::formatRef(verses.at(i).ref) +
+                                 (i + 1 < verses.size()
+                                      ? QStringLiteral("-%1").arg(verses.at(i + 1).ref.verse)
+                                      : QString());
                     for (int j = i; j < qMin(i + 2, verses.size()); ++j)
                         s.lines.append(SlideLine(QStringLiteral("%1 %2").arg(verses.at(j).ref.verse)
                                                  .arg(verses.at(j).text)));
@@ -1006,6 +1119,22 @@ void MainWindow::runServiceItem(const ServiceItem &item)
         s.lines.append(SlideLine(item.payload));
         QVector<Slide> v; v.append(s);
         goLive(v, QStringLiteral("Aviso"), ServiceItem::Aviso, 0);
+        break;
+    }
+    case ServiceItem::Custom: {
+        // v1.2.0: ejecutar slides del lienzo libre desde la cola. El payload
+        // guarda el JSON; si viene vacío se recupera de la DB por refId.
+        QJsonObject json;
+        if (!item.payload.trimmed().isEmpty())
+            json = QJsonDocument::fromJson(item.payload.toUtf8()).object();
+        else if (item.refId > 0) {
+            bool ok = false;
+            json = m_ctx.db->customSlideJson(item.refId, &ok);
+        }
+        const Slide s = CustomPanel::rasterizeCustomJson(json, item.label);
+        QVector<Slide> v; v.append(s);
+        goLive(v, item.label.isEmpty() ? QStringLiteral("Lienzo libre") : item.label,
+               ServiceItem::Custom, item.refId);
         break;
     }
     case ServiceItem::Pptx: {
@@ -1154,5 +1283,12 @@ void MainWindow::closeEvent(QCloseEvent *ev)
     // Detener el servidor embebido y el motor multimedia de forma ordenada
     m_ctx.web->stop();
     m_ctx.media->shutdown();
+    // CORRECCION v1.2.0 (app "zombie"): las ventanas de salida son top-level
+    // sin parent y permanecían VISIBLES tras aceptar el cierre -> como Qt solo
+    // termina el event loop cuando no quedan ventanas, el proceso seguía vivo
+    // con la proyección congelada y sin forma de controlarlo. Se ocultan
+    // explícitamente para que la aplicación termine de verdad.
+    m_output->hide();
+    m_stage->hide();
     ev->accept();
 }

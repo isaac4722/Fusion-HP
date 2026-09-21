@@ -147,5 +147,19 @@ void MediaPanel::onPosition(qint64 t, qint64 len)
 
 void MediaPanel::onMediaState(int st)
 {
-    Q_UNUSED(st)
+    // CORRECCION v1.2.0: el slot estaba vacío — la barra de progreso y el
+    // tiempo seguían habilitados/actualizándose tras detener o terminar el
+    // medio. Ahora el estado del motor se refleja en la botonera.
+    const MediaEngine::State s = static_cast<MediaEngine::State>(st);
+    const bool active = (s == MediaEngine::Playing || s == MediaEngine::Paused ||
+                         s == MediaEngine::Buffering || s == MediaEngine::Opening);
+    m_seek->setEnabled(active);
+    if (!active) {
+        m_seek->setValue(0);
+        m_time->setText(QStringLiteral("00:00 / 00:00"));
+        m_bPlay->setText(QStringLiteral("▶  Reproducir"));
+    } else {
+        m_bPlay->setText(s == MediaEngine::Paused ? QStringLiteral("▶  Reanudar")
+                                                  : QStringLiteral("▶  Reproduciendo…"));
+    }
 }

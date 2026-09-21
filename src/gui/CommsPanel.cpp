@@ -21,6 +21,10 @@ CommsPanel::CommsPanel(AppContext *ctx, QWidget *parent)
         connect(m_ctx->triggers->telegram(), &TelegramBot::messageReceived, this,
                 [this](const QString &from, const QString &text) {
                     auto *it = new QListWidgetItem(QStringLiteral("✉ %1: %2").arg(from, text));
+                    // v1.2.0: se guarda el TEXTO LIMPIO en UserRole — antes
+                    // "Mostrar como alerta" enviaba al escenario la etiqueta
+                    // completa ("✉ Juan: …" con emoji y prefijo) tal cual.
+                    it->setData(Qt::UserRole, text);
                     m_inbox->insertItem(0, it);
                     m_ctx->db->logAlert(QStringLiteral("Telegram [%1]: %2").arg(from, text));
                 });
@@ -70,7 +74,12 @@ void CommsPanel::buildUi()
     auto *bShow = new QPushButton(QStringLiteral("Mostrar como alerta en Stage View"), grpInbox);
     connect(bShow, &QPushButton::clicked, this, [this]() {
         auto *it = m_inbox->currentItem();
-        if (it) emit sendAlert(it->text());
+        // v1.2.0: usa el texto limpio guardado en UserRole (sin el prefijo
+        // "✉ autor:" ni el emoji).
+        if (it) {
+            const QString clean = it->data(Qt::UserRole).toString();
+            emit sendAlert(clean.isEmpty() ? it->text() : clean);
+        }
     });
     ilay->addWidget(bShow);
     left->addWidget(grpInbox, 1);

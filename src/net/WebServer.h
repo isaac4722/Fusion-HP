@@ -34,22 +34,31 @@ public:
     bool start(quint16 wsPort, quint16 httpPort, QString *error = nullptr)
     {
         // WebSocket
-        if (m_ws) { m_ws->close(); m_ws->deleteLater(); }
+        if (m_ws) { m_ws->close(); m_ws->deleteLater(); m_ws = nullptr; }
         m_ws = new QWebSocketServer(QStringLiteral("LuminaRemoteServer"),
                                     QWebSocketServer::NonSecureMode, this);
         if (!m_ws->listen(QHostAddress::Any, wsPort)) {
             if (error) *error = QStringLiteral("No se pudo escuchar WebSocket en el puerto %1").arg(wsPort);
+            // CORRECCION v1.2.0: el objeto recién creado (hijo de this) quedaba
+            // huérfano con el puntero anulado — fuga por cada intento fallido.
+            m_ws->deleteLater();
             m_ws = nullptr;
             return false;
         }
         connect(m_ws, &QWebSocketServer::newConnection, this, &WebServer::onNewWsConnection);
 
         // HTTP
-        if (m_http) { m_http->close(); m_http->deleteLater(); }
+        if (m_http) { m_http->close(); m_http->deleteLater(); m_http = nullptr; }
         m_http = new QTcpServer(this);
         if (!m_http->listen(QHostAddress::Any, httpPort)) {
             if (error) *error = QStringLiteral("No se pudo escuchar HTTP en el puerto %1").arg(httpPort);
+            // CORRECCION v1.2.0: idem + se cerraba el WS ya operativo para no
+            // dejar un estado mixto (start()==false pero running()==true).
+            m_http->deleteLater();
             m_http = nullptr;
+            m_ws->close();
+            m_ws->deleteLater();
+            m_ws = nullptr;
             return false;
         }
         connect(m_http, &QTcpServer::newConnection, this, &WebServer::onNewHttpConnection);
@@ -59,10 +68,14 @@ public:
 
     void stop()
     {
-        if (m_ws) { m_ws->close(); }
-        if (m_http) { m_http->close(); }
+        // CORRECCION v1.2.0: stop() cerraba los servidores pero dejaba los
+        // punteros vivos -> running() seguía devolviendo true tras parar.
+        if (m_ws) { m_ws->close(); m_ws->deleteLater(); m_ws = nullptr; }
+        if (m_http) { m_http->close(); m_http->deleteLater(); m_http = nullptr; }
         for (QWebSocket *c : qAsConst(m_clients))
             if (c) c->close();
+        m_clients.clear();
+        m_buffer.clear();
     }
 
     bool running() const { return m_ws != nullptr; }
@@ -104,6 +117,10 @@ private slots:
         QWebSocket *sock = m_ws->nextPendingConnection();
         if (!sock) return;
         m_clients << sock;
+        // CORRECCION v1.2.0: el control remoto no recibía el estado inicial al
+        // conectar — mostraba "— sin contenido —" hasta que el operador movía
+        // una slide o pulsaba un botón. Se envía el estado vigente de entrada.
+        sock->sendTextMessage(QString::fromUtf8(QJsonDocument(m_state).toJson(QJsonDocument::Compact)));
         connect(sock, &QWebSocket::textMessageReceived, this, [this, sock](const QString &msg) {
             const QJsonObject obj = QJsonDocument::fromJson(msg.toUtf8()).object();
             const QString cmd = obj.value(QStringLiteral("cmd")).toString();
@@ -126,6 +143,14 @@ private slots:
             if (!m_buffer[sock].contains("\r\n\r\n")) return;
             const QByteArray req = m_buffer.take(sock);
             handleHttpRequest(sock, req);
+        });
+        // CORRECCION v1.2.0: si el cliente se desconectaba antes de enviar los
+        // "\r\n\r\n" (puerto escaneado, petición abortada, keep-alive sin
+        // cuerpo), su entrada en m_buffer quedaba colgando PARA SIEMPRE: fuga
+        // del QByteArray acumulado + clave QTcpSocket* muerta (una conexión
+        // nueva podía reutilizar esa dirección y concatenar datos ajenos).
+        connect(sock, &QAbstractSocket::disconnected, this, [this, sock]() {
+            m_buffer.remove(sock);
         });
         connect(sock, &QAbstractSocket::disconnected, sock, &QObject::deleteLater);
     }
@@ -224,9 +249,15 @@ private:
     static void sendHttp(QTcpSocket *sock, int status, const QByteArray &contentType,
                          const QByteArray &body, bool cors)
     {
+        // CORRECCION v1.2.0: reason phrase real por código (antes todo lo que
+        // no era 200 se enviaba como " Error", p.ej. "401 Error").
+        const char *reason = "OK";
+        if (status == 400) reason = "Bad Request";
+        else if (status == 401) reason = "Unauthorized";
+        else if (status == 404) reason = "Not Found";
+        else if (status == 500) reason = "Internal Server Error";
         QByteArray resp;
-        resp += QByteArray("HTTP/1.1 ") + QByteArray::number(status) +
-                (status == 200 ? QByteArray(" OK") : QByteArray(" Error")) + "\r\n";
+        resp += QByteArray("HTTP/1.1 ") + QByteArray::number(status) + ' ' + reason + "\r\n";
         resp += "Content-Type: " + contentType + "\r\n";
         if (cors) resp += "Access-Control-Allow-Origin: *\r\n";
         resp += "Content-Length: " + QByteArray::number(body.size()) + "\r\n";

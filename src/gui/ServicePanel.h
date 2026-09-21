@@ -19,6 +19,10 @@ class ServicePanel : public QWidget
 public:
     explicit ServicePanel(AppContext *ctx, QWidget *parent = nullptr);
     void reloadPlaylists(int selectId = 0);
+    // v1.2.0: culto activo (el seleccionado en el combo). Lo usan los botones
+    // "＋ A culto" de Canciones/Biblia/PowerPoint para añadir al culto con el
+    // que el usuario está trabajando (antes iban siempre al más reciente).
+    int activePlaylistId() const { return m_currentServiceId; }
 
 signals:
     // Arrancar culto: MainWindow carga los items en la cola lateral

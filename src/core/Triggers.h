@@ -38,7 +38,16 @@ public:
     explicit ObsClient(QObject *parent = nullptr) : QObject(parent)
     {
         connect(&m_ws, &QWebSocket::connected, this, &ObsClient::onConnected);
-        connect(&m_ws, &QWebSocket::disconnected, this, [this]() { m_authed = false; });
+        // CORRECCION v1.2.0: tras una desconexión (OBS cerrado/reiniciado) no
+        // había reconexión — disconnected solo reseteaba m_authed y el timer
+        // de reintento había quedado parado tras el Identified. El usuario
+        // tenía que volver a Aplicar la configuración. Ahora se reactiva el
+        // reintento periódico si el cliente sigue habilitado.
+        connect(&m_ws, &QWebSocket::disconnected, this, [this]() {
+            if (m_authed) emit connectionChanged(false);
+            m_authed = false;
+            if (m_enabled) m_reconnect.start();
+        });
         connect(&m_ws, &QWebSocket::textMessageReceived, this, &ObsClient::onMessage);
         m_reconnect.setInterval(15000);
         connect(&m_reconnect, &QTimer::timeout, this, [this]() { if (m_enabled) connectTo(m_host, m_port, m_password); });
@@ -256,7 +265,11 @@ public:
                 payload["event"] = event;
                 for (auto it = data.constBegin(); it != data.constEnd(); ++it)
                     payload[it.key()] = QJsonValue::fromVariant(it.value());
-                m_nam.post(req, QJsonDocument(payload).toJson(QJsonDocument::Compact));
+                // CORRECCION v1.2.0: el QNetworkReply del POST nunca se liberaba
+                // — con un webhook activo, cada slide proyectada acumulaba un
+                // reply (y sus buffers internos) durante TODA la sesión.
+                QNetworkReply *rep = m_nam.post(req, QJsonDocument(payload).toJson(QJsonDocument::Compact));
+                connect(rep, &QNetworkReply::finished, rep, &QObject::deleteLater);
             }
         }
         // 2) OBS escena

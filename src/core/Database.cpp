@@ -101,6 +101,10 @@ bool Database::open(const QString &dbFile, QString *error)
     if (sqlite3_open_v2(path.constData(), &m_db, flags, nullptr) != SQLITE_OK) {
         m_lastError = m_db ? QString::fromUtf8(sqlite3_errmsg(m_db)) : QStringLiteral("cannot open");
         if (error) *error = m_lastError;
+        // CORRECCION v1.2.0: si la apertura falla, el handle queda != null y
+        // isOpen() devolvía true tras un open() fallido (handle erróneo nunca
+        // cerrado). Se cierra y se anula en el propio punto de fallo.
+        if (m_db) { sqlite3_close(m_db); m_db = nullptr; }
         return false;
     }
     // Rendimiento: WAL + synchronous NORMAL (seguro y rapido en HDD legacy)
@@ -723,12 +727,17 @@ Theme Database::themeById(int id)
     return t;
 }
 
-bool Database::saveTheme(const Theme &t)
+int Database::saveTheme(const Theme &t)
 {
     const QString json = QString::fromUtf8(QJsonDocument(t.toJson()).toJson(QJsonDocument::Compact));
-    if (t.id > 0)
-        return stmtExec("UPDATE themes SET name=?, json=? WHERE id=?", { t.name, json, t.id });
-    return stmtExec("INSERT INTO themes(name, json) VALUES(?,?)", { t.name, json });
+    if (t.id > 0) {
+        if (!stmtExec("UPDATE themes SET name=?, json=? WHERE id=?", { t.name, json, t.id }))
+            return -1;
+        return t.id;
+    }
+    if (!stmtExec("INSERT INTO themes(name, json) VALUES(?,?)", { t.name, json }))
+        return -1;
+    return static_cast<int>(scalar(QStringLiteral("SELECT last_insert_rowid()")));
 }
 
 bool Database::deleteTheme(int id)

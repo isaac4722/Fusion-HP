@@ -205,7 +205,11 @@ void BiblePanel::onProjectClicked()
     if (v1.isEmpty()) return;
     QStringList vers;
     vers << v1;
-    if (!m_v2->currentData().toString().isEmpty()) vers << m_v2->currentData().toString();
+    // CORRECCION v1.2.0: la versión Paralela 2 no se deduplicaba contra la
+    // principal (solo la 3ª se deduplicaba) — elegir la misma versión en
+    // Principal y Paralela 2 proyectaba el MISMO texto duplicado en pantalla.
+    if (!m_v2->currentData().toString().isEmpty() && m_v2->currentText() != m_v1->currentText())
+        vers << m_v2->currentData().toString();
     // FIX v1.1.0: dedupe de la 3ra version contra v1 Y v2 (antes solo v2)
     if (!m_v3->currentData().toString().isEmpty() &&
         m_v3->currentText() != m_v2->currentText() &&

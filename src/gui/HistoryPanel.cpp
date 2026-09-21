@@ -107,9 +107,11 @@ void HistoryPanel::onExportPdf()
                                   "<p>Generado: %1</p><table border='1' cellspacing='0' cellpadding='4'>"
                                   "<tr><th>Canción</th><th>Veces</th><th>Último uso</th></tr>")
                        .arg(QDateTime::currentDateTime().toString(QStringLiteral("dd/MM/yyyy hh:mm")));
+    // CORRECCION v1.2.0: los títulos se insertaban sin escapar HTML — una
+    // canción llamada "A&B" o "<Padre>" rompía la tabla del reporte PDF.
     for (const auto &r : m_ctx->db->songReport())
         html += QStringLiteral("<tr><td>%1</td><td align='center'>%2</td><td>%3</td></tr>")
-                    .arg(r.title).arg(r.count).arg(r.lastUsed);
+                    .arg(r.title.toHtmlEscaped()).arg(r.count).arg(r.lastUsed);
     html += QStringLiteral("</table>");
     QTextDocument doc;
     doc.setHtml(html);

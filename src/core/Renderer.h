@@ -73,7 +73,11 @@ public:
         if (logo.isNull()) return pm;
         QPainter p(&pm);
         p.setRenderHint(QPainter::SmoothPixmapTransform, true);
-        const QSize ls = logo.size().scaled(size * 0.5, Qt::KeepAspectRatio);
+        // CORRECCION v1.2.0: "QSize * qreal" NO existe en Qt 5.15 (llego en
+        // Qt 6); con double 0.5 GCC resolvía la ambigüedad convirtiendo a
+        // int(0.5)=0 -> el logo se escalaba a 0x0 y jamás se proyectaba.
+        const QSize ls = logo.size().scaled(QSize(size.width() / 2, size.height() / 2),
+                                             Qt::KeepAspectRatio);
         const int x = (size.width() - ls.width()) / 2;
         const int y = (size.height() - ls.height()) / 2;
         p.drawPixmap(x, y, ls.width(), ls.height(), logo);
@@ -125,15 +129,30 @@ public:
     static void drawImageFit(QPainter &p, const QImage &img, const QRect &rect, Qt::AspectRatioMode mode)
     {
         QImage scaled = img.scaled(rect.size(), mode, Qt::SmoothTransformation);
-        int x = rect.x() + (rect.width() - scaled.width()) / 2;
-        int y = rect.y() + (rect.height() - scaled.height()) / 2;
-        if (mode == Qt::KeepAspectRatioByExpanding) { x = rect.x(); y = rect.y(); }
+        // CORRECCION v1.2.0: en modo "cover" (ByExpanding) la imagen escalada
+        // EXCEDE el rect en una dimension -> el centrado produce offsets
+        // negativos, lo cual es seguro (QPainter recorta al destino). Antes se
+        // forzaba x/y al origen del rect y los fondos "cover" quedaban
+        // anclados arriba-izquierda (recorte descentrado de videos/fotos).
+        const int x = rect.x() + (rect.width() - scaled.width()) / 2;
+        const int y = rect.y() + (rect.height() - scaled.height()) / 2;
         p.drawImage(QPoint(x, y), scaled);
     }
 
     static void paintSlideContent(QPainter &p, const Theme &theme, const Slide &slide,
                                   const QSize &size, const Options &opt)
     {
+        // v1.2.0: slides de imagen (lienzo libre rasterizado, fotos, PNGs de
+        // PPTX): imagen a pantalla completa + pie de referencia. Antes este
+        // tipo de slide solo lo dibujaba OutputWindow (el preview del dock y
+        // la exportación PDF/PPTX mostraban solo el fondo).
+        if (slide.kind == Slide::Image && !slide.mediaPath.isEmpty()) {
+            QImage img(slide.mediaPath);
+            if (!img.isNull())
+                drawImageFit(p, img, QRect(0, 0, size.width(), size.height()),
+                             Qt::KeepAspectRatioByExpanding);
+        }
+
         // v1.1.0: superposición de Lower Third (spec Componente 2: elemento
         // de texto semitransparente sobre fondo/imagen para citulos/títulos,
         // típico de transmisiones en vivo).
@@ -356,10 +375,11 @@ public:
         align |= Qt::AlignVCenter;
 
         // Sombra
+        // CORRECCION v1.2.0: drawText() pinta con la PLUMA del painter; con
+        // Qt::NoPen el texto de sombra no se dibujaba (sombras invisibles en
+        // títulos/pies/Lower Third). El brush es irrelevante para drawText.
         if (st.shadow) {
-            p.setPen(Qt::NoPen);
-            QColor sc = st.shadowColor;
-            p.setBrush(sc);
+            p.setPen(QPen(st.shadowColor));
             p.drawText(box.translated(st.shadowOffset * base, st.shadowOffset * base),
                        align | Qt::TextWordWrap, content);
         }

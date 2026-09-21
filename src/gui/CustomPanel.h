@@ -20,8 +20,13 @@ class CustomPanel : public QWidget
 public:
     explicit CustomPanel(AppContext *ctx, QWidget *parent = nullptr);
 
+    // v1.2.0: rasteriza el JSON de una slide personalizada (desde la cola de
+    // culto) a una Slide::Pptx proyectable, sin pasar por el lienzo en pantalla.
+    static Slide rasterizeCustomJson(const QJsonObject &itemsJson, const QString &title);
+
 signals:
     void requestProjectCustom(const Slide &slide);
+    void requestAddCustomToService(int customSlideId);   // v1.2.0
 
 private slots:
     void onNewSlide();
@@ -31,6 +36,7 @@ private slots:
     void onAddText();
     void onAddImage();
     void onProject();
+    void onAddToService();                                // v1.2.0
 
 private:
     void buildUi();

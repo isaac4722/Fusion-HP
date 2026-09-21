@@ -43,11 +43,16 @@ public:
             if (lower == latin.at(i)) return latinSem[i];
         for (int i = 0; i < anglo().size(); ++i)
             if (lower == anglo().at(i)) return angloSemitone(i);
-        // Nota simple anglosajona de una letra
+        // Nota simple anglosajona de una letra (con alteracion: "B#", "Fb"...)
         const QChar c = lower.at(0);
         int idx = QStringLiteral("cdefgab").indexOf(c);
         if (idx >= 0) {
-            int base = angloSemitone(idx * 2);
+            // CORRECCION v1.2.0: las notas naturales NO están en idx*2 —
+            // c=0, d=2, e=4, f=5, g=7, a=9, b=11. El mapeo anterior (idx*2)
+            // daba semitonos erróneos (d->1, e->3, f->5...) y la transposición
+            // de enarmónicos no tabulados caía en la nota equivocada.
+            static const int natSemi[7] = { 0, 2, 4, 5, 7, 9, 11 };
+            int base = natSemi[idx];
             if (lower.size() > 1) {
                 if (lower.at(1) == QChar('#')) base += 1;
                 else if (lower.at(1) == QChar('b')) base -= 1;
@@ -92,8 +97,11 @@ public:
     static bool isChordToken(const QString &tk)
     {
         if (tk.isEmpty() || tk.size() > 10) return false;
+        // v1.2.0: el bajo de los acordes "slash" ahora acepta TAMBIÉN notas
+        // latinas ("Sol/Fa", "Do/Mi") — antes solo "/A-G" y los slash latinos
+        // no se reconocían como acordes (jamás se transponían).
         static const QRegularExpression re(
-            QStringLiteral("^(?:[A-G](?:#|b)?|(?:Do|Re|Mi|Fa|Sol|La|Si)(?:#|b)?)(?:m|maj|min|dim|aug|sus|add)?[0-9]*(?:/[A-G](?:#|b)?|(?:Do|Re|Mi|Fa|Sol|La|Si)(?:#|b)?)?$"),
+            QStringLiteral("^(?:[A-G](?:#|b)?|(?:Do|Re|Mi|Fa|Sol|La|Si)(?:#|b)?)(?:m|maj|min|dim|aug|sus|add)?[0-9]*(?:/(?:[A-G](?:#|b)?|(?:Do|Re|Mi|Fa|Sol|La|Si)(?:#|b)?))?$"),
             QRegularExpression::CaseInsensitiveOption);
         return re.match(tk).hasMatch();
     }
@@ -133,7 +141,28 @@ public:
         const int srcSemi = noteToSemitone(base + alter);
         if (srcSemi < 0) return tk;
         const int dst = ((srcSemi + semi) % 12 + 12) % 12;
-        return semitoneToNote(dst, latinNotation) + tk.mid(m.capturedLength(0));
+        // CORRECCION v1.2.0: en acordes "slash" ("Sol/Fa", "C/E") la nota del
+        // BAJO no se transponía — el acorde quedaba mezclado en dos tonalidades.
+        // Se transpone también la nota tras la barra.
+        const QString tail = tk.mid(m.capturedLength(0));
+        const int slash = tail.lastIndexOf(QChar('/'));
+        QString out = semitoneToNote(dst, latinNotation) + tail.left(slash);
+        if (slash >= 0) {
+            const QString bassPart = tail.mid(slash + 1);
+            QString bass = bassPart;
+            static const QRegularExpression bassHead(
+                QStringLiteral("^(Do|Re|Mi|Fa|Sol|La|Si|[A-G])(#|b)?"),
+                QRegularExpression::CaseInsensitiveOption);
+            QRegularExpressionMatch bm = bassHead.match(bassPart);
+            if (bm.hasMatch()) {
+                const int bassSemi = noteToSemitone(bm.captured(1) + bm.captured(2));
+                if (bassSemi >= 0)
+                    bass = semitoneToNote(((bassSemi + semi) % 12 + 12) % 12, latinNotation) +
+                           bassPart.mid(bm.capturedLength(0));
+            }
+            out += QChar('/') + bass;
+        }
+        return out;
     }
 
 private:

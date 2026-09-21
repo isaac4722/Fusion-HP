@@ -60,7 +60,16 @@ public:
 
         mz_zip_archive zip;
         memset(&zip, 0, sizeof(zip));
+        // CORRECCION v1.2.0: miniz abre los archivos con fopen() ANSI; en
+        // Windows, una ruta UTF-8 con "ñ"/acentos ("Canción.pptx",
+        // "C:\Users\José\...") NO coincide con la cadena esperada por el
+        // codepage y la apertura falla con "ZIP invalido" para archivos
+        // perfectamente sanos. En Windows se convierte a Local8Bit (ANSI CP).
+#ifdef Q_OS_WIN
+        const QByteArray p8 = QDir::toNativeSeparators(path).toLocal8Bit();
+#else
         const QByteArray p8 = QDir::toNativeSeparators(path).toUtf8();
+#endif
         if (!mz_zip_reader_init_file(&zip, p8.constData(), 0)) {
             if (error) *error = QStringLiteral("No se pudo abrir el archivo PPTX (ZIP invalido).");
             return false;
@@ -132,6 +141,21 @@ public:
         // Directorio temporal para imagenes extraidas
         const QString tmpRoot = QDir::tempPath() + QStringLiteral("/LuminaImports/");
         QDir().mkpath(tmpRoot);
+        // v1.2.0: purga de temporales antiguos (> 3 días) — cada importación
+        // escribía PNGs/imagenes nuevos sin limpiar nunca: crecimiento
+        // indefinido de %TEMP% en máquinas de uso diario.
+        {
+            const QDir d(tmpRoot);
+            const auto entries = d.entryInfoList(QDir::Files, QDir::Name);
+            const qint64 cutoff = QDateTime::currentMSecsSinceEpoch() - 3ll * 24 * 60 * 60 * 1000;
+            int purged = 0;
+            for (const QFileInfo &fi : entries) {
+                if (fi.lastModified().toMSecsSinceEpoch() < cutoff) {
+                    if (QFile::remove(fi.absoluteFilePath())) ++purged;
+                }
+            }
+            if (purged > 0) qInfo() << "[Pptx] Temporales purgados:" << purged;
+        }
         const QString stamp = QString::number(QDateTime::currentMSecsSinceEpoch());
 
         for (const QString &sp : slidePaths) {
@@ -387,7 +411,14 @@ public:
     {
         mz_zip_archive zip;
         memset(&zip, 0, sizeof(zip));
+        // CORRECCION v1.2.0: idem importación — fopen ANSI: en Windows la ruta
+        // de salida debe ir en Local8Bit o los PPTX exportados a carpetas con
+        // acentos/"ñ" no se crean.
+#ifdef Q_OS_WIN
+        const QByteArray out8 = QDir::toNativeSeparators(outPath).toLocal8Bit();
+#else
         const QByteArray out8 = QDir::toNativeSeparators(outPath).toUtf8();
+#endif
         if (!mz_zip_writer_init_file(&zip, out8.constData(), 0)) {
             if (error) *error = QStringLiteral("No se pudo crear el archivo de salida.");
             return false;

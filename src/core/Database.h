@@ -75,7 +75,10 @@ public:
     // ------------------------------ Temas -----------------------------------
     QVector<QPair<int, QString>> themes();
     Theme themeById(int id);
-    bool saveTheme(const Theme &t);                 // insert o update
+    // v1.2.0: devuelve el id del tema (insert o update). Antes devolvía bool
+    // y el id de un tema recién creado se perdía — "Guardar como nuevo" dejaba
+    // el editor apuntando a id 0 y el siguiente guardado fallaba en silencio.
+    int  saveTheme(const Theme &t);
     bool deleteTheme(int id);
 
     // --------------------------- Slides personalizadas ----------------------

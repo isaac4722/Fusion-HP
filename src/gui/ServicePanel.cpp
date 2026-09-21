@@ -198,10 +198,18 @@ void ServicePanel::onMoveItem(bool up)
 {
     auto *it = m_items->currentItem();
     if (!it) return;
-    m_ctx->db->movePlaylistItem(it->data(Qt::UserRole).toInt(), up);
+    const int itemId = it->data(Qt::UserRole).toInt();
+    m_ctx->db->movePlaylistItem(itemId, up);
     reloadItems();
-    const int row = m_items->currentRow() + (up ? -1 : 1);
-    if (row >= 0 && row < m_items->count()) m_items->setCurrentRow(row);
+    // CORRECCION v1.2.0: reloadItems() hace clear() y el currentItem pasa a
+    // null (currentRow() == -1), con lo que "▼" terminaba seleccionando la
+    // fila 0 y el siguiente clic movía el PRIMER item del culto. Ahora se
+    // re-selecciona el MISMO item por su id persistente.
+    for (int r = 0; r < m_items->count(); ++r)
+        if (m_items->item(r)->data(Qt::UserRole).toInt() == itemId) {
+            m_items->setCurrentRow(r);
+            break;
+        }
 }
 
 void ServicePanel::onExportCsv()

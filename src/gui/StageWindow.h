@@ -92,23 +92,37 @@ public:
         });
         clockTimer->start(1000);
 
+        // v1.2.0: temporizador de alerta REINICiable. Antes cada alerta lanzaba
+        // su propio singleShot(15000) que limpiaba el texto INCONDICIONALMENTE:
+        // alerta A en t=0 y alerta B en t=14 -> el timer de A borraba a B en t=15
+        // (B visible 1 s en vez de 15).
+        m_alertTimer = new QTimer(this);
+        m_alertTimer->setSingleShot(true);
+        m_alertTimer->setInterval(15000);
+        connect(m_alertTimer, &QTimer::timeout, this, [this]() {
+            m_alert->setText(QString());
+            m_alert->setStyleSheet(m_alertStyleOn);
+        });
+
         auto *flashTimer = new QTimer(this);
         connect(flashTimer, &QTimer::timeout, this, [this]() {
             if (m_alert->text().isEmpty()) return;
             m_alertVisible = !m_alertVisible;
-            m_alert->setStyleSheet(m_alertVisible
-                ? QStringLiteral("font-size: 20pt; color: #FFD700; font-weight: bold;")
-                : QStringLiteral("font-size: 20pt; color: rgba(255,215,0,60); font-weight: bold;"));
+            m_alert->setStyleSheet(m_alertVisible ? m_alertStyleOn : m_alertStyleOff);
         });
         flashTimer->start(700);
     }
 
     void setThemeColors(const Theme &t)
     {
+        // CORRECCION v1.2.0: se ignoraban los colores del tema para el stage
+        // (stageText/stageNext) y las cifras iban hardcodeadas en verde fijo.
+        m_stageChordColor = t.stageChord;
         m_current->setStyleSheet(QStringLiteral("font-size: 34pt; color: %1; font-weight: bold;")
                                      .arg(t.stageText.name()));
         m_next->setStyleSheet(QStringLiteral("font-size: 20pt; color: %1; font-style: italic;")
                                   .arg(t.stageNext.name()));
+        setStyleSheet(QStringLiteral("background-color: %1;").arg(t.stageBg.name()));
     }
 
     void updateSlide(const Slide &cur, const Slide *next, const Theme &theme)
@@ -120,7 +134,8 @@ public:
         QString body;
         for (const SlideLine &l : cur.lines) {
             if (!l.chords.isEmpty())
-                body += QStringLiteral("<span style=\"color:#7DE87D; font-size:60%;\">%1</span><br>").arg(l.chords.toHtmlEscaped());
+                body += QStringLiteral("<span style=\"color:%1; font-size:60%;\">%2</span><br>")
+                            .arg(m_stageChordColor.name(), l.chords.toHtmlEscaped());
             body += l.text.toHtmlEscaped() + QStringLiteral("<br>");
         }
         if (!cur.notes.isEmpty())
@@ -150,7 +165,8 @@ public:
     void showAlert(const QString &text)
     {
         m_alert->setText(text);
-        QTimer::singleShot(15000, this, [this]() { m_alert->setText(QString()); });
+        m_alert->setStyleSheet(m_alertStyleOn);   // por si estaba en fase "off" del parpadeo
+        m_alertTimer->start();                    // reinicia el ciclo de 15 s de ESTA alerta
     }
 
     void startCountdown(int minutes)
@@ -169,6 +185,10 @@ private:
     QLabel *m_current = nullptr;
     QLabel *m_next = nullptr;
     QLabel *m_countdown = nullptr;
+    QTimer *m_alertTimer = nullptr;         // v1.2.0: reiniciable (una alerta no borra a la siguiente)
+    QColor m_stageChordColor = QColor(120, 220, 120);
+    const QString m_alertStyleOn  = QStringLiteral("font-size: 20pt; color: #FFD700; font-weight: bold;");
+    const QString m_alertStyleOff = QStringLiteral("font-size: 20pt; color: rgba(255,215,0,60); font-weight: bold;");
     bool m_countdownActive = false;
     bool m_alertVisible = true;
     QDateTime m_deadline;

@@ -103,37 +103,64 @@ public:
         }
 
         QVector<Section> sections = parse(song.lyrics);
-        // Dividir secciones largas en bloques de maxLinesPerSlide
+        // Dividir secciones largas en bloques de maxLinesPerSlide.
+        // v1.2.0: se conserva la AGRUPACIÓN por sección original (sectionBlocks):
+        // el intercalado del coro (hinario) debe ocurrir tras cada VERSO
+        // completo, no tras cada bloque paginado de un verso largo (el bloque
+        // es solo un artefacto de paginación).
+        QVector<QVector<Section>> sectionBlocks;
         QVector<Section> blocks;
         for (const Section &sec : sections) {
-            if (sec.lines.size() <= opt.maxLinesPerSlide) { blocks.append(sec); continue; }
-            for (int i = 0; i < sec.lines.size(); i += opt.maxLinesPerSlide) {
-                Section part;
-                part.tag = sec.tag;
-                const int end = qMin(i + opt.maxLinesPerSlide, sec.lines.size());
-                for (int j = i; j < end; ++j) part.lines.append(sec.lines.at(j));
-                blocks.append(part);
+            QVector<Section> parts;
+            if (sec.lines.size() <= opt.maxLinesPerSlide) {
+                parts.append(sec);
+            } else {
+                for (int i = 0; i < sec.lines.size(); i += opt.maxLinesPerSlide) {
+                    Section part;
+                    part.tag = sec.tag;
+                    const int end = qMin(i + opt.maxLinesPerSlide, sec.lines.size());
+                    for (int j = i; j < end; ++j) part.lines.append(sec.lines.at(j));
+                    parts.append(part);
+                }
             }
+            sectionBlocks.append(parts);
+            blocks << parts;
         }
+        auto isChorusTag = [](const QString &t) {
+            return t.compare(QStringLiteral("coro"), Qt::CaseInsensitive) == 0;
+        };
 
         // Localiza el primer coro para el modo hinario
         int chorusIdx = -1;
         for (int i = 0; i < blocks.size(); ++i)
-            if (blocks.at(i).tag.compare(QStringLiteral("coro"), Qt::CaseInsensitive) == 0) { chorusIdx = i; break; }
+            if (isChorusTag(blocks.at(i).tag)) { chorusIdx = i; break; }
 
         if (opt.chorusInterleave && chorusIdx >= 0) {
-            // Modo Hinario (v1.1.0 mejorado): el coro se intercala tras CADA
-            // verso (incluido el último) y el bloque de coro independiente se
-            // omite para no cantarlo dos veces seguidas: V1 C V2 C.
-            const Section &chorus = blocks.at(chorusIdx);
-            for (const Section &sec : blocks) {
-                if (sec.tag.compare(QStringLiteral("coro"), Qt::CaseInsensitive) == 0) continue;
-                out.append(sectionToSlide(sec, song, opt));
-                out.append(sectionToSlide(chorus, song, opt));
+            // Modo Hinario (v1.2.0 corregido): el coro se intercala tras CADA
+            // verso COMPLETO (todas sus slides paginadas) y los bloques de coro
+            // sueltos se omiten para no cantarlo dos veces: V1 C V2 C.
+            // CORRECCION v1.2.0 (a y b):
+            //  (a) si el coro era más largo que maxLinesPerSlide se dividía en
+            //      varios bloques y SOLO se intercalaba el primero — el resto
+            //      del coro se perdía (continue los descartaba);
+            //  (b) si un VERSO largo se dividía en bloques, el coro se
+            //      intercalaba ENTRE los bloques del mismo verso (a mitad de
+            //      la estrofa). Ahora se respeta la sección original.
+            QVector<Section> chorusBlocks;
+            for (int s = 0; s < sections.size(); ++s)
+                if (isChorusTag(sections.at(s).tag))
+                    chorusBlocks << sectionBlocks.at(s);
+            for (int s = 0; s < sections.size(); ++s) {
+                if (isChorusTag(sections.at(s).tag)) continue;
+                for (const Section &b : sectionBlocks.at(s))
+                    out.append(sectionToSlide(b, song, opt));
+                for (const Section &ch : chorusBlocks)
+                    out.append(sectionToSlide(ch, song, opt));
             }
         } else {
-            for (const Section &sec : blocks)
-                out.append(sectionToSlide(sec, song, opt));
+            for (const auto &group : sectionBlocks)
+                for (const Section &b : group)
+                    out.append(sectionToSlide(b, song, opt));
         }
 
         if (opt.endBlank) {

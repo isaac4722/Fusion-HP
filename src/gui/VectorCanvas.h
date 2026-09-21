@@ -182,6 +182,7 @@ public:
             const QString type = o.value(QStringLiteral("type")).toString();
             const double x = o.value(QStringLiteral("x")).toDouble();
             const double y = o.value(QStringLiteral("y")).toDouble();
+            const double z = o.value(QStringLiteral("z")).toDouble();
             if (type == QStringLiteral("text")) {
                 auto *t = m_scene->addText(o.value(QStringLiteral("text")).toString());
                 const QString html64 = o.value(QStringLiteral("html")).toString();
@@ -189,10 +190,14 @@ public:
                     t->setHtml(QString::fromUtf8(QByteArray::fromBase64(html64.toUtf8())));
                 t->setDefaultTextColor(Qt::white);
                 t->setPos(x, y);
+                // CORRECCION v1.2.0: el ancho de texto (600) nunca se restauraba
+                // — los textos recargados perdían el ajuste de línea original.
+                t->setTextWidth(600);
                 t->setFlags(QGraphicsItem::ItemIsMovable | QGraphicsItem::ItemIsSelectable |
                             QGraphicsItem::ItemIsFocusable);
                 t->setTextInteractionFlags(Qt::NoTextInteraction);
                 t->setData(KindText, true);
+                t->setZValue(z);
             } else if (type == QStringLiteral("image")) {
                 const QPixmap pm(o.value(QStringLiteral("path")).toString());
                 if (pm.isNull()) continue;
@@ -201,19 +206,24 @@ public:
                 p->setFlags(QGraphicsItem::ItemIsMovable | QGraphicsItem::ItemIsSelectable);
                 p->setData(KindImage, true);
                 p->setData(PathRole, o.value(QStringLiteral("path")).toString());
+                p->setZValue(z);
             } else if (type == QStringLiteral("ellipse")) {
-                makeShapeItem(ShapeEllipse, QRectF(x, y, o.value(QStringLiteral("w")).toDouble(),
+                auto *gi = makeShapeItem(ShapeEllipse, QRectF(x, y, o.value(QStringLiteral("w")).toDouble(),
                                                    o.value(QStringLiteral("h")).toDouble()),
                               penFromJson(o.value(QStringLiteral("pen")).toObject()),
                               brushFromJson(o.value(QStringLiteral("brush")).toObject()));
+                gi->setZValue(z);
             } else {
                 const ShapeKind k = (type == QStringLiteral("roundRect")) ? ShapeRound : ShapeRect;
-                makeShapeItem(k, QRectF(x, y, o.value(QStringLiteral("w")).toDouble(),
+                auto *gi = makeShapeItem(k, QRectF(x, y, o.value(QStringLiteral("w")).toDouble(),
                                         o.value(QStringLiteral("h")).toDouble()),
                               penFromJson(o.value(QStringLiteral("pen")).toObject()),
                               brushFromJson(o.value(QStringLiteral("brush")).toObject()));
+                gi->setZValue(z);
             }
         }
+        // CORRECCION v1.2.0: "z" se guardaba pero nunca se restauraba — el
+        // orden de apilado (Subir/Bajar) se perdía al recargar una slide.
         emit canvasChanged();
     }
 

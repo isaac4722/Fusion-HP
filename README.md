@@ -13,8 +13,8 @@ agilidad operativa de Holyrics y la potencia de composición vectorial de PowerP
 
 1. Ir a **[Releases](https://github.com/isaac4722/Fusion-HP/releases)**.
 2. Descargar el paquete para tu arquitectura:
-   - `LuminaPresentationSuite-1.1.0-win64-portable.zip` (Windows 7 SP1 … Windows 11, 64 bits)
-   - `LuminaPresentationSuite-1.1.0-win32-portable.zip` (Windows 7 SP1 … Windows 10, 32 bits)
+   - `LuminaPresentationSuite-v1.2.0-win64-portable.zip` (Windows 7 SP1 … Windows 11, 64 bits)
+   - `LuminaPresentationSuite-v1.2.0-win32-portable.zip` (Windows 7 SP1 … Windows 10, 32 bits)
 3. Descomprimir en cualquier carpeta y ejecutar `LuminaPresentationSuite.exe`.
    **Todo va incluido**: Qt, LibVLC con codecs, Biblia RVR1909 completa y la base de datos se
    crea sola en el primer arranque. No requiere permisos de administrador ni conexión a internet.
@@ -34,7 +34,7 @@ agilidad operativa de Holyrics y la potencia de composición vectorial de PowerP
 | 📱 **Control remoto** | Servidor WebSocket/HTTP embebido: panel móvil (con **navegación de la cola del culto**) y **overlay HTML5 transparente para OBS/vMix** (`http://<pc>:8088/overlay.html`) |
 | 🌐 **API HTTP** | `GET /api/cmd?c=next\|prev\|black\|clear\|logo\|goto\|qnext\|qprev\|alert` con **token opcional** (Ajustes) · `/api/live.txt` (texto plano para OBS) · `/api/state` (JSON) |
 | 🎨 **Temas** | Plantillas maestras desacopladas (fondo/gradiente/imagen/video, tipografía, contorno, sombra) aplicadas en vivo |
-| 🖌 **Lienzo libre** | Editor vectorial (texto, formas, imágenes) estilo PowerPoint con guardado JSON |
+| 🖌 **Lienzo libre** | Editor vectorial (texto, formas, imágenes) estilo PowerPoint con guardado JSON — **proyectable y añadelo a la cola del culto** (v1.2.0) |
 | 🗓 **Cultos** | Playlists ordenadas (canciones, biblia, avisos, pptx), exportación CSV, control remoto de la cola |
 | 📣 **Comunicación** | Alertas al escenario, temporizador de sermón, bandeja **Telegram** |
 | ⚙ **Triggers** | Webhooks HTTP, **OBS WebSocket v5** (cambio de escena automático), **MIDI Out** (winmm) |
@@ -99,8 +99,12 @@ alguna DLL — garantiza que el portable arranca en un Windows limpio.
 `.github/workflows/build.yml` compila **x86 y x64** con Qt 5.15.2 (MinGW 8.1) en Windows,
 descarga LibVLC 3.0.21, despliega las DLLs de Qt + el **runtime de MinGW** (verificado por el
 gate `tools/verify_portable.py`) y publica automáticamente el release portable
-en cada `tag v*` (o manualmente con *workflow_dispatch*). La versión se define en la
-variable `APP_VERSION` del workflow.
+en cada `tag v*`. La versión se define en la variable `APP_VERSION` del workflow.
+
+**Gates de release (v1.2.0)**: además del gate de imports PE, el job de release
+(1) purga drafts residuales del tag antes de publicar y (2) **verifica vía API que la
+release quede PUBLICADA con sus 3 assets** — si la publicación falla, el run sale rojo
+(no más releases "fantasma").
 
 ## 🧱 Arquitectura
 

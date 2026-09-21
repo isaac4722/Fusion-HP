@@ -19,8 +19,8 @@ permissions:
 env:
   APP_NAME: LuminaPresentationSuite
   # Version dinamica: nombre del tag (vN.N.N) al hacer push de tags;
-  # fallback v1.1.0 en pushes a main (solo artefactos) y workflow_dispatch.
-  APP_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.1.0' }}
+  # fallback v1.2.0 en pushes a main (solo artefactos) y workflow_dispatch.
+  APP_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.2.0' }}
   VLC_VERSION: "3.0.21"
 
 jobs:
@@ -218,7 +218,10 @@ jobs:
     name: Create GitHub Release
     needs: build
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    # v1.2.0: la release se publica SOLO con tag v* (antes también se disparaba
+    # con workflow_dispatch y el fallback de versión podía machacar/re-taggear
+    # una release publicada de la misma versión).
+    if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - name: Download x64 artifact
         uses: actions/download-artifact@v4
@@ -239,10 +242,33 @@ jobs:
           cat artifacts/x64/SHA256SUMS-x64.txt artifacts/x86/SHA256SUMS-x86.txt > rel/SHA256SUMS.txt
           ls -la rel/
 
+      # ------------------------------------------------------------------
+      # v1.2.0 — GATE 1: limpieza de DRAFTS fantasma para este tag.
+      # Defecto v1.1.0: la release se "creó" con éxito (log: "Release ready")
+      # pero jamás quedó publicada — quedó como DRAFT invisible (ni el tag de
+      # la página web, ni API pública). El GITHUB_TOKEN sí puede ver drafts;
+      # se eliminan los drafts residuales del tag actual antes de publicar.
+      # ------------------------------------------------------------------
+      - name: Purge stale draft releases for this tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          echo "Buscando drafts residuales para el tag $TAG..."
+          IDS=$(curl -sf -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+            | jq -r ".[] | select(.draft == true and .tag_name == \"$TAG\") | .id")
+          for id in $IDS; do
+            echo "Eliminando draft residual #$id (tag $TAG)"
+            curl -sf -X DELETE -H "Authorization: Bearer $GH_TOKEN" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/$id" || true
+          done
+          echo "Limpieza de drafts completada."
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v1.1.0' }}
+          tag_name: ${{ github.ref_name }}
           name: LuminaPresentation Suite ${{ env.APP_VERSION }}
           draft: false
           prerelease: false
@@ -263,6 +289,27 @@ jobs:
             - Verifica la integridad con `SHA256SUMS.txt`.
             - Control remoto móvil: `http://<ip-del-pc>:8088/remote.html` · Overlay OBS: `http://<ip>:8088/overlay.html`
 
+            ### Novedades v1.2.0 — auditoría integral + corrección de 6 defectos críticos
+            - **🔥 FIX CRÍTICO — Versículo rápido (F9)**: `showSlideIndex()` cerraba el overlay ANTES de proyectar el versículo — el F9 proyectaba la slide equivocada (la 0 de la canción) y con nada en vivo podía **colgar la aplicación**. El overlay ahora se gestiona en `goLive()` y el F9 conserva el punto de retorno (Esc vuelve a la canción).
+            - **🔥 FIX CRÍTICO — botón Logo (L)**: `QSize * 0.5` no existe en Qt 5.15 y GCC lo resolvía como `QSize * 0` — el logo se escalaba a 0×0 y **jamás se proyectaba**.
+            - **🔥 FIX CRÍTICO — MIDI Out**: `midiOutOpen` se llamaba con 2 de sus 5 parámetros — corrupción de pila garantizada en x86 (Win7 32 bits) al activar MIDI.
+            - **🔥 FIX CRÍTICO — Lienzo libre**: "Proyectar esta slide" emitía un `Slide::Custom` que **nadie renderizaba** (salida vacía). Ahora el lienzo se rasteriza a PNG y se proyecta; además las slides del lienzo se pueden **añadir a la cola del culto** y ejecutarse desde el móvil.
+            - **🔥 FIX CRÍTICO — lista de temas**: la lista nunca estaba conectada — al hacer clic en un tema el editor seguía mostrando el anterior y "Guardar cambios" **sobrescribía la plantilla equivocada**.
+            - **🔥 FIX CRÍTICO — panel Ajustes destruía la configuración**: los valores persistidos (puertos, transición, tema, autostart, pantallas) nunca se cargaban — abrir Ajustes y pulsar "Aplicar" **machacaba todo con los defaults**.
+            - **Triggers duplicados**: la navegación por teclado/remoto disparaba los triggers (OBS/MIDI/webhook) DOS veces por pulsación.
+            - **Cola de culto — Biblia**: los items con referencia (`Jn 3:16`) proyectaban el CAPÍTULO COMPLETO en vez de la referencia guardada; el F9 también ignora ahora el rango (`Sal 23:1-3` proyecta 1-3).
+            - **Modo Hinario**: coro largo completo (antes solo se intercalaba su primer bloque) y coro tras cada VERSO completo (no entre sus slides paginadas).
+            - **"＋ A culto"**: añade al culto SELECCIONADO en el panel Cultos (antes siempre al más reciente).
+            - **PPTX con acentos/ñ**: las rutas con caracteres no-ANSI fallaban en Windows ("ZIP inválido") — importación y exportación corregidas.
+            - **Sombras del texto** invisibles (`Qt::NoPen` en `drawText`), fondos "cover" descentrados, logo en el preview/exportación.
+            - **App "zombie" al salir**: cerrar la app con la proyección activa dejaba el proceso vivo con la pantalla congelada; doble clic en la salida abre/cierra la proyección (rescate en monitor único).
+            - **Control remoto**: estado inicial al conectar (antes "— sin contenido —" hasta el primer comando); multilínea correcta en el móvil.
+            - **Reconexión automática de OBS** tras reiniciar OBS; fuga de memoria del webhook corregida.
+            - **Acordes**: notas naturales corregidas en la transposición de enarmónicos; los acordes "slash" (Sol/Fa) transponen también el bajo (y aceptan notación latina).
+            - **Stage View**: colores del tema aplicados de verdad (fondo/texto/cifras); una alerta nueva ya no es borrada por el temporizador de la anterior.
+            - Reordenar cultos: "▼" ya no mueve el primer item tras recargar; "Guardar como nuevo" de temas ya no deja el editor inconsistente.
+            - Limpieza: reason phrase HTTP real (401 Unauthorized), purga de temporales de PPTX (>3 días), fuga del buffer HTTP de clientes abortados, `running()==false` tras detener el servidor.
+
             ### Novedades v1.1.0 — funciones nuevas (specs Holyrics + PowerPoint)
             - **🌐 API HTTP de comandos** (Componente 3 del spec): `GET /api/cmd?c=next|prev|black|clear|logo|goto|i=N|qnext|qprev|alert&text=…` con **token opcional** configurable en Ajustes (estilo Holyrics). Endpoint `/api/live.txt` en **texto plano** para usar como fuente de texto en OBS Studio / integraciones simples.
             - **🧾 Exportación a PDF** del escenario en vivo (spec: exportar a «PPTX y PDF»): cada diapositiva se rasteriza a página 16:9 desde el panel PowerPoint.
@@ -275,13 +322,11 @@ jobs:
 
             ### Correcciones v1.1.0
             - **Referencias bíblicas con espacio tras la coma** (`1 Co 13, 4-7`): el parser las rechazaba en silencio; ahora se normalizan correctamente.
-            - **Modo Hinario**: ya no se canta el coro dos veces seguidas (el bloque suelto se omite al intercalar).
             - **Versículo rápido (F9) doble**: un segundo F9 machacaba el estado guardado y `Esc` restauraba la diapositiva equivocada.
             - **Parseo de query HTTP**: `QUrlQuery` no elimina la ruta — los parámetros (`c=`, `token=`) llegaban vacíos; ahora se extrae solo la parte posterior a `?`.
             - **Panel de Medios conectado**: la señal `positionChanged` nunca estaba conectada (barra de progreso y tiempo muertos); además el fin del medio limpia la salida y dispara el trigger `media_stop`.
             - **Fondos de video**: al cambiar de diapositiva el video de fondo se reiniciaba (parpadeo); ahora continúa si es el mismo archivo.
             - **Ajustes ↔ Toolbar**: la pantalla elegida en Ajustes ahora se refleja y aplica en los selectores de la barra.
-            - Barra de estado muestra la versión real del programa.
 
             ### Novedades v1.0.3
             - **🏷 Sistema de etiquetas semánticas para canciones**: asigna palabras clave a cada canción (ej: `lento`, `navidad`, `entrada`, `ofrenda`) y filtra la biblioteca con un clic. Directiva `@tags a,b,c` en importación `.txt`.
@@ -303,3 +348,35 @@ jobs:
             rel/LuminaPresentationSuite-${{ env.APP_VERSION }}-x64-portable.zip
             rel/LuminaPresentationSuite-${{ env.APP_VERSION }}-x86-portable.zip
             rel/SHA256SUMS.txt
+
+      # ------------------------------------------------------------------
+      # v1.2.0 — GATE 2: verificación POST-publicación. La v1.1.0 reportó
+      # "Release ready" pero la release quedó como draft fantasma (invisible
+      # en la web y en la API pública). Este gate consulta el API con el
+      # GITHUB_TOKEN y FALLA el job si la release no está PUBLICADA y con sus
+      # 3 assets — el CI ya no puede "ponerse verde" con la release rota.
+      # ------------------------------------------------------------------
+      - name: Verify published release (gate anti draft-fantasma)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          for attempt in 1 2 3 4 5; do
+            echo "Intento $attempt: verificando release publicada para el tag $TAG..."
+            DATA=$(curl -sf -H "Authorization: Bearer $GH_TOKEN" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/$TAG") || DATA=""
+            if [ -n "$DATA" ]; then
+              DRAFT=$(echo "$DATA" | jq -r ".draft")
+              ASSETS=$(echo "$DATA" | jq -r ".assets | length")
+              URL=$(echo "$DATA" | jq -r ".html_url")
+              echo "draft=$DRAFT assets=$ASSETS url=$URL"
+              if [ "$DRAFT" = "false" ] && [ "$ASSETS" -ge 3 ]; then
+                echo "✅ Release PUBLICADA correctamente con $ASSETS assets: $URL"
+                exit 0
+              fi
+            fi
+            sleep 10
+          done
+          echo "❌ FALLO: la release del tag $TAG no quedó publicada con sus assets."
+          echo "   Revisa los logs del paso 'Create Release' — NO se marcó el run en verde."
+          exit 1

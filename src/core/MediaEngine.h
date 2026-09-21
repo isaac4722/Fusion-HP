@@ -101,8 +101,14 @@ public:
 #undef LUMINA_SYM
 
         // 3) Instancia VLC (1 instancia, 2 reproductores: principal + fondo)
-        const char *argv[] = { "--no-video-title-show", "--quiet" };
-        m_vlc = p_libvlc_new(2, argv);
+        // v1.2.0: se pasa --plugin-path además del qputenv — la CRT de
+        // libvlc.dll puede tener su propia copia del entorno y no ver el
+        // VLC_PLUGIN_PATH establecido tras arrancar el proceso (portable con
+        // carpeta vlc/ junto al exe). El argumento es la vía oficial.
+        const QByteArray pluginPath = QDir::toNativeSeparators(
+            appDir + QStringLiteral("/vlc/plugins")).toUtf8();
+        const char *argv[] = { "--no-video-title-show", "--quiet", pluginPath.constData() };
+        m_vlc = p_libvlc_new(3, argv);
         if (!m_vlc) {
             if (error) *error = QStringLiteral("libvlc_new fallo.");
             return false;

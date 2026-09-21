@@ -24,9 +24,14 @@ public:
 #ifdef Q_OS_WIN
         m_lib.setFileName(QStringLiteral("winmm.dll"));
         if (m_lib.load()) {
-            auto open = reinterpret_cast<MMRESULT(WINAPI *)(LPHMIDIOUT, UINT)>(m_lib.resolve("midiOutOpen"));
+            // CORRECCION v1.2.0: midiOutOpen exige 5 parametros (LPHMIDIOUT,
+            // UINT, DWORD_PTR, DWORD_PTR, DWORD). La firma anterior pasaba solo
+            // 2 -> en x86 (stdcall) el callee limpia 20 bytes de pila cuando el
+            // caller solo apilo 8: corrupcion de ESP / crash al activar MIDI.
+            using MidiOutOpen_t = MMRESULT (WINAPI *)(LPHMIDIOUT, UINT, DWORD_PTR, DWORD_PTR, DWORD);
+            auto open = reinterpret_cast<MidiOutOpen_t>(m_lib.resolve("midiOutOpen"));
             m_short = reinterpret_cast<MMRESULT(WINAPI *)(HMIDIOUT, UINT)>(m_lib.resolve("midiOutShortMsg"));
-            if (open) open(&m_handle, 0);   // primer dispositivo MIDI
+            if (open) open(&m_handle, 0, 0, 0, 0);   // primer dispositivo MIDI
         }
 #endif
     }

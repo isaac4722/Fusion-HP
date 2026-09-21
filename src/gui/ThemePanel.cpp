@@ -25,6 +25,12 @@ ThemePanel::ThemePanel(AppContext *ctx, QWidget *parent)
         it->setData(Qt::UserRole, t.first);
         m_list->addItem(it);
     }
+    // CORRECCION v1.2.0 (DEFECTO CRÍTICO): la lista de temas NUNCA estaba
+    // conectada — hacer clic en un tema no cargaba nada, el editor seguía
+    // mostrando el anterior y "Guardar cambios" SOBRESCRIBÍA la plantilla
+    // equivocada (corrupción de datos del usuario). Ahora la selección carga
+    // el tema en el editor.
+    connect(m_list, &QListWidget::currentRowChanged, this, &ThemePanel::onThemeSelected);
     if (m_list->count() > 0) {
         m_list->setCurrentRow(0);
         onThemeSelected(0);
@@ -164,21 +170,34 @@ void ThemePanel::buildUi()
 void ThemePanel::loadFromTheme(const Theme &t)
 {
     m_selectedThemeId = t.id;
-    m_name->setText(t.name);
-    m_bgType->setCurrentIndex(t.background.type);
-    m_color1 = t.background.color1;
-    m_color2 = t.background.color2;
-    m_textColor = t.body.color;
-    m_imagePath->setText(t.background.imagePath);
-    m_videoPath->setText(t.background.videoPath);
-    m_fontTitle->setCurrentText(t.title.family);
-    m_fontBody->setCurrentText(t.body.family);
-    m_sizeTitle->setValue(t.title.pointSize);
-    m_sizeBody->setValue(t.body.pointSize);
-    m_shadow->setChecked(t.body.shadow);
-    m_outline->setChecked(t.body.outlineWidth > 0);
-    m_boxTop->setValue(int(t.bodyBox.y() * 100));
-    m_boxHeight->setValue(int(t.bodyBox.height() * 100));
+    // CORRECCION v1.2.0: los setValue()/setCurrentIndex() disparan señales
+    // conectadas a onFieldChanged(), que emitía themeChanged con un estado
+    // "híbrido" a mitad de carga (medio tema viejo + medio nuevo aplicado al
+    // proyector). Se bloquean las señales durante la carga y se emite UNA vez
+    // al final con el estado completo.
+    {
+        QSignalBlocker b1(m_name);        QSignalBlocker b2(m_bgType);
+        QSignalBlocker b3(m_imagePath);   QSignalBlocker b4(m_videoPath);
+        QSignalBlocker b5(m_fontTitle);   QSignalBlocker b6(m_fontBody);
+        QSignalBlocker b7(m_sizeTitle);   QSignalBlocker b8(m_sizeBody);
+        QSignalBlocker b9(m_shadow);      QSignalBlocker b10(m_outline);
+        QSignalBlocker b11(m_boxTop);     QSignalBlocker b12(m_boxHeight);
+        m_name->setText(t.name);
+        m_bgType->setCurrentIndex(t.background.type);
+        m_color1 = t.background.color1;
+        m_color2 = t.background.color2;
+        m_textColor = t.body.color;
+        m_imagePath->setText(t.background.imagePath);
+        m_videoPath->setText(t.background.videoPath);
+        m_fontTitle->setCurrentText(t.title.family);
+        m_fontBody->setCurrentText(t.body.family);
+        m_sizeTitle->setValue(t.title.pointSize);
+        m_sizeBody->setValue(t.body.pointSize);
+        m_shadow->setChecked(t.body.shadow);
+        m_outline->setChecked(t.body.outlineWidth > 0);
+        m_boxTop->setValue(int(t.bodyBox.y() * 100));
+        m_boxHeight->setValue(int(t.bodyBox.height() * 100));
+    }
     onFieldChanged();
 }
 
@@ -272,7 +291,11 @@ void ThemePanel::onSaveAsNew()
     Theme t = collectTheme();
     t.id = 0;
     t.name += QStringLiteral(" (nuevo)");
-    if (m_ctx->db->saveTheme(t)) {
+    // CORRECCION v1.2.0: saveTheme() devolvía bool — el id del tema nuevo se
+    // perdía, m_selectedThemeId quedaba en 0 y el siguiente "Guardar cambios"
+    // fallaba EN SILENCIO. Ahora saveTheme() devuelve el id real.
+    t.id = m_ctx->db->saveTheme(t);
+    if (t.id > 0) {
         const auto themes = m_ctx->db->themes();
         m_list->clear();
         int newRow = 0;
