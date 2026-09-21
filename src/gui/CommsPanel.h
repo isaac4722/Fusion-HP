@@ -10,6 +10,7 @@
 #define LUMINA_COMMSPANEL_H
 
 #include "core/AppContext.h"
+#include "core/PlanningCenter.h"   // v1.5.0: PcoItem (importación de planes)
 
 #include <QWidget>
 #include <QPlainTextEdit>
@@ -32,6 +33,8 @@ signals:
     void sendAlert(const QString &text);
     void startCountdown(int minutes);
     void stopCountdownSignal();
+    void messageSent(const QString &text, const QString &title);        // v1.5.0: a la Pantalla Director
+    void pcoImportItems(const QVector<PcoItem> &items);                // v1.5.0: plan PCO -> cola del culto
 
 private slots:
     void loadConfig();
@@ -44,6 +47,12 @@ private slots:
     void onAddMidiMap();         // añade fila nota->comando
     void onDeleteMidiMap();      // elimina fila seleccionada
     void onTestMidiNote();       // inyecta la nota de la fila seleccionada
+    // v1.5.0 — Planning Center Online (spec §3.3)
+    void onPcoFetch();           // token -> tipos de servicio -> planes
+    void onPcoImport();          // plan seleccionado -> ítems -> cola
+    // v1.5.0 — módulos JavaScript (JSLib)
+    void onJsReload();           // recarga módulos de <datos>/modules
+    void onJsOpenFolder();       // abre la carpeta de módulos
 
 private:
     void buildUi();
@@ -51,6 +60,7 @@ private:
     void refreshMidiStatus();    // v1.4.0: chip de estado MIDI In
     void loadMidiMapFromJson(const QJsonArray &arr);   // v1.4.0
     void addMidiRow(int note, const QString &cmd);     // v1.4.0
+    void refreshJsSection();     // v1.5.0: módulos cargados + registro JS
 
     AppContext *m_ctx;
     QPlainTextEdit *m_alertText = nullptr;
@@ -80,6 +90,15 @@ private:
     QCheckBox *m_midiInOn = nullptr;
     QTableWidget *m_midiMap = nullptr;
     QLabel *m_midiStatus = nullptr;
+    // v1.5.0 — Planning Center Online
+    QLineEdit *m_pcoId = nullptr;
+    QLineEdit *m_pcoSecret = nullptr;
+    QComboBox *m_pcoServiceType = nullptr;
+    QComboBox *m_pcoPlan = nullptr;
+    QLabel *m_pcoStatus = nullptr;
+    // v1.5.0 — módulos JS / JSLib
+    QLabel *m_jsModules = nullptr;
+    QPlainTextEdit *m_jsLog = nullptr;
 };
 
 #endif // LUMINA_COMMSPANEL_H

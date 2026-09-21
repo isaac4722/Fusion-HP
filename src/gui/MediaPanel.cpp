@@ -132,7 +132,9 @@ void MediaPanel::onOpen()
 {
     const QString f = QFileDialog::getOpenFileName(
         this, QStringLiteral("Abrir medios"), QString(),
-        QStringLiteral("Medios (*.mp4 *.avi *.mkv *.mov *.webm *.mp3 *.wav *.m4a *.ogg *.png *.jpg *.jpeg);;Todos (*)"));
+        // v1.5.0 (spec §3.2): JPG, PNG, GIF, BMP, TIF + audio/vídeo
+        QStringLiteral("Medios (*.mp4 *.avi *.mkv *.mov *.webm *.mp3 *.wav *.m4a *.ogg "
+                        "*.png *.jpg *.jpeg *.gif *.bmp *.tif *.tiff);;Todos (*)"));
     if (f.isEmpty()) return;
     m_path->setText(f);
     const QString ext = QFileInfo(f).suffix().toLower();

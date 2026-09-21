@@ -36,9 +36,15 @@ private slots:
     void onBackup();        // v1.3.0: crear copia de seguridad del vault
     void onRestore();       // v1.3.0: restaurar desde una copia
     void onResetShortcuts();  // v1.3.0: valores de fábrica de los atajos
+    // v1.5.0 — Google Drive (spec §3.4: respaldo/sincronización en la nube)
+    void onDriveConnect();      // OAuth loopback: conectar la cuenta
+    void onDriveBackupNow();    // subir el vault actual a Drive
+    void onDriveRestore();      // descargar la copia más reciente
+    void onDriveDisconnect();   // olvidar credenciales
 
 private:
     void buildUi();
+    void refreshDriveStatus();   // v1.5.0: estado de la cuenta de Google Drive
     AppContext *m_ctx;
     QComboBox *m_screenOutput = nullptr;
     QComboBox *m_screenStage = nullptr;
@@ -58,6 +64,11 @@ private:
     QVector<QPair<QByteArray, int>> m_shortcutDefs;
     QVector<QKeySequenceEdit *> m_shortcutEdits;
     QLabel *m_backupStatus = nullptr;
+    // v1.5.0 — Google Drive
+    QLineEdit *m_driveId = nullptr;
+    QLineEdit *m_driveSecret = nullptr;
+    QCheckBox *m_driveAuto = nullptr;
+    QLabel *m_driveStatus = nullptr;
 };
 
 #endif // LUMINA_SETTINGSPANEL_H

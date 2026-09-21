@@ -5,6 +5,7 @@
 #include "core/Database.h"
 #include "core/Triggers.h"
 #include "core/MidiIn.h"
+#include "core/JsEngine.h"     // v1.5.0: JsLibHost (registro de módulos)
 #include "net/WebServer.h"   // v1.3.0: broadcastMessage a los remotos
 
 #include <QVBoxLayout>
@@ -16,6 +17,10 @@
 #include <QHeaderView>
 #include <QFileInfo>
 #include <QStyle>
+#include <QDesktopServices>   // v1.5.0
+#include <QUrl>
+#include <QDir>
+#include <QRegExp>
 
 CommsPanel::CommsPanel(AppContext *ctx, QWidget *parent)
     : QWidget(parent), m_ctx(ctx)
@@ -24,6 +29,54 @@ CommsPanel::CommsPanel(AppContext *ctx, QWidget *parent)
     loadConfig();
     refreshRules();
     refreshMidiStatus();
+    // v1.5.0 — Planning Center Online: token persistido + señales de la API
+    if (m_ctx->pco) {
+        const QString id = m_ctx->db->setting(QStringLiteral("pco_app_id"));
+        const QString sec = m_ctx->db->setting(QStringLiteral("pco_app_secret"));
+        if (!id.isEmpty()) m_pcoId->setText(id);
+        if (!sec.isEmpty()) m_pcoSecret->setText(sec);
+        m_pcoStatus->setText(id.isEmpty() ? QStringLiteral("Token no configurado.")
+                                          : QStringLiteral("Token guardado — pulse «Conectar y cargar planes»."));
+        connect(m_ctx->pco, &PlanningCenter::serviceTypesReady, this,
+                [this](bool ok, const QString &err, const QVector<PcoServiceType> &types) {
+            if (!ok) { m_pcoStatus->setText(err); return; }
+            m_pcoServiceType->setEnabled(true);
+            m_pcoServiceType->clear();
+            for (const PcoServiceType &t : types)
+                m_pcoServiceType->addItem(t.name, t.id);
+            m_pcoStatus->setText(QStringLiteral("%1 ministerio(s). Cargando planes del primero…")
+                                     .arg(types.size()));
+            if (!types.isEmpty())
+                m_ctx->pco->fetchPlans(types.first().id);
+        });
+        connect(m_ctx->pco, &PlanningCenter::plansReady, this,
+                [this](bool ok, const QString &err, const QVector<PcoPlan> &plans) {
+            if (!ok) { m_pcoStatus->setText(err); return; }
+            m_pcoPlan->setEnabled(true);
+            m_pcoPlan->clear();
+            for (const PcoPlan &p : plans)
+                m_pcoPlan->addItem(QStringLiteral("%1 — %2").arg(p.dates, p.title), p.id);
+            m_pcoStatus->setText(QStringLiteral("%1 plan(es) futuros cargados.").arg(plans.size()));
+        });
+        connect(m_ctx->pco, &PlanningCenter::itemsReady, this,
+                [this](bool ok, const QString &err, const QString &, const QVector<PcoItem> &items) {
+            if (!ok) { m_pcoStatus->setText(err); return; }
+            m_pcoStatus->setText(QStringLiteral("%1 ítem(s) — importando a la cola del culto…")
+                                     .arg(items.size()));
+            emit pcoImportItems(items);
+        });
+        connect(m_pcoServiceType, qOverload<int>(&QComboBox::currentIndexChanged), this,
+                [this](int) {
+            if (m_ctx->pco && m_pcoServiceType->currentData().isValid()) {
+                m_pcoPlan->clear();
+                m_ctx->pco->fetchPlans(m_pcoServiceType->currentData().toString());
+            }
+        });
+    }
+    // v1.5.0 — módulos JS: estado inicial + refresco del registro en vivo
+    refreshJsSection();
+    if (m_ctx->js && m_ctx->js->host())
+        connect(m_ctx->js->host(), &JsLibHost::logChanged, this, [this]() { refreshJsSection(); });
     // Bandeja Telegram
     if (m_ctx->triggers)
         connect(m_ctx->triggers->telegram(), &TelegramBot::messageReceived, this,
@@ -104,6 +157,8 @@ void CommsPanel::buildUi()
         const QString t = m_remoteText->toPlainText().trimmed();
         if (t.isEmpty() || !m_ctx->web) return;
         m_ctx->web->broadcastMessage(t, m_remoteTitle->text().trimmed());
+        // v1.5.0: también a la Pantalla Director (registro persistente)
+        emit messageSent(t, m_remoteTitle->text().trimmed());
         m_remoteText->clear();
     });
     rlay->addWidget(bRemote);
@@ -257,6 +312,63 @@ void CommsPanel::buildUi()
     connect(bTest, &QPushButton::clicked, this, &CommsPanel::onTestTriggers);
     right->addWidget(bSave);
     right->addWidget(bTest);
+
+    // ------------------------------------------------------------------
+    // v1.5.0 — Planning Center Online (spec §3.3: «descarga e importación
+    // automática de programas y listas de canciones»)
+    // ------------------------------------------------------------------
+    auto *grpPco = new QGroupBox(QStringLiteral("Planning Center Online (importar plan del culto)"), host);
+    auto *play = new QVBoxLayout(grpPco);
+    m_pcoId = new QLineEdit(grpPco);
+    m_pcoId->setPlaceholderText(QStringLiteral("Application ID del token personal (PCO)"));
+    m_pcoSecret = new QLineEdit(grpPco);
+    m_pcoSecret->setPlaceholderText(QStringLiteral("Application Secret"));
+    m_pcoSecret->setEchoMode(QLineEdit::Password);
+    play->addWidget(m_pcoId);
+    play->addWidget(m_pcoSecret);
+    m_pcoServiceType = new QComboBox(grpPco);
+    m_pcoPlan = new QComboBox(grpPco);
+    m_pcoServiceType->setEnabled(false);
+    m_pcoPlan->setEnabled(false);
+    play->addWidget(m_pcoServiceType);
+    play->addWidget(m_pcoPlan);
+    m_pcoStatus = new QLabel(QStringLiteral("Token no configurado."), grpPco);
+    m_pcoStatus->setWordWrap(true);
+    play->addWidget(m_pcoStatus);
+    auto *pcoRow = new QHBoxLayout();
+    auto *bPcoFetch = new QPushButton(QStringLiteral("🔄 Conectar y cargar planes"), grpPco);
+    connect(bPcoFetch, &QPushButton::clicked, this, &CommsPanel::onPcoFetch);
+    auto *bPcoImport = new QPushButton(QStringLiteral("⬇ Importar plan a la cola"), grpPco);
+    bPcoImport->setProperty("class", QStringLiteral("primary"));
+    connect(bPcoImport, &QPushButton::clicked, this, &CommsPanel::onPcoImport);
+    pcoRow->addWidget(bPcoFetch);
+    pcoRow->addWidget(bPcoImport, 1);
+    play->addLayout(pcoRow);
+    right->addWidget(grpPco);
+
+    // ------------------------------------------------------------------
+    // v1.5.0 — Módulos JavaScript / JSLib (spec §3.3)
+    // ------------------------------------------------------------------
+    auto *grpJs = new QGroupBox(QStringLiteral("Módulos JavaScript (JSLib — sockets y automatización)"), host);
+    auto *jlay = new QVBoxLayout(grpJs);
+    m_jsModules = new QLabel(QStringLiteral("0 módulos cargados."), grpJs);
+    m_jsModules->setWordWrap(true);
+    jlay->addWidget(m_jsModules);
+    auto *jsRow = new QHBoxLayout();
+    auto *bJsReload = new QPushButton(QStringLiteral("🔄 Recargar módulos"), grpJs);
+    connect(bJsReload, &QPushButton::clicked, this, &CommsPanel::onJsReload);
+    auto *bJsFolder = new QPushButton(QStringLiteral("📂 Abrir carpeta de módulos"), grpJs);
+    connect(bJsFolder, &QPushButton::clicked, this, &CommsPanel::onJsOpenFolder);
+    jsRow->addWidget(bJsReload);
+    jsRow->addWidget(bJsFolder, 1);
+    jlay->addLayout(jsRow);
+    m_jsLog = new QPlainTextEdit(grpJs);
+    m_jsLog->setReadOnly(true);
+    m_jsLog->setMaximumHeight(110);
+    m_jsLog->setPlaceholderText(QStringLiteral("Registro de los módulos (jslib.log / errores)"));
+    jlay->addWidget(m_jsLog);
+    right->addWidget(grpJs);
+
     right->addStretch();
     lay->addLayout(right, 1);
 }
@@ -511,4 +623,76 @@ void CommsPanel::refreshMidiStatus()
     m_midiStatus->setProperty("state", QString::fromLatin1(state));
     m_midiStatus->style()->unpolish(m_midiStatus);
     m_midiStatus->style()->polish(m_midiStatus);
+}
+
+// ---------------------------------------------------------------------------
+// v1.5.0 — Planning Center Online (spec §3.3)
+// ---------------------------------------------------------------------------
+static QString normalizeTitle(const QString &t)
+{
+    QString s = t.toLower().normalized(QString::NormalizationForm_KD);
+    s.remove(QRegExp(QStringLiteral("[^a-z0-9áéíóúüñ ]")));
+    s.replace(QStringLiteral("  "), QStringLiteral(" "));
+    return s.simplified();
+}
+
+void CommsPanel::onPcoFetch()
+{
+    if (!m_ctx->pco) return;
+    // Guardar el token en ajustes (persistencia entre sesiones)
+    m_ctx->db->setSetting(QStringLiteral("pco_app_id"), m_pcoId->text().trimmed());
+    m_ctx->db->setSetting(QStringLiteral("pco_app_secret"), m_pcoSecret->text().trimmed());
+    m_ctx->pco->setToken(m_pcoId->text(), m_pcoSecret->text());
+    m_pcoStatus->setText(QStringLiteral("Conectando con Planning Center…"));
+    m_pcoServiceType->clear();
+    m_pcoPlan->clear();
+    m_ctx->pco->fetchServiceTypes();
+}
+
+void CommsPanel::onPcoImport()
+{
+    if (!m_ctx->pco || m_pcoPlan->currentData().isNull()) {
+        m_pcoStatus->setText(QStringLiteral("Seleccione primero un plan de la lista."));
+        return;
+    }
+    m_pcoStatus->setText(QStringLiteral("Descargando ítems del plan…"));
+    m_ctx->pco->fetchPlanItems(m_pcoPlan->currentData().toString());
+}
+
+// ---------------------------------------------------------------------------
+// v1.5.0 — Módulos JavaScript / JSLib (spec §3.3)
+// ---------------------------------------------------------------------------
+void CommsPanel::onJsReload()
+{
+    if (!m_ctx->js) return;
+    const QString dataDir = m_ctx->db->setting(QStringLiteral("data_dir"));
+    m_ctx->js->loadModules(dataDir);
+    refreshJsSection();
+}
+
+void CommsPanel::onJsOpenFolder()
+{
+    const QString dataDir = m_ctx->db->setting(QStringLiteral("data_dir"));
+    const QString dir = QDir(dataDir).absoluteFilePath(QStringLiteral("modules"));
+    QDir().mkpath(dir);
+    QDesktopServices::openUrl(QUrl::fromLocalFile(dir));
+}
+
+void CommsPanel::refreshJsSection()
+{
+    if (!m_ctx->js || !m_jsModules) return;
+    const int n = m_ctx->js->loadedModules().size();
+    const int err = m_ctx->js->errors().size();
+    m_jsModules->setText(n == 0 && err == 0
+        ? QStringLiteral("Sin módulos. Coloque archivos .js en <datos>/modules/ (ver README).")
+        : QStringLiteral("%1 módulo(s) cargado(s)%2.")
+              .arg(n)
+              .arg(err > 0 ? QStringLiteral(" · %1 con error(es)").arg(err) : QString()));
+    if (m_ctx->js->host() && m_jsLog) {
+        QStringList lines = m_ctx->js->host()->recentLog;
+        const QStringList errs = m_ctx->js->errors();
+        for (const QString &e : errs)
+            lines.append(QStringLiteral("[js:err] %1").arg(e));
+        m_jsLog->setPlainText(lines.join(QLatin1Char('\n')));
+    }
 }

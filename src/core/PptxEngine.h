@@ -427,13 +427,17 @@ public:
             return mz_zip_writer_add_mem(&zip, name, data.constData(), size_t(data.size()), MZ_DEFAULT_COMPRESSION);
         };
 
-        // [Content_Types].xml
+        // [Content_Types].xml — v1.5.0: incluye theme + slideMaster +
+        // slideLayout (herencia de 4 niveles, spec §4.3).
         QByteArray ct =
             "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
             "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">"
             "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>"
             "<Default Extension=\"xml\" ContentType=\"application/xml\"/>"
-            "<Override PartName=\"/ppt/presentation.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml\"/>";
+            "<Override PartName=\"/ppt/presentation.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml\"/>"
+            "<Override PartName=\"/ppt/theme/theme1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.theme+xml\"/>"
+            "<Override PartName=\"/ppt/slideMasters/slideMaster1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml\"/>"
+            "<Override PartName=\"/ppt/slideLayouts/slideLayout1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml\"/>";
         for (int i = 0; i < slides.size(); ++i)
             ct += QString("<Override PartName=\"/ppt/slides/slide%1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.slide+xml\"/>").arg(i + 1).toUtf8();
         ct += "</Types>";
@@ -445,27 +449,151 @@ public:
             "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"ppt/presentation.xml\"/>"
             "</Relationships>");
 
+        // v1.5.0: el maestro es rId1 y las slides empiezan en rId2 (el orden
+        // del esquema exige sldMasterIdLst ANTES de sldIdLst; el id del
+        // maestro debe ser >= 2147483648).
         addFile("ppt/presentation.xml",
             QString("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
             "<p:presentation xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" "
             "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" "
             "xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\">"
+            "<p:sldMasterIdLst><p:sldMasterId id=\"2147483648\" r:id=\"rId1\"/></p:sldMasterIdLst>"
             "<p:sldIdLst>%1</p:sldIdLst>"
             "<p:sldSz cx=\"12192000\" cy=\"6858000\"/>"
             "</p:presentation>").arg([&]() {
                 QString ids;
                 for (int i = 0; i < slides.size(); ++i)
-                    ids += QString("<p:sldId id=\"%1\" r:id=\"rId%2\"/>").arg(256 + i).arg(i + 1);
+                    ids += QString("<p:sldId id=\"%1\" r:id=\"rId%2\"/>").arg(256 + i).arg(i + 2);
                 return ids;
             }()).toUtf8());
 
         QByteArray prels = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
-            "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">";
+            "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+            "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster\" Target=\"slideMasters/slideMaster1.xml\"/>";
         for (int i = 0; i < slides.size(); ++i)
             prels += QString("<Relationship Id=\"rId%1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide\" Target=\"slides/slide%2.xml\"/>")
-                        .arg(i + 1).arg(i + 1).toUtf8();
+                        .arg(i + 2).arg(i + 1).toUtf8();
         prels += "</Relationships>";
         addFile("ppt/_rels/presentation.xml.rels", prels);
+
+        // ----------------- v1.5.0: NIVEL 1 — TEMA (theme1.xml) -----------------
+        // Paleta derivada del tema activo (spec §4.3: Tema -> Maestro ->
+        // Diseño -> Diapositiva). clrScheme/fontScheme/fmtScheme completos y
+        // validos para PowerPoint (3 fills, 3 lines, 3 effects, 3 bg fills).
+        {
+            const QString dk = theme.body.color.name().mid(1);
+            const QString lt = theme.background.color1.name().mid(1);
+            const QString ac = theme.title.color.name().mid(1);
+            addFile("ppt/theme/theme1.xml",
+                QStringLiteral(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+                "<a:theme xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" name=\"Lumina\">"
+                "<a:themeElements>"
+                "<a:clrScheme name=\"Lumina\">"
+                "<a:dk1><a:sysClr val=\"windowText\" lastClr=\"000000\"/></a:dk1>"
+                "<a:lt1><a:sysClr val=\"window\" lastClr=\"FFFFFF\"/></a:lt1>"
+                "<a:dk2><a:srgbClr val=\"%1\"/></a:dk2>"
+                "<a:lt2><a:srgbClr val=\"%2\"/></a:lt2>"
+                "<a:accent1><a:srgbClr val=\"%3\"/></a:accent1>"
+                "<a:accent2><a:srgbClr val=\"%3\"/></a:accent2>"
+                "<a:accent3><a:srgbClr val=\"%3\"/></a:accent3>"
+                "<a:accent4><a:srgbClr val=\"%3\"/></a:accent4>"
+                "<a:accent5><a:srgbClr val=\"%3\"/></a:accent5>"
+                "<a:accent6><a:srgbClr val=\"%3\"/></a:accent6>"
+                "<a:hlink><a:srgbClr val=\"2D7DFF\"/></a:hlink>"
+                "<a:folHlink><a:srgbClr val=\"8C8C8C\"/></a:folHlink>"
+                "</a:clrScheme>"
+                "<a:fontScheme name=\"Lumina\">"
+                "<a:majorFont><a:latin typeface=\"Calibri Light\"/><a:ea typeface=\"\"/><a:cs typeface=\"\"/></a:majorFont>"
+                "<a:minorFont><a:latin typeface=\"Calibri\"/><a:ea typeface=\"\"/><a:cs typeface=\"\"/></a:minorFont>"
+                "</a:fontScheme>"
+                "<a:fmtScheme name=\"Lumina\">"
+                "<a:fillStyleLst>"
+                "<a:solidFill><a:schemeClr val=\"phClr\"/></a:solidFill>"
+                "<a:gradFill rotWithShape=\"1\"><a:gsLst>"
+                "<a:gs pos=\"0\"><a:schemeClr val=\"phClr\"><a:tint val=\"100000\"/></a:schemeClr></a:gs>"
+                "<a:gs pos=\"100000\"><a:schemeClr val=\"phClr\"><a:shade val=\"100000\"/></a:schemeClr></a:gs>"
+                "</a:gsLst><a:lin ang=\"5400000\" scaled=\"0\"/></a:gradFill>"
+                "<a:gradFill rotWithShape=\"1\"><a:gsLst>"
+                "<a:gs pos=\"0\"><a:schemeClr val=\"phClr\"><a:tint val=\"100000\"/></a:schemeClr></a:gs>"
+                "<a:gs pos=\"50000\"><a:schemeClr val=\"phClr\"><a:tint val=\"74000\"/></a:schemeClr></a:gs>"
+                "<a:gs pos=\"100000\"><a:schemeClr val=\"phClr\"><a:shade val=\"100000\"/></a:schemeClr></a:gs>"
+                "</a:gsLst><a:lin ang=\"5400000\" scaled=\"0\"/></a:gradFill>"
+                "</a:fillStyleLst>"
+                "<a:lnStyleLst>"
+                "<a:ln w=\"6350\"><a:solidFill><a:schemeClr val=\"phClr\"/></a:solidFill></a:ln>"
+                "<a:ln w=\"12700\"><a:solidFill><a:schemeClr val=\"phClr\"/></a:solidFill></a:ln>"
+                "<a:ln w=\"19050\"><a:solidFill><a:schemeClr val=\"phClr\"/></a:solidFill></a:ln>"
+                "</a:lnStyleLst>"
+                "<a:effectStyleLst>"
+                "<a:effectStyle><a:effectLst/></a:effectStyle>"
+                "<a:effectStyle><a:effectLst/></a:effectStyle>"
+                "<a:effectStyle><a:effectLst/></a:effectStyle>"
+                "</a:effectStyleLst>"
+                "<a:bgFillStyleLst>"
+                "<a:solidFill><a:schemeClr val=\"phClr\"/></a:solidFill>"
+                "<a:solidFill><a:schemeClr val=\"phClr\"><a:tint val=\"95000\"/></a:schemeClr></a:solidFill>"
+                "<a:gradFill rotWithShape=\"1\"><a:gsLst>"
+                "<a:gs pos=\"0\"><a:schemeClr val=\"phClr\"><a:tint val=\"95000\"/></a:schemeClr></a:gs>"
+                "<a:gs pos=\"100000\"><a:schemeClr val=\"phClr\"><a:shade val=\"100000\"/></a:schemeClr></a:gs>"
+                "</a:gsLst><a:lin ang=\"5400000\" scaled=\"0\"/></a:gradFill>"
+                "</a:bgFillStyleLst>"
+                "</a:fmtScheme>"
+                "</a:themeElements>"
+                "<a:objectDefaults/><a:extraClrSchemeLst/></a:theme>")
+                    .arg(dk, lt, ac).toUtf8());
+
+            // ------------- v1.5.0: NIVEL 2 — MAESTRO (slideMaster1.xml) --------
+            // Fondo heredado del tema (lt1); clrMap estándar; layout rId1.
+            addFile("ppt/slideMasters/slideMaster1.xml",
+                QStringLiteral(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+                "<p:sldMaster xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" "
+                "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" "
+                "xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\">"
+                "<p:cSld><p:bg><p:bgPr><a:solidFill><a:schemeClr val=\"lt1\"/></a:solidFill>"
+                "<a:effectLst/></p:bgPr></p:bg>"
+                "<p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>"
+                "<p:grpSpPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"0\" cy=\"0\"/>"
+                "<a:chOff x=\"0\" y=\"0\"/><a:chExt cx=\"0\" cy=\"0\"/></a:xfrm></p:grpSpPr>"
+                "</p:spTree></p:cSld>"
+                "<p:clrMap bg1=\"lt1\" tx1=\"dk1\" bg2=\"lt2\" tx2=\"dk2\" accent1=\"accent1\" "
+                "accent2=\"accent2\" accent3=\"accent3\" accent4=\"accent4\" accent5=\"accent5\" "
+                "accent6=\"accent6\" hlink=\"hlink\" folHlink=\"folHlink\"/>"
+                "<p:sldLayoutIdLst><p:sldLayoutId id=\"2147483649\" r:id=\"rId1\"/></p:sldLayoutIdLst>"
+                "<p:txStyles>"
+                "<p:titleStyle><a:lvl1pPr><a:defRPr sz=\"4000\"/></a:lvl1pPr></p:titleStyle>"
+                "<p:bodyStyle><a:lvl1pPr><a:defRPr sz=\"2400\"/></a:lvl1pPr></p:bodyStyle>"
+                "<p:otherStyle><a:lvl1pPr><a:defRPr sz=\"2400\"/></a:lvl1pPr></p:otherStyle>"
+                "</p:txStyles></p:sldMaster>").toUtf8());
+            addFile("ppt/slideMasters/_rels/slideMaster1.xml.rels",
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+                "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+                "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout\" Target=\"../slideLayouts/slideLayout1.xml\"/>"
+                "<Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme\" Target=\"../theme/theme1.xml\"/>"
+                "</Relationships>");
+
+            // ------------- v1.5.0: NIVEL 3 — DISEÑO (slideLayout1.xml) ----------
+            // Diseño "blank" heredando TODO del maestro (la cascada completa:
+            // slide -> layout -> master -> theme; la slide conserva su
+            // override de fondo sólido como dicta el modelo de herencia).
+            addFile("ppt/slideLayouts/slideLayout1.xml",
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+                "<p:sldLayout xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" "
+                "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" "
+                "xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\" "
+                "type=\"blank\" preserve=\"1\">"
+                "<p:cSld name=\"Lumina\">"
+                "<p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>"
+                "<p:grpSpPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"0\" cy=\"0\"/>"
+                "<a:chOff x=\"0\" y=\"0\"/><a:chExt cx=\"0\" cy=\"0\"/></a:xfrm></p:grpSpPr>"
+                "</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sldLayout>");
+            addFile("ppt/slideLayouts/_rels/slideLayout1.xml.rels",
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+                "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+                "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster\" Target=\"../slideMasters/slideMaster1.xml\"/>"
+                "</Relationships>");
+        }
 
         for (int i = 0; i < slides.size(); ++i) {
             const Slide &s = slides.at(i);
@@ -497,6 +625,13 @@ public:
                 "</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>")
                     .arg(bg).arg(body);
             addFile(QString("ppt/slides/slide%1.xml").arg(i + 1).toUtf8().constData(), xml.toUtf8());
+            // v1.5.0: rel de la slide -> slideLayout1 (nivel 4 de la cascada)
+            addFile(QString("ppt/slides/_rels/slide%1.xml.rels").arg(i + 1).toUtf8().constData(),
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+                "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+                "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout\" "
+                "Target=\"../slideLayouts/slideLayout1.xml\"/>"
+                "</Relationships>");
         }
 
         if (!mz_zip_writer_finalize_archive(&zip)) {

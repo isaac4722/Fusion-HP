@@ -210,6 +210,8 @@ private:
     qint64 m_offset = 0;
 };
 
+#include "core/JsEngine.h"      // v1.5.0: tipo completo (fireEvent -> JS)
+
 // ---------------------------------------------------------------------------
 // Orquestador de triggers
 // ---------------------------------------------------------------------------
@@ -262,10 +264,16 @@ public:
 
     TelegramBot *telegram() { return &m_telegram; }
 
+    // v1.5.0 — módulos JS (spec §3.3 "JSLib"): todos los eventos se
+    // retransmiten al motor para los "onEvent" de los módulos del usuario.
+    void setJsEngine(JsEngine *js) { m_js = js; }
+
     // Dispara un evento por nombre: "slide_next","slide_prev","media_play",
     // "media_stop","black","clear","logo","golive","alert"
     void fireEvent(const QString &event, const QVariantMap &data = QVariantMap())
     {
+        // 0) Módulos JS (v1.5.0): jslib.onEvent("slide_next", function(data){…})
+        if (m_js) m_js->fireEvent(event, data);
         // 1) Webhook HTTP
         if (m_cfg.webhookEnabled && !m_cfg.webhookUrl.isEmpty()) {
             QString urlStr = m_cfg.webhookUrl;
@@ -277,6 +285,9 @@ public:
             if (url.isValid()) {
                 QNetworkRequest req(url);
                 req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
+                // ERR-5 (qt-cpp-review v1.5.0): sin timeout un webhook caído
+                // dejaba la petición colgada indefinidamente.
+                req.setTransferTimeout(10000);
                 QJsonObject payload;
                 payload["event"] = event;
                 for (auto it = data.constBegin(); it != data.constEnd(); ++it)
@@ -320,6 +331,7 @@ private:
     TelegramBot m_telegram;
     MidiOut m_midi;
     MidiIn m_midiIn;             // v1.4.0
+    JsEngine *m_js = nullptr;    // v1.5.0 (no propietario: MainWindow lo crea)
     Config m_cfg;
 };
 

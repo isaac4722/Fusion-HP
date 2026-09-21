@@ -19,8 +19,8 @@ permissions:
 env:
   APP_NAME: LuminaPresentationSuite
   # Version dinamica: nombre del tag (vN.N.N) al hacer push de tags;
-  # fallback v1.4.0 en pushes a main (solo artefactos) y workflow_dispatch.
-  APP_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.4.0' }}
+  # fallback v1.5.0 en pushes a main (solo artefactos) y workflow_dispatch.
+  APP_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.5.0' }}
   VLC_VERSION: "3.0.21"
 
 jobs:
@@ -140,7 +140,8 @@ jobs:
           # ---------------------------------------------------------------
           $qtDlls = @(
             'Qt5Core.dll','Qt5Gui.dll','Qt5Widgets.dll','Qt5Network.dll',
-            'Qt5WebSockets.dll','Qt5PrintSupport.dll','Qt5Svg.dll'
+            'Qt5WebSockets.dll','Qt5PrintSupport.dll','Qt5Svg.dll',
+            'Qt5Qml.dll'
           )
           foreach ($dll in $qtDlls) {
             if (-not (Test-Path "$qt\bin\$dll")) { throw "Falta DLL de Qt: $dll" }
@@ -161,6 +162,7 @@ jobs:
             'imageformats\qico.dll'                  = 'imageformats'
             'imageformats\qjpeg.dll'                 = 'imageformats'
             'imageformats\qsvg.dll'                  = 'imageformats'
+            'imageformats\qtiff.dll'                 = 'imageformats'
           }
           foreach ($rel in $plugins.Keys) {
             $src = Join-Path "$qt\plugins" $rel
@@ -288,6 +290,17 @@ jobs:
             - Incluye: motor Qt + **runtime MinGW**, **LibVLC 3.0.21** (todos los codecs), **Biblia RVR1909 completa** y temas.
             - Verifica la integridad con `SHA256SUMS.txt`.
             - Control remoto móvil: `http://<ip-del-pc>:8088/remote.html` · Overlay OBS: `http://<ip>:8088/overlay.html`
+
+            ### 🌐 Novedades v1.5.0 «NEXO» — integraciones de la especificación completa
+            - **🧭 Pantalla 3 «Director / Instrucciones»** (spec §3.3 multiview): tercera salida independiente para el director del servicio — ítem actual y SIGUIENTE con preview, notas, reloj, temporizador y **registro persistente de mensajes del operador**; también vía navegador en `http://<ip>:8088/director.html`.
+            - **📅 Planning Center Online** (spec §3.3): importa planes futuros del culto con un Personal Access Token — las canciones se emparejan con las de tu biblioteca (insensible a mayúsculas/acentos) y el resto entra como ítems de texto con sus notas.
+            - **☁ Respaldo en Google Drive** (spec §3.4): conexión OAuth por navegador (loopback, sin copiar códigos), subida manual + **subida automática de la copia semanal**, descarga de la copia más reciente y rotación de 4 — todo en la carpeta oculta de la aplicación en Drive.
+            - **⚙ Módulos JavaScript / JSLib** (spec §3.3): coloca archivos `.js` en `<datos>/modules/` y automatiza con sockets TCP y WebSocket persistentes, HTTP GET, temporizadores y eventos (`jslib.onEvent('slide_next', …)`); registro en vivo en Comunicación › Módulos JS.
+            - **🖼 TIF en imágenes** (spec §3.2): JPG, PNG, GIF, BMP y **TIF** en medios, drag & drop y fondos (plugin qtiff empaquetado; TIFF se proyecta por la ruta nativa Qt).
+            - **📊 PPTX con herencia de 4 niveles** (spec §4.3): la exportación ahora escribe theme + slideMaster + slideLayout + slides enlazados (modelo Tema → Maestro → Diseño → Diapositiva del estándar OpenXML).
+            - **🧠 Lazy loading real** (spec §2.5): solo el elemento actual y el siguiente se precargan (cache de 2 imágenes) — memoria acotada en equipos de 4 GB.
+            - **📋 Log estructurado + captura de crashes** (spec §2.6): timestamp + nivel + módulo emisor, rotación al superar 2 MB y registro de excepciones no controladas (código/dirección/módulo) en Windows.
+            - **🛠 Skills de calidad en el desarrollo**: lint qt-cpp-review (60+ reglas) y disciplinas qt-ui-design aplicadas a las secciones nuevas.
 
             ### 🧠 Novedades v1.4.0 «PRISMA» — automatización semántica + accesibilidad
             - **🧠 Automatización semántica por etiquetas** (spec Holyrics: «si se reproduce una canción con la etiqueta 'lento', aplicar el tema 'calma' y seleccionar un fondo con la etiqueta 'ocaso'»): crea reglas etiqueta → tema (+ fondo por etiqueta) en Comunicación › Automatización semántica; al proyectar una canción, la primera regla que coincide se aplica EN VIVO sin tocar la plantilla. Coincidencia insensible a mayúsculas y acentos.

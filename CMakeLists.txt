@@ -6,7 +6,7 @@
 #  LibVLC se resuelve en RUNTIME (carga dinamica), no se enlaza.
 # ============================================================================
 cmake_minimum_required(VERSION 3.16)
-project(LuminaPresentationSuite VERSION 1.4.0 LANGUAGES CXX C)
+project(LuminaPresentationSuite VERSION 1.5.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -18,7 +18,7 @@ if (NOT CMAKE_BUILD_TYPE)
 endif()
 
 # --------------------------- Qt 5.15 LTS ------------------------------------
-find_package(Qt5 5.15 REQUIRED COMPONENTS Core Gui Widgets Network WebSockets PrintSupport)
+find_package(Qt5 5.15 REQUIRED COMPONENTS Core Gui Widgets Network WebSockets PrintSupport Qml)
 
 # --------------------------- Optimizaciones ---------------------------------
 # NOTA: se evita -march=native en binarios de distribucion (portabilidad
@@ -67,9 +67,13 @@ set(LUMINA_HEADERS
     src/core/MidiOut.h
     src/core/MidiIn.h
     src/core/Triggers.h
+    src/core/JsEngine.h          # v1.5.0: JSLib (spec §3.3)
+    src/core/PlanningCenter.h    # v1.5.0: Planning Center Online (spec §3.3)
+    src/core/DriveBackup.h       # v1.5.0: Google Drive (spec §3.4)
     src/core/AppContext.h
     src/net/WebServer.h
     src/gui/StageWindow.h
+    src/gui/DirectorWindow.h     # v1.5.0: pantalla 3 (spec §3.3)
     src/gui/VectorCanvas.h
     src/gui/SongPanel.h
     src/gui/BiblePanel.h
@@ -134,6 +138,7 @@ target_link_libraries(LuminaPresentationSuite PRIVATE
     Qt5::Network
     Qt5::WebSockets
     Qt5::PrintSupport
+    Qt5::Qml        # v1.5.0: QJSEngine (módulos JS / JSLib — spec §3.3)
 )
 
 if (WIN32)

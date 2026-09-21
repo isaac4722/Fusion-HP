@@ -1297,6 +1297,7 @@ void Database::autoBackupIfNeeded(const QString &backupDir)
         for (int i = 4; i < autos.size(); ++i)
             d.remove(autos.at(i));
         qInfo() << "[DB] Copia automática creada:" << dest;
+        emit autoBackupCreated(dest);   // v1.5.0: hook de subida a Google Drive
     } else {
         qWarning() << "[DB] Copia automática falló:" << err;
     }

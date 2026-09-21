@@ -4,6 +4,7 @@
 #include "SettingsPanel.h"
 #include "core/Database.h"
 #include "core/MediaEngine.h"
+#include "core/DriveBackup.h"   // v1.5.0: respaldo en Google Drive
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -18,6 +19,7 @@
 #include <QGuiApplication>
 #include <QScreen>
 #include <QSysInfo>
+#include <QStyle>
 #include <tuple>
 
 SettingsPanel::SettingsPanel(AppContext *ctx, QWidget *parent)
@@ -170,6 +172,64 @@ void SettingsPanel::buildUi()
         m_backupStatus->setText(QStringLiteral("Copia automática semanal activada (subcarpeta 'backups')."));
     }
     lay->addWidget(grpBackup);
+
+    // ---------------------------------------------------------------------
+    // v1.5.0 — GOOGLE DRIVE (spec §3.4): respaldo/sincronización en la nube.
+    // OAuth loopback (sin códigos copiados a mano). El usuario crea una app
+    // "Escritorio" en Google Cloud Console y pega sus credenciales aquí.
+    // ---------------------------------------------------------------------
+    auto *grpDrive = new QGroupBox(QStringLiteral("Respaldo en Google Drive (nube)"), this);
+    auto *dlay = new QVBoxLayout(grpDrive);
+    m_driveId = new QLineEdit(grpDrive);
+    m_driveId->setPlaceholderText(QStringLiteral("Client ID de su app de escritorio de Google Cloud"));
+    m_driveId->setText(m_ctx->db->setting(QStringLiteral("drive_client_id")));
+    m_driveSecret = new QLineEdit(grpDrive);
+    m_driveSecret->setPlaceholderText(QStringLiteral("Client Secret"));
+    m_driveSecret->setEchoMode(QLineEdit::Password);
+    m_driveSecret->setText(m_ctx->db->setting(QStringLiteral("drive_client_secret")));
+    dlay->addWidget(m_driveId);
+    dlay->addWidget(m_driveSecret);
+    m_driveAuto = new QCheckBox(QStringLiteral("Subir también la copia automática semanal a Drive"), grpDrive);
+    m_driveAuto->setChecked(m_ctx->db->setting(QStringLiteral("drive_auto_upload"),
+                                              QStringLiteral("0")) == QStringLiteral("1"));
+    dlay->addWidget(m_driveAuto);
+    m_driveStatus = new QLabel(QString(), grpDrive);
+    m_driveStatus->setObjectName(QStringLiteral("MutedLabel"));
+    m_driveStatus->setWordWrap(true);
+    dlay->addWidget(m_driveStatus);
+    auto *driveRow1 = new QHBoxLayout();
+    auto *bDriveConnect = new QPushButton(QStringLiteral("🔗 Conectar cuenta de Google"), grpDrive);
+    bDriveConnect->setProperty("class", QStringLiteral("primary"));
+    connect(bDriveConnect, &QPushButton::clicked, this, &SettingsPanel::onDriveConnect);
+    auto *bDriveDisconnect = new QPushButton(QStringLiteral("Desconectar"), grpDrive);
+    connect(bDriveDisconnect, &QPushButton::clicked, this, &SettingsPanel::onDriveDisconnect);
+    driveRow1->addWidget(bDriveConnect, 1);
+    driveRow1->addWidget(bDriveDisconnect);
+    dlay->addLayout(driveRow1);
+    auto *driveRow2 = new QHBoxLayout();
+    auto *bDriveBackup = new QPushButton(QStringLiteral("☁ Respaldar ahora en Drive"), grpDrive);
+    connect(bDriveBackup, &QPushButton::clicked, this, &SettingsPanel::onDriveBackupNow);
+    auto *bDriveRestore = new QPushButton(QStringLiteral("⬇ Descargar última copia"), grpDrive);
+    connect(bDriveRestore, &QPushButton::clicked, this, &SettingsPanel::onDriveRestore);
+    driveRow2->addWidget(bDriveBackup, 1);
+    driveRow2->addWidget(bDriveRestore, 1);
+    dlay->addLayout(driveRow2);
+    lay->addWidget(grpDrive);
+    refreshDriveStatus();
+
+    // v1.5.0: resultados asincrónicos de Drive -> etiqueta de estado
+    if (m_ctx->drive) {
+        connect(m_ctx->drive, &DriveBackup::authResult, this,
+                [this](bool ok, const QString &msg) {
+            m_driveStatus->setText(msg);
+            m_driveStatus->setProperty("state", ok ? QStringLiteral("ok") : QStringLiteral("warn"));
+            refreshDriveStatus();
+        });
+        connect(m_ctx->drive, &DriveBackup::uploadResult, this,
+                [this](bool ok, const QString &msg) { m_driveStatus->setText(msg); Q_UNUSED(ok) });
+        connect(m_ctx->drive, &DriveBackup::downloadResult, this,
+                [this](bool ok, const QString &msg, const QString &) { m_driveStatus->setText(msg); Q_UNUSED(ok) });
+    }
 
     // v1.1.0: cargar los valores guardados de los nuevos ajustes
     m_hinarioMode->setChecked(m_ctx->db->setting(QStringLiteral("song_hinario"), QStringLiteral("0")) == QStringLiteral("1"));
@@ -346,4 +406,85 @@ void SettingsPanel::onResetShortcuts()
 {
     for (int i = 0; i < m_shortcutEdits.size(); ++i)
         m_shortcutEdits.at(i)->setKeySequence(QKeySequence(m_shortcutDefs.at(i).second));
+}
+
+// ---------------------------------------------------------------------------
+// v1.5.0 — Google Drive (spec §3.4)
+// ---------------------------------------------------------------------------
+void SettingsPanel::refreshDriveStatus()
+{
+    if (!m_driveStatus) return;
+    if (m_ctx->drive && m_ctx->drive->hasAccount()) {
+        m_driveStatus->setText(QStringLiteral("Cuenta conectada. Los respaldos van a la carpeta "
+                                              "oculta de la aplicación en Drive (rotación de 4)."));
+        m_driveStatus->setProperty("state", QStringLiteral("ok"));
+    } else if (!m_driveId->text().trimmed().isEmpty()) {
+        m_driveStatus->setText(QStringLiteral("Credenciales guardadas — pulse «Conectar cuenta de Google»."));
+        m_driveStatus->setProperty("state", QStringLiteral("warn"));
+    } else {
+        m_driveStatus->setText(QStringLiteral("Sin conectar. Cree una app de escritorio en Google Cloud "
+                                              "Console (ver README) y pegue sus credenciales aquí."));
+        m_driveStatus->setProperty("state", QString());
+    }
+    // Re-polish para el estilo por propiedad (patrón hallmark)
+    m_driveStatus->style()->unpolish(m_driveStatus);
+    m_driveStatus->style()->polish(m_driveStatus);
+}
+
+void SettingsPanel::onDriveConnect()
+{
+    if (!m_ctx->drive) return;
+    // Persistir credenciales + preferencia de subida automática
+    m_ctx->db->setSetting(QStringLiteral("drive_client_id"), m_driveId->text().trimmed());
+    m_ctx->db->setSetting(QStringLiteral("drive_client_secret"), m_driveSecret->text().trimmed());
+    m_ctx->db->setSetting(QStringLiteral("drive_auto_upload"),
+                          m_driveAuto->isChecked() ? QStringLiteral("1") : QStringLiteral("0"));
+    m_driveStatus->setText(QStringLiteral("Abriendo el navegador para autorizar… (complete el permiso y vuelva)"));
+    m_ctx->drive->connectAccount(m_driveId->text(), m_driveSecret->text());
+}
+
+void SettingsPanel::onDriveBackupNow()
+{
+    if (!m_ctx->drive) return;
+    if (!m_ctx->drive->hasAccount()) {
+        QMessageBox::information(this, QStringLiteral("Google Drive"),
+                                 QStringLiteral("Conecte primero su cuenta de Google."));
+        return;
+    }
+    const QString dataDir = m_ctx->db->setting(QStringLiteral("data_dir"));
+    const QString tmp = QStringLiteral("%1/backups/manual_%2.db")
+            .arg(dataDir, QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_HHmmss")));
+    QDir().mkpath(dataDir + QStringLiteral("/backups"));
+    QString err;
+    if (!m_ctx->db->backupTo(tmp, &err)) {
+        QMessageBox::warning(this, QStringLiteral("Google Drive"),
+                             QStringLiteral("No se pudo crear la copia local previa a la subida:\n%1").arg(err));
+        return;
+    }
+    m_driveStatus->setText(QStringLiteral("Subiendo respaldo a Google Drive…"));
+    m_ctx->drive->backupNow(tmp);
+}
+
+void SettingsPanel::onDriveRestore()
+{
+    if (!m_ctx->drive) return;
+    if (!m_ctx->drive->hasAccount()) {
+        QMessageBox::information(this, QStringLiteral("Google Drive"),
+                                 QStringLiteral("Conecte primero su cuenta de Google."));
+        return;
+    }
+    // Descarga la copia MÁS RECIENTE a backups/ (después se restaura con el
+    // botón «Restaurar copia…» local — flujo explícito y reversible).
+    const QString dataDir = m_ctx->db->setting(QStringLiteral("data_dir"));
+    QDir().mkpath(dataDir + QStringLiteral("/backups"));
+    const QString dest = QStringLiteral("%1/backups/drive_latest.db").arg(dataDir);
+    m_driveStatus->setText(QStringLiteral("Buscando la copia más reciente en Drive…"));
+    m_ctx->drive->downloadBackup(QStringLiteral(""), dest);   // vacío = la más reciente
+}
+
+void SettingsPanel::onDriveDisconnect()
+{
+    if (!m_ctx->drive) return;
+    m_ctx->drive->disconnectAccount();
+    refreshDriveStatus();
 }

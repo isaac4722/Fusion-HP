@@ -20,6 +20,8 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QDateTime>
+#include <QTime>
+#include <QStringList>
 #include <QFile>
 #include <QUrl>
 #include <QUrlQuery>
@@ -99,6 +101,10 @@ public slots:
         broadcastState();
     }
 
+    // v1.5.0 — estado del director (spec §3.3): cuenta atrás en segundos
+    // publicada por MainWindow (-1 inactiva · 0 ¡TIEMPO!).
+    void setDirectorCountdown(int secs) { m_directorCountdown = secs; }
+
     void broadcastAlert(const QString &text)
     {
         QJsonObject ev;
@@ -110,6 +116,8 @@ public slots:
     // v1.3.0 — "Custom Messages" del spec Holyrics: mensaje del operador a
     // TODOS los dispositivos remotos conectados (se muestra como toast en
     // remote.html; no interrumpe la proyección ni el Stage View).
+    // v1.5.0 — también queda en el historial (últimos 10) para la Pantalla
+    // Director (spec §3.3: "mensajes y notas internas para el director").
     void broadcastMessage(const QString &text, const QString &title = QString())
     {
         QJsonObject ev;
@@ -118,6 +126,18 @@ public slots:
         if (!title.isEmpty())
             ev["title"] = title;
         broadcast(QString::fromUtf8(QJsonDocument(ev).toJson(QJsonDocument::Compact)));
+        m_messageHistory.prepend(QStringLiteral("[%1] %2 — %3")
+                .arg(QTime::currentTime().toString(QStringLiteral("hh:mm")),
+                     title.isEmpty() ? QStringLiteral("Mensaje") : title, text));
+        while (m_messageHistory.size() > 10)
+            m_messageHistory.removeLast();
+    }
+
+    // v1.5.0 — estado de la Pantalla Director (lo publica MainWindow al
+    // cambiar de slide/ítem; la web lo consulta en /api/director.json).
+    void setDirectorState(const QJsonObject &state)
+    {
+        m_directorState = state;
     }
 
 signals:
@@ -245,6 +265,18 @@ private:
             const QString wsPortToken = QStringLiteral("%%WSPORT%%");
             const QByteArray wsPortValue = QByteArray::number(m_ws ? int(m_ws->serverPort()) : 8765);
             body.replace(wsPortToken.toUtf8(), wsPortValue);
+        } else if (path == QStringLiteral("/director.html") || path == QStringLiteral("/director")) {
+            // v1.5.0: Pantalla HTML / Instrucciones para el director del
+            // servicio (spec §3.3) — usable en cualquier navegador de la LAN.
+            body = resource(QStringLiteral(":/web/director.html"));
+        } else if (path == QStringLiteral("/api/director.json")) {
+            // v1.5.0: estado del director (ítem/texto/siguiente/notas/mensajes)
+            QJsonObject dir = m_directorState;
+            dir["messages"] = QJsonArray::fromStringList(m_messageHistory);
+            dir["countdown"] = double(m_directorCountdown);
+            body = QJsonDocument(dir).toJson(QJsonDocument::Compact);
+            contentType = "application/json; charset=utf-8";
+            isJson = true;
         } else if (path == QStringLiteral("/favicon.ico")) {
             body = resource(QStringLiteral(":/img/logo.png"));
             contentType = "image/png";
@@ -252,6 +284,7 @@ private:
             body = "<html><body><h3>LuminaPresentation Suite</h3>"
                    "<p>Control remoto: <a href=\"/remote.html\">/remote.html</a> | "
                    "Overlay OBS: <a href=\"/overlay.html\">/overlay.html</a> | "
+                   "Director: <a href=\"/director.html\">/director.html</a><br>"
                    "API: <a href=\"/api/state\">/api/state</a> · "
                    "<a href=\"/api/live.txt\">/api/live.txt</a> · "
                    "<code>/api/cmd?c=next</code></p></body></html>";
@@ -315,6 +348,9 @@ private:
     QString m_apiToken;
     QString m_liveText;
     bool m_liveTextMode = false;
+    QStringList m_messageHistory;        // v1.5.0: últimos 10 mensajes (director)
+    QJsonObject m_directorState;         // v1.5.0: item/texto/siguiente/notas
+    int m_directorCountdown = -1;        // v1.5.0: -1 inactiva, 0 ¡TIEMPO!
 };
 
 #endif // LUMINA_WEBSERVER_H

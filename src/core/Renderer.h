@@ -14,6 +14,7 @@
 
 #include <QPixmap>
 #include <QSize>
+#include <QVector>
 #include <QPainter>
 #include <QPainterPath>
 #include <QFontMetrics>
@@ -37,6 +38,35 @@ class Renderer
 {
 public:
     using Options = RenderOptions;
+
+    // -----------------------------------------------------------------
+    // v1.5.0 — Lazy loading (spec §2.5): cache de EXACTAMENTE 2 entradas
+    // (elemento actual + inmediato siguiente) para equipos de 4 GB RAM.
+    // MainWindow llama preloadImage() al cambiar de slide; render() usa
+    // cachedImage(). Fuera de cache se decodifica bajo demanda SIN cachear
+    // (memoria acotada: nunca hay más de 2 imágenes residentes + la activa).
+    // -----------------------------------------------------------------
+    struct ImgCacheEntry { QString path; QImage img; };
+    inline static QVector<ImgCacheEntry> s_imgCache;   // C++17 inline static
+
+    static void preloadImage(const QString &path)
+    {
+        if (path.isEmpty()) return;
+        for (const ImgCacheEntry &e : qAsConst(s_imgCache))
+            if (e.path == path) return;               // ya residente
+        QImage img(path);
+        if (img.isNull()) return;                     // falla silenciosa: render usará fondo
+        s_imgCache.prepend(ImgCacheEntry{ path, img });
+        while (s_imgCache.size() > 2)
+            s_imgCache.removeLast();
+    }
+
+    static QImage cachedImage(const QString &path)
+    {
+        for (int i = 0; i < s_imgCache.size(); ++i)
+            if (s_imgCache.at(i).path == path) return s_imgCache.at(i).img;
+        return QImage(path);                          // lazy: sin cachear
+    }
 
     // -----------------------------------------------------------------
     // v1.4.0 — Comprobador de accesibilidad (spec PowerPoint: WCAG).
@@ -150,7 +180,8 @@ public:
             break;
         }
         case 2: {   // imagen
-            QImage img(bg.imagePath);
+            // v1.5.0: cache de 2 entradas (lazy loading, spec §2.5)
+            QImage img = cachedImage(bg.imagePath);
             if (!img.isNull()) {
                 drawImageFit(p, img, QRect(0, 0, size.width(), size.height()),
                              bg.imageFit == 0 ? Qt::KeepAspectRatioByExpanding : Qt::KeepAspectRatio);
@@ -191,7 +222,7 @@ public:
         // tipo de slide solo lo dibujaba OutputWindow (el preview del dock y
         // la exportación PDF/PPTX mostraban solo el fondo).
         if (slide.kind == Slide::Image && !slide.mediaPath.isEmpty()) {
-            QImage img(slide.mediaPath);
+            QImage img = cachedImage(slide.mediaPath);   // v1.5.0: lazy loading
             if (!img.isNull())
                 drawImageFit(p, img, QRect(0, 0, size.width(), size.height()),
                              Qt::KeepAspectRatioByExpanding);

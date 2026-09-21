@@ -151,6 +151,11 @@ public:
     bool rollback(){ return exec(QStringLiteral("ROLLBACK")); }
     qint64 scalar(const QString &sql);
 
+signals:
+    // v1.5.0 — respaldo automático semanal creado (para subirlo a Google
+    // Drive si el usuario activó la subida automática — spec §3.4).
+    void autoBackupCreated(const QString &path);
+
 private:
     bool ensureSchema(QString *error);
     void seedDefaults();

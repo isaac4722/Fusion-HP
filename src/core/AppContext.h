@@ -13,6 +13,9 @@ class Database;
 class MediaEngine;
 class WebServer;
 class Triggers;
+class JsEngine;
+class PlanningCenter;
+class DriveBackup;
 
 struct AppContext
 {
@@ -21,6 +24,9 @@ struct AppContext
     WebServer   *web = nullptr;
     Triggers    *triggers = nullptr;
     Theme       *currentTheme = nullptr;    // tema activo (propiedad de MainWindow)
+    JsEngine       *js = nullptr;           // v1.5.0: módulos JS / JSLib
+    PlanningCenter *pco = nullptr;          // v1.5.0: Planning Center Online
+    DriveBackup    *drive = nullptr;        // v1.5.0: respaldo Google Drive
 };
 
 #endif // LUMINA_APPCONTEXT_H

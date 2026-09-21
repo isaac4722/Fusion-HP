@@ -6,6 +6,7 @@
 #include "core/Lyrics.h"
 #include "core/BibleRef.h"
 #include "core/PptxEngine.h"
+#include "core/Renderer.h"        // v1.5.0: preloadImage (lazy loading)
 #include "gui/SongPanel.h"
 #include "gui/BiblePanel.h"
 #include "gui/MediaPanel.h"
@@ -65,6 +66,7 @@ MainWindow::MainWindow(AppContext *ctx, QWidget *parent)
     // Crear ventanas de salida (ocultas hasta asignar)
     m_output = new OutputWindow();
     m_stage = new StageWindow();
+    m_director = new DirectorWindow();   // v1.5.0: pantalla 3 (spec §3.3)
 
     buildUi();
     buildShortcuts();
@@ -106,6 +108,8 @@ MainWindow::MainWindow(AppContext *ctx, QWidget *parent)
              m_ctx.db->setting(QStringLiteral("screen_stage"), QStringLiteral("auto"))));
 
     pushWebState();     // estado inicial para overlay OBS / control remoto
+    updateDirector();   // v1.5.0: estado inicial de la Pantalla Director (campos
+                        // presentes desde el arranque — /api/director.json)
 }
 
 MainWindow::~MainWindow() = default;
@@ -171,6 +175,14 @@ void MainWindow::buildUi()
     auto *bStage = new QAction(QStringLiteral("🎚 Stage View"), this);
     connect(bStage, &QAction::triggered, this, &MainWindow::toggleStageView);
     tb->addAction(bStage);
+    // v1.5.0: pantalla 3 — Director / Instrucciones (spec §3.3 multiview)
+    tb->addWidget(new QLabel(QStringLiteral(" Director:"), this));
+    m_comboDirectorScreen = new QComboBox(this);
+    tb->addWidget(m_comboDirectorScreen);
+    auto *bDir = new QAction(QStringLiteral("🧭 Director"), this);
+    bDir->setToolTip(QStringLiteral("Pantalla de mensajes y notas para el director del servicio"));
+    connect(bDir, &QAction::triggered, this, &MainWindow::toggleDirectorView);
+    tb->addAction(bDir);
     tb->addSeparator();
 
     // v1.3.0: Modo Presentación (F11) — consola mínima del operador (spec maestro:
@@ -562,6 +574,12 @@ void MainWindow::buildUi()
     connect(m_commsPanel, &CommsPanel::sendAlert, this, &MainWindow::onSendAlert);
     connect(m_commsPanel, &CommsPanel::startCountdown, this, &MainWindow::onStartCountdown);
     connect(m_commsPanel, &CommsPanel::stopCountdownSignal, this, &MainWindow::onStopCountdown);
+    // v1.5.0: mensajes del operador -> Pantalla Director; plan PCO -> cola
+    connect(m_commsPanel, &CommsPanel::messageSent, this,
+            [this](const QString &text, const QString &title) {
+        m_director->addMessage(text, title);
+    });
+    connect(m_commsPanel, &CommsPanel::pcoImportItems, this, &MainWindow::onPcoImportItems);
 
     // v1.1.0: transposición en vivo del Stage View (spec: cifras para musicos)
     m_stageTranspose = m_ctx.db->setting(QStringLiteral("stage_transpose"), QStringLiteral("0")).toInt();
@@ -621,6 +639,7 @@ void MainWindow::buildUi()
     // Pantallas
     connect(m_comboOutputScreen, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int) { reassignOutputs(); });
     connect(m_comboStageScreen, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int) { reassignOutputs(); });
+    connect(m_comboDirectorScreen, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int) { reassignOutputs(); });   // v1.5.0
 
     // Triggers por defecto desde DB
     const QString tj = m_ctx.db->setting(QStringLiteral("triggers"));
@@ -870,6 +889,9 @@ void MainWindow::showSlideIndex(int idx, bool fireTriggers)
 
     // Stage view con acordes
     updateStage();
+    // v1.5.0: pantalla del director + precarga del siguiente (lazy loading)
+    updateDirector();
+    preloadNextImages();
 
     // Preview y lista
     updatePreview();
@@ -1078,6 +1100,21 @@ void MainWindow::closeOverlay()
 // ---------------------------------------------------------------------------
 void MainWindow::onPlayMedia(const QString &path, bool asBackground, bool loop, int fitMode, bool isVideo)
 {
+    // v1.5.0 (spec §3.2): TIF/TIFF no es decodificable por LibVLC — se
+    // proyecta por la ruta nativa Qt (imagen de slide, sin VLC). BMP/GIF/PNG
+    // y JPG siguen por VLC (el GIF animado lo exige).
+    const QString ext = QFileInfo(path).suffix().toLower();
+    if (ext == QStringLiteral("tif") || ext == QStringLiteral("tiff")) {
+        reassignOutputs();
+        Slide img;
+        img.kind = Slide::Image;
+        img.mediaPath = path;
+        img.title = QFileInfo(path).completeBaseName();
+        QVector<Slide> vs;
+        vs.append(img);
+        goLive(vs, img.title, ServiceItem::Image, 0);
+        return;
+    }
     if (!m_ctx.media->available()) {
         QMessageBox::warning(this, QStringLiteral("Multimedia"),
                              QStringLiteral("LibVLC no está disponible. Copia la carpeta 'vlc/' junto al ejecutable."));
@@ -1145,8 +1182,10 @@ void MainWindow::rebuildScreenCombos()
 {
     m_comboOutputScreen->blockSignals(true);
     m_comboStageScreen->blockSignals(true);
+    m_comboDirectorScreen->blockSignals(true);   // v1.5.0
     m_comboOutputScreen->clear();
     m_comboStageScreen->clear();
+    m_comboDirectorScreen->clear();              // v1.5.0
     const QList<QScreen *> screens = QGuiApplication::screens();
     for (int i = 0; i < screens.size(); ++i) {
         const QString label = QStringLiteral("Pantalla %1 (%2x%3)")
@@ -1154,18 +1193,23 @@ void MainWindow::rebuildScreenCombos()
                 .arg(screens.at(i)->geometry().height());
         m_comboOutputScreen->addItem(label, i);
         m_comboStageScreen->addItem(label, i);
+        m_comboDirectorScreen->addItem(label, i);   // v1.5.0
     }
     if (screens.size() > 1) {
         m_comboOutputScreen->setCurrentIndex(1);
+        // v1.5.0: tercera pantalla sugerida (director) si hay 3+ monitores
+        if (screens.size() > 2) m_comboDirectorScreen->setCurrentIndex(2);
     }
     m_comboOutputScreen->blockSignals(false);
     m_comboStageScreen->blockSignals(false);
+    m_comboDirectorScreen->blockSignals(false);   // v1.5.0
 }
 
 void MainWindow::reassignOutputs()
 {
     m_outputScreen = m_comboOutputScreen->currentData().isValid() ? m_comboOutputScreen->currentData().toInt() : -1;
     m_stageScreen = m_comboStageScreen->currentData().isValid() ? m_comboStageScreen->currentData().toInt() : 0;
+    m_directorScreen = m_comboDirectorScreen->currentData().isValid() ? m_comboDirectorScreen->currentData().toInt() : 0;   // v1.5.0
     const int fade = m_ctx.db->setting(QStringLiteral("fade_ms"), QStringLiteral("250")).toInt();
     m_output->setFadeMs(fade);
 
@@ -1187,6 +1231,16 @@ void MainWindow::reassignOutputs()
             m_stage->setGeometry(scr->geometry());
             m_stage->showFullScreen();
             updateStage();
+        }
+    }
+    // v1.5.0: pantalla 3 (Director) — geometría fullscreen independiente
+    if (m_directorOn && m_directorScreen >= 0) {
+        DisplayEngine engine(this);
+        QScreen *scr = engine.screenAt(m_directorScreen);
+        if (scr) {
+            m_director->setGeometry(scr->geometry());
+            m_director->showFullScreen();
+            updateDirector();
         }
     }
     Q_UNUSED(outSize)
@@ -1214,6 +1268,88 @@ void MainWindow::toggleStageView()
     } else {
         m_stageOn = true;
         reassignOutputs();
+    }
+}
+
+// v1.5.0: pantalla 3 «Director / Instrucciones» (spec §3.3: hasta tres
+// salidas independientes: pública, retorno y mensajes/notas del director).
+void MainWindow::toggleDirectorView()
+{
+    if (m_directorOn) {
+        m_director->hide();
+        m_directorOn = false;
+    } else {
+        m_directorOn = true;
+        reassignOutputs();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v1.5.0: estado del director — ventana nativa + /api/director.json
+// ---------------------------------------------------------------------------
+void MainWindow::updateDirector()
+{
+    // Ítem actual y siguiente de la cola del culto
+    const int row = m_queueList ? m_queueList->currentRow() : -1;
+    QString curItem, nextItem;
+    if (row >= 0 && row < m_queueData.size())
+        curItem = m_queueData.at(row).label;
+    if (row + 1 >= 0 && row + 1 < m_queueData.size())
+        nextItem = m_queueData.at(row + 1).label;
+
+    // Slide actual (texto) y siguiente (preview)
+    QString curText, nextText, notes;
+    if (m_liveIndex >= 0 && m_liveIndex < m_liveSlides.size()) {
+        const Slide &cur = m_liveSlides.at(m_liveIndex);
+        for (const SlideLine &l : cur.lines)
+            curText += (curText.isEmpty() ? QString() : QStringLiteral("\n")) + l.text;
+        notes = cur.notes;
+        if (cur.title != m_liveLabel && !cur.title.isEmpty())
+            curItem = curItem.isEmpty() ? cur.title : curItem;
+        if (m_liveIndex + 1 < m_liveSlides.size()) {
+            const Slide &nx = m_liveSlides.at(m_liveIndex + 1);
+            for (const SlideLine &l : nx.lines)
+                nextText += (nextText.isEmpty() ? QString() : QStringLiteral(" / ")) + l.text;
+        }
+    }
+    if (curItem.isEmpty()) curItem = m_liveLabel;
+
+    if (m_directorOn && m_director->isVisible())
+        m_director->updateInfo(curItem, curText, nextItem, nextText, notes);
+
+    // Estado web (Pantalla HTML / Instrucciones en navegador — spec §3.3)
+    QJsonObject dir;
+    dir["item"] = curItem;
+    dir["text"] = curText;
+    dir["nextItem"] = nextItem;
+    dir["nextText"] = nextText;
+    dir["notes"] = notes;
+    m_ctx.web->setDirectorState(dir);
+}
+
+void MainWindow::publishDirectorState()
+{
+    updateDirector();
+}
+
+// v1.5.0: lazy loading (spec §2.5): precarga SOLO el elemento actual y el
+// inmediato siguiente (imagen de slide y de fondo del próximo ítem).
+void MainWindow::preloadNextImages()
+{
+    if (m_liveIndex + 1 < m_liveSlides.size()) {
+        const Slide &nx = m_liveSlides.at(m_liveIndex + 1);
+        if (nx.kind == Slide::Image && !nx.mediaPath.isEmpty())
+            Renderer::preloadImage(nx.mediaPath);
+    }
+    // Fondo del tema actual (el siguiente paso lo reutiliza)
+    if (m_theme.background.type == 2 && !m_theme.background.imagePath.isEmpty())
+        Renderer::preloadImage(m_theme.background.imagePath);
+    // Imagen del siguiente ítem de la cola (cambio de canción suave)
+    const int row = m_queueList ? m_queueList->currentRow() : -1;
+    if (row + 1 < m_queueData.size()) {
+        const ServiceItem &it = m_queueData.at(row + 1);
+        if (it.kind == ServiceItem::Image && !it.payload.isEmpty())
+            Renderer::preloadImage(it.payload);
     }
 }
 
@@ -1428,11 +1564,74 @@ void MainWindow::runServiceItem(const ServiceItem &item)
 }
 
 // ---------------------------------------------------------------------------
+// v1.5.0 — Planning Center Online: importación de plan a la cola del culto
+// ---------------------------------------------------------------------------
+void MainWindow::onPcoImportItems(const QVector<PcoItem> &items)
+{
+    if (items.isEmpty()) {
+        statusBar()->showMessage(QStringLiteral("El plan de Planning Center no tiene ítems."), 5000);
+        return;
+    }
+    int plId = activePlaylistId();
+    if (plId <= 0)
+        plId = m_ctx.db->createPlaylist(QStringLiteral("Culto PCO"));
+
+    // Normalización de títulos para el matching (mayúsculas/acentos/espacios)
+    auto norm = [](const QString &t) {
+        QString s = t.toLower().normalized(QString::NormalizationForm_KD);
+        s.remove(QRegExp(QStringLiteral("[^a-z0-9 ]")));
+        return s.simplified();
+    };
+
+    int songs = 0, texts = 0, unmatched = 0;
+    for (const PcoItem &pco : items) {
+        ServiceItem it;
+        bool matched = false;
+        if (pco.isSong && !pco.songTitle.isEmpty()) {
+            const QString want = norm(pco.songTitle);
+            const auto candidates = m_ctx.db->searchSongs(pco.songTitle, 12);
+            for (const SongRow &c : candidates) {
+                if (norm(c.title) == want) {
+                    it.kind = ServiceItem::Song;
+                    it.refId = c.id;
+                    it.label = QStringLiteral("🎵 %1").arg(c.title);
+                    matched = true;
+                    ++songs;
+                    break;
+                }
+            }
+        }
+        if (!matched) {
+            // Ítem no-musical (o canción sin equivalente local): texto del plan.
+            // La descripción del ítem PCO lleva notas útiles para el operador.
+            it.kind = ServiceItem::Aviso;
+            it.label = pco.title.isEmpty() ? pco.songTitle : pco.title;
+            it.payload = pco.description.isEmpty() ? pco.title : pco.description;
+            if (pco.isSong) ++unmatched;
+            ++texts;
+        }
+        m_ctx.db->addPlaylistItem(plId, it);
+        // Reflejo inmediato en la cola del dock
+        m_queueData.append(it);
+        auto *li = new QListWidgetItem(it.label);
+        QVariant v;
+        v.setValue(it);
+        li->setData(Qt::UserRole, v);
+        m_queueList->addItem(li);
+    }
+    statusBar()->showMessage(QStringLiteral(
+        "Plan PCO importado: %1 canción(es) locales, %2 texto(s), %3 sin coincidencia.")
+        .arg(songs).arg(texts).arg(unmatched), 8000);
+    updateDirector();
+}
+
+// ---------------------------------------------------------------------------
 // Comunicacion
 // ---------------------------------------------------------------------------
 void MainWindow::onSendAlert(const QString &text)
 {
     m_stage->showAlert(text);
+    m_director->addMessage(text, QStringLiteral("Alerta"));   // v1.5.0: registro persistente
     m_ctx.web->broadcastAlert(text);
     m_ctx.db->logAlert(text);
     m_lastAlert = text;
@@ -1444,6 +1643,7 @@ void MainWindow::onSendAlert(const QString &text)
 void MainWindow::onStartCountdown(int minutes)
 {
     m_stage->startCountdown(minutes);
+    m_director->startCountdown(minutes);   // v1.5.0: pantalla 3
     // v1.3.0: espejo de la deadline para el chip de cuenta regresiva del dock
     m_countdownDeadline = QDateTime::currentDateTime().addSecs(minutes * 60);
     m_countdownActive = true;
@@ -1456,8 +1656,10 @@ void MainWindow::onStartCountdown(int minutes)
 void MainWindow::onStopCountdown()
 {
     m_stage->stopCountdown();
+    m_director->stopCountdown();            // v1.5.0: pantalla 3
     m_countdownActive = false;               // v1.3.0
     m_countdownChip->setVisible(false);
+    m_ctx.web->setDirectorCountdown(-1);     // v1.5.0
 }
 
 // ---------------------------------------------------------------------------
@@ -1538,7 +1740,7 @@ void MainWindow::keyPressEvent(QKeyEvent *ev)
 
 void MainWindow::closeEvent(QCloseEvent *ev)
 {
-    if (m_output->isVisible() || m_stage->isVisible()) {
+    if (m_output->isVisible() || m_stage->isVisible() || m_director->isVisible()) {
         if (QMessageBox::question(this, QStringLiteral("Salir"),
                                   QStringLiteral("Hay salidas activas. ¿Cerrar LuminaPresentation Suite?"))
             != QMessageBox::Yes) {
@@ -1556,6 +1758,7 @@ void MainWindow::closeEvent(QCloseEvent *ev)
     // explícitamente para que la aplicación termine de verdad.
     m_output->hide();
     m_stage->hide();
+    m_director->hide();   // v1.5.0: idem app zombie (ventana top-level sin parent)
     ev->accept();
 }
 
@@ -1598,6 +1801,8 @@ void MainWindow::onClockTick()
     m_clockLabel->setText(QTime::currentTime().toString(QStringLiteral("hh:mm:ss")));
     if (m_countdownActive && m_countdownDeadline.isValid()) {
         const qint64 secs = QDateTime::currentDateTime().secsTo(m_countdownDeadline);
+        // v1.5.0: cuenta también para la Pantalla Director web (/api/director.json)
+        m_ctx.web->setDirectorCountdown(int(secs));
         if (secs > 0) {
             m_countdownChip->setText(QStringLiteral("⏱ %1")
                 .arg(QTime(0, 0).addSecs(int(secs)).toString(QStringLiteral("hh:mm:ss"))));
@@ -1606,7 +1811,10 @@ void MainWindow::onClockTick()
             m_countdownChip->setText(QStringLiteral("⏱ ¡TIEMPO!"));
             m_countdownChip->setVisible(true);
             m_countdownActive = false;    // el chip queda fijo hasta detener/reiniciar
+            m_ctx.web->setDirectorCountdown(0);
         }
+    } else {
+        m_ctx.web->setDirectorCountdown(-1);   // v1.5.0: inactiva
     }
 }
 
@@ -1746,7 +1954,10 @@ void MainWindow::dropEvent(QDropEvent *ev)
         if (ext == QStringLiteral("txt")) {
             importSongFromTxt(file);
         } else if (ext == QStringLiteral("png") || ext == QStringLiteral("jpg") ||
-                   ext == QStringLiteral("jpeg") || ext == QStringLiteral("bmp")) {
+                   ext == QStringLiteral("jpeg") || ext == QStringLiteral("bmp") ||
+                   // v1.5.0 (spec §3.2): GIF y TIF también como fondo (ruta Qt)
+                   ext == QStringLiteral("gif") || ext == QStringLiteral("tif") ||
+                   ext == QStringLiteral("tiff")) {
             // Imagen -> fondo del tema en vivo (aplicación inmediata, spec
             // Holyrics: «importar recursos directamente arrastrándolos»)
             m_theme.background.type = 2;

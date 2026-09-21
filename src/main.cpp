@@ -26,6 +26,9 @@
 #include "core/MediaEngine.h"
 #include "net/WebServer.h"
 #include "core/Triggers.h"
+#include "core/JsEngine.h"        // v1.5.0: módulos JS / JSLib (spec §3.3)
+#include "core/PlanningCenter.h" // v1.5.0: Planning Center Online (spec §3.3)
+#include "core/DriveBackup.h"    // v1.5.0: respaldo Google Drive (spec §3.4)
 #include "gui/MainWindow.h"
 
 #include <QFileInfo>
@@ -35,13 +38,55 @@
 
 static QFile g_logFile;
 
-static void luminaMessageHandler(QtMsgType type, const QMessageLogContext &, const QString &msg)
+// v1.5.0 (spec §2.6): log ESTRUCTURADO — timestamp + nivel + categoría
+// (módulo emisor) + mensaje. La categoría llega en context.category de
+// qInfo()/qWarning() («qt.network», «js», …): permite auditar qué módulo
+// escribió cada línea, como exige la especificación.
+static void luminaMessageHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg)
 {
-    const QString line = QStringLiteral("[%1] %2\n")
-            .arg(QDateTime::currentDateTime().toString(QStringLiteral("hh:mm:ss.zzz")), msg);
+    const char *level = "INFO ";
+    switch (type) {
+    case QtWarningMsg: level = "WARN "; break;
+    case QtCriticalMsg: level = "CRIT "; break;
+    case QtFatalMsg: level = "FATAL"; break;
+    case QtInfoMsg: level = "INFO "; break;
+    default: level = "DEBUG"; break;
+    }
+    const QString line = QStringLiteral("[%1] %2 [%3] %4\n")
+            .arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd hh:mm:ss.zzz")),
+                 QString::fromLatin1(level),
+                 QString::fromLatin1(context.category ? context.category : "app"),
+                 msg);
     if (g_logFile.isOpen()) { g_logFile.write(line.toUtf8()); g_logFile.flush(); }
     std::fprintf(stderr, "%s", line.toUtf8().constData());
 }
+
+#ifdef Q_OS_WIN
+// v1.5.0 (spec §2.6): captura de EXCEPCIONES NO CONTROLADAS (Windows SEH).
+// Registra código, dirección y módulo de la falla antes de terminar —
+// sustituto ligero del call stack completo (portátil en MinGW-w64, donde
+// dbghelp no es fiable); módulo + dirección localizan el fallo con el mapa.
+static LONG WINAPI luminaCrashHandler(EXCEPTION_POINTERS *ep)
+{
+    if (g_logFile.isOpen()) {
+        const void *addr = ep->ExceptionRecord->ExceptionAddress;
+        HMODULE mod = nullptr;
+        wchar_t modName[MAX_PATH] = L"desconocido";
+        if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                               GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                               static_cast<LPCWSTR>(addr), &mod) && mod)
+            GetModuleFileNameW(mod, modName, MAX_PATH);
+        const QString line = QStringLiteral(
+            "[CRASH] Excepción no controlada: código 0x%1 en 0x%2 (módulo %3)\n")
+                .arg(QString::number(ep->ExceptionRecord->ExceptionCode, 16),
+                     QString::number(reinterpret_cast<quintptr>(addr), 16),
+                     QString::fromWCharArray(modName));
+        g_logFile.write(line.toUtf8());
+        g_logFile.flush();
+    }
+    return EXCEPTION_CONTINUE_SEARCH;   // el comportamiento por defecto sigue
+}
+#endif
 
 // ---------------------------------------------------------------------------
 // Primer arranque: seed de base de datos con recursos embebidos
@@ -116,7 +161,7 @@ int main(int argc, char *argv[])
     QApplication app(argc, argv);
     QApplication::setApplicationName(QStringLiteral("LuminaPresentationSuite"));
     QApplication::setOrganizationName(QStringLiteral("LuminaSoftware"));
-    QApplication::setApplicationVersion(QStringLiteral("1.4.0"));
+    QApplication::setApplicationVersion(QStringLiteral("1.5.0"));
     QApplication::setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
 
     // v1.3.0 GUI "Aurora": hoja de estilos global completa (sidebar, tablas,
@@ -147,14 +192,26 @@ int main(int argc, char *argv[])
             qWarning() << "[GUI] No se pudo cargar el tema Aurora (aurora.qss)";
     }
 
-    // Log a archivo (se puede desactivar con LUMINA_NO_LOGFILE=1 para depurar)
+    // Log a archivo (se puede desactivar con LUMINA_NO_LOGFILE=1 para depurar).
+    // v1.5.0: ROTACIÓN — si lumina.log supera 2 MB se conserva como
+    // lumina.old.log (una generación) para que no crezca sin límite.
     const QString dataDirStr = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     QDir().mkpath(dataDirStr);
     if (!qEnvironmentVariableIsSet("LUMINA_NO_LOGFILE")) {
-        g_logFile.setFileName(dataDirStr + QStringLiteral("/lumina.log"));
+        const QString logPath = dataDirStr + QStringLiteral("/lumina.log");
+        QFileInfo logInfo(logPath);
+        if (logInfo.exists() && logInfo.size() > 2 * 1024 * 1024) {
+            QFile::remove(dataDirStr + QStringLiteral("/lumina.old.log"));
+            QFile::rename(logPath, dataDirStr + QStringLiteral("/lumina.old.log"));
+        }
+        g_logFile.setFileName(logPath);
         if (g_logFile.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text))
             qInstallMessageHandler(luminaMessageHandler);
     }
+#ifdef Q_OS_WIN
+    // v1.5.0 (spec §2.6): excepciones no controladas -> registro estructurado
+    SetUnhandledExceptionFilter(luminaCrashHandler);
+#endif
 
     // ---- Base de datos ----
     Database db;
@@ -182,12 +239,34 @@ int main(int argc, char *argv[])
     WebServer web;
     Triggers triggers;
 
+    // ---- v1.5.0: módulos JS, Planning Center y Google Drive ----
+    JsEngine js;                      // spec §3.3: JSLib (sockets/automatización)
+    PlanningCenter pco;               // spec §3.3: importar planes del culto
+    DriveBackup drive;                // spec §3.4: respaldo/sincronización en la nube
+    drive.setDatabase(&db);
+    triggers.setJsEngine(&js);        // eventos de triggers -> onEvent() de JS
+    js.loadModules(dataDirStr);       // <datos>/modules/*.js (cero módulos = no-op)
+
+    // Respaldo automático semanal -> subirlo a Drive si el usuario lo activó
+    QObject::connect(&db, &Database::autoBackupCreated, &drive,
+                     [&db, &drive](const QString &path) {
+        if (drive.hasAccount() &&
+            db.setting(QStringLiteral("drive_auto_upload"), QStringLiteral("0")) ==
+                QStringLiteral("1")) {
+            qInfo() << "[Drive] Subiendo copia automática semanal:" << path;
+            drive.backupNow(path);
+        }
+    });
+
     // ---- Contexto compartido ----
     AppContext ctx;
     ctx.db = &db;
     ctx.media = &media;
     ctx.web = &web;
     ctx.triggers = &triggers;
+    ctx.js = &js;
+    ctx.pco = &pco;
+    ctx.drive = &drive;
 
     MainWindow w(&ctx);
     w.showMaximized();

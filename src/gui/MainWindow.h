@@ -14,6 +14,8 @@
 #include "core/Triggers.h"
 #include "net/WebServer.h"
 #include "StageWindow.h"
+#include "DirectorWindow.h"
+#include "core/PlanningCenter.h"   // v1.5.0: PcoItem (importación de planes)
 
 #include <QMainWindow>
 #include <QListWidget>
@@ -76,6 +78,7 @@ private slots:
     void rebuildScreenCombos();
     void toggleStageView();
     void toggleOutput();
+    void toggleDirectorView();       // v1.5.0: pantalla 3 (director/instrucciones)
     // Servidor remoto
     void onRemoteCommand(const QString &cmd, const QJsonObject &data);
     void pushWebState();
@@ -85,6 +88,8 @@ private slots:
     void onStopCountdown();
     // Culto
     void runServiceItem(const ServiceItem &item);
+    // v1.5.0: importación de plan de Planning Center a la cola del culto
+    void onPcoImportItems(const QVector<PcoItem> &items);
     // v1.3.0 GUI Aurora
     void togglePresentationMode(); // F11: consola mínima del operador (spec maestro)
     void onClockTick();            // reloj del dock + chip de cuenta regresiva
@@ -104,6 +109,9 @@ private:
     void updatePreview();
     void updateSlideList();
     void updateStage();
+    void updateDirector();           // v1.5.0: pantalla 3 + estado web del director
+    void publishDirectorState();     // v1.5.0: /api/director.json
+    void preloadNextImages();        // v1.5.0: lazy loading actual+siguiente (spec §2.5)
     void playThemeBackgroundVideo(const Theme &theme);
     void stopBackgroundVideo();
     void updateSrvChip();              // v1.3.0: chip de estado del servidor embebido
@@ -132,9 +140,12 @@ private:
     // Ventanas de salida
     OutputWindow *m_output = nullptr;
     StageWindow *m_stage = nullptr;
+    DirectorWindow *m_director = nullptr;   // v1.5.0: pantalla 3 (spec §3.3)
     int m_outputScreen = -1;
     int m_stageScreen = -1;
+    int m_directorScreen = -1;              // v1.5.0
     bool m_stageOn = false;
+    bool m_directorOn = false;              // v1.5.0
     QPixmap m_logoPixmap;
 
     // GUI
@@ -158,6 +169,7 @@ private:
     QLabel *m_liveInfo = nullptr;
     QComboBox *m_comboOutputScreen = nullptr;
     QComboBox *m_comboStageScreen = nullptr;
+    QComboBox *m_comboDirectorScreen = nullptr;   // v1.5.0
 
     // Paneles
     SongPanel *m_songPanel = nullptr;
