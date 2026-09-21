@@ -13,8 +13,8 @@ agilidad operativa de Holyrics y la potencia de composición vectorial de PowerP
 
 1. Ir a **[Releases](https://github.com/isaac4722/Fusion-HP/releases)**.
 2. Descargar el paquete para tu arquitectura:
-   - `LuminaPresentationSuite-v1.3.0-win64-portable.zip` (Windows 7 SP1 … Windows 11, 64 bits)
-   - `LuminaPresentationSuite-v1.3.0-win32-portable.zip` (Windows 7 SP1 … Windows 10, 32 bits)
+   - `LuminaPresentationSuite-v1.4.0-win64-portable.zip` (Windows 7 SP1 … Windows 11, 64 bits)
+   - `LuminaPresentationSuite-v1.4.0-win32-portable.zip` (Windows 7 SP1 … Windows 10, 32 bits)
 3. Descomprimir en cualquier carpeta y ejecutar `LuminaPresentationSuite.exe`.
    **Todo va incluido**: Qt, LibVLC con codecs, Biblia RVR1909 completa y la base de datos se
    crea sola en el primer arranque. No requiere permisos de administrador ni conexión a internet.
@@ -25,7 +25,7 @@ agilidad operativa de Holyrics y la potencia de composición vectorial de PowerP
 |---|---|
 | 🎨 **GUI «Aurora»** | **Tema visual global profesional v1.3.0**: sidebar con secciones (BIBLIOTECA/DISEÑO/SERVICIO/SISTEMA), botones primarios/dorado, tablas con zebra, scrollbars finas, diálogos y tooltips rediseñados |
 | 🖥 **Modo Presentación (F11)** | Consola mínima del operador (spec maestro): el dock de proyección ocupa toda la ventana con transporte grande — F11 restaura la consola completa |
-| 🎵 **Canciones** | SQLite + FTS5: búsqueda instantánea por título/autor/letra, editor con etiquetas `[Verso]/[Coro]`, **transposición de acordes EN VIVO en el Stage View**, **Modo Hinario configurable** (coro intercalado), densidad 2–8 líneas/slide, **🏷 sistema de etiquetas semánticas** (tags) para filtrado por categoría (lento, navidad, entrada, ofrenda…) |
+| 🎵 **Canciones** | SQLite + FTS5: búsqueda instantánea por título/autor/letra, editor con etiquetas `[Verso]/[Coro]`, **transposición de acordes EN VIVO en el Stage View**, **Modo Hinario configurable** (coro intercalado), densidad 2–8 líneas/slide, **🏷 sistema de etiquetas semánticas** (tags) para filtrado por categoría (lento, navidad, entrada, ofrenda…) y **🧠 automatización semántica v1.4.0** (reglas etiqueta → tema + fondo) |
 | 📖 **Biblia** | **RVR1909 completa incluida** (dominio público), comandos tipados `Jn 3:16`, hasta **3 versiones en paralelo**, búsqueda por palabras FTS, **✨ resaltado de palabras en dorado**, **importador ZEFania XML v1.3.0** (RVR1960, NVI, KJV… miles de versiones libres) |
 | 📽 **PowerPoint** | Importación **.pptx nativa (OpenXML)** sin Office: textos, formas e imágenes; exportación .pptx básica; **exportación a PDF** y **PNG (1920×1080) v1.3.0** del escenario en vivo; items PPTX ejecutables desde la cola del culto |
 | 🧾 **Exportación** | Escenario en vivo → **.pptx** (texto real), **.pdf** (páginas 16:9) e **imágenes .png** — sin Office |
@@ -35,14 +35,15 @@ agilidad operativa de Holyrics y la potencia de composición vectorial de PowerP
 | 🎬 **Medios** | LibVLC embebido (DXVA2/D3D11VA), video de fondo en bucle (sin reinicio al cambiar de slide), modos Llenar/Ajustar/Centrar (videos verticales), **posición inicial de reproducción v1.3.0** |
 | 📱 **Control remoto** | Servidor WebSocket/HTTP embebido: panel móvil (con navegación de la cola del culto) y **overlay HTML5 transparente para OBS/vMix** (`http://<pc>:8088/overlay.html`); **mensajes del operador a los remotos (toast) v1.3.0** |
 | 🌐 **API HTTP** | `GET /api/cmd?c=next\|prev\|black\|clear\|logo\|goto\|qnext\|qprev\|alert` con **token opcional** (Ajustes) · `/api/live.txt` (texto plano para OBS) · `/api/state` (JSON) |
-| 🎨 **Temas** | Plantillas maestras desacopladas (fondo/gradiente/imagen/video, tipografía, contorno, sombra) aplicadas en vivo |
+| 🎨 **Temas** | Plantillas maestras desacopladas (fondo/gradiente/imagen/video, tipografía, contorno, sombra) aplicadas en vivo · **🏷 etiquetas v1.4.0** · **🖼 biblioteca de fondos filtrable por etiqueta v1.4.0** · **♿ comprobador de contraste WCAG v1.4.0** |
 | 🖌 **Lienzo libre** | Editor vectorial (texto, formas, imágenes) estilo PowerPoint con guardado JSON — **proyectable y añadible a la cola del culto** |
 | 🗓 **Cultos** | Playlists ordenadas (canciones, biblia, avisos, pptx), exportación CSV, control remoto de la cola |
 | 📣 **Comunicación** | Alertas al escenario, temporizador de sermón, bandeja **Telegram**, **mensajes a remotos conectados** |
 | ⌨ **Atajos** | **9 atajos personalizables v1.3.0** (Ajustes › Atajos, con restauración de fábrica) |
+| 🧠 **Automatización semántica** | **Reglas v1.4.0**: «canción con etiqueta X → tema Y + fondo con etiqueta Z», aplicadas EN VIVO al proyectar (matching insensible a mayúsculas/acentos, interruptor maestro) |
 | 💾 **Copia de seguridad** | **Backup/restauración del vault v1.3.0** + auto-backup semanal con rotación (alternativa offline-safe a la sincronización en la nube) |
 | 🖱 **Drag & Drop** | Arrastra imagen/video → fondo en vivo; arrastra .txt → importa la canción |
-| ⚙ **Triggers** | Webhooks HTTP, **OBS WebSocket v5** (cambio de escena automático), **MIDI Out** (winmm) |
+| ⚙ **Triggers** | Webhooks HTTP, **OBS WebSocket v5** (cambio de escena automático), **MIDI Out** (winmm), **🎹 MIDI In v1.4.0** (pedal/pad → comandos del presentador, mapa nota→comando editable) |
 | 📊 **Historial** | Estadísticas de uso y reportes CSV/PDF |
 
 ## ⌨️ Atajos de teclado

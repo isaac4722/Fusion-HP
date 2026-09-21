@@ -769,3 +769,48 @@ QPushButton#PresNav:hover {
 #PresPreview[live="true"] {
     border: 2px solid #E8B84B;
 }
+
+/* --------------------------------------------------------------------------
+   15. v1.4.0 — CHIPS DE ESTADO GENERICOS (accesibilidad WCAG, MIDI In)
+   Tokens identicos a #SrvChip: los estados se cambian via property "state"
+   (ok/warn/err/off) + repolish — jamas estilos inline (disciplina hallmark:
+   todo color vive aqui, en el token block).
+   -------------------------------------------------------------------------- */
+QLabel[class="chip"] {
+    color: #93A7CC;
+    font-weight: 600;
+    padding: 4px 10px;
+    border: 1px solid #27324D;
+    border-radius: 9px;
+    background: #0D1322;
+}
+QLabel[class="chip"][state="ok"] {
+    color: #3ECF8E;
+    border-color: #234B3C;
+    background: #0F1E1A;
+}
+QLabel[class="chip"][state="warn"] {
+    color: #F5C26B;
+    border-color: #4E4326;
+    background: #1F1A0F;
+}
+QLabel[class="chip"][state="err"] {
+    color: #FF5D5D;
+    border-color: #5A2730;
+    background: #20101A;
+}
+QLabel[class="chip"][state="off"] {
+    color: #93A7CC;
+    border-color: #27324D;
+    background: #0D1322;
+}
+
+/* Nota explicativa pequeña (pie de tarjeta) */
+QLabel[class="note"] {
+    color: #6B7EA6;
+    font-size: 11px;
+    font-weight: 400;
+    background: transparent;
+    border: none;
+    padding: 2px 4px;
+}

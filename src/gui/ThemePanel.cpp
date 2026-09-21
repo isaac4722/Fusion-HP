@@ -13,6 +13,11 @@
 #include <QFileDialog>
 #include <QMessageBox>
 #include <QColorDialog>
+#include <QCompleter>
+#include <QFileInfo>
+#include <QDateTime>
+#include <QRegularExpression>
+#include <QStyle>
 
 ThemePanel::ThemePanel(AppContext *ctx, QWidget *parent)
     : QWidget(parent), m_ctx(ctx)
@@ -34,6 +39,16 @@ ThemePanel::ThemePanel(AppContext *ctx, QWidget *parent)
     if (m_list->count() > 0) {
         m_list->setCurrentRow(0);
         onThemeSelected(0);
+    }
+    // v1.4.0: biblioteca de fondos + completador de etiquetas (todos los
+    // tags conocidos del vault: canciones, temas y fondos).
+    refreshMediaList();
+    const QStringList known = m_ctx->db->allTagNames();
+    if (!known.isEmpty()) {
+        auto *comp = new QCompleter(known, this);
+        comp->setCaseSensitivity(Qt::CaseInsensitive);
+        m_themeTags->setCompleter(comp);
+        m_mediaTags->setCompleter(comp);
     }
 }
 
@@ -58,6 +73,12 @@ void ThemePanel::buildUi()
     auto *fg = new QFormLayout(grpBg);
     m_name = new QLineEdit(grpBg);
     fg->addRow(QStringLiteral("Nombre:"), m_name);
+    // v1.4.0 — etiquetas del tema (spec Holyrics: tags en temas/fondos/
+    // videos/canciones; base de la automatización semántica).
+    m_themeTags = new QLineEdit(grpBg);
+    m_themeTags->setPlaceholderText(QStringLiteral("lento, adoración, navidad…"));
+    m_themeTags->setToolTip(QStringLiteral("Etiquetas separadas por coma. Las reglas de automatización (Comunicación) pueden aplicar este tema automáticamente cuando una canción lleve una de estas etiquetas."));
+    fg->addRow(QStringLiteral("Etiquetas:"), m_themeTags);
     m_bgType = new QComboBox(grpBg);
     m_bgType->addItem(QStringLiteral("Color sólido"), 0);
     m_bgType->addItem(QStringLiteral("Gradiente"), 1);
@@ -157,13 +178,74 @@ void ThemePanel::buildUi()
     ed->addStretch();
     lay->addLayout(ed, 2);
 
-    // Derecha: preview
+    // Derecha: preview + accesibilidad + biblioteca de fondos
     auto *right = new QVBoxLayout();
     m_preview = new QLabel(this);
-    m_preview->setMinimumSize(420, 260);
+    m_preview->setMinimumSize(420, 200);
     m_preview->setAlignment(Qt::AlignCenter);
     m_preview->setObjectName(QStringLiteral("NextPreview"));   // v1.3.0 Aurora
     right->addWidget(m_preview, 1);
+
+    // v1.4.0 — Comprobador de accesibilidad (spec PowerPoint: Accessibility
+    // Checker con clasificación Error/Advertencia/Correcto). Calcula el ratio
+    // de contraste WCAG del texto contra el fondo del tema EN VIVO, con cada
+    // cambio de color/tipo de fondo.
+    auto *grpAccess = new QGroupBox(QStringLiteral("Accesibilidad (WCAG 2.x)"), this);
+    auto *alay = new QVBoxLayout(grpAccess);
+    m_accessTitle = new QLabel(grpAccess);
+    m_accessBody = new QLabel(grpAccess);
+    m_accessTitle->setProperty("class", QStringLiteral("chip"));   // Aurora tokens
+    m_accessBody->setProperty("class", QStringLiteral("chip"));
+    alay->addWidget(m_accessTitle);
+    alay->addWidget(m_accessBody);
+    auto *accessNote = new QLabel(QStringLiteral(
+        "Umbral AA: 4.5:1 texto normal · 3:1 texto grande (≥24pt). "
+        "Con sombra o contorno la legibilidad real mejora; el ratio se mide "
+        "sobre los colores puros."), grpAccess);
+    accessNote->setWordWrap(true);
+    accessNote->setProperty("class", QStringLiteral("note"));
+    alay->addWidget(accessNote);
+    right->addWidget(grpAccess);
+
+    // v1.4.0 — Biblioteca de fondos por etiqueta (spec Holyrics: "buscar la
+    // etiqueta 'agua' y ver una galería de todos los recursos").
+    auto *grpLib = new QGroupBox(QStringLiteral("Biblioteca de fondos (por etiqueta)"), this);
+    auto *llay = new QVBoxLayout(grpLib);
+    m_mediaFilter = new QLineEdit(grpLib);
+    m_mediaFilter->setPlaceholderText(QStringLiteral("Filtrar por etiqueta (vacío = todos)…"));
+    connect(m_mediaFilter, &QLineEdit::textChanged, this, [this]() { refreshMediaList(); });
+    llay->addWidget(m_mediaFilter);
+    m_mediaList = new QListWidget(grpLib);
+    m_mediaList->setMinimumHeight(110);
+    connect(m_mediaList, &QListWidget::itemSelectionChanged, this, &ThemePanel::onMediaSelected);
+    connect(m_mediaList, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem *) { onUseBackground(); });
+    llay->addWidget(m_mediaList, 1);
+    m_mediaTags = new QLineEdit(grpLib);
+    m_mediaTags->setPlaceholderText(QStringLiteral("Etiquetas del fondo seleccionado (coma)…"));
+    llay->addWidget(m_mediaTags);
+    auto *libRow1 = new QHBoxLayout();
+    auto *bAddImg = new QPushButton(QStringLiteral("＋ Imágenes"), grpLib);
+    auto *bAddVid = new QPushButton(QStringLiteral("＋ Videos"), grpLib);
+    connect(bAddImg, &QPushButton::clicked, this, [this]() { onAddBackgrounds(false); });
+    connect(bAddVid, &QPushButton::clicked, this, [this]() { onAddBackgrounds(true); });
+    libRow1->addWidget(bAddImg);
+    libRow1->addWidget(bAddVid);
+    libRow1->addStretch();
+    llay->addLayout(libRow1);
+    auto *libRow2 = new QHBoxLayout();
+    auto *bUse = new QPushButton(QStringLiteral("Usar como fondo"), grpLib);
+    bUse->setProperty("class", QStringLiteral("primary"));
+    auto *bSaveTags = new QPushButton(QStringLiteral("Guardar etiquetas"), grpLib);
+    auto *bRemove = new QPushButton(QStringLiteral("Quitar"), grpLib);
+    connect(bUse, &QPushButton::clicked, this, &ThemePanel::onUseBackground);
+    connect(bSaveTags, &QPushButton::clicked, this, &ThemePanel::onSaveMediaTags);
+    connect(bRemove, &QPushButton::clicked, this, &ThemePanel::onRemoveBackground);
+    libRow2->addWidget(bUse);
+    libRow2->addWidget(bSaveTags);
+    libRow2->addWidget(bRemove);
+    llay->addLayout(libRow2);
+    right->addWidget(grpLib, 1);
+
     lay->addLayout(right, 2);
 }
 
@@ -182,6 +264,7 @@ void ThemePanel::loadFromTheme(const Theme &t)
         QSignalBlocker b7(m_sizeTitle);   QSignalBlocker b8(m_sizeBody);
         QSignalBlocker b9(m_shadow);      QSignalBlocker b10(m_outline);
         QSignalBlocker b11(m_boxTop);     QSignalBlocker b12(m_boxHeight);
+        QSignalBlocker b13(m_themeTags);  // v1.4.0: no dispara onFieldChanged a mitad de carga
         m_name->setText(t.name);
         m_bgType->setCurrentIndex(t.background.type);
         m_color1 = t.background.color1;
@@ -197,6 +280,10 @@ void ThemePanel::loadFromTheme(const Theme &t)
         m_outline->setChecked(t.body.outlineWidth > 0);
         m_boxTop->setValue(int(t.bodyBox.y() * 100));
         m_boxHeight->setValue(int(t.bodyBox.height() * 100));
+        // v1.4.0: etiquetas del tema desde el vault
+        m_themeTags->setText(m_selectedThemeId > 0
+                                 ? m_ctx->db->themeTags(m_selectedThemeId).join(QStringLiteral(", "))
+                                 : QString());
     }
     onFieldChanged();
 }
@@ -248,6 +335,7 @@ void ThemePanel::onFieldChanged()
     s.refLabel = QStringLiteral("Salmo 48:1");
     const QPixmap pm = Renderer::render(t, s, m_preview->size());
     m_preview->setPixmap(pm.scaled(m_preview->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    refreshAccessibility();     // v1.4.0: ratios WCAG con cada cambio
     emit themeChanged(t);
 }
 
@@ -281,6 +369,10 @@ void ThemePanel::onSave()
 {
     Theme t = collectTheme();
     if (t.id > 0 && m_ctx->db->saveTheme(t)) {
+        // v1.4.0: las etiquetas se guardan junto al tema (reemplazo total).
+        m_ctx->db->setThemeTags(
+            t.id, m_themeTags->text().split(QRegularExpression(QStringLiteral("\\s*[,;]\\s*")),
+                                             Qt::SkipEmptyParts));
         if (m_list->currentItem()) m_list->currentItem()->setText(t.name);
         emit themeChanged(t);
     }
@@ -296,6 +388,10 @@ void ThemePanel::onSaveAsNew()
     // fallaba EN SILENCIO. Ahora saveTheme() devuelve el id real.
     t.id = m_ctx->db->saveTheme(t);
     if (t.id > 0) {
+        // v1.4.0: el duplicado hereda las etiquetas del tema origen.
+        m_ctx->db->setThemeTags(
+            t.id, m_themeTags->text().split(QRegularExpression(QStringLiteral("\\s*[,;]\\s*")),
+                                             Qt::SkipEmptyParts));
         const auto themes = m_ctx->db->themes();
         m_list->clear();
         int newRow = 0;
@@ -326,4 +422,143 @@ void ThemePanel::onDelete()
         }
         if (m_list->count() > 0) { m_list->setCurrentRow(0); onThemeSelected(0); }
     }
+}
+
+// ---------------------------------------------------------------------------
+// v1.4.0 — Comprobador de accesibilidad (spec PowerPoint, WCAG 2.x)
+// ---------------------------------------------------------------------------
+// Clasificación estilo Accessibility Checker: Correcto / Advertencia / Error.
+// Contra fondo sólido usa color1; contra gradiente evalúa color1 y color2 y
+// reporta el PEOR caso (conservador); con imagen/video no es verificable por
+// color → advertencia con recomendación (los píxeles reales varían).
+void ThemePanel::refreshAccessibility()
+{
+    if (!m_accessTitle || !m_accessBody) return;
+    const Theme t = collectTheme();
+
+    auto setChip = [](QLabel *lbl, const QString &text, const char *cls) {
+        lbl->setText(text);
+        lbl->setProperty("state", QString::fromLatin1(cls));
+        // repolish: el QSS solo reevalúa pseudo-estados al repolir
+        lbl->style()->unpolish(lbl);
+        lbl->style()->polish(lbl);
+    };
+
+    if (t.background.type >= 2) {
+        setChip(m_accessTitle, QStringLiteral("⚠ Título: fondo de imagen/video — verificar contraste a ojo"),
+                "warn");
+        setChip(m_accessBody, QStringLiteral("⚠ Cuerpo: fondo de imagen/video — usar sombra/contorno"),
+                "warn");
+        return;
+    }
+
+    // Fondo de referencia: el color que MENOS contrasta (peor caso).
+    const QColor bg = (t.background.type == 1 &&
+                       Renderer::contrastRatio(m_textColor, m_color2) <
+                       Renderer::contrastRatio(m_textColor, m_color1))
+                           ? m_color2
+                           : m_color1;
+    const qreal ratio = Renderer::contrastRatio(m_textColor, bg);
+    const Renderer::ContrastLevel lvlTitle = Renderer::contrastLevel(ratio, true);   // 44pt = grande
+    const Renderer::ContrastLevel lvlBody  = Renderer::contrastLevel(ratio, true);   // 54pt = grande
+
+    const QString ratioTxt = QString::number(ratio, 'f', 2);
+    if (lvlTitle == Renderer::ContrastLevel::PassAA) {
+        setChip(m_accessTitle, QStringLiteral("✓ Título: %1:1 — AA correcto").arg(ratioTxt), "ok");
+    } else if (lvlTitle == Renderer::ContrastLevel::PassLargeOnly) {
+        setChip(m_accessTitle, QStringLiteral("⚠ Título: %1:1 — solo texto grande (AA 3:1)").arg(ratioTxt), "warn");
+    } else {
+        setChip(m_accessTitle, QStringLiteral("✕ Título: %1:1 — ERROR de contraste (mínimo 3:1)").arg(ratioTxt), "err");
+    }
+    if (lvlBody == Renderer::ContrastLevel::PassAA) {
+        setChip(m_accessBody, QStringLiteral("✓ Cuerpo: %1:1 — AA correcto").arg(ratioTxt), "ok");
+    } else if (lvlBody == Renderer::ContrastLevel::PassLargeOnly) {
+        setChip(m_accessBody, QStringLiteral("⚠ Cuerpo: %1:1 — solo texto grande (AA 3:1)").arg(ratioTxt), "warn");
+    } else {
+        setChip(m_accessBody, QStringLiteral("✕ Cuerpo: %1:1 — ERROR de contraste (mínimo 3:1)").arg(ratioTxt), "err");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v1.4.0 — Biblioteca de fondos por etiqueta (spec Holyrics)
+// ---------------------------------------------------------------------------
+void ThemePanel::refreshMediaList()
+{
+    if (!m_mediaList) return;
+    m_mediaList->clear();
+    const QString filter = m_mediaFilter ? m_mediaFilter->text().trimmed() : QString();
+    const auto media = filter.isEmpty() ? m_ctx->db->mediaLibrary()
+                                        : m_ctx->db->mediaByTag(filter);
+    for (const auto &m : media) {
+        // Título compacto: [IMG]/[VID] + nombre de archivo
+        auto *it = new QListWidgetItem(QStringLiteral("%1  %2")
+                                            .arg(m.kind == 1 ? QStringLiteral("[VID]")
+                                                             : QStringLiteral("[IMG]"),
+                                                 QFileInfo(m.path).fileName()));
+        it->setData(Qt::UserRole, m.path);
+        it->setData(Qt::UserRole + 1, m.kind);
+        it->setToolTip(m.path);
+        m_mediaList->addItem(it);
+    }
+    if (m_mediaTags) m_mediaTags->clear();
+}
+
+void ThemePanel::onAddBackgrounds(bool videos)
+{
+    const QString cap = videos ? QStringLiteral("Añadir videos a la biblioteca")
+                               : QStringLiteral("Añadir imágenes a la biblioteca");
+    const QString pat = videos
+        ? QStringLiteral("Videos (*.mp4 *.avi *.mkv *.mov *.webm)")
+        : QStringLiteral("Imágenes (*.png *.jpg *.jpeg *.webp *.bmp)");
+    const QStringList files = QFileDialog::getOpenFileNames(this, cap, QString(), pat);
+    int added = 0;
+    for (const QString &f : files) {
+        if (m_ctx->db->addMedia(f, videos ? 1 : 0)) ++added;
+    }
+    if (added > 0) refreshMediaList();
+}
+
+void ThemePanel::onMediaSelected()
+{
+    auto *it = m_mediaList ? m_mediaList->currentItem() : nullptr;
+    if (!it) return;
+    const QString path = it->data(Qt::UserRole).toString();
+    m_mediaTags->setText(m_ctx->db->mediaTags(path).join(QStringLiteral(", ")));
+}
+
+void ThemePanel::onUseBackground()
+{
+    auto *it = m_mediaList ? m_mediaList->currentItem() : nullptr;
+    if (!it) return;
+    const QString path = it->data(Qt::UserRole).toString();
+    const int kind = it->data(Qt::UserRole + 1).toInt();
+    if (kind == 1) {
+        m_videoPath->setText(path);
+        m_imagePath->clear();
+        m_bgType->setCurrentIndex(3);
+    } else {
+        m_imagePath->setText(path);
+        m_videoPath->clear();
+        m_bgType->setCurrentIndex(2);
+    }
+    onFieldChanged();      // preview + proyector en vivo
+}
+
+void ThemePanel::onSaveMediaTags()
+{
+    auto *it = m_mediaList ? m_mediaList->currentItem() : nullptr;
+    if (!it) return;
+    const QString path = it->data(Qt::UserRole).toString();
+    m_ctx->db->setMediaTags(
+        path, m_mediaTags->text().split(QRegularExpression(QStringLiteral("\\s*[,;]\\s*")),
+                                        Qt::SkipEmptyParts));
+    refreshMediaList();    // el filtro puede ahora incluir/excluir el item
+}
+
+void ThemePanel::onRemoveBackground()
+{
+    auto *it = m_mediaList ? m_mediaList->currentItem() : nullptr;
+    if (!it) return;
+    const QString path = it->data(Qt::UserRole).toString();
+    if (m_ctx->db->removeMedia(path)) refreshMediaList();
 }

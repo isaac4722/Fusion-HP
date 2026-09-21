@@ -226,6 +226,30 @@ CREATE TABLE IF NOT EXISTS song_tags (
     FOREIGN KEY(tag_id)  REFERENCES tags(id)  ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_song_tags_tag ON song_tags(tag_id);
+-- v1.4.0: Tags extendidos a TEMAS y FONDOS (spec Holyrics: "asignar
+-- etiquetas a temas, fondos de imagenes, videos y canciones") + motor de
+-- automatizacion semantica ("cancion con etiqueta X -> tema Y + fondo
+-- con etiqueta Z").
+CREATE TABLE IF NOT EXISTS resource_tags (
+    kind   TEXT NOT NULL,              -- 'theme' | 'media'
+    key    TEXT NOT NULL,              -- id del tema o ruta del archivo
+    tag_id INTEGER NOT NULL,
+    PRIMARY KEY(kind, key, tag_id),
+    FOREIGN KEY(tag_id) REFERENCES tags(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_resource_tags_tag ON resource_tags(tag_id);
+CREATE TABLE IF NOT EXISTS media (
+    path     TEXT PRIMARY KEY,         -- ruta absoluta normalizada
+    kind     INTEGER NOT NULL,        -- 0 imagen, 1 video
+    added_at TEXT
+);
+CREATE TABLE IF NOT EXISTS tag_rules (
+    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    song_tag TEXT NOT NULL COLLATE NOCASE,
+    theme_id INTEGER NOT NULL,
+    bg_tag   TEXT DEFAULT '' COLLATE NOCASE,
+    enabled  INTEGER DEFAULT 1
+);
     )SQL");
     if (!exec(schema)) {
         if (error) *error = m_lastError;
@@ -449,6 +473,203 @@ QVector<SongRow> Database::searchByTag(const QString &tag)
         "               WHERE t.name='%1' COLLATE NOCASE) "
         "ORDER BY s.title COLLATE NOCASE").arg(t));
     return rowsFromStmt(st);
+}
+
+// ---------------------------------------------------------------------------
+// Tags extendidos (temas + fondos) y automatizacion semantica — v1.4.0
+// (cpp-pro: RAII con StmtGuard — sqlite3_finalize garantizado en todos los
+// caminos, incluidas las salidas tempranas; const-correctness en helpers).
+// ---------------------------------------------------------------------------
+namespace {
+// Guard RAII para sqlite3_stmt: el destructor finaliza SIEMPRE (patron
+// cpp-pro "RAII over manual resource management"; antes cada caller
+// repetia el par prepare/finalize a mano y un return temprano filtraba).
+struct StmtGuard
+{
+    explicit StmtGuard(sqlite3_stmt *st) : m_st(st) {}
+    ~StmtGuard() { if (m_st) sqlite3_finalize(m_st); }
+    StmtGuard(const StmtGuard &) = delete;             // no copyable
+    StmtGuard &operator=(const StmtGuard &) = delete;
+    sqlite3_stmt *get() const { return m_st; }
+    explicit operator bool() const { return m_st != nullptr; }
+private:
+    sqlite3_stmt *m_st;
+};
+} // namespace
+
+bool Database::setThemeTags(int themeId, const QStringList &tagNames)
+{
+    if (themeId <= 0) return false;
+    if (!begin()) return false;
+    stmtExec("DELETE FROM resource_tags WHERE kind='theme' AND key=?",
+             { QString::number(themeId) });
+    for (const QString &raw : tagNames) {
+        const QString n = raw.trimmed();
+        if (n.isEmpty()) continue;
+        const int tagId = addTag(n);
+        if (tagId > 0)
+            stmtExec("INSERT OR IGNORE INTO resource_tags(kind, key, tag_id) VALUES('theme',?,?)",
+                     { QString::number(themeId), tagId });
+    }
+    return commit();
+}
+
+QStringList Database::themeTags(int themeId)
+{
+    QStringList out;
+    StmtGuard st(prepare(QStringLiteral(
+        "SELECT t.name FROM tags t "
+        "INNER JOIN resource_tags rt ON rt.tag_id=t.id "
+        "WHERE rt.kind='theme' AND rt.key=? "
+        "ORDER BY t.name COLLATE NOCASE")));
+    if (st) {
+        sqlite3_bind_text(st.get(), 1, QString::number(themeId).toUtf8().constData(),
+                          -1, SQLITE_TRANSIENT);
+        while (sqlite3_step(st.get()) == SQLITE_ROW)
+            out << QString::fromUtf8((const char*)sqlite3_column_text(st.get(), 0));
+    }
+    return out;
+}
+
+QStringList Database::allTagNames()
+{
+    QStringList out;
+    StmtGuard st(prepare(QStringLiteral(
+        "SELECT DISTINCT name FROM tags ORDER BY name COLLATE NOCASE")));
+    if (st) {
+        while (sqlite3_step(st.get()) == SQLITE_ROW)
+            out << QString::fromUtf8((const char*)sqlite3_column_text(st.get(), 0));
+    }
+    return out;
+}
+
+bool Database::addMedia(const QString &path, int kind)
+{
+    const QString p = QDir::toNativeSeparators(path.trimmed());
+    if (p.isEmpty()) return false;
+    return stmtExec("INSERT OR REPLACE INTO media(path, kind, added_at) VALUES(?,?,datetime('now'))",
+                    { p, kind });
+}
+
+bool Database::removeMedia(const QString &path)
+{
+    const QString p = QDir::toNativeSeparators(path.trimmed());
+    if (!begin()) return false;
+    stmtExec("DELETE FROM media WHERE path=?", { p });
+    stmtExec("DELETE FROM resource_tags WHERE kind='media' AND key=?", { p });
+    return commit();
+}
+
+QVector<Database::MediaRow> Database::mediaLibrary()
+{
+    QVector<MediaRow> out;
+    StmtGuard st(prepare(QStringLiteral(
+        "SELECT path, kind FROM media ORDER BY added_at DESC, path COLLATE NOCASE")));
+    if (st) {
+        while (sqlite3_step(st.get()) == SQLITE_ROW) {
+            MediaRow r;
+            r.path = QString::fromUtf8((const char*)sqlite3_column_text(st.get(), 0));
+            r.kind = sqlite3_column_int(st.get(), 1);
+            out.append(r);
+        }
+    }
+    return out;
+}
+
+bool Database::setMediaTags(const QString &path, const QStringList &tagNames)
+{
+    const QString p = QDir::toNativeSeparators(path.trimmed());
+    if (p.isEmpty()) return false;
+    if (!begin()) return false;
+    stmtExec("DELETE FROM resource_tags WHERE kind='media' AND key=?", { p });
+    for (const QString &raw : tagNames) {
+        const QString n = raw.trimmed();
+        if (n.isEmpty()) continue;
+        const int tagId = addTag(n);
+        if (tagId > 0)
+            stmtExec("INSERT OR IGNORE INTO resource_tags(kind, key, tag_id) VALUES('media',?,?)",
+                     { p, tagId });
+    }
+    return commit();
+}
+
+QStringList Database::mediaTags(const QString &path)
+{
+    QStringList out;
+    const QString p = QDir::toNativeSeparators(path.trimmed());
+    StmtGuard st(prepare(QStringLiteral(
+        "SELECT t.name FROM tags t "
+        "INNER JOIN resource_tags rt ON rt.tag_id=t.id "
+        "WHERE rt.kind='media' AND rt.key=? "
+        "ORDER BY t.name COLLATE NOCASE")));
+    if (st) {
+        sqlite3_bind_text(st.get(), 1, p.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+        while (sqlite3_step(st.get()) == SQLITE_ROW)
+            out << QString::fromUtf8((const char*)sqlite3_column_text(st.get(), 0));
+    }
+    return out;
+}
+
+QVector<Database::MediaRow> Database::mediaByTag(const QString &tag)
+{
+    QVector<MediaRow> out;
+    const QString t = tag.trimmed().replace('\'', QStringLiteral("''"));
+    if (t.isEmpty()) return out;
+    StmtGuard st(prepare(QStringLiteral(
+        "SELECT m.path, m.kind FROM media m "
+        "WHERE m.path IN (SELECT rt.key FROM resource_tags rt "
+        "                 INNER JOIN tags tg ON tg.id=rt.tag_id "
+        "                 WHERE rt.kind='media' AND tg.name='%1' COLLATE NOCASE) "
+        "ORDER BY m.path COLLATE NOCASE").arg(t)));
+    if (st) {
+        while (sqlite3_step(st.get()) == SQLITE_ROW) {
+            MediaRow r;
+            r.path = QString::fromUtf8((const char*)sqlite3_column_text(st.get(), 0));
+            r.kind = sqlite3_column_int(st.get(), 1);
+            out.append(r);
+        }
+    }
+    return out;
+}
+
+int Database::addTagRule(const QString &songTag, int themeId, const QString &bgTag)
+{
+    const QString t = songTag.trimmed();
+    if (t.isEmpty() || themeId <= 0) return 0;
+    stmtExec("INSERT INTO tag_rules(song_tag, theme_id, bg_tag, enabled) VALUES(?,?,?,1)",
+             { t, themeId, bgTag.trimmed() });
+    return int(scalar(QStringLiteral("SELECT last_insert_rowid()")));
+}
+
+bool Database::deleteTagRule(int id)
+{
+    return stmtExec("DELETE FROM tag_rules WHERE id=?", { id });
+}
+
+bool Database::setTagRuleEnabled(int id, bool enabled)
+{
+    return stmtExec("UPDATE tag_rules SET enabled=? WHERE id=?",
+                    { enabled ? 1 : 0, id });
+}
+
+QVector<Database::TagRule> Database::tagRules()
+{
+    QVector<TagRule> out;
+    StmtGuard st(prepare(QStringLiteral(
+        "SELECT id, song_tag, theme_id, bg_tag, enabled FROM tag_rules "
+        "ORDER BY song_tag COLLATE NOCASE, id")));
+    if (st) {
+        while (sqlite3_step(st.get()) == SQLITE_ROW) {
+            TagRule r;
+            r.id      = sqlite3_column_int(st.get(), 0);
+            r.songTag = QString::fromUtf8((const char*)sqlite3_column_text(st.get(), 1));
+            r.themeId = sqlite3_column_int(st.get(), 2);
+            r.bgTag   = QString::fromUtf8((const char*)sqlite3_column_text(st.get(), 3));
+            r.enabled = sqlite3_column_int(st.get(), 4) != 0;
+            out.append(r);
+        }
+    }
+    return out;
 }
 
 // ---------------------------------------------------------------------------

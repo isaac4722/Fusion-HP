@@ -116,7 +116,7 @@ int main(int argc, char *argv[])
     QApplication app(argc, argv);
     QApplication::setApplicationName(QStringLiteral("LuminaPresentationSuite"));
     QApplication::setOrganizationName(QStringLiteral("LuminaSoftware"));
-    QApplication::setApplicationVersion(QStringLiteral("1.3.0"));
+    QApplication::setApplicationVersion(QStringLiteral("1.4.0"));
     QApplication::setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
 
     // v1.3.0 GUI "Aurora": hoja de estilos global completa (sidebar, tablas,

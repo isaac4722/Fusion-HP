@@ -613,6 +613,10 @@ void MainWindow::buildUi()
 
     // Servidor remoto
     connect(m_ctx.web, &WebServer::remoteCommand, this, &MainWindow::onRemoteCommand);
+    // v1.4.0 — MIDI In (spec Holyrics: eventos de disparo externos): los
+    // comandos del hardware MIDI usan el MISMO dispatcher que el remoto web.
+    connect(m_ctx.triggers, &Triggers::midiCommandReceived, this,
+            [this](const QString &cmd) { onRemoteCommand(cmd, QJsonObject()); });
 
     // Pantallas
     connect(m_comboOutputScreen, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int) { reassignOutputs(); });
@@ -731,6 +735,11 @@ void MainWindow::applyTheme(int themeId)
 // ajustes: slide de título, Modo Hinario, versos por slide).
 void MainWindow::goLiveSong(const Song &s, int refKind, int refId)
 {
+    // v1.4.0 — Automatización semántica (spec Holyrics: "si se reproduce una
+    // canción con la etiqueta X, aplicar el tema Y y seleccionar un fondo con
+    // la etiqueta Z"). Se evalúa ANTES de construir las slides para que el
+    // primer frame ya salga con el tema/fondo de la regla (cero parpadeo).
+    applySemanticRules(s.id);
     Lyrics::BuildOptions opt;
     opt.titleSlide = m_ctx.db->setting(QStringLiteral("song_title_slide"), QStringLiteral("1")) == QStringLiteral("1");
     opt.endBlank = m_ctx.db->setting(QStringLiteral("song_end_blank"), QStringLiteral("0")) == QStringLiteral("1");
@@ -740,6 +749,71 @@ void MainWindow::goLiveSong(const Song &s, int refKind, int refId)
     int maxLines = m_ctx.db->setting(QStringLiteral("song_maxlines"), QStringLiteral("4")).toInt();
     opt.maxLinesPerSlide = qBound(2, maxLines, 8);
     goLive(Lyrics::buildSlides(s, opt), s.title, refKind, refId);
+}
+
+// ---------------------------------------------------------------------------
+// v1.4.0 — Motor de automatizacion semantica por etiquetas
+// ---------------------------------------------------------------------------
+void MainWindow::applySemanticRules(int songId)
+{
+    if (songId <= 0) return;
+    // Interruptor maestro (guiardo por CommsPanel junto a las reglas)
+    if (m_ctx.db->setting(QStringLiteral("semantics_on"), QStringLiteral("0")) != QStringLiteral("1"))
+        return;
+    const QStringList songTags = m_ctx.db->songTags(songId);
+    if (songTags.isEmpty()) return;
+    const auto rules = m_ctx.db->tagRules();
+    if (rules.isEmpty()) return;
+
+    for (const auto &rule : rules) {
+        if (!rule.enabled) continue;
+        // Coincidencia de etiqueta case/acento-insensible ("Lento" == "lento")
+        const QString wanted = Renderer::stripAccentsLocal(rule.songTag).trimmed().toLower();
+        for (const QString &tag : songTags) {
+            if (Renderer::stripAccentsLocal(tag).trimmed().toLower() != wanted) continue;
+
+            // Tema de la regla (si fue borrado, se ignora la regla completa)
+            Theme t = m_ctx.db->themeById(rule.themeId);
+            if (t.id <= 0) break;
+
+            // Fondo por etiqueta (opcional): primera coincidencia de la
+            // biblioteca de fondos. Determinista (orden alfabético) — en un
+            // servicio en vivo la sorpresa aleatoria es un defecto, no una
+            // feature.
+            const QString themeName = t.name;
+            if (!rule.bgTag.isEmpty()) {
+                const auto media = m_ctx.db->mediaByTag(rule.bgTag);
+                if (!media.isEmpty()) {
+                    const auto &bg = media.first();
+                    if (bg.kind == 1) {
+                        t.background.type = 3;              // video en bucle
+                        t.background.videoPath = bg.path;
+                        t.background.imagePath.clear();
+                    } else {
+                        t.background.type = 2;              // imagen
+                        t.background.imagePath = bg.path;
+                        t.background.videoPath.clear();
+                    }
+                }
+            }
+
+            // Aplicar EN VIVO (no guarda el tema: es una selección de
+            // proyección, la plantilla queda intacta — mismo criterio que
+            // la transposición en vivo del Stage View).
+            m_theme = t;
+            updatePreview();
+            statusBar()->showMessage(QStringLiteral("🧠 Regla aplicada: «%1» → tema «%2»%3")
+                                          .arg(rule.songTag, themeName,
+                                               rule.bgTag.isEmpty()
+                                                   ? QString()
+                                                   : QStringLiteral(" + fondo «%1»").arg(rule.bgTag)),
+                                      6000);
+            qInfo() << "[Semantica] regla" << rule.id << "aplicada: cancion tag"
+                    << rule.songTag << "-> tema" << themeName
+                    << (rule.bgTag.isEmpty() ? QString() : QStringLiteral("+ fondo tag %1").arg(rule.bgTag));
+            return;                                          // primera regla que casa
+        }
+    }
 }
 
 void MainWindow::goLive(const QVector<Slide> &slides, const QString &label, int refKind, int refId,
@@ -791,6 +865,8 @@ void MainWindow::showSlideIndex(int idx, bool fireTriggers)
     // Fondo de video del tema (si la slide no define otro)
     if (m_theme.background.type == 3 && !m_theme.background.videoPath.isEmpty())
         playThemeBackgroundVideo(m_theme);
+    else if (m_ctx.media->available() && m_ctx.media->backgroundActive())
+        stopBackgroundVideo();   // v1.4.0: tema sin video -> fondo anterior se detiene
 
     // Stage view con acordes
     updateStage();

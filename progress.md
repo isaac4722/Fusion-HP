@@ -3,6 +3,31 @@
 > Registro acumulativo de trabajo (append-only). Formato definido en `AGENT.md`.
 
 ---
+## [FEAT-2026-09-22-I] v1.3.0 → v1.4.0 «PRISMA» · Automatización semántica + accesibilidad + MIDI In · 2026-09-22 UTC
+- Agente: Super Z (GLM) — continuación del desarrollo con skills instaladas (cpp-pro: patrones C++ de producción · hallmark: disciplina de diseño de GUI)
+- Hecho:
+  - **Instalación de skills solicitadas por el usuario**: `hallmark` (nutlope/hallmark — diseño anti-slop, 4 ubicaciones + skills-lock.json; el CLI npx funcionó parcialmente y se completó el registro manualmente) y `cpp-pro` (0xharryriddle/codex-field-kit — C++ producción; instalación manual por clonación directa al no exponer el CLI el path `skills-hermes/`).
+  - **🧠 Motor de automatización semántica por etiquetas** (spec Holyrics §Personalización Avanzada: «si se reproduce una canción con la etiqueta 'lento', aplicar el tema 'calma' y seleccionar un fondo con la etiqueta 'ocaso'»):
+    1. DB: tablas `resource_tags` (kind theme/media), `media` (biblioteca de fondos) y `tag_rules`; API completa con StmtGuard RAII (cpp-pro) — setThemeTags/themeTags/allTagNames/addMedia/removeMedia/mediaLibrary/setMediaTags/mediaTags/mediaByTag/addTagRule/deleteTagRule/setTagRuleEnabled/tagRules.
+    2. MainWindow::applySemanticRules enganchado en goLiveSong ANTES de construir slides (cero parpadeo): matching case/acento-insensible, primera regla que casa gana, fondo por etiqueta determinista (primer match alfabético — la aleatoriedad en vivo es un defecto, no una feature), tema aplicado en vivo SIN tocar la plantilla (mismo criterio que la transposición en vivo), aviso en statusbar + log.
+    3. Interruptor maestro `semantics_on` + tabla de reglas editable en Comunicación › Automatización semántica (crear/eliminar/alternar con un clic).
+  - **🏷 Tags extendidos a temas y fondos** (spec Holyrics): campo Etiquetas en el editor de temas (autocompletado con todos los tags del vault, QSignalBlocker en la carga, guardado junto al tema, herencia en «Guardar como nuevo») y **Biblioteca de fondos** en el panel Temas: añadir imágenes/videos, etiquetarlos, filtrar por etiqueta («buscar 'agua' y ver la galería») y doble clic → fondo del tema en vivo.
+  - **🎹 MIDI In (winmm)** (spec Holyrics: eventos de disparo EXTERNOS «recibir un comando MIDI»): clase MidiIn con callback estático de winmm + marshalling seguro hilo→hilo Qt (QMetaObject::invokeMethod QueuedConnection, dispatch Q_INVOKABLE), RAII en el handle (midiInReset+Close en destructor/stop), ignorar note-off y notas fuera de rango; mapa nota→comando editable (defaults didácticos: octava de Do = next/prev/black/clear/logo/qnext/qprev) persistido en el JSON de triggers; los comandos usan el MISMO dispatcher que el control remoto web (onRemoteCommand). UI en Comunicación con chip de estado (dispositivos detectados/escuchando/error) y botón «Probar nota».
+  - **♿ Comprobador de accesibilidad WCAG** (spec PowerPoint §Accesibilidad — Accessibility Checker con severidades Error/Advertencia/Correcto): Renderer::contrastRatio/relativeLuminance/contrastLevel (sRGB linealizado, 21:1 máximo), UI en panel Temas con chips ok/warn/err que se recomputan con CADA cambio de color/tipo; gradientes evaluados por peor caso; imagen/video → advertencia con recomendación.
+  - **🎬 FIX defecto latente**: cambiar de un tema con fondo de video a otro SIN video dejaba el video anterior reproduciéndose y visible encima del nuevo tema. MediaEngine::backgroundActive() (const noexcept, cpp-pro) + else en showSlideIndex que detiene el fondo activo. La automatización semántica habría hecho este defecto cotidiano.
+  - **Calidad (disciplinas de las skills)**: StmtGuard RAII en todo el SQL nuevo (sqlite3_finalize garantizado incluso en returns tempranos), Q_INVOKABLE + marshalling para el callback de hilo winmm, const noexcept en consultas, QSS con chips de estado via property+repolish (tokens Aurora, cero estilos inline), Comunicación envuelta en QScrollArea para netbooks 1366×768, sección 15 de aurora.qss (chips genéricos + notas).
+  - **Version bump 1.4.0** (CMakeLists, main.cpp, workflow) + notas de release v1.4.0 + README (descarga, tabla de características con las 4 features nuevas).
+- Decisiones:
+  - **Fondo por regla determinista (primer match alfabético)**: en un servicio en vivo la sorpresa aleatoria es un defecto; la elección múltiple se resuelve etiquetando más fino.
+  - **El tema de la regla se aplica en vivo sin guardar la plantilla**: la regla es una selección de proyección (como la transposición del Stage), no una edición del activo.
+  - **MIDI In al dispatcher central (onRemoteCommand)**: un único vocabulario de comandos (web+móvil+MIDI) = menos código, menos divergencias, mismas garantías.
+  - **Matching acento-insensible**: los tags los escribe el usuario en dos sitios distintos (canción/regla); «adoración» == «ADORACIÓN» == «adoracion» evita la frustración silenciosa.
+  - **StmtGuard solo en código nuevo**: los 1000+ lines de SQL existentes están probados por 3 versiones de harness; refactor masivo = riesgo sin beneficio medible.
+- Gates: build=OK local Linux Qt 5.15.2 gcc **0 errores / 0 warnings** · harness v1.4.0=**49/49 OK** (tags temas 7 · biblioteca fondos 8 · reglas semánticas 10 · WCAG 10 · MIDI In dispatch 5 · DB base 9) · smoke offscreen=OK (arranque 1.4.0, seed, servidor 8765/8088, /api/state versión 1.4.0, remote.html servido) · CI Windows x86+x64 → pendiente del run del tag v1.4.0
+- Bloqueos: ninguno (1 expectativa del harness corregida: el orden alfabético de mediaByTag pone nubes_loop.mp4 antes que ocaso_01.png — el código estaba bien, el test asumía el orden inverso)
+- Siguiente: commit → push → tag v1.4.0 → CI → verificación de release publicada (API + descarga + SHA256 + verify_portable + FileVersion)
+
+---
 ## [CIERRE-2026-09-21-H] v1.3.0 «AURORA» publicada y verificada de extremo a extremo · 2026-09-21 UTC
 - Agente: Super Z (GLM) — cierre del ciclo
 - Hecho:

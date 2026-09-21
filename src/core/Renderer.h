@@ -38,6 +38,50 @@ class Renderer
 public:
     using Options = RenderOptions;
 
+    // -----------------------------------------------------------------
+    // v1.4.0 — Comprobador de accesibilidad (spec PowerPoint: WCAG).
+    // Relativo de luminancia sRGB y ratio de contraste (WCAG 2.x):
+    //   L = 0.2126R + 0.7152G + 0.0722B   (linealizado por canal)
+    //   ratio = (Lmax + 0.05) / (Lmin + 0.05)   [1..21]
+    // Umbral AA: >= 4.5 texto normal, >= 3.0 texto grande (>= 24pt o
+    // >= 18pt negrita) — se clasifica como el Accessibility Checker de
+    // PowerPoint: Error / Advertencia / Correcto.
+    // -----------------------------------------------------------------
+    static qreal srgbChannel(qreal c) noexcept
+    {
+        if (c <= 0.0) return 0.0;
+        if (c >= 1.0) return 1.0;
+        return (c <= 0.04045) ? (c / 12.92)
+                              : std::pow((c + 0.055) / 1.055, 2.4);
+    }
+
+    static qreal relativeLuminance(const QColor &col) noexcept
+    {
+        const qreal r = srgbChannel(qreal(col.red())   / 255.0);
+        const qreal g = srgbChannel(qreal(col.green()) / 255.0);
+        const qreal b = srgbChannel(qreal(col.blue())  / 255.0);
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    }
+
+    static qreal contrastRatio(const QColor &a, const QColor &b) noexcept
+    {
+        const qreal la = relativeLuminance(a);
+        const qreal lb = relativeLuminance(b);
+        const qreal hi = qMax(la, lb), lo = qMin(la, lb);
+        return (hi + 0.05) / (lo + 0.05);
+    }
+
+    enum class ContrastLevel { PassAA,        // >= 4.5 (texto normal AA)
+                               PassLargeOnly, // >= 3.0: solo texto grande
+                               Fail };        // < 3.0: error
+    static ContrastLevel contrastLevel(qreal ratio, bool largeText) noexcept
+    {
+        if (ratio >= 4.5) return ContrastLevel::PassAA;
+        if (ratio >= 3.0) return largeText ? ContrastLevel::PassLargeOnly
+                                           : ContrastLevel::Fail;
+        return ContrastLevel::Fail;
+    }
+
     // Renderiza una slide completa a la resolucion pedida
     static QPixmap render(const Theme &theme, const Slide &slide, const QSize &size,
                           const Options &opt = Options())

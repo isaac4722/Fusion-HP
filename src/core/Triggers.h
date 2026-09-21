@@ -6,12 +6,15 @@
 //  - Cliente OBS WebSocket v5 (obs-websocket) con autenticacion SHA-256
 //    para cambio automatico de escenas al proyectar.
 //  - MIDI Out (winmm) para mesas DMX.
+//  - MIDI In (winmm) v1.4.0: eventos de disparo EXTERNOS del spec
+//    Holyrics — hardware MIDI (pedales/pads) -> comandos del presentador.
 //  - Bot de Telegram: recepcion de peticiones y envio de avisos.
 // ============================================================================
 #ifndef LUMINA_TRIGGERS_H
 #define LUMINA_TRIGGERS_H
 
 #include "MidiOut.h"
+#include "MidiIn.h"
 
 #include <QObject>
 #include <QNetworkAccessManager>
@@ -226,6 +229,9 @@ public:
         QString obsSceneOnClear = QStringLiteral("Camara");
         bool   midiEnabled = false;
         int    midiProgramOnSlide = 0;
+        // v1.4.0 — MIDI In como fuente de eventos externos (spec Holyrics)
+        bool   midiInEnabled = false;
+        MidiIn::NoteMap midiInMap;           // (nota, comando)
         bool   telegramEnabled = false;
         QString telegramToken;
         QString telegramChatId;
@@ -234,6 +240,10 @@ public:
     explicit Triggers(QObject *parent = nullptr) : QObject(parent)
     {
         connect(&m_obs, &ObsClient::connectionChanged, this, &Triggers::obsConnectionChanged);
+        // v1.4.0: los comandos MIDI recibidos se retransmiten como señal —
+        // MainWindow los conecta al MISMO dispatcher que el control remoto
+        // web (onRemoteCommand), con lo que el vocabulario queda unificado.
+        connect(&m_midiIn, &MidiIn::midiCommand, this, &Triggers::midiCommandReceived);
     }
 
     void applyConfig(const Config &c)
@@ -241,6 +251,12 @@ public:
         m_cfg = c;
         m_obs.configure(c.obsEnabled, c.obsHost, c.obsPort, c.obsPassword);
         m_telegram.configure(c.telegramEnabled, c.telegramToken, c.telegramChatId);
+        // MIDI In: arranca/para segun config; si ya estaba abierto con el
+        // mismo mapa solo se actualiza el mapa (start() es idempotente).
+        if (c.midiInEnabled)
+            m_midiIn.start(c.midiInMap);
+        else
+            m_midiIn.stop();
     }
     const Config &config() const { return m_cfg; }
 
@@ -291,14 +307,19 @@ public:
         m_telegram.sendMessage(QStringLiteral("LuminaPresentation Suite: prueba de Telegram OK"));
     }
 
+    // v1.4.0: acceso al receptor MIDI (estado/diagnostico de la GUI).
+    MidiIn *midiIn() { return &m_midiIn; }
+
 signals:
     void obsConnectionChanged(bool ok);
+    void midiCommandReceived(const QString &cmd);
 
 private:
     QNetworkAccessManager m_nam;
     ObsClient m_obs;
     TelegramBot m_telegram;
     MidiOut m_midi;
+    MidiIn m_midiIn;             // v1.4.0
     Config m_cfg;
 };
 

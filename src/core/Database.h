@@ -52,6 +52,40 @@ public:
     QVector<QPair<int, QString>> allTags();                 // (id, nombre) ordenado por uso
     QVector<SongRow> searchByTag(const QString &tag);        // canciones con la etiqueta
 
+    // ----------------- Tags extendidos v1.4.0 (spec Holyrics: --------------
+    // "asignar etiquetas a temas, fondos de imagenes, videos y canciones").
+    // resource_tags generaliza la asociacion: kind = 'theme' (key = id del
+    // tema como texto) o 'media' (key = ruta normalizada del archivo).
+    bool setThemeTags(int themeId, const QStringList &tags);
+    QStringList themeTags(int themeId);
+    QStringList allTagNames();                              // nombres unicos (completadores)
+
+    // Biblioteca de fondos (media library): imagenes/videos catalogados con
+    // etiquetas para la "galeria por etiqueta" del spec Holyrics.
+    struct MediaRow { QString path; int kind; };            // kind: 0 imagen, 1 video
+    bool addMedia(const QString &path, int kind);
+    bool removeMedia(const QString &path);
+    QVector<MediaRow> mediaLibrary();
+    bool setMediaTags(const QString &path, const QStringList &tags);
+    QStringList mediaTags(const QString &path);
+    QVector<MediaRow> mediaByTag(const QString &tag);
+
+    // ----------------- Automatizacion semantica v1.4.0 ---------------------
+    // Regla del spec Holyrics: "si se reproduce una cancion con la etiqueta
+    // X, aplicar el tema Y y seleccionar un fondo con la etiqueta Z".
+    struct TagRule
+    {
+        int     id = 0;
+        QString songTag;
+        int     themeId = 0;
+        QString bgTag;              // opcional: fondo por etiqueta
+        bool    enabled = true;
+    };
+    int  addTagRule(const QString &songTag, int themeId, const QString &bgTag);
+    bool deleteTagRule(int id);
+    bool setTagRuleEnabled(int id, bool enabled);
+    QVector<TagRule> tagRules();
+
     // ------------------------------ Biblias ---------------------------------
     QStringList bibleVersions();
     bool importBibleFromJsonResource(const QString &resourcePath, const QString &versionCode,

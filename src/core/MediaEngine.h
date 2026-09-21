@@ -222,6 +222,13 @@ public:
         m_bgPath.clear();
     }
 
+    // v1.4.0 (cpp-pro: consulta const noexcept): hay un fondo de video en
+    // reproducción. Lo necesita MainWindow para decidir si debe DETENER el
+    // fondo al cambiar a un tema sin video — antes el cambio de tema dejaba
+    // el video anterior sonando/visible encima del nuevo tema (defecto
+    // latente que la automatización semántica hacía cotidiano).
+    bool backgroundActive() const noexcept { return m_bg != nullptr; }
+
     // ------------------------------ Volumen ---------------------------------
     void setVolume(int vol)     // 0..100
     {

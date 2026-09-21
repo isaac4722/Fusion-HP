@@ -98,6 +98,7 @@ private:
     QKeySequence shortcutSetting(const char *settingKey, int defaultKey) const;
     void applyTheme(int themeId);
     void goLiveSong(const Song &s, int refKind, int refId);   // v1.1.0: proyección de canción con ajustes
+    void applySemanticRules(int songId);   // v1.4.0: reglas etiqueta→tema/fondo (spec Holyrics)
     int  activePlaylistId() const;      // v1.2.0: culto activo del ServicePanel
     static QString s_titleOf(int book, int ch);
     void updatePreview();

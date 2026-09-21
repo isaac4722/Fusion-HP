@@ -19,8 +19,8 @@ permissions:
 env:
   APP_NAME: LuminaPresentationSuite
   # Version dinamica: nombre del tag (vN.N.N) al hacer push de tags;
-  # fallback v1.3.0 en pushes a main (solo artefactos) y workflow_dispatch.
-  APP_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.3.0' }}
+  # fallback v1.4.0 en pushes a main (solo artefactos) y workflow_dispatch.
+  APP_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.4.0' }}
   VLC_VERSION: "3.0.21"
 
 jobs:
@@ -288,6 +288,14 @@ jobs:
             - Incluye: motor Qt + **runtime MinGW**, **LibVLC 3.0.21** (todos los codecs), **Biblia RVR1909 completa** y temas.
             - Verifica la integridad con `SHA256SUMS.txt`.
             - Control remoto móvil: `http://<ip-del-pc>:8088/remote.html` · Overlay OBS: `http://<ip>:8088/overlay.html`
+
+            ### 🧠 Novedades v1.4.0 «PRISMA» — automatización semántica + accesibilidad
+            - **🧠 Automatización semántica por etiquetas** (spec Holyrics: «si se reproduce una canción con la etiqueta 'lento', aplicar el tema 'calma' y seleccionar un fondo con la etiqueta 'ocaso'»): crea reglas etiqueta → tema (+ fondo por etiqueta) en Comunicación › Automatización semántica; al proyectar una canción, la primera regla que coincide se aplica EN VIVO sin tocar la plantilla. Coincidencia insensible a mayúsculas y acentos.
+            - **🏷 Etiquetas en temas y fondos** (spec Holyrics: «asignar etiquetas a temas, fondos de imágenes, videos y canciones»): los temas llevan etiquetas editables (con autocompletado) y la nueva **Biblioteca de fondos** del panel Temas cataloga imágenes/videos con etiquetas — filtra por etiqueta («agua», «ocaso»…) y aplica cualquiera como fondo con doble clic.
+            - **🎹 MIDI In** (spec Holyrics: eventos de disparo externos «recibir un comando MIDI»): conecta un pedal/pad MIDI y dispara los comandos del presentador (siguiente, anterior, negro, logo, cola…) con el mismo vocabulario del control remoto web. Mapa nota → comando editable con defaults didácticos (octava de Do) y botón «Probar nota».
+            - **♿ Comprobador de accesibilidad WCAG** (spec PowerPoint: Accessibility Checker): ratios de contraste en vivo del título y cuerpo contra el fondo del tema (peor caso en gradientes), clasificados como Correcto/Advertencia/Error — con umbral AA 4.5:1 y texto grande 3:1.
+            - **🎬 FIX — fondos de video al cambiar de tema**: antes, pasar de un tema con fondo de video a otro sin video dejaba el video anterior SONANDO y visible encima del nuevo tema; ahora se detiene automáticamente.
+            - **🛠 Calidad interna**: guard RAII para todos los statements nuevos de SQLite (StmtGuard), consultas const noexcept en MediaEngine y marshalling seguro hilo-winmm → hilo-Qt en MIDI In (disciplinas cpp-pro); Comunicación ahora con scroll para pantallas pequeñas.
 
             ### 🌟 Novedades v1.3.0 «AURORA» — nueva interfaz gráfica + funciones de las especificaciones
             - **🎨 GUI «Aurora» completa**: tema visual global profesional (sidebar de navegación con secciones BIBLIOTECA/DISEÑO/SERVICIO/SISTEMA, tablas con zebra, botones primarios/dorado, inputs, combos, scrollbars finas, menús, diálogos y tooltips rediseñados).
