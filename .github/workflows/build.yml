@@ -79,8 +79,11 @@ jobs:
           $ErrorActionPreference = 'Stop'
           Invoke-WebRequest -Uri '${{ matrix.vlc_url }}' -OutFile "vlc.7z" -MaximumRedirection 10
           & "C:\Program Files\7-Zip\7z.exe" x "vlc.7z" -o"vlc_dist" -y | Out-Null
-          if (-not (Test-Path "vlc_dist/vlc/libvlc.dll")) { throw "libvlc.dll no encontrada tras extraer" }
-          Write-Host "VLC extraido OK"
+          # El 7z extrae a una carpeta raiz tipo 'vlc-3.0.21/': detectarla automaticamente
+          $vlcRoot = Get-ChildItem "vlc_dist" -Directory | Where-Object { Test-Path (Join-Path $_.FullName 'libvlc.dll') } | Select-Object -First 1
+          if (-not $vlcRoot) { throw "libvlc.dll no encontrada tras extraer" }
+          Write-Host "VLC extraido en: $($vlcRoot.FullName)"
+          echo "VLC_ROOT=$($vlcRoot.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Configure (CMake)
         shell: pwsh
@@ -108,13 +111,14 @@ jobs:
           windeployqt --release --no-compiler-runtime --no-translations --no-system-d3d-compiler `
             --no-opengl-sw "$stage\${{ env.APP_NAME }}.exe"
           if ($LASTEXITCODE -ne 0) { throw "windeployqt fallo" }
-          # Motor VLC embebido (carga dinamica en runtime)
+          # Motor VLC embebido (carga dinamica en runtime desde <appdir>/vlc/)
           New-Item -ItemType Directory -Force -Path "$stage\vlc" | Out-Null
-          Copy-Item "vlc_dist\vlc\libvlc.dll"    "$stage\vlc\"
-          Copy-Item "vlc_dist\vlc\libvlccore.dll" "$stage\vlc\"
-          if (Test-Path "vlc_dist\vlc\libcompat.dll") { Copy-Item "vlc_dist\vlc\libcompat.dll" "$stage\vlc\" }
-          if (Test-Path "vlc_dist\vlc\AUTHORS") { Copy-Item "vlc_dist\vlc\AUTHORS" "$stage\vlc\VLCAuthors.txt" }
-          Copy-Item "vlc_dist\vlc\plugins" "$stage\vlc\plugins" -Recurse
+          Copy-Item "$env:VLC_ROOT\libvlc.dll"     "$stage\vlc\"
+          Copy-Item "$env:VLC_ROOT\libvlccore.dll" "$stage\vlc\"
+          if (Test-Path "$env:VLC_ROOT\libcompat.dll") { Copy-Item "$env:VLC_ROOT\libcompat.dll" "$stage\vlc\" }
+          if (Test-Path "$env:VLC_ROOT\AUTHORS.txt")  { Copy-Item "$env:VLC_ROOT\AUTHORS.txt"  "$stage\vlc\VLCAuthors.txt" }
+          if (Test-Path "$env:VLC_ROOT\COPYING.txt")  { Copy-Item "$env:VLC_ROOT\COPYING.txt"  "$stage\vlc\VLCCopying.txt" }
+          Copy-Item "$env:VLC_ROOT\plugins" "$stage\vlc\plugins" -Recurse
           # Licencias y documentacion
           Copy-Item "LICENSE.md" "$stage\"
           Copy-Item "README.md" "$stage\"
