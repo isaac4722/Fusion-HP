@@ -56,8 +56,9 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          python -m pip install --quiet --disable-pip-version-check aqtinstall
-          python -m aqt tool windows tools_mingw81 ${{ matrix.mingw_tool }} -O "$env:QT_ROOT_DIR"
+          python -m pip install --quiet --disable-pip-version-check "aqtinstall==3.3.*"
+          # aqt 3.x: subcomando 'install-tool' + argumento 'desktop' (renovado desde 'tool')
+          python -m aqt install-tool windows desktop tools_mingw81 ${{ matrix.mingw_tool }} -O "$env:QT_ROOT_DIR"
           if ($LASTEXITCODE -ne 0) { throw "aqt tool fallo" }
           $mingwBin = Get-ChildItem -Path "$env:QT_ROOT_DIR\Tools" -Directory | `
             Where-Object { $_.Name -like 'mingw810*' } | Select-Object -First 1
