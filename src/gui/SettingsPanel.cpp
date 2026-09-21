@@ -11,11 +11,14 @@
 #include <QFormLayout>
 #include <QMessageBox>
 #include <QDir>
+#include <QFileDialog>
+#include <QDateTime>
 #include <QDesktopServices>
 #include <QUrl>
 #include <QGuiApplication>
 #include <QScreen>
 #include <QSysInfo>
+#include <tuple>
 
 SettingsPanel::SettingsPanel(AppContext *ctx, QWidget *parent)
     : QWidget(parent), m_ctx(ctx)
@@ -99,6 +102,75 @@ void SettingsPanel::buildUi()
     f5->addRow(apiHelp);
     lay->addWidget(grpApi);
 
+    // ---------------------------------------------------------------------
+    // v1.3.0 — ATAJOOS PERSONALIZABLES (spec Holyrics: "atajos de teclado
+    // personalizables"). Se guardan como texto QKeySequence en settings y
+    // MainWindow::buildShortcuts los aplica al arranque.
+    // ---------------------------------------------------------------------
+    auto *grpKeys = new QGroupBox(QStringLiteral("Atajos de teclado (personalizables)"), this);
+    auto *fk = new QFormLayout(grpKeys);
+    // (clave de ajuste, tecla default, etiqueta) — mismas claves que MainWindow
+    const QVector<std::tuple<const char *, int, const char *>> defs = {
+        { "key_next",         Qt::Key_Right, "Siguiente slide:" },
+        { "key_prev",         Qt::Key_Left,  "Slide anterior:" },
+        { "key_golive",       Qt::Key_F5,    "Proyectar en vivo:" },
+        { "key_black",        Qt::Key_B,     "Pantalla negra:" },
+        { "key_clear",        Qt::Key_C,     "Solo fondo (limpiar):" },
+        { "key_logo",         Qt::Key_L,     "Logo:" },
+        { "key_quickverse",   Qt::Key_F9,    "Versículo rápido:" },
+        { "key_lowerthird",   Qt::Key_F10,   "Lower Third:" },
+        { "key_presentation", Qt::Key_F11,   "Modo Presentación:" },
+    };
+    for (const auto &d : defs) {
+        const QByteArray key = std::get<0>(d);
+        auto *ed = new QKeySequenceEdit(grpKeys);
+        const QString saved = m_ctx->db->setting(QLatin1String(key.constData()));
+        ed->setKeySequence(saved.trimmed().isEmpty() ? QKeySequence(std::get<1>(d))
+                                                     : QKeySequence(saved));
+        fk->addRow(QString::fromUtf8(std::get<2>(d)), ed);
+        m_shortcutDefs.append(qMakePair(key, std::get<1>(d)));
+        m_shortcutEdits.append(ed);
+    }
+    auto *rowKeys = new QHBoxLayout();
+    auto *bResetKeys = new QPushButton(QStringLiteral("↺ Restablecer valores de fábrica"), grpKeys);
+    connect(bResetKeys, &QPushButton::clicked, this, &SettingsPanel::onResetShortcuts);
+    rowKeys->addWidget(bResetKeys);
+    rowKeys->addStretch();
+    fk->addRow(rowKeys);
+    lay->addWidget(grpKeys);
+
+    // ---------------------------------------------------------------------
+    // v1.3.0 — COPIA DE SEGURIDAD del vault (alternativa offline-safe a la
+    // sincronización en la nube del spec Holyrics). Copia automática semanal
+    // en <datos>/backups (rotación de 4); aquí se ofrecen copias manuales.
+    // ---------------------------------------------------------------------
+    auto *grpBackup = new QGroupBox(QStringLiteral("Copia de seguridad (todo el vault)"), this);
+    auto *fb = new QVBoxLayout(grpBackup);
+    auto *rowBackup = new QHBoxLayout();
+    auto *bBackup = new QPushButton(QStringLiteral("💾 Crear copia de seguridad…"), grpBackup);
+    bBackup->setProperty("class", QStringLiteral("primary"));
+    auto *bRestore = new QPushButton(QStringLiteral("↩ Restaurar copia…"), grpBackup);
+    connect(bBackup, &QPushButton::clicked, this, &SettingsPanel::onBackup);
+    connect(bRestore, &QPushButton::clicked, this, &SettingsPanel::onRestore);
+    rowBackup->addWidget(bBackup);
+    rowBackup->addWidget(bRestore);
+    rowBackup->addStretch();
+    fb->addLayout(rowBackup);
+    m_backupStatus = new QLabel(QString(), grpBackup);
+    m_backupStatus->setObjectName(QStringLiteral("MutedLabel"));
+    m_backupStatus->setWordWrap(true);
+    fb->addWidget(m_backupStatus);
+    const QString lastAuto = m_ctx->db->setting(QStringLiteral("last_auto_backup"));
+    const QDateTime lastAutoAt = QDateTime::fromString(lastAuto, Qt::ISODate);
+    if (lastAutoAt.isValid()) {
+        m_backupStatus->setText(QStringLiteral("Última copia automática: %1 (semanal, en la "
+                                                "subcarpeta 'backups' de tus datos)")
+                                    .arg(lastAutoAt.toString(QStringLiteral("dd/MM/yyyy hh:mm"))));
+    } else {
+        m_backupStatus->setText(QStringLiteral("Copia automática semanal activada (subcarpeta 'backups')."));
+    }
+    lay->addWidget(grpBackup);
+
     // v1.1.0: cargar los valores guardados de los nuevos ajustes
     m_hinarioMode->setChecked(m_ctx->db->setting(QStringLiteral("song_hinario"), QStringLiteral("0")) == QStringLiteral("1"));
     m_maxLines->setValue(m_ctx->db->setting(QStringLiteral("song_maxlines"), QStringLiteral("4")).toInt());
@@ -124,7 +196,7 @@ void SettingsPanel::buildUi()
 
     auto *row = new QHBoxLayout();
     auto *bApply = new QPushButton(QStringLiteral("💾 Aplicar configuración"), this);
-    bApply->setStyleSheet(QStringLiteral("QPushButton{background:#1E6FD9;color:white;font-weight:bold;padding:8px 16px;}"));
+    bApply->setProperty("class", QStringLiteral("primary"));
     auto *bFolder = new QPushButton(QStringLiteral("Abrir carpeta de datos"), this);
     connect(bApply, &QPushButton::clicked, this, &SettingsPanel::apply);
     connect(bFolder, &QPushButton::clicked, this, &SettingsPanel::onOpenDataFolder);
@@ -135,7 +207,7 @@ void SettingsPanel::buildUi()
 
     m_sysInfo = new QLabel(QString(), this);
     m_sysInfo->setWordWrap(true);
-    m_sysInfo->setStyleSheet(QStringLiteral("color:#8FA3C8;"));
+    m_sysInfo->setObjectName(QStringLiteral("MutedLabel"));
     lay->addWidget(m_sysInfo);
     lay->addStretch();
 }
@@ -189,12 +261,89 @@ void SettingsPanel::apply()
     m_ctx->db->setSetting(QStringLiteral("song_maxlines"), QString::number(m_maxLines->value()));
     m_ctx->db->setSetting(QStringLiteral("song_title_slide"), m_titleSlide->isChecked() ? QStringLiteral("1") : QStringLiteral("0"));
     m_ctx->db->setSetting(QStringLiteral("api_token"), m_apiToken->text().trimmed());
+    // v1.3.0: atajos personalizados — texto PortableText ("Ctrl+Derecha")
+    for (int i = 0; i < m_shortcutEdits.size(); ++i) {
+        const QKeySequence ks = m_shortcutEdits.at(i)->keySequence();
+        const QByteArray key = m_shortcutDefs.at(i).first;
+        if (ks.isEmpty() || ks == QKeySequence(m_shortcutDefs.at(i).second)) {
+            // vacío o igual al default => guardar vacío (usa default de fábrica)
+            m_ctx->db->setSetting(QLatin1String(key.constData()), QString());
+        } else {
+            m_ctx->db->setSetting(QLatin1String(key.constData()), ks.toString());
+        }
+    }
     emit settingsApplied();
-    QMessageBox::information(this, QStringLiteral("Ajustes"), QStringLiteral("Configuración aplicada."));
+    QMessageBox::information(this, QStringLiteral("Ajustes"),
+                             QStringLiteral("Configuración aplicada.\n"
+                                            "Los atajos de teclado nuevos surten efecto al reiniciar "
+                                            "la aplicación."));
 }
 
 void SettingsPanel::onOpenDataFolder()
 {
     QDir d(m_ctx->db->setting(QStringLiteral("data_dir")));
     QDesktopServices::openUrl(QUrl::fromLocalFile(d.absolutePath()));
+}
+
+// ---------------------------------------------------------------------------
+// v1.3.0 — Copia de seguridad / restauración
+// ---------------------------------------------------------------------------
+void SettingsPanel::onBackup()
+{
+    const QString dataDir = m_ctx->db->setting(QStringLiteral("data_dir"));
+    const QString suggested = QStringLiteral("%1/lumina_backup_%2.db")
+            .arg(QDir(dataDir).absolutePath(),
+                 QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_Hhmm")));
+    const QString out = QFileDialog::getSaveFileName(this, QStringLiteral("Crear copia de seguridad"),
+                                                     suggested,
+                                                     QStringLiteral("Copia LuminaPresentation (*.db)"));
+    if (out.isEmpty()) return;
+    QString err;
+    if (!m_ctx->db->backupTo(out, &err)) {
+        QMessageBox::warning(this, QStringLiteral("Copia de seguridad"),
+                             QStringLiteral("No se pudo crear la copia:\n%1").arg(err));
+        return;
+    }
+    m_backupStatus->setText(QStringLiteral("✅ Copia creada: %1").arg(QDir::toNativeSeparators(out)));
+    QMessageBox::information(this, QStringLiteral("Copia de seguridad"),
+                             QStringLiteral("Copia creada correctamente:\n%1").arg(QDir::toNativeSeparators(out)));
+}
+
+void SettingsPanel::onRestore()
+{
+    const QString dataDir = m_ctx->db->setting(QStringLiteral("data_dir"));
+    const QString src = QFileDialog::getOpenFileName(this, QStringLiteral("Restaurar desde copia"),
+                                                     QDir(dataDir).absolutePath(),
+                                                     QStringLiteral("Copia LuminaPresentation (*.db);;Todos (*)"));
+    if (src.isEmpty()) return;
+    if (QMessageBox::question(this, QStringLiteral("Restaurar copia"),
+                              QStringLiteral("Se reemplazará TODO el contenido actual (canciones, "
+                                              "biblias importadas, cultos, temas, ajustes) por el de la copia:\n%1\n\n"
+                                              "¿Continuar? Se recomienda reiniciar la aplicación después.")
+                                  .arg(QDir::toNativeSeparators(src))) != QMessageBox::Yes)
+        return;
+    // Copia de seguridad de seguridad: snapshot del estado actual antes de restaurar
+    const QString safety = QStringLiteral("%1/pre_restore_%2.db")
+            .arg(QDir(dataDir + QStringLiteral("/backups")).absolutePath(),
+                 QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_Hhmm")));
+    QString ignored;
+    m_ctx->db->backupTo(safety, &ignored);
+    QString err;
+    if (!m_ctx->db->restoreFrom(src, &err)) {
+        QMessageBox::warning(this, QStringLiteral("Restaurar copia"),
+                             QStringLiteral("No se pudo restaurar:\n%1").arg(err));
+        return;
+    }
+    QMessageBox::information(this, QStringLiteral("Restaurar copia"),
+                             QStringLiteral("Contenido restaurado.\nSe creó una copia de seguridad del "
+                                            "estado anterior en:\n%1\n\n"
+                                            "Reinicia la aplicación para que todos los paneles "
+                                            "reflejen el contenido restaurado.")
+                                 .arg(QDir::toNativeSeparators(safety)));
+}
+
+void SettingsPanel::onResetShortcuts()
+{
+    for (int i = 0; i < m_shortcutEdits.size(); ++i)
+        m_shortcutEdits.at(i)->setKeySequence(QKeySequence(m_shortcutDefs.at(i).second));
 }

@@ -3,6 +3,38 @@
 > Registro acumulativo de trabajo (append-only). Formato definido en `AGENT.md`.
 
 ---
+## [FEAT-2026-09-21-G] v1.2.0 → v1.3.0 «AURORA» · Nueva GUI completa + 9 features de los MDs · 2026-09-21 UTC
+- Agente: Super Z (GLM) — ciclo super plan: análisis de MDs → plan → implementación → verificación
+- Hecho:
+  - **Recuperación y análisis de los 4 MD del usuario** (Requerimientos.md «la Mezcla», holyrics-spec.md, powerpoint-spec.md, síntesis comparativa) desde el cache de sesión; extracción del «Prompt Integral» (spec maestra) y mapeo de gaps vs código v1.2.0.
+  - **Auditoría de supuestos defectos**: verifiqué con hexdump un falso positivo de corrupción en `build.yml` (`branches: [main, master]` estaba CORRECTO — un artefacto de renderizado ANSI del visor se comía el `[m` del grep). El workflow está sano.
+  - **🎨 GUI «Aurora» (la estrella del plan)**:
+    1. `resources/styles/aurora.qss` (~470 líneas) embebida en el ejecutable vía qrc: cobertura TOTAL de widgets (toolbar+toolbuttons, sidebar, tablas+headers, tabs, combos+popups, inputs, spinboxes con flechas custom, checks/radios planos, sliders completos, groupbox-tarjeta, scrollbars finos, menús, statusbar, docks, tooltips, progressbars) + paleta base nueva en main.cpp (con estados Disabled/Placeholder/ToolTip).
+    2. **Sidebar con secciones**: BIBLIOTECA / DISEÑO / SERVICIO / SISTEMA (items encabezado no seleccionables; índice de panel viaja en Qt::UserRole — onNavChanged inmune a la posición física).
+    3. **Dock «PROYECCIÓN EN VIVO» rediseñado**: chip EN VIVO + info + reloj monoespaciado; preview 16:9 con **marco dorado dinámico** al proyectar (property live + unpolish/polish); **mini-preview de la SIGUIENTE slide** (vista de moderador, spec PowerPoint); **multiview** con miniatura textual del Stage View con acordes (spec Holyrics); **chip de cuenta regresiva** (espejo de la deadline del StageWindow); barra de transporte grande para el Modo Presentación.
+    4. **Modo Presentación (F11)** (spec maestro: interfaz minimalista): oculta toolbar y widget central → el dock se expande a TODA la ventana (QMainWindow expande docks sin central) con transporte grande (Anterior/Siguiente/Negro/Logo/Fondo/Versículo). Dock no cerrable. F11 restaura.
+    5. Limpieza de estilos inline de 7 paneles → propiedades `class`/objectNames del QSS global (coherencia visual total).
+  - **Features de los MDs**:
+    1. **Atajos personalizables** (spec Holyrics): 9 acciones (next/prev/golive/black/clear/logo/quickverse/lowerthird/presentation) editables con QKeySequenceEdit en Ajustes › Atajos, con «Restablecer valores de fábrica»; persistidas como PortableText; MainWindow::buildShortcuts los lee con fallback seguro al default (shortcutSetting()).
+    2. **Backup/Restauración del vault** (alternativa offline-safe a Google Drive del spec Holyrics): Database::backupTo/restoreFrom con la **Online Backup API de SQLite** (consistente sin bloquear), validación de archivo no-SQLite ANTES de tocar el vault, snapshot pre_restore automático, y **autoBackupIfNeeded semanal con rotación de 4** (llamado en main.cpp tras el seed).
+    3. **Mensajes a los remotos** («Custom Messages» spec Holyrics): WebServer::broadcastMessage → toast en remote.html (los eventos `alert` también muestran toast); sección en CommsPanel con título opcional.
+    4. **Importador ZEFania XML** (formato del ecosistema Holyrics — miles de versiones libres): Database::importBibleFromZefaniaXml (QXmlStreamReader por nombres LOCALES, soporta BR/STYLE anidados, transacción atómica, código de versión desde el nombre de archivo ≤16 chars) + botón en BiblePanel con cursor de espera y selección automática de la versión importada.
+    5. **Exportar en vivo a PNG** (spec PowerPoint: «exportar diapositivas como imágenes»): MainWindow::exportLivePng (1920×1080, numeración 01..NN, sanitización de nombre) + botón en PptxPanel junto al PDF.
+    6. **Drag & Drop global** (spec Holyrics: «importar videos directamente arrastrándolos»): imagen → fondo del tema en vivo; video → fondo en bucle; .txt → importa canción (directivas @titulo/@autor/@tono/@bpm con regex multilinea + fallback a nombre de archivo).
+    7. **Posición inicial de medios** (spec Holyrics: «posición de inicio»): QSpinBox «Iniciar en (segundos)» con seek diferido 400 ms en MediaPanel.
+    8. **Chip de estado del servidor** en statusbar (verde/rojo con puerto real, property on + repolish) + **diálogo Acerca de** estilizado.
+  - **Version bump 1.3.0**: CMakeLists (project VERSION), main.cpp (setApplicationVersion), build.yml (fallback APP_VERSION) + **notas de release v1.3.0 completas** + README (nueva tabla de características con GUI Aurora/Modo Presentación/atajos/backup/ZEFania/PNG/drag&drop, atajos F10/F11, nota de personalizabilidad).
+- Decisiones:
+  - **Modo Presentación ocultando el widget central** (en vez de reparentar widgets o crear una ventana aparte): QMainWindow expande las áreas de dock cuando no hay central visible — cero duplicación de widgets, cero riesgo de state desincronizado, y el dock ya contiene preview+slides+cola.
+  - **Backup con Online Backup API** (no copia de archivo ni VACUUM INTO): consistente incluso con la BD en uso, funciona con sqlite3_close pendiente, y permite restaurar EN VIVO (los paneles recargan al reiniciar; el aviso al usuario lo explica).
+  - **Código de versión ZEFania ≤16 chars desde el nombre de archivo**: idempotente y predecible (el usuario controla el nombre del archivo); mismo cálculo en Database y BiblePanel para que el botón seleccione exactamente la versión importada.
+  - **Toast en remote.html para alert+message**: unifica la UX móvil (antes los eventos alert ni se mostraban en el remoto).
+  - Los estilos por-widget (color swatches del ThemePanel) se conservan: son dinámicos por diseño.
+- Gates: build=OK **local Linux Qt 5.15.2 gcc — 0 errores / 0 warnings** · harness v1.3.0=**13/13 OK** (ZEFania import + código de versión + Gn 1:1/Jn 3:16 + rechazo de XML corrupto + backup consistente + restore roundtrip + rechazo de no-SQLite + auto-backup sin duplicar) · smoke offscreen=OK (arranque v1.3.0, seed Biblia+5 canciones, **auto-backup creado**, HTTP /api/state versión 1.3.0, /api/cmd ok, remote.html con toast servido)
+- Bloqueos: ninguno (2 iteraciones de compilación: include de WebServer en CommsPanel y QString::remove(QRegularExpressionMatch) inexistente en Qt 5.15 → remove(start,length); el único FAIL del harness era un bug del PROPIO archivo de prueba XML — comilla extra — que el importador rechazó correctamente)
+- Siguiente: commit → push → tag v1.3.0 → CI Windows x86+x64 → verificación de release publicada (API + descarga + SHA256 + verify_portable)
+
+---
 ## [FEAT-2026-09-21-C] v1.0.2 → v1.0.3 · Sistema de etiquetas semánticas para canciones · 2026-09-21 UTC
 - Agente: Super Z (GLM) — ciclo de mejora incremental sobre la base v1.0.2 funcional
 - Hecho:

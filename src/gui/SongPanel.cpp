@@ -117,7 +117,7 @@ void SongPanel::buildUi()
     auto *bImp = mkBtn(QStringLiteral("📂 Importar .txt"), QStringLiteral("Importar canciones desde archivos de texto"));
     auto *bProj = mkBtn(QStringLiteral("▶ Proyectar"), QStringLiteral("Enviar a la salida en vivo (F5)"));
     auto *bQueue = mkBtn(QStringLiteral("＋ A culto"), QStringLiteral("Añadir al culto activo"));
-    bProj->setStyleSheet(QStringLiteral("QPushButton{background:#1E6FD9;color:white;font-weight:bold;padding:6px 14px;}"));
+    bProj->setProperty("class", QStringLiteral("primary"));   // v1.3.0 Aurora
     connect(bAdd, &QPushButton::clicked, this, &SongPanel::onAdd);
     connect(bEdit, &QPushButton::clicked, this, &SongPanel::onEdit);
     connect(bDel, &QPushButton::clicked, this, &SongPanel::onDelete);

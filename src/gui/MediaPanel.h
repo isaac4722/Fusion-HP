@@ -16,6 +16,7 @@
 #include <QCheckBox>
 #include <QLabel>
 #include <QLineEdit>
+#include <QSpinBox>
 
 class MediaPanel : public QWidget
 {
@@ -48,6 +49,7 @@ private:
     QPushButton *m_bPlay = nullptr;
     QPushButton *m_bStop = nullptr;
     QSlider *m_volume = nullptr;
+    QSpinBox *m_startPos = nullptr;      // v1.3.0: posición inicial (spec Holyrics)
     QSlider *m_seek = nullptr;
     QCheckBox *m_loop = nullptr;
     QCheckBox *m_background = nullptr;

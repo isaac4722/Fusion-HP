@@ -68,7 +68,7 @@ void ServicePanel::buildUi()
 
     auto *row3 = new QHBoxLayout();
     auto *bStart = new QPushButton(QStringLiteral("▶ Iniciar culto (cargar en vivo)"), this);
-    bStart->setStyleSheet(QStringLiteral("QPushButton{background:#1E6FD9;color:white;font-weight:bold;padding:8px 16px;}"));
+    bStart->setProperty("class", QStringLiteral("primary"));   // v1.3.0 Aurora
     auto *bCsv = new QPushButton(QStringLiteral("Exportar orden CSV"), this);
     connect(bStart, &QPushButton::clicked, this, [this]() {
         if (m_currentServiceId > 0) emit startService(m_currentServiceId);

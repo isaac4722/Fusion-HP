@@ -16,6 +16,9 @@
 #include <QLabel>
 #include <QCheckBox>
 #include <QLineEdit>
+#include <QKeySequenceEdit>
+#include <QVector>
+#include <QPair>
 
 class SettingsPanel : public QWidget
 {
@@ -30,6 +33,9 @@ signals:
 private slots:
     void apply();
     void onOpenDataFolder();
+    void onBackup();        // v1.3.0: crear copia de seguridad del vault
+    void onRestore();       // v1.3.0: restaurar desde una copia
+    void onResetShortcuts();  // v1.3.0: valores de fábrica de los atajos
 
 private:
     void buildUi();
@@ -48,6 +54,10 @@ private:
     QCheckBox *m_titleSlide = nullptr;
     QLineEdit *m_apiToken = nullptr;
     QLabel *m_sysInfo = nullptr;
+    // v1.3.0: atajos personalizables (spec Holyrics) — (settingKey, default)
+    QVector<QPair<QByteArray, int>> m_shortcutDefs;
+    QVector<QKeySequenceEdit *> m_shortcutEdits;
+    QLabel *m_backupStatus = nullptr;
 };
 
 #endif // LUMINA_SETTINGSPANEL_H

@@ -91,7 +91,7 @@ void CustomPanel::buildUi()
 
 
     auto *bProj = new QPushButton(QStringLiteral("▶ Proyectar esta slide"), this);
-    bProj->setStyleSheet(QStringLiteral("QPushButton{background:#1E6FD9;color:white;font-weight:bold;padding:8px 16px;}"));
+    bProj->setProperty("class", QStringLiteral("primary"));   // v1.3.0 Aurora
     connect(bProj, &QPushButton::clicked, this, &CustomPanel::onProject);
     // v1.2.0: "＋ A culto" para las slides del lienzo (antes este tipo de item
     // no podía añadirse ni ejecutarse desde la cola del culto).

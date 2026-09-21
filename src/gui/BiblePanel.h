@@ -40,6 +40,7 @@ private slots:
     void onWordSearch();
     void onProjectClicked();
     void onAddToServiceClicked();
+    void onImportZefania();   // v1.3.0: importar Biblia ZEFania XML
 
 private:
     void buildUi();

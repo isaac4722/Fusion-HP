@@ -10,6 +10,7 @@
 #include <QFileDialog>
 #include <QGroupBox>
 #include <QTime>
+#include <QTimer>
 
 MediaPanel::MediaPanel(AppContext *ctx, QWidget *parent)
     : QWidget(parent), m_ctx(ctx)
@@ -46,7 +47,7 @@ void MediaPanel::buildUi()
 
     auto *row2 = new QHBoxLayout();
     m_bPlay = new QPushButton(QStringLiteral("▶  Reproducir"), grp);
-    m_bPlay->setStyleSheet(QStringLiteral("QPushButton{background:#1E6FD9;color:white;font-weight:bold;padding:6px 14px;}"));
+    m_bPlay->setProperty("class", QStringLiteral("primary"));   // v1.3.0 Aurora
     m_bStop = new QPushButton(QStringLiteral("■  Detener"), grp);
     connect(m_bPlay, &QPushButton::clicked, this, &MediaPanel::onPlay);
     connect(m_bStop, &QPushButton::clicked, this, [this]() { emit stopMedia(); });
@@ -75,11 +76,26 @@ void MediaPanel::buildUi()
     m_volume = new QSlider(Qt::Horizontal, grp);
     m_volume->setRange(0, 100);
     m_volume->setValue(90);
-    m_volume->setMaximumWidth(180);
+    m_volume->setMaximumWidth(160);
     connect(m_volume, &QSlider::valueChanged, this, &MediaPanel::volumeChanged);
     row4->addWidget(m_volume);
     row4->addStretch();
     glay->addLayout(row4);
+
+    // v1.3.0 — spec Holyrics: medios con «posición de inicio» configurable.
+    // El seek se aplica 400 ms después de lanzar la reproducción (cuando el
+    // reproductor ya tiene duración cargada).
+    auto *row5 = new QHBoxLayout();
+    row5->addWidget(new QLabel(QStringLiteral("Iniciar en (segundos):"), grp));
+    m_startPos = new QSpinBox(grp);
+    m_startPos->setRange(0, 7200);
+    m_startPos->setValue(0);
+    m_startPos->setSuffix(QStringLiteral(" s"));
+    m_startPos->setToolTip(QStringLiteral("Salta a esta posición al reproducir (útil para clips "
+                                            "con intro larga o secciones específicas)."));
+    row5->addWidget(m_startPos);
+    row5->addStretch();
+    glay->addLayout(row5);
 
     m_seek = new QSlider(Qt::Horizontal, grp);
     m_seek->setRange(0, 10000);
@@ -104,7 +120,7 @@ void MediaPanel::buildUi()
         QStringLiteral("Sugerencia: sincroniza la velocidad del fondo con el BPM de la alabanza "
                        "ajustando la duración del clip o usando bucles cortos (4/8 compases)."), this);
     note->setWordWrap(true);
-    note->setStyleSheet(QStringLiteral("color: #8FA3C8;"));
+    note->setObjectName(QStringLiteral("MutedLabel"));   // v1.3.0 Aurora
     lay->addWidget(note);
 
     lay->addStretch();
@@ -134,6 +150,14 @@ void MediaPanel::onPlay()
         emit playMedia(f, false, m_loop->isChecked(), 0, false);    // audio: salida principal
     }
     m_seek->setEnabled(true);
+    // v1.3.0: posición inicial (spec Holyrics) — seek diferido
+    const int startSec = m_startPos->value();
+    if (startSec > 0 && m_ctx->media && m_ctx->media->available()) {
+        QTimer::singleShot(400, this, [this, startSec]() {
+            if (m_ctx->media && m_ctx->media->available())
+                m_ctx->media->seekMain(qint64(startSec) * 1000);
+        });
+    }
 }
 
 void MediaPanel::onPosition(qint64 t, qint64 len)

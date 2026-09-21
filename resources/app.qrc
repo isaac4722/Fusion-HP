@@ -5,5 +5,6 @@
         <file>web/remote.html</file>
         <file>web/overlay.html</file>
         <file>data/bible_rvr1909.json</file>
+        <file>styles/aurora.qss</file>
     </qresource>
 </RCC>

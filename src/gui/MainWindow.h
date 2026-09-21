@@ -44,6 +44,10 @@ public:
 protected:
     void keyPressEvent(QKeyEvent *ev) override;
     void closeEvent(QCloseEvent *ev) override;
+    // v1.3.0: drag & drop sobre la ventana (imagen/video -> fondo en vivo;
+    // .txt -> importar canción). Feature del spec Holyrics.
+    void dragEnterEvent(QDragEnterEvent *ev) override;
+    void dropEvent(QDropEvent *ev) override;
 
 private slots:
     // Navegacion
@@ -58,6 +62,7 @@ private slots:
     void showClear();
     void showLogo();
     void exportLivePdf();          // v1.1.0: exportar escenario en vivo a PDF
+    void exportLivePng();          // v1.3.0: exportar slides en vivo como PNG (spec PowerPoint)
     void runQueueAt(int row);      // v1.1.0: ejecutar item N de la cola del culto
     void quickVerse();
     void quickLowerThird();        // v1.1.0: superposición Lower Third (F10/diálogo)
@@ -80,10 +85,17 @@ private slots:
     void onStopCountdown();
     // Culto
     void runServiceItem(const ServiceItem &item);
+    // v1.3.0 GUI Aurora
+    void togglePresentationMode(); // F11: consola mínima del operador (spec maestro)
+    void onClockTick();            // reloj del dock + chip de cuenta regresiva
+    void showAbout();
 
 private:
     void buildUi();
     void buildShortcuts();
+    // v1.3.0: atajos personalizables (spec Holyrics). Clave de ajuste -> secuencia;
+    // devuelve el default si el ajuste está vacío o es inválido.
+    QKeySequence shortcutSetting(const char *settingKey, int defaultKey) const;
     void applyTheme(int themeId);
     void goLiveSong(const Song &s, int refKind, int refId);   // v1.1.0: proyección de canción con ajustes
     int  activePlaylistId() const;      // v1.2.0: culto activo del ServicePanel
@@ -93,6 +105,8 @@ private:
     void updateStage();
     void playThemeBackgroundVideo(const Theme &theme);
     void stopBackgroundVideo();
+    void updateSrvChip();              // v1.3.0: chip de estado del servidor embebido
+    void importSongFromTxt(const QString &path);   // v1.3.0: drop de .txt -> nueva canción
 
     // Contexto
     AppContext m_ctx;
@@ -126,6 +140,17 @@ private:
     QListWidget *m_nav = nullptr;
     QStackedWidget *m_stack = nullptr;
     QLabel *m_preview = nullptr;
+    QLabel *m_nextPreview = nullptr;     // v1.3.0: mini-preview de la SIGUIENTE slide
+    QLabel *m_stageMini = nullptr;       // v1.3.0: multiview — miniatura del Stage View
+    QLabel *m_clockLabel = nullptr;      // v1.3.0: reloj del dock
+    QLabel *m_liveChip = nullptr;        // v1.3.0: chip "EN VIVO"
+    QLabel *m_countdownChip = nullptr;   // v1.3.0: chip de cuenta regresiva
+    QLabel *m_srvChip = nullptr;         // v1.3.0: chip de estado del servidor
+    QWidget *m_presBar = nullptr;        // v1.3.0: transporte del Modo Presentación
+    QTimer *m_clockTimer = nullptr;      // v1.3.0
+    QDateTime m_countdownDeadline;       // v1.3.0: espejo de la cuenta del Stage
+    bool m_countdownActive = false;      // v1.3.0
+    bool m_presentationMode = false;     // v1.3.0 (F11)
     QListWidget *m_slideList = nullptr;
     QListWidget *m_queueList = nullptr;
     QVector<ServiceItem> m_queueData;

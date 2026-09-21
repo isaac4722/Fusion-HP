@@ -29,10 +29,14 @@ void PptxPanel::buildUi()
 
     auto *row = new QHBoxLayout();
     auto *bOpen = new QPushButton(QStringLiteral("📂 Abrir .PPTX (OpenXML, sin Office)"), this);
-    bOpen->setStyleSheet(QStringLiteral("QPushButton{background:#1E6FD9;color:white;font-weight:bold;padding:8px 16px;}"));
+    bOpen->setProperty("class", QStringLiteral("primary"));
     auto *bExport = new QPushButton(QStringLiteral("💾 Exportar a .PPTX"), this);
     // v1.1.0: exportar el escenario EN VIVO a PDF (spec: "PPTX y PDF")
     auto *bPdf = new QPushButton(QStringLiteral("📄 Exportar en vivo a PDF"), this);
+    // v1.3.0: exportar slides en vivo como imágenes PNG (spec PowerPoint)
+    auto *bPng = new QPushButton(QStringLiteral("🖼 Exportar en vivo a PNG"), this);
+    bPng->setToolTip(QStringLiteral("Guarda todas las diapositivas del elemento en vivo "
+                                     "como imágenes PNG 1920×1080 en una carpeta."));
     // v1.1.0: boton Añadir al culto (la señal existía pero NUNCA se emitía)
     auto *bCulto = new QPushButton(QStringLiteral("＋ A culto"), this);
     bCulto->setToolTip(QStringLiteral("Añade el .pptx abierto a la cola del culto activo "
@@ -40,6 +44,7 @@ void PptxPanel::buildUi()
     connect(bOpen, &QPushButton::clicked, this, &PptxPanel::onOpen);
     connect(bExport, &QPushButton::clicked, this, &PptxPanel::onExport);
     connect(bPdf, &QPushButton::clicked, this, [this]() { emit requestExportPdf(); });
+    connect(bPng, &QPushButton::clicked, this, [this]() { emit requestExportPng(); });
     connect(bCulto, &QPushButton::clicked, this, [this]() {
         if (m_file.isEmpty()) {
             QMessageBox::information(this, QStringLiteral("A culto"),
@@ -51,6 +56,7 @@ void PptxPanel::buildUi()
     row->addWidget(bOpen);
     row->addWidget(bExport);
     row->addWidget(bPdf);
+    row->addWidget(bPng);
     row->addStretch();
     row->addWidget(bCulto);
     lay->addLayout(row);
@@ -61,7 +67,7 @@ void PptxPanel::buildUi()
     m_preview = new QLabel(split);
     m_preview->setAlignment(Qt::AlignCenter);
     m_preview->setMinimumSize(520, 320);
-    m_preview->setStyleSheet(QStringLiteral("background:#111; border:1px solid #333;"));
+    m_preview->setObjectName(QStringLiteral("NextPreview"));   // v1.3.0 Aurora
     split->addWidget(m_list);
     split->addWidget(m_preview);
     split->setStretchFactor(1, 2);
@@ -81,7 +87,7 @@ void PptxPanel::buildUi()
         "El motor OpenXML lee el ZIP interno del .pptx y extrae textos, formas e imágenes "
         "sin depender de Microsoft Office ni objetos OLE."), this);
     m_status->setWordWrap(true);
-    m_status->setStyleSheet(QStringLiteral("color: #8FA3C8;"));
+    m_status->setObjectName(QStringLiteral("MutedLabel"));   // v1.3.0 Aurora
     lay->addWidget(m_status);
 }
 

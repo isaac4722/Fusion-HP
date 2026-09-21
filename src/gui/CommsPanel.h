@@ -38,6 +38,8 @@ private:
 
     AppContext *m_ctx;
     QPlainTextEdit *m_alertText = nullptr;
+    QLineEdit *m_remoteTitle = nullptr;      // v1.3.0: mensaje a remotos
+    QPlainTextEdit *m_remoteText = nullptr;   // v1.3.0
     QListWidget *m_inbox = nullptr;
     // Triggers
     QCheckBox *m_webhookOn = nullptr;

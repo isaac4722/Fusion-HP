@@ -107,6 +107,19 @@ public slots:
         broadcast(QString::fromUtf8(QJsonDocument(ev).toJson(QJsonDocument::Compact)));
     }
 
+    // v1.3.0 — "Custom Messages" del spec Holyrics: mensaje del operador a
+    // TODOS los dispositivos remotos conectados (se muestra como toast en
+    // remote.html; no interrumpe la proyección ni el Stage View).
+    void broadcastMessage(const QString &text, const QString &title = QString())
+    {
+        QJsonObject ev;
+        ev["ev"] = QStringLiteral("message");
+        ev["text"] = text;
+        if (!title.isEmpty())
+            ev["title"] = title;
+        broadcast(QString::fromUtf8(QJsonDocument(ev).toJson(QJsonDocument::Compact)));
+    }
+
 signals:
     // Comandos del control remoto hacia MainWindow
     void remoteCommand(const QString &cmd, const QJsonObject &data);

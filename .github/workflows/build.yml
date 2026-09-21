@@ -19,8 +19,8 @@ permissions:
 env:
   APP_NAME: LuminaPresentationSuite
   # Version dinamica: nombre del tag (vN.N.N) al hacer push de tags;
-  # fallback v1.2.0 en pushes a main (solo artefactos) y workflow_dispatch.
-  APP_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.2.0' }}
+  # fallback v1.3.0 en pushes a main (solo artefactos) y workflow_dispatch.
+  APP_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.3.0' }}
   VLC_VERSION: "3.0.21"
 
 jobs:
@@ -288,6 +288,19 @@ jobs:
             - Incluye: motor Qt + **runtime MinGW**, **LibVLC 3.0.21** (todos los codecs), **Biblia RVR1909 completa** y temas.
             - Verifica la integridad con `SHA256SUMS.txt`.
             - Control remoto móvil: `http://<ip-del-pc>:8088/remote.html` · Overlay OBS: `http://<ip>:8088/overlay.html`
+
+            ### 🌟 Novedades v1.3.0 «AURORA» — nueva interfaz gráfica + funciones de las especificaciones
+            - **🎨 GUI «Aurora» completa**: tema visual global profesional (sidebar de navegación con secciones BIBLIOTECA/DISEÑO/SERVICIO/SISTEMA, tablas con zebra, botones primarios/dorado, inputs, combos, scrollbars finas, menús, diálogos y tooltips rediseñados).
+            - **🖥 Modo Presentación (F11)**: consola mínima del operador según el spec maestro — el dock de proyección se expande a toda la ventana con transporte grande (Anterior/Siguiente/Negro/Logo/Fondo/Versículo); F11 restaura la consola completa.
+            - **Dock «En vivo» rediseñado**: chip EN VIVO + marco dorado al proyectar, **reloj en vivo**, **mini-preview de la SIGUIENTE slide** (vista de moderador, spec PowerPoint) y **multiview con miniatura del Stage View** (spec Holyrics), chip de cuenta regresiva siempre visible.
+            - **⌨ Atajos de teclado personalizables** (spec Holyrics): 9 acciones reasignables desde Ajustes › Atajos (QKeySequenceEdit, valores de fábrica restaurables, persistidos en el vault).
+            - **💾 Copia de seguridad y restauración del vault** (alternativa offline-safe a la sincronización en la nube): copia manual + **auto-backup semanal con rotación de 4**, y snapshot de seguridad automático antes de restaurar.
+            - **📡 Mensajes a los remotos conectados** («Custom Messages» del spec Holyrics): el operador envía avisos que aparecen como toast en los móviles/tablets — sin interrumpir la proyección.
+            - **📖 Importador de Biblias ZEFania XML**: importa cualquier versión del ecosistema Holyrics (RVR1960, NVI, KJV…) y úsala como principal o en paralelo (botón en el panel Biblia).
+            - **🖼 Exportar en vivo a PNG** (spec PowerPoint: «exportar diapositivas como imágenes»): todas las slides del elemento en vivo a 1920×1080, junto al PDF/PPTX existente.
+            - **🖱 Drag & Drop global**: arrastra una imagen/video sobre la ventana → fondo en vivo; arrastra un .txt → importa la canción (directivas @titulo/@autor/@tono/@bpm).
+            - **🎬 Posición inicial de medios** (spec Holyrics): campo «Iniciar en (segundos)» para saltar intros en clips.
+            - **Chip de estado del servidor** en la barra de estado (verde/rojo con puerto) + diálogo «Acerca de» con información del sistema.
 
             ### Novedades v1.2.0 — auditoría integral + corrección de 6 defectos críticos
             - **🔥 FIX CRÍTICO — Versículo rápido (F9)**: `showSlideIndex()` cerraba el overlay ANTES de proyectar el versículo — el F9 proyectaba la slide equivocada (la 0 de la canción) y con nada en vivo podía **colgar la aplicación**. El overlay ahora se gestiona en `goLive()` y el F9 conserva el punto de retorno (Esc vuelve a la canción).

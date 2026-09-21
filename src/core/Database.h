@@ -56,6 +56,10 @@ public:
     QStringList bibleVersions();
     bool importBibleFromJsonResource(const QString &resourcePath, const QString &versionCode,
                                      const QString &licenseNote, QString *error);
+    // v1.3.0: importador de Biblias en formato ZEFania XML (.xml) — el formato
+    // estándar del ecosistema Holyrics (miles de versiones libres disponibles).
+    // <XMLBIBLE><BIBLEBOOK bnumber><CHAPTER cnumber><VERSE vnumber>texto.
+    bool importBibleFromZefaniaXml(const QString &filePath, QString *error);
     QVector<BibleRef::Verse> bibleChapter(const QString &version, int book, int chapter);
     BibleRef::Verse bibleVerse(const QString &version, int book, int chapter, int verse);
     QVector<BibleRef::Verse> bibleRange(const QString &version, int book, int chapter, int vFrom, int vTo);
@@ -98,6 +102,13 @@ public:
     // ------------------------------ Ajustes ---------------------------------
     void  setSetting(const QString &key, const QString &value);
     QString setting(const QString &key, const QString &defaultValue = QString());
+
+    // -------------------- Copia de seguridad (v1.3.0) -----------------------
+    // Alternativa offline-safe a la sincronización en la nube (spec Holyrics:
+    // Drive). Usa la Online Backup API de SQLite (consistente, sin bloquear).
+    bool backupTo(const QString &destFile, QString *error = nullptr);
+    bool restoreFrom(const QString &srcFile, QString *error = nullptr);   // aplicar al reiniciar
+    void autoBackupIfNeeded(const QString &backupDir);                    // semanal, rota 4
 
     // ------------------------------ Utilidades ------------------------------
     bool exec(const QString &sql);

@@ -41,6 +41,13 @@
 #include <QJsonDocument>
 #include <QPdfWriter>
 #include <QPageSize>
+#include <QDragEnterEvent>
+#include <QDropEvent>
+#include <QMimeData>
+#include <QUrl>
+#include <QDir>
+#include <QRegularExpression>
+#include <QRegExp>
 #include <functional>
 
 MainWindow::MainWindow(AppContext *ctx, QWidget *parent)
@@ -78,12 +85,25 @@ MainWindow::MainWindow(AppContext *ctx, QWidget *parent)
     // v1.1.0: token opcional de la API HTTP (espec Holyrics)
     m_ctx.web->setApiToken(m_ctx.db->setting(QStringLiteral("api_token")));
 
+    // v1.3.0 GUI Aurora: reloj del dock (500 ms) + chip de estado del servidor
+    // en la barra de estado (permanente, verde/rojo).
+    m_clockTimer = new QTimer(this);
+    connect(m_clockTimer, &QTimer::timeout, this, &MainWindow::onClockTick);
+    m_clockTimer->start(500);
+    m_srvChip = new QLabel(QString(), this);
+    m_srvChip->setObjectName(QStringLiteral("SrvChip"));
+    statusBar()->addPermanentWidget(m_srvChip);
+    updateSrvChip();
+
+    // v1.3.0: drag & drop de medios sobre la ventana (spec Holyrics:
+    // "importar videos directamente como fondo arrastrándolos").
+    setAcceptDrops(true);
+
     statusBar()->showMessage(QStringLiteral(
-        "LuminaPresentation Suite %1 — Salida audiencia: %2 · Stage: %3 · Remoto: %4")
+        "LuminaPresentation Suite %1 — Salida audiencia: %2 · Stage: %3")
         .arg(QApplication::applicationVersion(),
              m_ctx.db->setting(QStringLiteral("screen_output"), QStringLiteral("auto")),
-             m_ctx.db->setting(QStringLiteral("screen_stage"), QStringLiteral("auto")),
-             m_ctx.web->running() ? QStringLiteral("activo") : QStringLiteral("inactivo")));
+             m_ctx.db->setting(QStringLiteral("screen_stage"), QStringLiteral("auto"))));
 
     pushWebState();     // estado inicial para overlay OBS / control remoto
 }
@@ -151,28 +171,57 @@ void MainWindow::buildUi()
     auto *bStage = new QAction(QStringLiteral("🎚 Stage View"), this);
     connect(bStage, &QAction::triggered, this, &MainWindow::toggleStageView);
     tb->addAction(bStage);
+    tb->addSeparator();
+
+    // v1.3.0: Modo Presentación (F11) — consola mínima del operador (spec maestro:
+    // "la interfaz de presentación es un lienzo limpio").
+    auto *bPresent = new QAction(QStringLiteral("🖥 Modo Presentación (F11)"), this);
+    bPresent->setToolTip(QStringLiteral("Oculta paneles y deja solo la consola de proyección "
+                                         "(preview + transporte + cola). F11 para volver."));
+    connect(bPresent, &QAction::triggered, this, &MainWindow::togglePresentationMode);
+    tb->addAction(bPresent);
+    auto *bAbout = new QAction(QStringLiteral("ℹ"), this);
+    bAbout->setToolTip(QStringLiteral("Acerca de LuminaPresentation Suite"));
+    connect(bAbout, &QAction::triggered, this, &MainWindow::showAbout);
+    tb->addAction(bAbout);
     rebuildScreenCombos();
 
     setCentralWidget(nullptr);
 
-    // Nav izquierda
+    // Nav izquierda — v1.3.0 GUI Aurora: sidebar con secciones categorizadas
+    // (los encabezados son items no seleccionables; el índice de panel viaja
+    // en Qt::UserRole para que onNavChanged no dependa de la posición física).
     m_nav = new QListWidget(this);
-    m_nav->setFixedWidth(190);
+    m_nav->setObjectName(QStringLiteral("NavList"));
+    m_nav->setFixedWidth(200);
     m_nav->setIconSize(QSize(22, 22));
-    const QStringList navItems = {
-        QStringLiteral("🎵  Canciones"),
-        QStringLiteral("📖  Biblia"),
-        QStringLiteral("🎬  Medios"),
-        QStringLiteral("📽  PowerPoint (.pptx)"),
-        QStringLiteral("🎨  Temas / Plantillas"),
-        QStringLiteral("🖌  Lienzo libre"),
-        QStringLiteral("🗓  Cultos"),
-        QStringLiteral("📣  Comunicación"),
-        QStringLiteral("📊  Historial"),
-        QStringLiteral("⚙  Ajustes")
+    auto addNavHeader = [this](const QString &t) {
+        auto *it = new QListWidgetItem(t, m_nav);
+        it->setFlags(Qt::NoItemFlags);          // no seleccionable
+        it->setData(Qt::UserRole, -1);
     };
-    m_nav->addItems(navItems);
-    m_nav->setCurrentRow(0);
+    auto addNavItem = [this](const QString &t, int panelIndex) {
+        auto *it = new QListWidgetItem(t, m_nav);
+        it->setData(Qt::UserRole, panelIndex);
+        it->setFlags(Qt::ItemIsSelectable | Qt::ItemIsEnabled);
+    };
+    addNavHeader(QStringLiteral("BIBLIOTECA"));
+    addNavItem(QStringLiteral("🎵  Canciones"), 0);
+    addNavItem(QStringLiteral("📖  Biblia"), 1);
+    addNavItem(QStringLiteral("🎬  Medios"), 2);
+    addNavItem(QStringLiteral("📽  PowerPoint (.pptx)"), 3);
+    addNavHeader(QStringLiteral("DISEÑO"));
+    addNavItem(QStringLiteral("🎨  Temas / Plantillas"), 4);
+    addNavItem(QStringLiteral("🖌  Lienzo libre"), 5);
+    addNavHeader(QStringLiteral("SERVICIO"));
+    addNavItem(QStringLiteral("🗓  Cultos"), 6);
+    addNavItem(QStringLiteral("📣  Comunicación"), 7);
+    addNavItem(QStringLiteral("📊  Historial"), 8);
+    addNavHeader(QStringLiteral("SISTEMA"));
+    addNavItem(QStringLiteral("⚙  Ajustes"), 9);
+    // Selecciona "Canciones" sin disparar onNavChanged (el stack ya está en 0)
+    for (int i = 0; i < m_nav->count(); ++i)
+        if (m_nav->item(i)->data(Qt::UserRole).toInt() == 0) { m_nav->setCurrentRow(i); break; }
     connect(m_nav, &QListWidget::currentRowChanged, this, &MainWindow::onNavChanged);
 
     // Stack central
@@ -198,20 +247,95 @@ void MainWindow::buildUi()
     m_stack->addWidget(m_historyPanel);
     m_stack->addWidget(m_settingsPanel);
 
-    // Dock derecho: en vivo (cola + slides + preview)
-    auto *dock = new QDockWidget(QStringLiteral("En vivo"), this);
+    // Dock derecho: en vivo (cola + slides + preview) — v1.3.0 GUI Aurora:
+    // header con chip EN VIVO + reloj, preview 16:9 con marco dorado al
+    // proyectar, mini-preview de la SIGUIENTE slide (vista de moderador, spec
+    // PowerPoint) y multiview (miniatura del Stage View, spec Holyrics).
+    auto *dock = new QDockWidget(QStringLiteral("PROYECCIÓN EN VIVO"), this);
     dock->setAllowedAreas(Qt::RightDockWidgetArea | Qt::LeftDockWidgetArea);
+    dock->setFeatures(QDockWidget::DockWidgetMovable |
+                      QDockWidget::DockWidgetFloatable);   // no cerrable: es la consola de proyección
     auto *liveWidget = new QWidget(dock);
     auto *lv = new QVBoxLayout(liveWidget);
+    lv->setContentsMargins(8, 8, 8, 8);
+    lv->setSpacing(6);
+
+    // Fila 1: chip EN VIVO + info + reloj
+    auto *hdrRow = new QHBoxLayout();
+    auto *liveChip = new QLabel(QStringLiteral("● EN VIVO"), liveWidget);
+    liveChip->setObjectName(QStringLiteral("LiveChip"));
+    liveChip->setVisible(false);
+    m_liveChip = liveChip;
     m_liveInfo = new QLabel(QStringLiteral("— nada en vivo —"), liveWidget);
     m_liveInfo->setWordWrap(true);
-    m_liveInfo->setStyleSheet(QStringLiteral("font-weight: bold; color: #7DB6FF;"));
-    lv->addWidget(m_liveInfo);
+    m_liveInfo->setObjectName(QStringLiteral("LiveInfoLabel"));
+    m_clockLabel = new QLabel(QTime::currentTime().toString(QStringLiteral("hh:mm:ss")), liveWidget);
+    m_clockLabel->setObjectName(QStringLiteral("ClockLabel"));
+    hdrRow->addWidget(liveChip);
+    hdrRow->addWidget(m_liveInfo, 1);
+    hdrRow->addWidget(m_clockLabel);
+    lv->addLayout(hdrRow);
+
+    // Fila 2: preview principal 16:9
     m_preview = new QLabel(liveWidget);
-    m_preview->setMinimumHeight(150);
+    m_preview->setObjectName(QStringLiteral("LivePreview"));
+    m_preview->setMinimumHeight(170);
     m_preview->setAlignment(Qt::AlignCenter);
-    m_preview->setStyleSheet(QStringLiteral("background:#000; border:1px solid #333;"));
+    m_preview->setProperty("live", false);
     lv->addWidget(m_preview);
+
+    // Fila 3: SIGUIENTE (vista de moderador) + ESCENARIO (multiview)
+    auto *miniRow = new QHBoxLayout();
+    auto *colNext = new QVBoxLayout();
+    auto *lblNext = new QLabel(QStringLiteral("SIGUIENTE ▸"), liveWidget);
+    lblNext->setObjectName(QStringLiteral("SectionLabel"));
+    m_nextPreview = new QLabel(liveWidget);
+    m_nextPreview->setObjectName(QStringLiteral("NextPreview"));
+    m_nextPreview->setMinimumHeight(54);
+    m_nextPreview->setAlignment(Qt::AlignCenter);
+    colNext->addWidget(lblNext);
+    colNext->addWidget(m_nextPreview);
+    auto *colStage = new QVBoxLayout();
+    auto *lblStage = new QLabel(QStringLiteral("ESCEENARIO (musicos)"), liveWidget);
+    lblStage->setObjectName(QStringLiteral("SectionLabel"));
+    m_stageMini = new QLabel(QStringLiteral("—"), liveWidget);
+    m_stageMini->setObjectName(QStringLiteral("StageMini"));
+    m_stageMini->setMinimumHeight(54);
+    m_stageMini->setAlignment(Qt::AlignCenter);
+    m_stageMini->setWordWrap(true);
+    colStage->addWidget(lblStage);
+    colStage->addWidget(m_stageMini);
+    miniRow->addLayout(colNext, 1);
+    miniRow->addLayout(colStage, 1);
+    lv->addLayout(miniRow);
+
+    // Fila 3b: chip de cuenta regresiva (visible solo con temporizador activo)
+    m_countdownChip = new QLabel(QString(), liveWidget);
+    m_countdownChip->setObjectName(QStringLiteral("CountdownChip"));
+    m_countdownChip->setAlignment(Qt::AlignCenter);
+    m_countdownChip->setVisible(false);
+    lv->addWidget(m_countdownChip);
+
+    // Barra de transporte del Modo Presentación (oculta fuera de F11)
+    m_presBar = new QWidget(liveWidget);
+    auto *pb = new QHBoxLayout(m_presBar);
+    pb->setContentsMargins(0, 4, 0, 4);
+    auto presBtn = [this, &pb](const QString &t, const char *cls, std::function<void()> fn) {
+        auto *b = new QPushButton(t, m_presBar);
+        if (cls) b->setProperty("class", cls);
+        b->setObjectName(QStringLiteral("PresBtn"));
+        connect(b, &QPushButton::clicked, this, std::move(fn));
+        pb->addWidget(b, 1);
+    };
+    presBtn(QStringLiteral("◀ Anterior"), nullptr, [this]() { prevSlide(); });
+    presBtn(QStringLiteral("Siguiente ▶"), "primary", [this]() { nextSlide(); });
+    presBtn(QStringLiteral("⬛ Negro"), nullptr, [this]() { showBlack(); });
+    presBtn(QStringLiteral("✝ Logo"), nullptr, [this]() { showLogo(); });
+    presBtn(QStringLiteral("🖼 Fondo"), nullptr, [this]() { showClear(); });
+    presBtn(QStringLiteral("⚡ Versículo"), "gold", [this]() { quickVerse(); });
+    m_presBar->setVisible(false);
+    lv->addWidget(m_presBar);
+
     lv->addWidget(new QLabel(QStringLiteral("<b>Slides del elemento actual</b>"), liveWidget));
     m_slideList = new QListWidget(liveWidget);
     connect(m_slideList, &QListWidget::currentRowChanged, this, [this](int row) {
@@ -382,6 +506,7 @@ void MainWindow::buildUi()
     });
     // v1.1.0: exportar el escenario en vivo a PDF (spec: exportar a "PPTX y PDF")
     connect(m_pptxPanel, &PptxPanel::requestExportPdf, this, &MainWindow::exportLivePdf);
+    connect(m_pptxPanel, &PptxPanel::requestExportPng, this, &MainWindow::exportLivePng);   // v1.3.0
 
     connect(m_themePanel, &ThemePanel::themeChanged, this, [this](const Theme &t) {
         m_theme = t;
@@ -474,6 +599,7 @@ void MainWindow::buildUi()
             m_ctx.web->stop();
         }
         m_ctx.web->setApiToken(m_ctx.db->setting(QStringLiteral("api_token")));   // v1.1.0
+        updateSrvChip();                       // v1.3.0: refleja el estado real del servidor
         statusBar()->showMessage(QStringLiteral("Configuración aplicada y servidor reiniciado."), 4000);
     });
 
@@ -518,10 +644,14 @@ void MainWindow::buildUi()
 // ---------------------------------------------------------------------------
 void MainWindow::onNavChanged(int row)
 {
-    if (row < 0 || row >= m_stack->count()) return;
-    m_stack->setCurrentIndex(row);
-    if (row == 8) m_historyPanel->reload();      // Historial
-    if (row == 9) m_settingsPanel->refreshScreens(); // Ajustes
+    // v1.3.0 GUI Aurora: el índice de panel viaja en Qt::UserRole (la sidebar
+    // intercala encabezados de sección no seleccionables).
+    if (row < 0 || row >= m_nav->count()) return;
+    const int panel = m_nav->item(row)->data(Qt::UserRole).toInt();
+    if (panel < 0 || panel >= m_stack->count()) return;
+    m_stack->setCurrentIndex(panel);
+    if (panel == 8) m_historyPanel->reload();      // Historial
+    if (panel == 9) m_settingsPanel->refreshScreens(); // Ajustes
 }
 
 QString MainWindow::s_titleOf(int book, int ch)
@@ -539,11 +669,14 @@ int MainWindow::activePlaylistId() const
 
 void MainWindow::buildShortcuts()
 {
+    // v1.3.0: atajos PERSONALIZABLES (spec Holyrics). Las claves key_* se
+    // editan desde Ajustes › Atajos de teclado (QKeySequenceEdit) y se
+    // persisten como texto de QKeySequence (p.ej. "Ctrl+Derecha").
     auto add = [this](const QKeySequence &k, std::function<void()> fn) {
         auto *sc = new QShortcut(k, this);
         connect(sc, &QShortcut::activated, this, std::move(fn));
     };
-    add(QKeySequence(Qt::Key_F5), [this]() {
+    add(shortcutSetting("key_golive", Qt::Key_F5), [this]() {
         if (!m_liveSlides.isEmpty()) showSlideIndex(m_liveIndex < 0 ? 0 : m_liveIndex);
     });
     // CORRECCION v1.2.0: Space con WindowShortcut interceptaba la barra
@@ -554,15 +687,30 @@ void MainWindow::buildShortcuts()
         if (qobject_cast<QAbstractButton *>(QApplication::focusWidget())) return;
         nextSlide();
     });
-    add(QKeySequence(Qt::Key_Right), [this]() { nextSlide(); });
-    add(QKeySequence(Qt::Key_Left), [this]() { prevSlide(); });
+    add(shortcutSetting("key_next", Qt::Key_Right), [this]() { nextSlide(); });
+    add(shortcutSetting("key_prev", Qt::Key_Left), [this]() { prevSlide(); });
     add(QKeySequence(Qt::Key_PageDown), [this]() { nextSlide(); });
     add(QKeySequence(Qt::Key_PageUp), [this]() { prevSlide(); });
-    add(QKeySequence(Qt::Key_B), [this]() { showBlack(); });
-    add(QKeySequence(Qt::Key_C), [this]() { showClear(); });
-    add(QKeySequence(Qt::Key_L), [this]() { showLogo(); });
-    add(QKeySequence(Qt::Key_F9), [this]() { quickVerse(); });
+    add(shortcutSetting("key_black", Qt::Key_B), [this]() { showBlack(); });
+    add(shortcutSetting("key_clear", Qt::Key_C), [this]() { showClear(); });
+    add(shortcutSetting("key_logo", Qt::Key_L), [this]() { showLogo(); });
+    add(shortcutSetting("key_quickverse", Qt::Key_F9), [this]() { quickVerse(); });
+    add(shortcutSetting("key_lowerthird", Qt::Key_F10), [this]() { quickLowerThird(); });
+    add(shortcutSetting("key_presentation", Qt::Key_F11), [this]() { togglePresentationMode(); });
     add(QKeySequence(Qt::Key_Escape), [this]() { closeOverlay(); });
+}
+
+QKeySequence MainWindow::shortcutSetting(const char *settingKey, int defaultKey) const
+{
+    // Ajuste vacío o ilegible => default de fábrica. QKeySequence::toString
+    // produce PortableText ("Ctrl+X", "F9", "Return"...), roundtrip seguro.
+    const QString raw = m_ctx.db->setting(QLatin1String(settingKey));
+    if (!raw.trimmed().isEmpty()) {
+        const QKeySequence ks(raw);
+        if (!ks.isEmpty())
+            return ks;
+    }
+    return QKeySequence(defaultKey);
 }
 
 // ---------------------------------------------------------------------------
@@ -1036,13 +1184,50 @@ void MainWindow::updateStage()
 void MainWindow::updatePreview()
 {
     QPixmap pm;
-    if (m_liveIndex >= 0 && m_liveIndex < m_liveSlides.size()) {
+    const bool live = m_liveIndex >= 0 && m_liveIndex < m_liveSlides.size();
+    if (live) {
         Renderer::Options opt;
         pm = Renderer::render(m_theme, m_liveSlides.at(m_liveIndex), QSize(640, 360), opt);
     } else {
         pm = Renderer::renderBackground(m_theme, QSize(640, 360));
     }
     m_preview->setPixmap(pm.scaled(m_preview->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+
+    // v1.3.0 GUI Aurora: marco dorado + chip EN VIVO cuando hay proyección
+    if (m_preview->property("live").toBool() != live) {
+        m_preview->setProperty("live", live);
+        m_preview->style()->unpolish(m_preview);
+        m_preview->style()->polish(m_preview);
+    }
+    m_liveChip->setVisible(live);
+
+    // v1.3.0: mini-preview de la SIGUIENTE slide (vista de moderador, spec
+    // PowerPoint) — se renderiza atenuada para distinguirla de la actual.
+    QPixmap nextPm;
+    if (m_liveIndex + 1 >= 0 && m_liveIndex + 1 < m_liveSlides.size()) {
+        Renderer::Options opt;
+        nextPm = Renderer::render(m_theme, m_liveSlides.at(m_liveIndex + 1), QSize(320, 180), opt);
+    } else {
+        nextPm = Renderer::renderBackground(m_theme, QSize(320, 180));
+    }
+    m_nextPreview->setPixmap(nextPm.scaled(m_nextPreview->size(), Qt::KeepAspectRatio,
+                                           Qt::SmoothTransformation));
+
+    // v1.3.0: multiview — miniatura textual del Stage View (spec Holyrics):
+    // estrofa actual (con acordes) tal como la ven los músicos.
+    QString stageTxt;
+    if (live) {
+        const Slide &s = m_liveSlides.at(m_liveIndex);
+        for (const SlideLine &l : s.lines) {
+            if (!l.chords.isEmpty())
+                stageTxt += l.chords + QStringLiteral("\n");
+            stageTxt += l.text + QStringLiteral("\n");
+            if (stageTxt.count(QChar('\n')) >= 6)
+                break;
+        }
+        stageTxt.chop(1);
+    }
+    m_stageMini->setText(stageTxt.isEmpty() ? QStringLiteral("—") : stageTxt);
 }
 
 void MainWindow::updateSlideList()
@@ -1183,6 +1368,9 @@ void MainWindow::onSendAlert(const QString &text)
 void MainWindow::onStartCountdown(int minutes)
 {
     m_stage->startCountdown(minutes);
+    // v1.3.0: espejo de la deadline para el chip de cuenta regresiva del dock
+    m_countdownDeadline = QDateTime::currentDateTime().addSecs(minutes * 60);
+    m_countdownActive = true;
     if (!m_stage->isVisible()) {
         m_stageOn = true;
         reassignOutputs();
@@ -1192,6 +1380,8 @@ void MainWindow::onStartCountdown(int minutes)
 void MainWindow::onStopCountdown()
 {
     m_stage->stopCountdown();
+    m_countdownActive = false;               // v1.3.0
+    m_countdownChip->setVisible(false);
 }
 
 // ---------------------------------------------------------------------------
@@ -1291,4 +1481,213 @@ void MainWindow::closeEvent(QCloseEvent *ev)
     m_output->hide();
     m_stage->hide();
     ev->accept();
+}
+
+// ---------------------------------------------------------------------------
+// v1.3.0 — GUI Aurora: Modo Presentación, reloj, Acerca de, export PNG,
+// chip del servidor, drag & drop
+// ---------------------------------------------------------------------------
+void MainWindow::togglePresentationMode()
+{
+    // Spec maestro: «La interfaz de usuario principal para la presentación debe
+    // ser absolutamente minimalista». F11 oculta toolbar/paneles; el dock de
+    // proyección se expande a toda la ventana (QMainWindow expande las áreas
+    // de dock cuando el widget central está oculto) y aparece la barra de
+    // transporte grande. F11 de nuevo restaura todo. La barra de estado queda
+    // (una línea) como pista de cómo salir del modo.
+    m_presentationMode = !m_presentationMode;
+    if (m_presentationMode) {
+        centralWidget()->hide();
+        for (QToolBar *tb : findChildren<QToolBar *>())
+            tb->hide();
+        m_presBar->setVisible(true);
+        statusBar()->showMessage(
+            QStringLiteral("🖥 MODO PRESENTACIÓN — F11 para volver a la consola completa"));
+    } else {
+        m_presBar->setVisible(false);
+        for (QToolBar *tb : findChildren<QToolBar *>())
+            tb->show();
+        centralWidget()->show();
+        statusBar()->showMessage(
+            QStringLiteral("LuminaPresentation Suite %1 — Salida audiencia: %2 · Stage: %3")
+                .arg(QApplication::applicationVersion(),
+                     m_ctx.db->setting(QStringLiteral("screen_output"), QStringLiteral("auto")),
+                     m_ctx.db->setting(QStringLiteral("screen_stage"), QStringLiteral("auto"))));
+    }
+}
+
+void MainWindow::onClockTick()
+{
+    // Reloj del dock + chip de cuenta regresiva (espejo del Stage View)
+    m_clockLabel->setText(QTime::currentTime().toString(QStringLiteral("hh:mm:ss")));
+    if (m_countdownActive && m_countdownDeadline.isValid()) {
+        const qint64 secs = QDateTime::currentDateTime().secsTo(m_countdownDeadline);
+        if (secs > 0) {
+            m_countdownChip->setText(QStringLiteral("⏱ %1")
+                .arg(QTime(0, 0).addSecs(int(secs)).toString(QStringLiteral("hh:mm:ss"))));
+            m_countdownChip->setVisible(true);
+        } else {
+            m_countdownChip->setText(QStringLiteral("⏱ ¡TIEMPO!"));
+            m_countdownChip->setVisible(true);
+            m_countdownActive = false;    // el chip queda fijo hasta detener/reiniciar
+        }
+    }
+}
+
+void MainWindow::updateSrvChip()
+{
+    if (!m_srvChip) return;
+    const bool on = m_ctx.web && m_ctx.web->running();
+    if (m_srvChip->property("on").toBool() == on)
+        return;
+    m_srvChip->setProperty("on", on);
+    m_srvChip->style()->unpolish(m_srvChip);
+    m_srvChip->style()->polish(m_srvChip);
+    const int httpPort = m_ctx.db ? m_ctx.db->setting(QStringLiteral("http_port"),
+                                                      QStringLiteral("8088")).toInt() : 8088;
+    m_srvChip->setText(on ? QStringLiteral("● Servidor :%1").arg(httpPort)
+                          : QStringLiteral("● Servidor apagado"));
+}
+
+void MainWindow::showAbout()
+{
+    QMessageBox about(this);
+    about.setWindowTitle(QStringLiteral("Acerca de LuminaPresentation Suite"));
+    about.setIconPixmap(QPixmap(QStringLiteral(":/img/logo128.png")));
+    about.setText(QStringLiteral("<h3 style='color:#7FA8F0;'>LuminaPresentation Suite %1</h3>"
+                                  "<p>Proyección multimedia híbrida nativa — la convergencia entre la "
+                                  "agilidad operativa de Holyrics y la potencia de composición de PowerPoint.</p>"
+                                  "<p style='color:#93A7CC;'><b>C++17 · Qt 5.15 LTS · LibVLC 3 · SQLite FTS5</b><br>"
+                                  "Sin JVM · sin .NET · sin Electron — portable de Windows 7 SP1 a Windows 11.</p>")
+                       .arg(QApplication::applicationVersion()));
+    about.setInformativeText(QStringLiteral(
+        "<p style='color:#93A7CC;'>Control remoto: <code>http://&lt;ip&gt;:8088/remote.html</code> · "
+        "Overlay OBS: <code>http://&lt;ip&gt;:8088/overlay.html</code><br>"
+        "Uso de los binarios permitido; código fuente bajo Licencia View-Only (LICENSE.md).</p>"));
+    about.setStandardButtons(QMessageBox::Ok);
+    about.setDefaultButton(QMessageBox::Ok);
+    about.exec();
+}
+
+void MainWindow::exportLivePng()
+{
+    // v1.3.0 — spec PowerPoint: «exportar diapositivas individuales como
+    // imágenes (.png...)». Exporta TODO el elemento en vivo (no solo la slide
+    // actual) a una carpeta, a 1920x1080.
+    if (m_liveSlides.isEmpty()) {
+        QMessageBox::information(this, QStringLiteral("Exportar a PNG"),
+                                 QStringLiteral("No hay contenido en vivo. Proyecta una canción, "
+                                                "versículo o presentación primero."));
+        return;
+    }
+    const QString dir = QFileDialog::getExistingDirectory(
+        this, QStringLiteral("Carpeta destino para los PNG"),
+        QDir::homePath(), QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks);
+    if (dir.isEmpty()) return;
+
+    const QString base = QStringLiteral("%1/%2")
+            .arg(dir, m_liveLabel.isEmpty() ? QStringLiteral("slide")
+                                            : m_liveLabel.simplified().replace(QRegExp(QStringLiteral("[^A-Za-z0-9ÁÉÍÓÚÜÑáéíóúüñ _-]")), QStringLiteral("_")));
+    int saved = 0;
+    for (int i = 0; i < m_liveSlides.size(); ++i) {
+        const QPixmap pm = Renderer::render(m_theme, m_liveSlides.at(i),
+                                            QSize(1920, 1080), Renderer::Options());
+        const QString out = QStringLiteral("%1_%2.png").arg(base).arg(i + 1, 2, 10, QLatin1Char('0'));
+        if (pm.save(out, "PNG"))
+            ++saved;
+    }
+    if (saved == m_liveSlides.size()) {
+        QMessageBox::information(this, QStringLiteral("Exportar a PNG"),
+                                 QStringLiteral("%1 imagen(es) PNG (1920×1080) guardadas en:\n%2")
+                                     .arg(saved).arg(dir));
+    } else {
+        QMessageBox::warning(this, QStringLiteral("Exportar a PNG"),
+                             QStringLiteral("Solo se pudieron guardar %1 de %2 imágenes "
+                                            "(revisa permisos de la carpeta).").arg(saved).arg(m_liveSlides.size()));
+    }
+}
+
+void MainWindow::importSongFromTxt(const QString &path)
+{
+    // v1.3.0 — drop de .txt: importa una canción (formato de texto plano con
+    // directivas @titulo/@autor/@tono/@bpm/@tags, o primera línea = título).
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        statusBar()->showMessage(QStringLiteral("No se pudo leer el archivo arrastrado."), 4000);
+        return;
+    }
+    const QString content = QString::fromUtf8(f.readAll());
+    f.close();
+
+    Song s;
+    QString lyrics = content;
+    // Directivas opcionales al inicio (mismo formato que la importación .txt)
+    static const QRegularExpression rxTitle(QStringLiteral("^@titulo\\s+(.+)$"),
+                                            QRegularExpression::MultilineOption);
+    static const QRegularExpression rxArtist(QStringLiteral("^@autor\\s+(.+)$"),
+                                             QRegularExpression::MultilineOption);
+    static const QRegularExpression rxKey(QStringLiteral("^@tono\\s+(.+)$"),
+                                          QRegularExpression::MultilineOption);
+    static const QRegularExpression rxBpm(QStringLiteral("^@bpm\\s+(\\d+)$"),
+                                          QRegularExpression::MultilineOption);
+    QRegularExpressionMatch m;
+    if ((m = rxTitle.match(lyrics)).hasMatch()) { s.title = m.captured(1).trimmed(); lyrics.remove(m.capturedStart(), m.capturedLength()); }
+    if ((m = rxArtist.match(lyrics)).hasMatch()) { s.artist = m.captured(1).trimmed(); lyrics.remove(m.capturedStart(), m.capturedLength()); }
+    if ((m = rxKey.match(lyrics)).hasMatch()) { s.key = m.captured(1).trimmed(); lyrics.remove(m.capturedStart(), m.capturedLength()); }
+    if ((m = rxBpm.match(lyrics)).hasMatch()) { s.bpm = m.captured(1).toInt(); lyrics.remove(m.capturedStart(), m.capturedLength()); }
+    if (s.title.isEmpty())
+        s.title = QFileInfo(path).completeBaseName();     // fallback: nombre del archivo
+    s.lyrics = lyrics.trimmed();
+
+    if (s.lyrics.isEmpty()) {
+        statusBar()->showMessage(QStringLiteral("El archivo no contiene letra."), 4000);
+        return;
+    }
+    m_ctx.db->addSong(s);
+    m_songPanel->reload();
+    statusBar()->showMessage(QStringLiteral("Canción importada: %1").arg(s.title), 5000);
+}
+
+void MainWindow::dragEnterEvent(QDragEnterEvent *ev)
+{
+    // Acepta archivos locales: imagen/video -> fondo en vivo; .txt -> canción
+    if (ev->mimeData()->hasUrls()) {
+        for (const QUrl &u : ev->mimeData()->urls()) {
+            if (u.isLocalFile()) { ev->acceptProposedAction(); return; }
+        }
+    }
+    QMainWindow::dragEnterEvent(ev);
+}
+
+void MainWindow::dropEvent(QDropEvent *ev)
+{
+    if (!ev->mimeData()->hasUrls()) { QMainWindow::dropEvent(ev); return; }
+    for (const QUrl &u : ev->mimeData()->urls()) {
+        if (!u.isLocalFile()) continue;
+        const QString file = u.toLocalFile();
+        const QString ext = QFileInfo(file).suffix().toLower();
+
+        if (ext == QStringLiteral("txt")) {
+            importSongFromTxt(file);
+        } else if (ext == QStringLiteral("png") || ext == QStringLiteral("jpg") ||
+                   ext == QStringLiteral("jpeg") || ext == QStringLiteral("bmp")) {
+            // Imagen -> fondo del tema en vivo (aplicación inmediata, spec
+            // Holyrics: «importar recursos directamente arrastrándolos»)
+            m_theme.background.type = 2;
+            m_theme.background.imagePath = file;
+            updatePreview();
+            if (m_output->isVisible())
+                showSlideIndex(m_liveIndex < 0 ? 0 : m_liveIndex, false);
+            statusBar()->showMessage(QStringLiteral("Fondo de imagen aplicado: %1")
+                                         .arg(QFileInfo(file).fileName()), 4000);
+        } else if (ext == QStringLiteral("mp4") || ext == QStringLiteral("avi") ||
+                   ext == QStringLiteral("mkv") || ext == QStringLiteral("mov") ||
+                   ext == QStringLiteral("webm")) {
+            // Video -> fondo en bucle con el texto encima
+            onPlayMedia(file, /*asBackground=*/true, /*loop=*/true, /*fitMode=*/0, /*isVideo=*/true);
+            statusBar()->showMessage(QStringLiteral("Fondo de video en bucle: %1")
+                                         .arg(QFileInfo(file).fileName()), 4000);
+        }
+    }
+    ev->acceptProposedAction();
 }

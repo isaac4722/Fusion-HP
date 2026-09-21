@@ -10,6 +10,10 @@
 #include <QFormLayout>
 #include <QHeaderView>
 #include <QMessageBox>
+#include <QFileDialog>
+#include <QFileInfo>
+#include <QApplication>
+#include <QRegularExpression>
 
 BiblePanel::BiblePanel(AppContext *ctx, QWidget *parent)
     : QWidget(parent), m_ctx(ctx)
@@ -48,6 +52,14 @@ void BiblePanel::buildUi()
     verRow->addWidget(m_v2);
     verRow->addWidget(new QLabel(QStringLiteral("Paralela 3:"), this));
     verRow->addWidget(m_v3);
+    // v1.3.0 — importar Biblias ZEFania XML (formato estándar del ecosistema
+    // Holyrics: miles de versiones libres en repositorios públicos)
+    auto *bImport = new QPushButton(QStringLiteral("＋ Importar Biblia (ZEFania .xml)…"), this);
+    bImport->setToolTip(QStringLiteral("Importa una versión bíblica en formato ZEFania XML "
+                                        "(Reina-Valera 1960, NVI, KJV…). El código de versión "
+                                        "se toma del nombre del archivo."));
+    connect(bImport, &QPushButton::clicked, this, &BiblePanel::onImportZefania);
+    verRow->addWidget(bImport);
     verRow->addStretch();
     lay->addLayout(verRow);
 
@@ -107,7 +119,7 @@ void BiblePanel::buildUi()
     btnRow->addStretch();
     auto *bAdd = new QPushButton(QStringLiteral("＋ A culto"), this);
     auto *bProj = new QPushButton(QStringLiteral("▶ Proyectar"), this);
-    bProj->setStyleSheet(QStringLiteral("QPushButton{background:#1E6FD9;color:white;font-weight:bold;padding:6px 14px;}"));
+    bProj->setProperty("class", QStringLiteral("primary"));   // v1.3.0 Aurora
     connect(bAdd, &QPushButton::clicked, this, &BiblePanel::onAddToServiceClicked);
     connect(bProj, &QPushButton::clicked, this, &BiblePanel::onProjectClicked);
     btnRow->addWidget(bAdd);
@@ -133,6 +145,43 @@ void BiblePanel::rebuildVersions()
         else if (b == 0 && boxes[b]->count() > 0) boxes[b]->setCurrentIndex(0);
         boxes[b]->blockSignals(false);
     }
+}
+
+void BiblePanel::onImportZefania()
+{
+    // v1.3.0 — importador ZEFania XML (spec Holyrics). El código de versión
+    // se deriva del nombre del archivo (p.ej. SpanishRV1960.xml -> SPANISHRV1960)
+    const QString f = QFileDialog::getOpenFileName(
+        this, QStringLiteral("Importar Biblia ZEFania XML"), QString(),
+        QStringLiteral("Biblias ZEFania (*.xml);;Todos (*)"));
+    if (f.isEmpty()) return;
+
+    const QString code = QFileInfo(f).completeBaseName().toUpper()
+                             .remove(QRegularExpression(QStringLiteral("[^A-Z0-9]"))).left(16);
+    if (code.isEmpty() || m_ctx->db->bibleVersions().contains(code)) {
+        QMessageBox::information(this, QStringLiteral("Importar Biblia"),
+                                 QStringLiteral("La versión «%1» ya está importada "
+                                                "(o el nombre de archivo no es válido).")
+                                     .arg(code));
+        return;
+    }
+    QString err;
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+    const bool ok = m_ctx->db->importBibleFromZefaniaXml(f, &err);
+    QApplication::restoreOverrideCursor();
+    if (!ok) {
+        QMessageBox::warning(this, QStringLiteral("Importar Biblia"),
+                             QStringLiteral("No se pudo importar:\n%1").arg(err));
+        return;
+    }
+    rebuildVersions();
+    const int idx = m_v1->findData(code);
+    if (idx >= 0) m_v1->setCurrentIndex(idx);
+    QMessageBox::information(this, QStringLiteral("Importar Biblia"),
+                             QStringLiteral("Versión «%1» importada y seleccionada.\n"
+                                            "Descripción: %2\nYa puedes usarla como principal "
+                                            "o en paralelo con otras.")
+                                 .arg(code, err.isEmpty() ? QStringLiteral("(sin descripción)") : err));
 }
 
 void BiblePanel::loadChapter()

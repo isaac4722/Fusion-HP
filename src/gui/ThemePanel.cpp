@@ -162,7 +162,7 @@ void ThemePanel::buildUi()
     m_preview = new QLabel(this);
     m_preview->setMinimumSize(420, 260);
     m_preview->setAlignment(Qt::AlignCenter);
-    m_preview->setStyleSheet(QStringLiteral("background:#000; border:1px solid #333;"));
+    m_preview->setObjectName(QStringLiteral("NextPreview"));   // v1.3.0 Aurora
     right->addWidget(m_preview, 1);
     lay->addLayout(right, 2);
 }

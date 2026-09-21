@@ -28,6 +28,13 @@ background:#101728;color:#e6ecf8;font-size:15px}
 .row{display:flex;gap:10px;margin-top:10px}
 .row button{flex:1;padding:12px}
 #status{text-align:center;color:#8fa3c8;font-size:12px;margin-top:8px}
+/* v1.3.0: toast para mensajes del operador (Custom Messages, spec Holyrics) */
+#toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%) translateY(120px);max-width:92%;width:auto;
+  background:linear-gradient(135deg,#1e6fd9,#2d7dff);color:#fff;padding:14px 22px;border-radius:14px;
+  font-size:16px;font-weight:600;box-shadow:0 8px 30px rgba(0,0,0,.55);opacity:0;
+  transition:transform .25s ease, opacity .25s ease;z-index:99;text-align:center}
+#toast.show{transform:translateX(-50%) translateY(0);opacity:1}
+#toast .t{display:block;font-size:11px;font-weight:700;letter-spacing:1px;opacity:.85;margin-bottom:4px;text-transform:uppercase}
 </style>
 </head>
 <body>
@@ -57,6 +64,7 @@ background:#101728;color:#e6ecf8;font-size:15px}
 </div>
 
 <div id="status">conectando…</div>
+<div id="toast"><span class="t" id="toastTitle">Mensaje del operador</span><span id="toastText"></span></div>
 
 <script>
 let ws=null, retry=0;
@@ -70,6 +78,7 @@ function connect(){
   ws.onmessage=e=>{
     try{
       const st=JSON.parse(e.data);
+      if(st.ev==='alert'||st.ev==='message'){showToast(st.title||((st.ev==='alert')?'Alerta':'Mensaje del operador'),st.text||'');return;}
       if(st.ev!=='state') return;
       const el=document.getElementById('current');
       el.textContent=(st.lines&&st.lines.length)?st.lines.join('\n'):'— sin contenido —';
@@ -87,6 +96,16 @@ document.getElementById('logo').onclick=()=>send('logo');
 document.getElementById('qnext').onclick=()=>send('qnext');
 document.getElementById('qprev').onclick=()=>send('qprev');
 document.getElementById('sendAlert').onclick=()=>{const a=document.getElementById('alert');if(a.value.trim()){send('alert',{text:a.value.trim()});a.value='';}};
+let toastTimer=null;
+function showToast(title,text){
+  if(!text) return;
+  document.getElementById('toastTitle').textContent=title;
+  document.getElementById('toastText').textContent=text;
+  const t=document.getElementById('toast');
+  t.classList.add('show');
+  if(toastTimer) clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),8000);
+}
 connect();
 </script>
 </body>

@@ -29,6 +29,9 @@ signals:
     void requestExportLive();
     // v1.1.0: exportar el escenario en vivo a PDF (spec: "PPTX y PDF")
     void requestExportPdf();
+    // v1.3.0: exportar el escenario en vivo como imágenes PNG (spec PowerPoint:
+    // «exportar diapositivas individuales como imágenes»)
+    void requestExportPng();
 
 private slots:
     void onOpen();

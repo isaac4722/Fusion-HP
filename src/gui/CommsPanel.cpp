@@ -4,6 +4,7 @@
 #include "CommsPanel.h"
 #include "core/Database.h"
 #include "core/Triggers.h"
+#include "net/WebServer.h"   // v1.3.0: broadcastMessage a los remotos
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -43,7 +44,7 @@ void CommsPanel::buildUi()
     m_alertText->setPlaceholderText(QStringLiteral("Ej: «El vehículo blanco ABC-123 lo está esperando…»"));
     alay->addWidget(m_alertText);
     auto *bSend = new QPushButton(QStringLiteral("📣 Enviar alerta al escenario"), grpAlert);
-    bSend->setStyleSheet(QStringLiteral("QPushButton{background:#D9821E;color:white;font-weight:bold;padding:8px 14px;}"));
+    bSend->setProperty("class", QStringLiteral("gold"));   // v1.3.0 Aurora
     connect(bSend, &QPushButton::clicked, this, [this]() {
         const QString t = m_alertText->toPlainText().trimmed();
         if (!t.isEmpty()) emit sendAlert(t);
@@ -66,6 +67,29 @@ void CommsPanel::buildUi()
     tlay->addWidget(bStop);
     tlay->addStretch();
     left->addWidget(grpTimer);
+
+    // v1.3.0 — "Custom Messages" del spec Holyrics: avisos del operador a
+    // todos los dispositivos remotos conectados (toast en remote.html; no
+    // interrumpe la proyección ni el Stage View).
+    auto *grpRemote = new QGroupBox(QStringLiteral("Mensaje a los remotos conectados (móviles/tablets)"), this);
+    auto *rlay = new QVBoxLayout(grpRemote);
+    m_remoteTitle = new QLineEdit(grpRemote);
+    m_remoteTitle->setPlaceholderText(QStringLiteral("Título opcional (p.ej. «Aviso del operador»)"));
+    m_remoteText = new QPlainTextEdit(grpRemote);
+    m_remoteText->setPlaceholderText(QStringLiteral("Ej: «Entramos en 5 minutos — revisen micrófonos»"));
+    m_remoteText->setMaximumHeight(90);
+    rlay->addWidget(m_remoteTitle);
+    rlay->addWidget(m_remoteText);
+    auto *bRemote = new QPushButton(QStringLiteral("📡 Enviar a todos los remotos"), grpRemote);
+    bRemote->setProperty("class", QStringLiteral("primary"));
+    connect(bRemote, &QPushButton::clicked, this, [this]() {
+        const QString t = m_remoteText->toPlainText().trimmed();
+        if (t.isEmpty() || !m_ctx->web) return;
+        m_ctx->web->broadcastMessage(t, m_remoteTitle->text().trimmed());
+        m_remoteText->clear();
+    });
+    rlay->addWidget(bRemote);
+    left->addWidget(grpRemote);
 
     auto *grpInbox = new QGroupBox(QStringLiteral("Peticiones recibidas (Telegram)"), this);
     auto *ilay = new QVBoxLayout(grpInbox);

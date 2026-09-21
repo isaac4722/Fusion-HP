@@ -10,6 +10,10 @@
 #include <QDateTime>
 #include <QDebug>
 #include <QLoggingCategory>
+#include <QXmlStreamReader>
+#include <QRegularExpression>
+#include <QDir>
+#include <QFileInfo>
 
 #include "sqlite3.h"
 
@@ -861,4 +865,218 @@ QString Database::setting(const QString &key, const QString &defaultValue)
         sqlite3_finalize(st);
     }
     return out;
+}
+
+// ---------------------------------------------------------------------------
+// v1.3.0 — Importador de Biblias ZEFania XML (formato del ecosistema Holyrics)
+// ---------------------------------------------------------------------------
+// Estructura esperada:
+//   <XMLBIBLE biblename="Reina Valera 1960" ...>
+//     <BIBLEBOOK bnumber="1" bname="Génesis">
+//       <CHAPTER cnumber="1">
+//         <VERSE vnumber="1">En el principio creó Dios...</VERSE>
+// Especificación: https://www.bgfdb.de/zefania/ — miles de versiones libres.
+bool Database::importBibleFromZefaniaXml(const QString &filePath, QString *error)
+{
+    QFile f(filePath);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        if (error) *error = QStringLiteral("No se pudo abrir el archivo: %1").arg(filePath);
+        return false;
+    }
+
+    QXmlStreamReader xml(&f);
+    QString versionCode;         // p.ej. "RV1960" (biblename saneado)
+    QString description;
+    int book = 0, chapter = 0;
+    qint64 inserted = 0;
+    bool inVerse = false;
+    QString verseText;
+    int verseNum = 0;
+
+    // Importacion atomica: transaccion + synchronous OFF (mismo patron que JSON)
+    exec(QStringLiteral("PRAGMA synchronous=OFF"));
+    begin();
+    bool ok = true;
+
+    while (!xml.atEnd()) {
+        const QXmlStreamReader::TokenType tok = xml.readNext();
+        if (tok == QXmlStreamReader::Invalid)
+            break;
+        if (tok == QXmlStreamReader::StartElement) {
+            const QString name = xml.name().toString();   // nombre LOCAL (sin prefijo)
+            if (name == QLatin1String("XMLBIBLE")) {
+                for (const QXmlStreamAttribute &a : xml.attributes()) {
+                    if (a.name() == QLatin1String("biblename"))
+                        description = a.value().toString().trimmed();
+                }
+                versionCode = QFileInfo(filePath).completeBaseName().toUpper();
+                versionCode.remove(QRegularExpression(QStringLiteral("[^A-Z0-9]")));
+                if (versionCode.size() > 16) versionCode = versionCode.left(16);
+                if (versionCode.isEmpty()) versionCode = QStringLiteral("ZEFANIA");
+            } else if (name == QLatin1String("BIBLEBOOK")) {
+                book = xml.attributes().value(QLatin1String("bnumber")).toInt();
+            } else if (name == QLatin1String("CHAPTER")) {
+                chapter = xml.attributes().value(QLatin1String("cnumber")).toInt();
+            } else if (name == QLatin1String("VERSE")) {
+                verseNum = xml.attributes().value(QLatin1String("vnumber")).toInt();
+                verseText.clear();
+                inVerse = true;
+            } else if (inVerse) {
+                // etiquetas anidadas dentro del versiculo (p.ej. <BR/>, <STYLE>):
+                // separador de linea para BR, contenido textual del resto
+                if (name == QLatin1String("BR"))
+                    verseText += QStringLiteral(" ");
+            }
+        } else if (tok == QXmlStreamReader::Characters && inVerse) {
+            verseText += xml.text();
+        } else if (tok == QXmlStreamReader::EndElement) {
+            const QString name = xml.name().toString();
+            if (name == QLatin1String("VERSE")) {
+                inVerse = false;
+                if (book > 0 && chapter > 0 && verseNum > 0) {
+                    const QString txt = verseText.simplified();
+                    if (!txt.isEmpty()) {
+                        if (!stmtExec("INSERT INTO bible(version,book,chapter,verse,text) VALUES(?,?,?,?,?)",
+                                      { versionCode, book, chapter, verseNum, txt })) {
+                            ok = false;
+                            break;
+                        }
+                        ++inserted;
+                    }
+                }
+            }
+        }
+    }
+    f.close();
+
+    if (xml.hasError()) {
+        rollback();
+        exec(QStringLiteral("PRAGMA synchronous=NORMAL"));
+        if (error) *error = QStringLiteral("XML inválido (ZEFania): %1").arg(xml.errorString());
+        return false;
+    }
+    if (!ok || inserted == 0) {
+        rollback();
+        exec(QStringLiteral("PRAGMA synchronous=NORMAL"));
+        if (error) *error = QStringLiteral("No se encontraron versículos válidos en el archivo.");
+        return false;
+    }
+    commit();
+    exec(QStringLiteral("PRAGMA synchronous=NORMAL"));
+    qInfo() << "[DB] Biblia ZEFania importada:" << versionCode << description << "-" << inserted << "versículos";
+    if (error) *error = description;      // descripción para mostrar al usuario
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// v1.3.0 — Copia de seguridad / restauración (Online Backup API de SQLite)
+// ---------------------------------------------------------------------------
+bool Database::backupTo(const QString &destFile, QString *error)
+{
+    if (!m_db) {
+        if (error) *error = QStringLiteral("La base de datos no está abierta.");
+        return false;
+    }
+    sqlite3 *dest = nullptr;
+    if (sqlite3_open_v2(destFile.toUtf8().constData(), &dest,
+                        SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr) != SQLITE_OK) {
+        if (dest) sqlite3_close(dest);
+        if (error) *error = QStringLiteral("No se pudo crear el archivo de copia.");
+        return false;
+    }
+    sqlite3_backup *bak = sqlite3_backup_init(dest, "main", m_db, "main");
+    if (!bak) {
+        sqlite3_close(dest);
+        if (error) *error = QStringLiteral("Backup init falló: %1").arg(lastError());
+        return false;
+    }
+    const int rc = sqlite3_backup_step(bak, -1);       // copia completa en un paso
+    sqlite3_backup_finish(bak);
+    const int destErr = sqlite3_errcode(dest);
+    sqlite3_close(dest);
+    if (rc != SQLITE_DONE || destErr != SQLITE_OK) {
+        QFile::remove(destFile);
+        if (error) *error = QStringLiteral("La copia de seguridad quedó incompleta (intenta de nuevo).");
+        return false;
+    }
+    return true;
+}
+
+bool Database::restoreFrom(const QString &srcFile, QString *error)
+{
+    if (!m_db) {
+        if (error) *error = QStringLiteral("La base de datos no está abierta.");
+        return false;
+    }
+    // Validar que el origen sea un SQLite real ANTES de tocar el vault activo
+    {
+        sqlite3 *src = nullptr;
+        if (sqlite3_open_v2(srcFile.toUtf8().constData(), &src, SQLITE_OPEN_READONLY, nullptr) != SQLITE_OK
+            || !src) {
+            if (src) sqlite3_close(src);
+            if (error) *error = QStringLiteral("El archivo no es una base de datos válida.");
+            return false;
+        }
+        sqlite3_stmt *st = nullptr;
+        const bool sane = (sqlite3_prepare_v2(src, "SELECT COUNT(*) FROM sqlite_master", -1,
+                                              &st, nullptr) == SQLITE_OK);
+        if (st) sqlite3_finalize(st);
+        const int err = sqlite3_errcode(src);
+        sqlite3_close(src);
+        if (!sane || err != SQLITE_OK) {
+            if (error) *error = QStringLiteral("El archivo no es una base de datos válida.");
+            return false;
+        }
+    }
+    // Copiar el origen DENTRO de la conexión activa (Online Backup API inversa).
+    // Consistente incluso con la BD en uso; los paneles recargarán al reiniciar.
+    sqlite3 *src = nullptr;
+    if (sqlite3_open_v2(srcFile.toUtf8().constData(), &src, SQLITE_OPEN_READONLY, nullptr) != SQLITE_OK) {
+        if (error) *error = QStringLiteral("No se pudo abrir la copia de seguridad.");
+        return false;
+    }
+    sqlite3_backup *bak = sqlite3_backup_init(m_db, "main", src, "main");
+    if (!bak) {
+        sqlite3_close(src);
+        if (error) *error = QStringLiteral("Restore init falló: %1").arg(lastError());
+        return false;
+    }
+    const int rc = sqlite3_backup_step(bak, -1);
+    sqlite3_backup_finish(bak);
+    sqlite3_close(src);
+    if (rc != SQLITE_DONE || sqlite3_errcode(m_db) != SQLITE_OK) {
+        if (error) *error = QStringLiteral("La restauración quedó incompleta (intenta de nuevo).");
+        return false;
+    }
+    // Reasegurar esquema (por si la copia venía de una versión anterior)
+    QString schemaErr;
+    ensureSchema(&schemaErr);
+    return true;
+}
+
+void Database::autoBackupIfNeeded(const QString &backupDir)
+{
+    const QString last = setting(QStringLiteral("last_auto_backup"));
+    const QDateTime lastAt = QDateTime::fromString(last, Qt::ISODate);
+    if (lastAt.isValid() && lastAt.daysTo(QDateTime::currentDateTime()) < 7)
+        return;                       // copia de esta semana vigente
+
+    QDir().mkpath(backupDir);
+    const QString stamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_HHmm"));
+    const QString dest = backupDir + QStringLiteral("/auto_%1.db").arg(stamp);
+    QString err;
+    if (backupTo(dest, &err)) {
+        setSetting(QStringLiteral("last_auto_backup"),
+                   QDateTime::currentDateTime().toString(Qt::ISODate));
+        // Rotación: conservar solo las 4 copias automáticas más recientes
+        QDir d(backupDir);
+        const QStringList autos = d.entryList(
+            QStringList() << QStringLiteral("auto_*.db"),
+            QDir::Files, QDir::Name | QDir::Reversed);   // nuevas primero
+        for (int i = 4; i < autos.size(); ++i)
+            d.remove(autos.at(i));
+        qInfo() << "[DB] Copia automática creada:" << dest;
+    } else {
+        qWarning() << "[DB] Copia automática falló:" << err;
+    }
 }

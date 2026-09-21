@@ -116,21 +116,36 @@ int main(int argc, char *argv[])
     QApplication app(argc, argv);
     QApplication::setApplicationName(QStringLiteral("LuminaPresentationSuite"));
     QApplication::setOrganizationName(QStringLiteral("LuminaSoftware"));
-    QApplication::setApplicationVersion(QStringLiteral("1.2.0"));
+    QApplication::setApplicationVersion(QStringLiteral("1.3.0"));
     QApplication::setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
 
-    // Paleta oscura profesional
+    // v1.3.0 GUI "Aurora": hoja de estilos global completa (sidebar, tablas,
+    // inputs, scrollbars, docks, chips de estado...) sobre la paleta oscura.
+    // La paleta sigue fijando los colores base para los widgets sin QSS.
     QPalette pal;
-    pal.setColor(QPalette::Window, QColor(24, 30, 48));
-    pal.setColor(QPalette::WindowText, QColor(220, 228, 245));
-    pal.setColor(QPalette::Base, QColor(16, 21, 36));
-    pal.setColor(QPalette::AlternateBase, QColor(22, 29, 48));
-    pal.setColor(QPalette::Text, QColor(220, 228, 245));
-    pal.setColor(QPalette::Button, QColor(32, 40, 62));
-    pal.setColor(QPalette::ButtonText, QColor(220, 228, 245));
-    pal.setColor(QPalette::Highlight, QColor(30, 111, 217));
+    pal.setColor(QPalette::Window, QColor(10, 14, 24));
+    pal.setColor(QPalette::WindowText, QColor(232, 238, 249));
+    pal.setColor(QPalette::Base, QColor(13, 20, 32));
+    pal.setColor(QPalette::AlternateBase, QColor(16, 26, 44));
+    pal.setColor(QPalette::Text, QColor(232, 238, 249));
+    pal.setColor(QPalette::Button, QColor(26, 35, 52));
+    pal.setColor(QPalette::ButtonText, QColor(220, 230, 248));
+    pal.setColor(QPalette::Highlight, QColor(45, 125, 255));
     pal.setColor(QPalette::HighlightedText, Qt::white);
+    pal.setColor(QPalette::ToolTipBase, QColor(22, 33, 58));
+    pal.setColor(QPalette::ToolTipText, QColor(220, 230, 248));
+    pal.setColor(QPalette::PlaceholderText, QColor(107, 126, 166));
+    pal.setColor(QPalette::Disabled, QPalette::Text, QColor(85, 97, 127));
+    pal.setColor(QPalette::Disabled, QPalette::ButtonText, QColor(85, 97, 127));
     app.setPalette(pal);
+
+    {
+        QFile qss(QStringLiteral(":/styles/aurora.qss"));
+        if (qss.open(QIODevice::ReadOnly | QIODevice::Text))
+            app.setStyleSheet(QString::fromUtf8(qss.readAll()));
+        else
+            qWarning() << "[GUI] No se pudo cargar el tema Aurora (aurora.qss)";
+    }
 
     // Log a archivo (se puede desactivar con LUMINA_NO_LOGFILE=1 para depurar)
     const QString dataDirStr = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
@@ -151,6 +166,10 @@ int main(int argc, char *argv[])
     }
     db.setSetting(QStringLiteral("data_dir"), dataDirStr);
     seedDatabase(&db);
+
+    // v1.3.0: copia de seguridad automática semanal del vault (alternativa
+    // offline-safe a la sincronización en la nube del spec Holyrics).
+    db.autoBackupIfNeeded(dataDirStr + QStringLiteral("/backups"));
 
     // ---- Motor multimedia (LibVLC dinamica; degrada con elegancia) ----
     MediaEngine media;
