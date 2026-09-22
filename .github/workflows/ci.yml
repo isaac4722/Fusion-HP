@@ -167,12 +167,14 @@ jobs:
       - name: Publicar UI net48 POR ARQUITECTURA (x86 y x64)
         shell: pwsh
         run: |
-          # --no-incremental: PlatformTarget no es input de CoreCompile; sin
-          # rebuild, el segundo publish copiaría el PE32 (AnyCPU/x86) anterior.
-          dotnet publish managed/FusionHP.UI -f net48 -c Release --self-contained false --no-incremental -p:PlatformTarget=x86
+          # PlatformTarget no invalida los outputs de CoreCompile: sin una
+          # limpieza, el segundo publish reusaría el PE32 (AnyCPU/x86) previo.
+          dotnet publish managed/FusionHP.UI -f net48 -c Release --self-contained false -p:PlatformTarget=x86
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Move-Item managed/FusionHP.UI/bin/Release/net48/publish managed/FusionHP.UI/bin/Release/net48/publish-x86
-          dotnet publish managed/FusionHP.UI -f net48 -c Release --self-contained false --no-incremental -p:PlatformTarget=x64
+          dotnet clean managed/FusionHP.UI -f net48 -c Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet publish managed/FusionHP.UI -f net48 -c Release --self-contained false -p:PlatformTarget=x64
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Move-Item managed/FusionHP.UI/bin/Release/net48/publish managed/FusionHP.UI/bin/Release/net48/publish-x64
 
