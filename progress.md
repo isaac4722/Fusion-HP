@@ -352,3 +352,13 @@
 - Gates pendientes del CI (primer run): POC PASS 12/12 en x86+x64 Windows, CLRHOST PASS x86+x64, verify_portable, release.
 - Bloqueos: ninguno.
 - Siguiente: push → verificar CI verde → tag v3.0.0 → release con zips x86/x64 + SHA256 → verificación de assets.
+
+## 2026-09-22 — CIERRE v3.0.0 «HÍBRIDA»: CI verde completo, tag y release verificada
+- Run del tag v3.0.0 (35721849099): native x86+x64 SUCCESS · native-linux SUCCESS · managed net35+net48 SUCCESS · **interop «POC PASS 12/12» x86+x64 SUCCESS** · package x86+x64 SUCCESS (verify_portable) · release SUCCESS. Único job no verde: clrhost-poc (INFORMATIVO, continue-on-error) — diagnóstico CI: el runner windows-2025 carece del runtime .NET FX en Framework[64]/v4.0.30319 (GetLastError=2) y el shim System32 responde REGDB_E_CLASSNOTREG; la activación CLR (vía C) funciona en equipos con .NET Framework instalado (Win7 SP1→Win11 reales); la vía A elegida no depende de ello.
+- Release v3.0.0 «HÍBRIDA» PUBLICADA (id 393677093): Fusion-HP-3.0.0-win-x86.zip (2.0 MB) + win-x64 (2.2 MB) + SHA256SUMS.txt.
+- Verificación independiente post-publicación: SHA256 del zip descargado idéntico al publicado (5d324dc1… x86 · 40f8436d… x64); verify_portable sobre el paquete descargado exit 0 (layout completo, 3 PE coherentes x86, exports contractuales de FusionCore.dll presentes: fusion_create…22 símbolos).
+- Notas para el siguiente ciclo:
+  - VS_VERSIONINFO en FusionHP.exe (recurso .rc) — warning informativo del gate, no bloqueante.
+  - clrhost en runners: alternativa CLR hosting vía hostfxr (núcleos .NET) o probar en windows-2019 (imagen con .NET FX en rutas estándar).
+  - FusionHP35.exe (variante net35 de la UI) reservada en el launcher/paquete; el Core/Api/Bridge ya son net35.
+  - Expansión UI: temas editor visual, medios (imágenes/video DirectShow), impresión, más integraciones OBS/remote.
