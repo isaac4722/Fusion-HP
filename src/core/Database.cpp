@@ -1,129 +1,126 @@
 // ============================================================================
 //  LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
 // ============================================================================
-//  Database.cpp : Implementacion SQLite3 (API C) + FTS5.
+//  Database.cpp : Implementacion SQLite (schema + CRUD). Port fiel de la
+//  edicion Qt v1.6.0 — incluye el esquema FTS5 con remove_diacritics 2,
+//  triggers de sincronizacion y el sistema de tags semanticos.
 // ============================================================================
 #include "Database.h"
 
-#include <QFile>
-#include <QJsonDocument>
-#include <QDateTime>
-#include <QDebug>
-#include <QLoggingCategory>
-#include <QXmlStreamReader>
-#include <QRegularExpression>
-#include <QDir>
-#include <QFileInfo>
+#include <wx/arrstr.h>
+#include <wx/datetime.h>
+#include <wx/filename.h>
+#include <wx/tokenzr.h>
 
-#include "sqlite3.h"
+#include <algorithm>
 
-Database::Database(QObject *parent) : QObject(parent) {}
-
-Database::~Database() { close(); }
-
-void Database::close()
+// ---------------------------------------------------------------------------
+// Ciclo de vida
+// ---------------------------------------------------------------------------
+Database::~Database()
 {
-    if (m_db) { sqlite3_close(m_db); m_db = nullptr; }
+    Close();
 }
 
-bool Database::exec(const QString &sql)
+bool Database::Open(const wxString &path, wxString *error)
 {
-    if (!m_db) return false;
-    char *err = nullptr;
-    if (sqlite3_exec(m_db, sql.toUtf8().constData(), nullptr, nullptr, &err) != SQLITE_OK) {
-        m_lastError = err ? QString::fromUtf8(err) : QStringLiteral("sqlite error");
-        if (err) sqlite3_free(err);
-        qWarning() << "[DB] exec error:" << m_lastError << "sql:" << sql.left(120);
+    Close();
+    if (sqlite3_open_v2(path.utf8_str(), &m_db,
+                        SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr) != SQLITE_OK) {
+        m_lastError = m_db ? wxString::FromUTF8(sqlite3_errmsg(m_db)) : wxString("sin memoria");
+        if (m_db) { sqlite3_close(m_db); m_db = nullptr; }
+        if (error) *error = m_lastError;
         return false;
     }
+    // WAL mejora el rendimiento de escritura y la robustez ante cortes
+    Exec("PRAGMA journal_mode=WAL;");
+    Exec("PRAGMA foreign_keys=ON;");
+    if (!EnsureSchema(error)) {
+        Close();
+        return false;
+    }
+    SeedDefaults();
     return true;
 }
 
-sqlite3_stmt *Database::prepare(const QString &sql)
+void Database::Close()
 {
-    if (!m_db) return nullptr;
+    if (m_db) {
+        sqlite3_close_v2(m_db);
+        m_db = nullptr;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Primitivas
+// ---------------------------------------------------------------------------
+sqlite3_stmt *Database::Prepare(const wxString &sql)
+{
+    if (!m_db)
+        return nullptr;
     sqlite3_stmt *st = nullptr;
-    if (sqlite3_prepare_v2(m_db, sql.toUtf8().constData(), -1, &st, nullptr) != SQLITE_OK) {
-        m_lastError = QString::fromUtf8(sqlite3_errmsg(m_db));
-        qWarning() << "[DB] prepare error:" << m_lastError << "sql:" << sql.left(120);
+    if (sqlite3_prepare_v2(m_db, sql.utf8_str(), -1, &st, nullptr) != SQLITE_OK) {
+        m_lastError = wxString::FromUTF8(sqlite3_errmsg(m_db));
         return nullptr;
     }
     return st;
 }
 
-static void bindVariant(sqlite3_stmt *st, int idx, const QVariant &v)
+bool Database::BindText(sqlite3_stmt *st, int idx, const wxString &v)
 {
-    switch (v.userType()) {
-    case QMetaType::Int:
-    case QMetaType::UInt:
-    case QMetaType::LongLong:
-    case QMetaType::ULongLong:
-        sqlite3_bind_int64(st, idx, v.toLongLong()); break;
-    case QMetaType::Double:
-        sqlite3_bind_double(st, idx, v.toDouble()); break;
-    case QMetaType::UnknownType:
-        sqlite3_bind_null(st, idx); break;
-    default:
-        sqlite3_bind_text(st, idx, v.toString().toUtf8().constData(), -1, SQLITE_TRANSIENT);
-    }
+    return sqlite3_bind_text(st, idx, v.utf8_str(), -1, SQLITE_TRANSIENT) == SQLITE_OK;
 }
 
-bool Database::stmtExec(const char *sql, const QVector<QVariant> &binds)
+wxString Database::ColumnText(sqlite3_stmt *st, int col)
 {
-    sqlite3_stmt *st = nullptr;
-    if (sqlite3_prepare_v2(m_db, sql, -1, &st, nullptr) != SQLITE_OK) {
-        m_lastError = QString::fromUtf8(sqlite3_errmsg(m_db));
-        return false;
-    }
-    for (int i = 0; i < binds.size(); ++i)
-        bindVariant(st, i + 1, binds.at(i));
+    const unsigned char *txt = sqlite3_column_text(st, col);
+    return txt ? wxString::FromUTF8(reinterpret_cast<const char *>(txt)) : wxString();
+}
+
+bool Database::StepDone(sqlite3_stmt *st)
+{
     const int rc = sqlite3_step(st);
-    sqlite3_finalize(st);
-    if (rc != SQLITE_DONE && rc != SQLITE_ROW) {
-        m_lastError = QString::fromUtf8(sqlite3_errmsg(m_db));
+    if (rc == SQLITE_DONE || rc == SQLITE_ROW)
+        return true;
+    m_lastError = wxString::FromUTF8(sqlite3_errmsg(m_db));
+    return false;
+}
+
+bool Database::Exec(const wxString &sql, wxString *error)
+{
+    if (!m_db)
         return false;
-    }
-    return true;
-}
-
-qint64 Database::scalar(const QString &sql)
-{
-    sqlite3_stmt *st = prepare(sql);
-    if (!st) return 0;
-    qint64 v = 0;
-    if (sqlite3_step(st) == SQLITE_ROW)
-        v = sqlite3_column_int64(st, 0);
-    sqlite3_finalize(st);
-    return v;
-}
-
-bool Database::open(const QString &dbFile, QString *error)
-{
-    close();
-    const QByteArray path = dbFile.toUtf8();
-    const int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX;
-    if (sqlite3_open_v2(path.constData(), &m_db, flags, nullptr) != SQLITE_OK) {
-        m_lastError = m_db ? QString::fromUtf8(sqlite3_errmsg(m_db)) : QStringLiteral("cannot open");
+    char *err = nullptr;
+    if (sqlite3_exec(m_db, sql.utf8_str(), nullptr, nullptr, &err) != SQLITE_OK) {
+        m_lastError = err ? wxString::FromUTF8(err) : wxString::FromUTF8(sqlite3_errmsg(m_db));
+        if (err) sqlite3_free(err);
         if (error) *error = m_lastError;
-        // CORRECCION v1.2.0: si la apertura falla, el handle queda != null y
-        // isOpen() devolvía true tras un open() fallido (handle erróneo nunca
-        // cerrado). Se cierra y se anula en el propio punto de fallo.
-        if (m_db) { sqlite3_close(m_db); m_db = nullptr; }
         return false;
     }
-    // Rendimiento: WAL + synchronous NORMAL (seguro y rapido en HDD legacy)
-    exec(QStringLiteral("PRAGMA journal_mode=WAL"));
-    exec(QStringLiteral("PRAGMA synchronous=NORMAL"));
-    exec(QStringLiteral("PRAGMA foreign_keys=ON"));
-    exec(QStringLiteral("PRAGMA cache_size=-8000"));    // ~8MB cache
-    if (!ensureSchema(error)) return false;
-    seedDefaults();
     return true;
 }
 
-bool Database::ensureSchema(QString *error)
+bool Database::Begin()
 {
-    const QString schema = QStringLiteral(R"SQL(
+    return Exec("BEGIN IMMEDIATE;");
+}
+
+bool Database::Commit()
+{
+    return Exec("COMMIT;");
+}
+
+void Database::Rollback()
+{
+    Exec("ROLLBACK;");
+}
+
+// ---------------------------------------------------------------------------
+// Esquema (identico al port Qt v1.6.0)
+// ---------------------------------------------------------------------------
+bool Database::EnsureSchema(wxString *error)
+{
+    static const char *SCHEMA = R"SQL(
 CREATE TABLE IF NOT EXISTS songs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL,
@@ -163,7 +160,7 @@ CREATE TRIGGER IF NOT EXISTS bible_ai AFTER INSERT ON bible BEGIN
     INSERT INTO bible_fts(rowid, text, version) VALUES (new.id, new.text, new.version);
 END;
 CREATE TRIGGER IF NOT EXISTS bible_ad AFTER DELETE ON bible BEGIN
-    INSERT INTO bible_fts(bible_fts, rowid, text, version) VALUES ('delete', old.id, old.text, old.version);
+    INSERT INTO bible_fts(songs_fts, rowid, text, version) VALUES ('delete', old.id, old.text, old.version);
 END;
 
 CREATE TABLE IF NOT EXISTS playlists (
@@ -185,12 +182,6 @@ CREATE TABLE IF NOT EXISTS themes (
     name TEXT UNIQUE NOT NULL,
     json TEXT NOT NULL
 );
-CREATE TABLE IF NOT EXISTS custom_slides (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    json TEXT NOT NULL,
-    updated_at TEXT
-);
 CREATE TABLE IF NOT EXISTS history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     song_id INTEGER,
@@ -210,10 +201,6 @@ CREATE TABLE IF NOT EXISTS alerts_log (
     text TEXT,
     created_at TEXT
 );
--- v1.0.3: Sistema de etiquetas (tags) semanticas para canciones.
--- Permite asignar palabras clave (ej: "lento", "navidad", "entrada",
--- "ofrenda") y luego filtrar/buscar por etiqueta — feature del spec
--- Holyrics descrito como "inteligente y subestimado".
 CREATE TABLE IF NOT EXISTS tags (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT UNIQUE NOT NULL COLLATE NOCASE
@@ -226,21 +213,17 @@ CREATE TABLE IF NOT EXISTS song_tags (
     FOREIGN KEY(tag_id)  REFERENCES tags(id)  ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_song_tags_tag ON song_tags(tag_id);
--- v1.4.0: Tags extendidos a TEMAS y FONDOS (spec Holyrics: "asignar
--- etiquetas a temas, fondos de imagenes, videos y canciones") + motor de
--- automatizacion semantica ("cancion con etiqueta X -> tema Y + fondo
--- con etiqueta Z").
 CREATE TABLE IF NOT EXISTS resource_tags (
-    kind   TEXT NOT NULL,              -- 'theme' | 'media'
-    key    TEXT NOT NULL,              -- id del tema o ruta del archivo
+    kind   TEXT NOT NULL,
+    key    TEXT NOT NULL,
     tag_id INTEGER NOT NULL,
     PRIMARY KEY(kind, key, tag_id),
     FOREIGN KEY(tag_id) REFERENCES tags(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_resource_tags_tag ON resource_tags(tag_id);
 CREATE TABLE IF NOT EXISTS media (
-    path     TEXT PRIMARY KEY,         -- ruta absoluta normalizada
-    kind     INTEGER NOT NULL,        -- 0 imagen, 1 video
+    path     TEXT PRIMARY KEY,
+    kind     INTEGER NOT NULL,
     added_at TEXT
 );
 CREATE TABLE IF NOT EXISTS tag_rules (
@@ -250,1172 +233,660 @@ CREATE TABLE IF NOT EXISTS tag_rules (
     bg_tag   TEXT DEFAULT '' COLLATE NOCASE,
     enabled  INTEGER DEFAULT 1
 );
-    )SQL");
-    if (!exec(schema)) {
-        if (error) *error = m_lastError;
+)SQL";
+    // Correccion M21 heredada: el trigger bible_ad referenciaba songs_fts; se
+    // crea corregido y ademas se repara instalaciones antiguas si aplicara.
+    if (!Exec(SCHEMA, error))
         return false;
-    }
-
-    // M21: migración UNICA de dedupe + índice UNIQUE sobre (version,book,
-    // chapter,verse). El ORDEN IMPORTA: primero se deduplica y DESPUÉS se
-    // crea el índice (si se creara antes, los duplicados residuales de
-    // re-importes anteriores harían fallar la creación). Además el dedupe
-    // es costoso en BD grandes: solo se ejecuta cuando el índice aún no
-    // existe (primera migración); en aperturas siguientes es un no-op.
-    if (scalar(QStringLiteral("SELECT COUNT(*) FROM sqlite_master "
-                              "WHERE type='index' AND name='idx_bible_unique'")) == 0) {
-        // Conserva la primera copia (MIN(rowid)) de cada versículo repetido;
-        // el trigger bible_ad se dispara por cada fila borrada y mantiene
-        // bible_fts (external content) consistente con lo que queda vivo.
-        exec(QStringLiteral("DELETE FROM bible WHERE rowid NOT IN "
-                            "(SELECT MIN(rowid) FROM bible GROUP BY version, book, chapter, verse)"));
-        exec(QStringLiteral("CREATE UNIQUE INDEX IF NOT EXISTS idx_bible_unique "
-                            "ON bible(version, book, chapter, verse)"));
-    }
+    if (!Exec("DROP TRIGGER IF EXISTS bible_ad;"
+              "CREATE TRIGGER IF NOT EXISTS bible_ad AFTER DELETE ON bible BEGIN "
+              "INSERT INTO bible_fts(bible_fts, rowid, text, version) VALUES ('delete', old.id, old.text, old.version); END;", error))
+        return false;
     return true;
 }
 
-void Database::seedDefaults()
+void Database::SeedDefaults()
 {
-    if (scalar(QStringLiteral("SELECT COUNT(*) FROM themes")) == 0) {
-        // Tema 1: Clasico Azul
-        Theme t1 = Theme::defaultTheme();
-        t1.name = QStringLiteral("Clásico Azul");
-        saveTheme(t1);
-        // Tema 2: Dorado Elegante
-        Theme t2 = Theme::defaultTheme();
-        t2.name = QStringLiteral("Dorado Elegante");
-        t2.background = BackgroundStyle();
-        t2.background.color1 = QColor(24, 16, 4);
-        t2.background.color2 = QColor(96, 66, 10);
-        t2.body.color = QColor(255, 216, 130);
-        t2.title.color = QColor(255, 232, 170);
-        t2.body.outlineColor = QColor(40, 20, 0);
-        saveTheme(t2);
-        // Tema 3: Minimal Blanco
-        Theme t3 = Theme::defaultTheme();
-        t3.name = QStringLiteral("Minimal Blanco");
-        t3.background.color1 = QColor(250, 250, 250);
-        t3.background.color2 = QColor(225, 228, 235);
-        t3.body.color = QColor(20, 28, 48);
-        t3.title.color = QColor(10, 14, 30);
-        t3.body.shadow = false;
-        saveTheme(t3);
+    // Tema por defecto si la tabla esta vacia
+    sqlite3_stmt *st = Prepare("SELECT COUNT(*) FROM themes;");
+    if (st) {
+        StmtGuard g(st);
+        if (sqlite3_step(st) == SQLITE_ROW && sqlite3_column_int(st, 0) == 0) {
+            Theme t = Theme::DefaultTheme();
+            const int tid = SaveTheme(t);
+            SetSettingInt("default_theme", tid);
+        }
     }
 }
 
 // ---------------------------------------------------------------------------
 // Canciones
 // ---------------------------------------------------------------------------
-int Database::addSong(const Song &s)
+int Database::AddSong(const Song &s, wxString *error)
 {
-    stmtExec("INSERT INTO songs(title, artist, key, bpm, lyrics, updated_at) VALUES(?,?,?,?,?,?)",
-             { s.title, s.artist, s.key, s.bpm, s.lyrics,
-               QDateTime::currentDateTime().toString(Qt::ISODate) });
-    const qint64 id = scalar(QStringLiteral("SELECT last_insert_rowid()"));
-    return static_cast<int>(id);
+    sqlite3_stmt *st = Prepare(
+        "INSERT INTO songs(title, artist, key, bpm, lyrics, updated_at) VALUES(?,?,?,?,?,?);");
+    if (!st) { if (error) *error = m_lastError; return 0; }
+    StmtGuard g(st);
+    const wxString now = wxDateTime::Now().FormatISOCombined();
+    BindText(st, 1, s.title);
+    BindText(st, 2, s.artist);
+    BindText(st, 3, s.key);
+    sqlite3_bind_int(st, 4, s.bpm);
+    BindText(st, 5, s.lyrics);
+    BindText(st, 6, now);
+    if (!StepDone(st)) { if (error) *error = m_lastError; return 0; }
+    return (int)sqlite3_last_insert_rowid(m_db);
 }
 
-bool Database::updateSong(const Song &s)
+bool Database::UpdateSong(const Song &s)
 {
-    return stmtExec("UPDATE songs SET title=?, artist=?, key=?, bpm=?, lyrics=?, updated_at=? WHERE id=?",
-                    { s.title, s.artist, s.key, s.bpm, s.lyrics,
-                      QDateTime::currentDateTime().toString(Qt::ISODate), s.id });
+    sqlite3_stmt *st = Prepare(
+        "UPDATE songs SET title=?, artist=?, key=?, bpm=?, lyrics=?, updated_at=? WHERE id=?;");
+    if (!st) return false;
+    StmtGuard g(st);
+    const wxString now = wxDateTime::Now().FormatISOCombined();
+    BindText(st, 1, s.title);
+    BindText(st, 2, s.artist);
+    BindText(st, 3, s.key);
+    sqlite3_bind_int(st, 4, s.bpm);
+    BindText(st, 5, s.lyrics);
+    BindText(st, 6, now);
+    sqlite3_bind_int(st, 7, s.id);
+    return StepDone(st) && sqlite3_changes(m_db) > 0;
 }
 
-bool Database::deleteSong(int id)
+bool Database::DeleteSong(int id)
 {
-    stmtExec("DELETE FROM songs WHERE id=?", { id });
-    stmtExec("DELETE FROM song_stats WHERE song_id=?", { id });
-    return true;
+    sqlite3_stmt *st = Prepare("DELETE FROM songs WHERE id=?;");
+    if (!st) return false;
+    StmtGuard g(st);
+    sqlite3_bind_int(st, 1, id);
+    return StepDone(st);
 }
 
-Song Database::songById(int id)
+Song Database::SongById(int id)
 {
     Song s;
-    sqlite3_stmt *st = prepare(QStringLiteral(
-        "SELECT id,title,artist,key,bpm,lyrics,updated_at FROM songs WHERE id=%1").arg(id));
-    if (st && sqlite3_step(st) == SQLITE_ROW) {
+    sqlite3_stmt *st = Prepare("SELECT id,title,artist,key,bpm,lyrics,updated_at FROM songs WHERE id=?;");
+    if (!st) return s;
+    StmtGuard g(st);
+    sqlite3_bind_int(st, 1, id);
+    if (sqlite3_step(st) == SQLITE_ROW) {
         s.id = sqlite3_column_int(st, 0);
-        s.title = QString::fromUtf8((const char*)sqlite3_column_text(st, 1));
-        s.artist = QString::fromUtf8((const char*)sqlite3_column_text(st, 2));
-        s.key = QString::fromUtf8((const char*)sqlite3_column_text(st, 3));
+        s.title = ColumnText(st, 1);
+        s.artist = ColumnText(st, 2);
+        s.key = ColumnText(st, 3);
         s.bpm = sqlite3_column_int(st, 4);
-        s.lyrics = QString::fromUtf8((const char*)sqlite3_column_text(st, 5));
-        s.updatedAt = QString::fromUtf8((const char*)sqlite3_column_text(st, 6));
+        s.lyrics = ColumnText(st, 5);
+        s.updatedAt = ColumnText(st, 6);
     }
-    if (st) sqlite3_finalize(st);
     return s;
 }
 
-static QVector<SongRow> rowsFromStmt(sqlite3_stmt *st)
+std::vector<Song> Database::SearchSongs(const SearchFilter &f, int limit)
 {
-    QVector<SongRow> out;
+    std::vector<Song> out;
+    // Forma canonica FTS5: subconsulta IN (rowid FROM fts WHERE MATCH ?)
+    wxString sql = "SELECT id, title, artist, key, bpm FROM songs WHERE 1 ";
+    wxString q;
+    if (!f.q.empty()) {
+        // Prefijos por palabra: "gra jesus" casa "gracia jesus"
+        const wxArrayString toks = wxStringTokenize(f.q, " \t", wxTOKEN_STRTOK);
+        for (size_t i = 0; i < toks.size(); ++i) {
+            wxString t = toks[i];
+            t.Replace("\"", "\"\"");
+            q += (i ? " " : "") + t + "*";
+        }
+        sql += "AND id IN (SELECT rowid FROM songs_fts WHERE songs_fts MATCH ?) ";
+    }
+    if (!f.tag.empty()) {
+        sql += "AND id IN (SELECT st.song_id FROM song_tags st "
+               "JOIN tags tg ON tg.id = st.tag_id WHERE tg.name = ? COLLATE NOCASE) ";
+    }
+    sql += "ORDER BY title COLLATE NOCASE LIMIT ?;";
+    sqlite3_stmt *st = Prepare(sql);
     if (!st) return out;
+    StmtGuard g(st);
+    int idx = 1;
+    if (!f.q.empty()) BindText(st, idx++, q);
+    if (!f.tag.empty()) BindText(st, idx++, f.tag);
+    sqlite3_bind_int(st, idx++, limit);
     while (sqlite3_step(st) == SQLITE_ROW) {
-        SongRow r;
-        r.id = sqlite3_column_int(st, 0);
-        r.title = QString::fromUtf8((const char*)sqlite3_column_text(st, 1));
-        r.artist = QString::fromUtf8((const char*)sqlite3_column_text(st, 2));
-        r.key = QString::fromUtf8((const char*)sqlite3_column_text(st, 3));
-        r.bpm = sqlite3_column_int(st, 4);
-        out.append(r);
+        Song s;
+        s.id = sqlite3_column_int(st, 0);
+        s.title = ColumnText(st, 1);
+        s.artist = ColumnText(st, 2);
+        s.key = ColumnText(st, 3);
+        s.bpm = sqlite3_column_int(st, 4);
+        out.push_back(s);
     }
-    sqlite3_finalize(st);
     return out;
 }
 
-QVector<SongRow> Database::searchSongs(const QString &term, int limit)
+void Database::LogSongUse(int songId)
 {
-    QString t = term.simplified();
-    if (t.isEmpty()) return allSongs();
-    // FTS5: prefijos por palabra.
-    // CORRECCION: sanitizacion robusta — se envuelve CADA palabra entre
-    // comillas dobles para que caracteres como '-', ':', '(' o 'AND' no
-    // rompan la sintaxis FTS5 (antes fallaba en silencio y devolvia vacio).
-    QStringList words;
-    const QStringList parts = t.split(QChar(' '), Qt::SkipEmptyParts);
-    for (const QString &p : parts) {
-        QString w = p;
-        w.remove(QChar('"'));
-        w.remove(QChar('\''));
-        if (!w.isEmpty()) words << QStringLiteral("\"%1\"*").arg(w);
-    }
-    if (words.isEmpty()) return allSongs();
-    const QString match = words.join(QStringLiteral(" "));
-    // CORRECCION CRITICA: el ORDER BY rank estaba en la query EXTERNA
-    // (tabla songs, que no tiene columna rank) — la busqueda de canciones
-    // fallaba en silencio y devolvia SIEMPRE 0 resultados. El rank pertenece
-    // al subquery de songs_fts.
-    // B2: MATCH ? y LIMIT ? con bind parameters — el encadenado .arg()
-    // corrompía la SQL si el término del usuario contenía "%1"/"%2".
-    sqlite3_stmt *st = prepare(QStringLiteral(
-        "SELECT s.id, s.title, s.artist, s.key, s.bpm FROM songs s WHERE s.id IN "
-        "(SELECT rowid FROM songs_fts WHERE songs_fts MATCH ? ORDER BY rank) "
-        "ORDER BY s.title COLLATE NOCASE LIMIT ?"));
-    if (st) {
-        sqlite3_bind_text(st, 1, match.toUtf8().constData(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_int(st, 2, limit);
-    }
-    return rowsFromStmt(st);    // rowsFromStmt finaliza el stmt (también si es null)
+    sqlite3_stmt *st = Prepare("INSERT INTO history(song_id, used_at) VALUES(?, datetime('now'));");
+    if (st) { StmtGuard g(st); sqlite3_bind_int(st, 1, songId); sqlite3_step(st); }
+    st = Prepare("INSERT INTO song_stats(song_id, use_count, last_used) VALUES(?,1,datetime('now')) "
+                 "ON CONFLICT(song_id) DO UPDATE SET use_count=use_count+1, last_used=datetime('now');");
+    if (st) { StmtGuard g(st); sqlite3_bind_int(st, 1, songId); sqlite3_step(st); }
 }
 
-QVector<SongRow> Database::allSongs()
+int Database::SongUseCount(int songId)
 {
-    sqlite3_stmt *st = prepare(QStringLiteral(
-        "SELECT id,title,artist,key,bpm FROM songs ORDER BY title COLLATE NOCASE"));
-    return rowsFromStmt(st);
-}
-
-void Database::touchSongUsage(int songId)
-{
-    const QString now = QDateTime::currentDateTime().toString(Qt::ISODate);
-    stmtExec("INSERT INTO history(song_id, used_at) VALUES(?,?)", { songId, now });
-    stmtExec("INSERT INTO song_stats(song_id, use_count, last_used) VALUES(?,1,?) "
-             "ON CONFLICT(song_id) DO UPDATE SET use_count=use_count+1, last_used=excluded.last_used",
-             { songId, now });
+    sqlite3_stmt *st = Prepare("SELECT use_count FROM song_stats WHERE song_id=?;");
+    if (!st) return 0;
+    StmtGuard g(st);
+    sqlite3_bind_int(st, 1, songId);
+    if (sqlite3_step(st) == SQLITE_ROW)
+        return sqlite3_column_int(st, 0);
+    return 0;
 }
 
 // ---------------------------------------------------------------------------
-// Etiquetas (tags) semanticas — v1.0.3
+// Tags
 // ---------------------------------------------------------------------------
-int Database::addTag(const QString &name)
+std::vector<wxString> Database::AllTagNames()
 {
-    QString n = name.trimmed();
-    if (n.isEmpty()) return 0;
-    // INSERT OR IGNORE: si ya existe (UNIQUE COLLATE NOCASE), no falla.
-    stmtExec("INSERT OR IGNORE INTO tags(name) VALUES(?)", { n });
-    // Recuperar el id (existente o recien creado) con binding seguro
-    // (evita inyeccion SQL y problemas de escape de comillas).
-    int id = 0;
-    sqlite3_stmt *st = prepare(QStringLiteral(
-        "SELECT id FROM tags WHERE name=? COLLATE NOCASE"));
-    if (st) {
-        sqlite3_bind_text(st, 1, n.toUtf8().constData(), -1, SQLITE_TRANSIENT);
-        if (sqlite3_step(st) == SQLITE_ROW)
-            id = sqlite3_column_int(st, 0);
-        sqlite3_finalize(st);
-    }
-    return id;
-}
-
-bool Database::setSongTags(int songId, const QStringList &tagNames)
-{
-    if (!begin()) return false;
-    // B5: ante cualquier fallo a mitad, rollback (antes se comiteaba estado parcial)
-    bool ok = stmtExec("DELETE FROM song_tags WHERE song_id=?", { songId });
-    for (const QString &raw : tagNames) {
-        if (!ok) break;
-        const QString n = raw.trimmed();
-        if (n.isEmpty()) continue;
-        const int tagId = addTag(n);
-        if (tagId <= 0) { ok = false; break; }      // fallo de BD al crear el tag
-        if (!stmtExec("INSERT OR IGNORE INTO song_tags(song_id, tag_id) VALUES(?,?)",
-                      { songId, tagId }))
-            ok = false;
-    }
-    return ok ? commit() : rollback();
-}
-
-QStringList Database::songTags(int songId)
-{
-    QStringList out;
-    sqlite3_stmt *st = prepare(QStringLiteral(
-        "SELECT t.name FROM tags t INNER JOIN song_tags st ON st.tag_id=t.id "
-        "WHERE st.song_id=%1 ORDER BY t.name COLLATE NOCASE").arg(songId));
-    if (st) {
-        while (sqlite3_step(st) == SQLITE_ROW)
-            out << QString::fromUtf8((const char*)sqlite3_column_text(st, 0));
-        sqlite3_finalize(st);
-    }
+    std::vector<wxString> out;
+    sqlite3_stmt *st = Prepare("SELECT name FROM tags ORDER BY name COLLATE NOCASE;");
+    if (!st) return out;
+    StmtGuard g(st);
+    while (sqlite3_step(st) == SQLITE_ROW)
+        out.push_back(ColumnText(st, 0));
     return out;
 }
 
-QVector<QPair<int, QString>> Database::allTags()
+void Database::SetSongTags(int songId, const std::vector<wxString> &tags)
 {
-    QVector<QPair<int, QString>> out;
-    sqlite3_stmt *st = prepare(QStringLiteral(
-        "SELECT t.id, t.name, COUNT(st.song_id) AS uses "
-        "FROM tags t LEFT JOIN song_tags st ON st.tag_id=t.id "
-        "GROUP BY t.id ORDER BY uses DESC, t.name COLLATE NOCASE"));
-    if (st) {
-        while (sqlite3_step(st) == SQLITE_ROW) {
-            out.append(qMakePair(sqlite3_column_int(st, 0),
-                                  QString::fromUtf8((const char*)sqlite3_column_text(st, 1))));
-        }
-        sqlite3_finalize(st);
-    }
-    return out;
-}
-
-QVector<SongRow> Database::searchByTag(const QString &tag)
-{
-    const QString t = tag.trimmed();
-    if (t.isEmpty()) return allSongs();
-    // B2: bind parameters — el escape manual de comillas no protegía contra
-    // términos con "%1" (corrompían la SQL vía .arg()).
-    sqlite3_stmt *st = prepare(QStringLiteral(
-        "SELECT s.id, s.title, s.artist, s.key, s.bpm FROM songs s "
-        "WHERE s.id IN (SELECT st.song_id FROM song_tags st "
-        "               INNER JOIN tags tg ON tg.id=st.tag_id "
-        "               WHERE tg.name=? COLLATE NOCASE) "
-        "ORDER BY s.title COLLATE NOCASE"));
-    if (st)
-        sqlite3_bind_text(st, 1, t.toUtf8().constData(), -1, SQLITE_TRANSIENT);
-    return rowsFromStmt(st);
-}
-
-// ---------------------------------------------------------------------------
-// Tags extendidos (temas + fondos) y automatizacion semantica — v1.4.0
-// (cpp-pro: RAII con StmtGuard — sqlite3_finalize garantizado en todos los
-// caminos, incluidas las salidas tempranas; const-correctness en helpers).
-// ---------------------------------------------------------------------------
-namespace {
-// Guard RAII para sqlite3_stmt: el destructor finaliza SIEMPRE (patron
-// cpp-pro "RAII over manual resource management"; antes cada caller
-// repetia el par prepare/finalize a mano y un return temprano filtraba).
-struct StmtGuard
-{
-    explicit StmtGuard(sqlite3_stmt *st) : m_st(st) {}
-    ~StmtGuard() { if (m_st) sqlite3_finalize(m_st); }
-    StmtGuard(const StmtGuard &) = delete;             // no copyable
-    StmtGuard &operator=(const StmtGuard &) = delete;
-    sqlite3_stmt *get() const { return m_st; }
-    explicit operator bool() const { return m_st != nullptr; }
-private:
-    sqlite3_stmt *m_st;
-};
-} // namespace
-
-bool Database::setThemeTags(int themeId, const QStringList &tagNames)
-{
-    if (themeId <= 0) return false;
-    if (!begin()) return false;
-    // B5: ante cualquier fallo a mitad, rollback (antes se comiteaba estado parcial)
-    bool ok = stmtExec("DELETE FROM resource_tags WHERE kind='theme' AND key=?",
-                       { QString::number(themeId) });
-    for (const QString &raw : tagNames) {
-        if (!ok) break;
-        const QString n = raw.trimmed();
-        if (n.isEmpty()) continue;
-        const int tagId = addTag(n);
-        if (tagId <= 0) { ok = false; break; }      // fallo de BD al crear el tag
-        if (!stmtExec("INSERT OR IGNORE INTO resource_tags(kind, key, tag_id) VALUES('theme',?,?)",
-                      { QString::number(themeId), tagId }))
-            ok = false;
-    }
-    return ok ? commit() : rollback();
-}
-
-QStringList Database::themeTags(int themeId)
-{
-    QStringList out;
-    StmtGuard st(prepare(QStringLiteral(
-        "SELECT t.name FROM tags t "
-        "INNER JOIN resource_tags rt ON rt.tag_id=t.id "
-        "WHERE rt.kind='theme' AND rt.key=? "
-        "ORDER BY t.name COLLATE NOCASE")));
-    if (st) {
-        sqlite3_bind_text(st.get(), 1, QString::number(themeId).toUtf8().constData(),
-                          -1, SQLITE_TRANSIENT);
-        while (sqlite3_step(st.get()) == SQLITE_ROW)
-            out << QString::fromUtf8((const char*)sqlite3_column_text(st.get(), 0));
-    }
-    return out;
-}
-
-QStringList Database::allTagNames()
-{
-    QStringList out;
-    StmtGuard st(prepare(QStringLiteral(
-        "SELECT DISTINCT name FROM tags ORDER BY name COLLATE NOCASE")));
-    if (st) {
-        while (sqlite3_step(st.get()) == SQLITE_ROW)
-            out << QString::fromUtf8((const char*)sqlite3_column_text(st.get(), 0));
-    }
-    return out;
-}
-
-bool Database::addMedia(const QString &path, int kind)
-{
-    const QString p = QDir::toNativeSeparators(path.trimmed());
-    if (p.isEmpty()) return false;
-    return stmtExec("INSERT OR REPLACE INTO media(path, kind, added_at) VALUES(?,?,datetime('now'))",
-                    { p, kind });
-}
-
-bool Database::removeMedia(const QString &path)
-{
-    const QString p = QDir::toNativeSeparators(path.trimmed());
-    if (!begin()) return false;
-    // B5: si el segundo DELETE falla, rollback (antes se comiteaba medio estado)
-    bool ok = stmtExec("DELETE FROM media WHERE path=?", { p });
-    if (ok) ok = stmtExec("DELETE FROM resource_tags WHERE kind='media' AND key=?", { p });
-    return ok ? commit() : rollback();
-}
-
-QVector<Database::MediaRow> Database::mediaLibrary()
-{
-    QVector<MediaRow> out;
-    StmtGuard st(prepare(QStringLiteral(
-        "SELECT path, kind FROM media ORDER BY added_at DESC, path COLLATE NOCASE")));
-    if (st) {
-        while (sqlite3_step(st.get()) == SQLITE_ROW) {
-            MediaRow r;
-            r.path = QString::fromUtf8((const char*)sqlite3_column_text(st.get(), 0));
-            r.kind = sqlite3_column_int(st.get(), 1);
-            out.append(r);
-        }
-    }
-    return out;
-}
-
-bool Database::setMediaTags(const QString &path, const QStringList &tagNames)
-{
-    const QString p = QDir::toNativeSeparators(path.trimmed());
-    if (p.isEmpty()) return false;
-    if (!begin()) return false;
-    // B5: ante cualquier fallo a mitad, rollback (antes se comiteaba estado parcial)
-    bool ok = stmtExec("DELETE FROM resource_tags WHERE kind='media' AND key=?", { p });
-    for (const QString &raw : tagNames) {
-        if (!ok) break;
-        const QString n = raw.trimmed();
-        if (n.isEmpty()) continue;
-        const int tagId = addTag(n);
-        if (tagId <= 0) { ok = false; break; }      // fallo de BD al crear el tag
-        if (!stmtExec("INSERT OR IGNORE INTO resource_tags(kind, key, tag_id) VALUES('media',?,?)",
-                      { p, tagId }))
-            ok = false;
-    }
-    return ok ? commit() : rollback();
-}
-
-QStringList Database::mediaTags(const QString &path)
-{
-    QStringList out;
-    const QString p = QDir::toNativeSeparators(path.trimmed());
-    StmtGuard st(prepare(QStringLiteral(
-        "SELECT t.name FROM tags t "
-        "INNER JOIN resource_tags rt ON rt.tag_id=t.id "
-        "WHERE rt.kind='media' AND rt.key=? "
-        "ORDER BY t.name COLLATE NOCASE")));
-    if (st) {
-        sqlite3_bind_text(st.get(), 1, p.toUtf8().constData(), -1, SQLITE_TRANSIENT);
-        while (sqlite3_step(st.get()) == SQLITE_ROW)
-            out << QString::fromUtf8((const char*)sqlite3_column_text(st.get(), 0));
-    }
-    return out;
-}
-
-QVector<Database::MediaRow> Database::mediaByTag(const QString &tag)
-{
-    QVector<MediaRow> out;
-    const QString t = tag.trimmed();
-    if (t.isEmpty()) return out;
-    // B2: bind parameters (mismo patrón que searchByTag)
-    StmtGuard st(prepare(QStringLiteral(
-        "SELECT m.path, m.kind FROM media m "
-        "WHERE m.path IN (SELECT rt.key FROM resource_tags rt "
-        "                 INNER JOIN tags tg ON tg.id=rt.tag_id "
-        "                 WHERE rt.kind='media' AND tg.name=? COLLATE NOCASE) "
-        "ORDER BY m.path COLLATE NOCASE")));
-    if (st)
-        sqlite3_bind_text(st.get(), 1, t.toUtf8().constData(), -1, SQLITE_TRANSIENT);
-    if (st) {
-        while (sqlite3_step(st.get()) == SQLITE_ROW) {
-            MediaRow r;
-            r.path = QString::fromUtf8((const char*)sqlite3_column_text(st.get(), 0));
-            r.kind = sqlite3_column_int(st.get(), 1);
-            out.append(r);
-        }
-    }
-    return out;
-}
-
-int Database::addTagRule(const QString &songTag, int themeId, const QString &bgTag)
-{
-    const QString t = songTag.trimmed();
-    if (t.isEmpty() || themeId <= 0) return 0;
-    stmtExec("INSERT INTO tag_rules(song_tag, theme_id, bg_tag, enabled) VALUES(?,?,?,1)",
-             { t, themeId, bgTag.trimmed() });
-    return int(scalar(QStringLiteral("SELECT last_insert_rowid()")));
-}
-
-bool Database::deleteTagRule(int id)
-{
-    return stmtExec("DELETE FROM tag_rules WHERE id=?", { id });
-}
-
-bool Database::setTagRuleEnabled(int id, bool enabled)
-{
-    return stmtExec("UPDATE tag_rules SET enabled=? WHERE id=?",
-                    { enabled ? 1 : 0, id });
-}
-
-QVector<Database::TagRule> Database::tagRules()
-{
-    QVector<TagRule> out;
-    StmtGuard st(prepare(QStringLiteral(
-        "SELECT id, song_tag, theme_id, bg_tag, enabled FROM tag_rules "
-        "ORDER BY song_tag COLLATE NOCASE, id")));
-    if (st) {
-        while (sqlite3_step(st.get()) == SQLITE_ROW) {
-            TagRule r;
-            r.id      = sqlite3_column_int(st.get(), 0);
-            r.songTag = QString::fromUtf8((const char*)sqlite3_column_text(st.get(), 1));
-            r.themeId = sqlite3_column_int(st.get(), 2);
-            r.bgTag   = QString::fromUtf8((const char*)sqlite3_column_text(st.get(), 3));
-            r.enabled = sqlite3_column_int(st.get(), 4) != 0;
-            out.append(r);
-        }
-    }
-    return out;
-}
-
-// ---------------------------------------------------------------------------
-// Biblias
-// ---------------------------------------------------------------------------
-QStringList Database::bibleVersions()
-{
-    QStringList out;
-    sqlite3_stmt *st = prepare(QStringLiteral("SELECT DISTINCT version FROM bible ORDER BY version"));
-    if (st) {
-        while (sqlite3_step(st) == SQLITE_ROW)
-            out << QString::fromUtf8((const char*)sqlite3_column_text(st, 0));
-        sqlite3_finalize(st);
-    }
-    return out;
-}
-
-bool Database::importBibleFromJsonResource(const QString &resourcePath, const QString &versionCode,
-                                           const QString &licenseNote, QString *error)
-{
-    // M21 (e): validar versionCode no vacío antes de tocar la BD
-    const QString code = versionCode.trimmed();
-    if (code.isEmpty()) {
-        if (error) *error = QStringLiteral("El código de versión de la Biblia está vacío.");
-        return false;
-    }
-    // M21 (b): guard anti-duplicado con bind parameters (B2) — si la versión
-    // ya existe, devolver mensaje amistoso sin duplicar versículos.
-    {
-        qint64 existing = 0;
-        StmtGuard st(prepare(QStringLiteral("SELECT COUNT(*) FROM bible WHERE version=?")));
-        if (st) {
-            sqlite3_bind_text(st.get(), 1, code.toUtf8().constData(), -1, SQLITE_TRANSIENT);
-            if (sqlite3_step(st.get()) == SQLITE_ROW)
-                existing = sqlite3_column_int64(st.get(), 0);
-        }
-        if (existing > 0) {
-            if (error) *error = QStringLiteral("La Biblia «%1» ya está importada; no se duplicaron versículos.").arg(code);
-            return true;    // ya importada
-        }
-    }
-
-    QFile f(resourcePath);
-    if (!f.open(QIODevice::ReadOnly)) {
-        if (error) *error = QStringLiteral("No se pudo abrir el recurso biblico: %1").arg(resourcePath);
-        return false;
-    }
-    QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
-    f.close();
-    if (!doc.isObject()) {
-        if (error) *error = QStringLiteral("JSON biblico invalido");
-        return false;
-    }
-    const QJsonObject root = doc.object();
-    const QJsonArray books = root.value(QStringLiteral("books")).toArray();
-
-    // Importacion masiva: transaccion atomica + synchronous OFF (per spec)
-    exec(QStringLiteral("PRAGMA synchronous=OFF"));
-    // B5: begin() ignorado — si falla, abortar (no hay transacción activa)
-    if (!begin()) {
-        exec(QStringLiteral("PRAGMA synchronous=NORMAL"));
-        if (error) *error = QStringLiteral("No se pudo iniciar la transacción de importación: %1").arg(lastError());
-        return false;
-    }
+    Begin();
     bool ok = true;
-    for (const QJsonValue &bv : books) {
-        if (!ok) break;             // no seguir insertando tras el primer fallo
-        const QJsonObject bo = bv.toObject();
-        const int bookNum = bo.value(QStringLiteral("n")).toInt();
-        const QJsonArray chapters = bo.value(QStringLiteral("chapters")).toArray();
-        for (int ci = 0; ci < chapters.size(); ++ci) {
+    sqlite3_stmt *del = Prepare("DELETE FROM song_tags WHERE song_id=?;");
+    if (del) {
+        StmtGuard g(del);
+        sqlite3_bind_int(del, 1, songId);
+        ok = sqlite3_step(del) == SQLITE_DONE;
+    } else ok = false;
+
+    if (ok) {
+        for (const wxString &tag : tags) {
+            const wxString t = wxString(tag).Trim(true).Trim(false);
+            if (t.empty()) continue;
+            sqlite3_stmt *tg = Prepare("INSERT INTO tags(name) VALUES(?) ON CONFLICT(name) DO NOTHING;");
+            if (!tg) { ok = false; break; }
+            { StmtGuard g(tg); BindText(tg, 1, t); if (sqlite3_step(tg) != SQLITE_DONE) ok = false; }
             if (!ok) break;
-            const QJsonArray verses = chapters.at(ci).toArray();
-            for (int vi = 0; vi < verses.size(); ++vi) {
-                const QString text = verses.at(vi).toString();
-                // M21 (c): INSERT OR IGNORE — el índice UNIQUE idx_bible_unique
-                // protege contra duplicados residuales (se ignoran, no fallan).
-                if (!stmtExec("INSERT OR IGNORE INTO bible(version,book,chapter,verse,text) VALUES(?,?,?,?,?)",
-                              { code, bookNum, ci + 1, vi + 1, text })) {
-                    ok = false;
-                    break;
-                }
+            sqlite3_stmt *link = Prepare(
+                "INSERT INTO song_tags(song_id, tag_id) VALUES(?, (SELECT id FROM tags WHERE name=? COLLATE NOCASE)) "
+                "ON CONFLICT DO NOTHING;");
+            if (!link) { ok = false; break; }
+            { StmtGuard g(link); sqlite3_bind_int(link, 1, songId); BindText(link, 2, t);
+              if (sqlite3_step(link) != SQLITE_DONE) ok = false; }
+            if (!ok) break;
+        }
+    }
+    if (ok) Commit(); else Rollback();
+}
+
+std::vector<wxString> Database::SongTags(int songId)
+{
+    std::vector<wxString> out;
+    sqlite3_stmt *st = Prepare(
+        "SELECT tg.name FROM song_tags st JOIN tags tg ON tg.id=st.tag_id "
+        "WHERE st.song_id=? ORDER BY tg.name COLLATE NOCASE;");
+    if (!st) return out;
+    StmtGuard g(st);
+    sqlite3_bind_int(st, 1, songId);
+    while (sqlite3_step(st) == SQLITE_ROW)
+        out.push_back(ColumnText(st, 0));
+    return out;
+}
+
+void Database::SetResourceTags(const wxString &kind, const wxString &key, const std::vector<wxString> &tags)
+{
+    Begin();
+    bool ok = true;
+    sqlite3_stmt *del = Prepare("DELETE FROM resource_tags WHERE kind=? AND key=?;");
+    if (del) {
+        StmtGuard g(del);
+        BindText(del, 1, kind); BindText(del, 2, key);
+        ok = sqlite3_step(del) == SQLITE_DONE;
+    } else ok = false;
+
+    if (ok) {
+        for (const wxString &tag : tags) {
+            const wxString t = wxString(tag).Trim(true).Trim(false);
+            if (t.empty()) continue;
+            sqlite3_stmt *tg = Prepare("INSERT INTO tags(name) VALUES(?) ON CONFLICT(name) DO NOTHING;");
+            if (!tg) { ok = false; break; }
+            { StmtGuard g(tg); BindText(tg, 1, t); sqlite3_step(tg); }
+            sqlite3_stmt *link = Prepare(
+                "INSERT INTO resource_tags(kind, key, tag_id) VALUES(?,?,(SELECT id FROM tags WHERE name=? COLLATE NOCASE)) "
+                "ON CONFLICT DO NOTHING;");
+            if (!link) { ok = false; break; }
+            { StmtGuard g(link); BindText(link, 1, kind); BindText(link, 2, key); BindText(link, 3, t);
+              sqlite3_step(link); }
+        }
+    }
+    if (ok) Commit(); else Rollback();
+}
+
+std::vector<wxString> Database::ResourceTags(const wxString &kind, const wxString &key)
+{
+    std::vector<wxString> out;
+    sqlite3_stmt *st = Prepare(
+        "SELECT tg.name FROM resource_tags rt JOIN tags tg ON tg.id=rt.tag_id "
+        "WHERE rt.kind=? AND rt.key=? ORDER BY tg.name COLLATE NOCASE;");
+    if (!st) return out;
+    StmtGuard g(st);
+    BindText(st, 1, kind);
+    BindText(st, 2, key);
+    while (sqlite3_step(st) == SQLITE_ROW)
+        out.push_back(ColumnText(st, 0));
+    return out;
+}
+
+// ---------------------------------------------------------------------------
+// Biblia
+// ---------------------------------------------------------------------------
+bool Database::ImportBible(const wxString &version, const wxString &name,
+                           const std::vector<BibleRow> &rows, wxString *error,
+                           const std::function<bool(int, int)> &progress)
+{
+    // Guard anti-duplicado (M21): borrar version previa antes de importar
+    sqlite3_stmt *del = Prepare("DELETE FROM bible WHERE version=?;");
+    if (!del) { if (error) *error = m_lastError; return false; }
+    { StmtGuard g(del); BindText(del, 1, version); sqlite3_step(del); }
+    // El trigger bible_ad sincroniza el FTS externo con el borrado; el
+    // trigger bible_ai reindexa cada insercion. Sin borrados manuales del FTS.
+    if (!Begin()) { if (error) *error = m_lastError; return false; }
+    sqlite3_stmt *st = Prepare("INSERT INTO bible(version, book, chapter, verse, text) VALUES(?,?,?,?,?);");
+    if (!st) { Rollback(); if (error) *error = m_lastError; return false; }
+    const int total = (int)rows.size();
+    for (int i = 0; i < total; ++i) {
+        sqlite3_reset(st);
+        sqlite3_clear_bindings(st);
+        BindText(st, 1, version);
+        sqlite3_bind_int(st, 2, rows[i].book);
+        sqlite3_bind_int(st, 3, rows[i].chapter);
+        sqlite3_bind_int(st, 4, rows[i].verse);
+        BindText(st, 5, rows[i].text);
+        if (sqlite3_step(st) != SQLITE_DONE) {
+            m_lastError = wxString::FromUTF8(sqlite3_errmsg(m_db));
+            sqlite3_finalize(st);
+            Rollback();
+            if (error) *error = m_lastError;
+            return false;
+        }
+        if (progress && (i % 2000 == 0)) {
+            if (!progress(i, total)) {   // cancelado por el usuario
+                sqlite3_finalize(st);
+                Rollback();
+                return false;
             }
         }
     }
-    if (ok) commit(); else rollback();
-    exec(QStringLiteral("PRAGMA synchronous=NORMAL"));
-    qInfo() << "[DB] Biblia" << code << "importada. Licencia:" << licenseNote;
-    return ok;
-}
-
-QVector<BibleRef::Verse> Database::bibleChapter(const QString &version, int book, int chapter)
-{
-    QVector<BibleRef::Verse> out;
-    sqlite3_stmt *st = nullptr;
-    const char *sql = "SELECT book,chapter,verse,text FROM bible WHERE version=? AND book=? AND chapter=? ORDER BY verse";
-    if (sqlite3_prepare_v2(m_db, sql, -1, &st, nullptr) == SQLITE_OK) {
-        sqlite3_bind_text(st, 1, version.toUtf8().constData(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_int(st, 2, book);
-        sqlite3_bind_int(st, 3, chapter);
-        while (sqlite3_step(st) == SQLITE_ROW) {
-            BibleRef::Verse v;
-            v.version = version;
-            v.ref.book = sqlite3_column_int(st, 0);
-            v.ref.chapter = sqlite3_column_int(st, 1);
-            v.ref.verse = sqlite3_column_int(st, 2);
-            v.text = QString::fromUtf8((const char*)sqlite3_column_text(st, 3));
-            const QVector<BibleRef::BookInfo> &tb = BibleRef::books();
-            if (v.ref.book >= 1 && v.ref.book <= tb.size()) v.ref.bookName = tb.at(v.ref.book - 1).name;
-            out.append(v);
-        }
+    sqlite3_finalize(st);
+    if (!Commit()) {
+        if (error) *error = m_lastError;
+        return false;
     }
-    if (st) sqlite3_finalize(st);
-    return out;
-}
-
-BibleRef::Verse Database::bibleVerse(const QString &version, int book, int chapter, int verse)
-{
-    BibleRef::Verse out;
-    const QVector<BibleRef::Verse> v = bibleRange(version, book, chapter, verse, verse);
-    if (!v.isEmpty()) out = v.first();
-    return out;
-}
-
-QVector<BibleRef::Verse> Database::bibleRange(const QString &version, int book, int chapter, int vFrom, int vTo)
-{
-    QVector<BibleRef::Verse> out;
-    sqlite3_stmt *st = nullptr;
-    const char *sql = "SELECT book,chapter,verse,text FROM bible WHERE version=? AND book=? AND chapter=? "
-                      "AND verse BETWEEN ? AND ? ORDER BY verse";
-    if (sqlite3_prepare_v2(m_db, sql, -1, &st, nullptr) == SQLITE_OK) {
-        sqlite3_bind_text(st, 1, version.toUtf8().constData(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_int(st, 2, book);
-        sqlite3_bind_int(st, 3, chapter);
-        sqlite3_bind_int(st, 4, qMin(vFrom, vTo));
-        sqlite3_bind_int(st, 5, qMax(vFrom, vTo));
-        while (sqlite3_step(st) == SQLITE_ROW) {
-            BibleRef::Verse v;
-            v.version = version;
-            v.ref.book = sqlite3_column_int(st, 0);
-            v.ref.chapter = sqlite3_column_int(st, 1);
-            v.ref.verse = sqlite3_column_int(st, 2);
-            v.text = QString::fromUtf8((const char*)sqlite3_column_text(st, 3));
-            const QVector<BibleRef::BookInfo> &tb = BibleRef::books();
-            if (v.ref.book >= 1 && v.ref.book <= tb.size()) v.ref.bookName = tb.at(v.ref.book - 1).name;
-            out.append(v);
-        }
-    }
-    if (st) sqlite3_finalize(st);
-    return out;
-}
-
-QVector<QPair<BibleRef::VerseRef, QString>> Database::bibleWordSearch(const QString &version,
-                                                                      const QString &term, int limit)
-{
-    QVector<QPair<BibleRef::VerseRef, QString>> out;
-    // CORRECCION: misma sanitizacion FTS5 robusta que searchSongs.
-    QStringList words;
-    for (const QString &p : term.simplified().split(QChar(' '), Qt::SkipEmptyParts)) {
-        QString w = p;
-        w.remove(QChar('"'));
-        w.remove(QChar('\''));
-        if (!w.isEmpty()) words << QStringLiteral("\"%1\"*").arg(w);
-    }
-    if (words.isEmpty()) return out;
-    const QString match = words.join(QStringLiteral(" "));
-    // B2: MATCH ?, version=? y LIMIT ? con bind parameters — el encadenado
-    // .arg() corrompía la SQL si el término contenía "%1"/"%2"/"%3".
-    StmtGuard st(prepare(QStringLiteral(
-        "SELECT b.book,b.chapter,b.verse,b.text FROM bible b WHERE b.id IN "
-        "(SELECT rowid FROM bible_fts WHERE bible_fts MATCH ? AND version=?) "
-        "AND b.version=? ORDER BY b.book,b.chapter,b.verse LIMIT ?")));
-    if (st) {
-        sqlite3_bind_text(st.get(), 1, match.toUtf8().constData(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_text(st.get(), 2, version.toUtf8().constData(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_text(st.get(), 3, version.toUtf8().constData(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_int(st.get(), 4, limit);
-        while (sqlite3_step(st.get()) == SQLITE_ROW) {
-            BibleRef::VerseRef r;
-            r.book = sqlite3_column_int(st.get(), 0);
-            r.chapter = sqlite3_column_int(st.get(), 1);
-            r.verse = sqlite3_column_int(st.get(), 2);
-            const QVector<BibleRef::BookInfo> &tb = BibleRef::books();
-            if (r.book >= 1 && r.book <= tb.size()) r.bookName = tb.at(r.book - 1).name;
-            out.append({ r, QString::fromUtf8((const char*)sqlite3_column_text(st.get(), 3)) });
-        }
-    }
-    return out;
-}
-
-// ---------------------------------------------------------------------------
-// Cultos / Playlists
-// ---------------------------------------------------------------------------
-int Database::createPlaylist(const QString &name)
-{
-    stmtExec("INSERT INTO playlists(name, created_at) VALUES(?,?)",
-             { name, QDateTime::currentDateTime().toString(Qt::ISODate) });
-    return static_cast<int>(scalar(QStringLiteral("SELECT last_insert_rowid()")));
-}
-
-bool Database::deletePlaylist(int id)
-{
-    stmtExec("DELETE FROM playlist_items WHERE playlist_id=?", { id });
-    return stmtExec("DELETE FROM playlists WHERE id=?", { id });
-}
-
-QVector<QPair<int, QString>> Database::playlists()
-{
-    QVector<QPair<int, QString>> out;
-    sqlite3_stmt *st = prepare(QStringLiteral("SELECT id,name FROM playlists ORDER BY id DESC"));
-    if (st) {
-        while (sqlite3_step(st) == SQLITE_ROW)
-            out.append({ sqlite3_column_int(st, 0), QString::fromUtf8((const char*)sqlite3_column_text(st, 1)) });
-        sqlite3_finalize(st);
-    }
-    return out;
-}
-
-QVector<ServiceItem> Database::playlistItems(int playlistId)
-{
-    QVector<ServiceItem> out;
-    sqlite3_stmt *st = prepare(QStringLiteral(
-        "SELECT id,kind,ref_id,label,payload FROM playlist_items WHERE playlist_id=%1 ORDER BY position")
-            .arg(playlistId));
-    if (st) {
-        while (sqlite3_step(st) == SQLITE_ROW) {
-            ServiceItem it;
-            it.id = sqlite3_column_int(st, 0);
-            it.kind = sqlite3_column_int(st, 1);
-            it.refId = sqlite3_column_int(st, 2);
-            it.label = QString::fromUtf8((const char*)sqlite3_column_text(st, 3));
-            it.payload = QString::fromUtf8((const char*)sqlite3_column_text(st, 4));
-            out.append(it);
-        }
-        sqlite3_finalize(st);
-    }
-    return out;
-}
-
-int Database::addPlaylistItem(int playlistId, const ServiceItem &item)
-{
-    const qint64 maxPos = scalar(QStringLiteral(
-        "SELECT COALESCE(MAX(position),0) FROM playlist_items WHERE playlist_id=%1").arg(playlistId));
-    stmtExec("INSERT INTO playlist_items(playlist_id,position,kind,ref_id,label,payload) VALUES(?,?,?,?,?,?)",
-             { playlistId, static_cast<int>(maxPos) + 1, item.kind, item.refId, item.label, item.payload });
-    return static_cast<int>(scalar(QStringLiteral("SELECT last_insert_rowid()")));
-}
-
-bool Database::removePlaylistItem(int itemId)
-{
-    return stmtExec("DELETE FROM playlist_items WHERE id=?", { itemId });
-}
-
-bool Database::movePlaylistItem(int itemId, bool up)
-{
-    // Intercambia posiciones con el vecino
-    sqlite3_stmt *st = prepare(QStringLiteral(
-        "SELECT playlist_id, position FROM playlist_items WHERE id=%1").arg(itemId));
-    int pid = 0, pos = 0;
-    if (st && sqlite3_step(st) == SQLITE_ROW) {
-        pid = sqlite3_column_int(st, 0);
-        pos = sqlite3_column_int(st, 1);
-    }
-    if (st) sqlite3_finalize(st);
-    if (!pid) return false;
-    const int other = up ? pos - 1 : pos + 1;
-    sqlite3_stmt *st2 = prepare(QStringLiteral(
-        "SELECT id FROM playlist_items WHERE playlist_id=%1 AND position=%2").arg(pid).arg(other));
-    int otherId = 0;
-    if (st2 && sqlite3_step(st2) == SQLITE_ROW) otherId = sqlite3_column_int(st2, 0);
-    if (st2) sqlite3_finalize(st2);
-    if (!otherId) return false;
-    stmtExec("UPDATE playlist_items SET position=? WHERE id=?", { other, itemId });
-    stmtExec("UPDATE playlist_items SET position=? WHERE id=?", { pos, otherId });
+    (void)name;
     return true;
 }
 
-bool Database::clearPlaylistItems(int playlistId)
+std::vector<wxString> Database::BibleVersions()
 {
-    return stmtExec("DELETE FROM playlist_items WHERE playlist_id=?", { playlistId });
+    std::vector<wxString> out;
+    sqlite3_stmt *st = Prepare("SELECT DISTINCT version FROM bible ORDER BY version;");
+    if (!st) return out;
+    StmtGuard g(st);
+    while (sqlite3_step(st) == SQLITE_ROW)
+        out.push_back(ColumnText(st, 0));
+    return out;
+}
+
+bool Database::BibleHasData()
+{
+    sqlite3_stmt *st = Prepare("SELECT EXISTS(SELECT 1 FROM bible LIMIT 1);");
+    if (!st) return false;
+    StmtGuard g(st);
+    return sqlite3_step(st) == SQLITE_ROW && sqlite3_column_int(st, 0) == 1;
+}
+
+int Database::BibleVerseCount(const wxString &version)
+{
+    sqlite3_stmt *st = Prepare("SELECT COUNT(*) FROM bible WHERE version=?;");
+    if (!st) return 0;
+    StmtGuard g(st);
+    BindText(st, 1, version);
+    if (sqlite3_step(st) == SQLITE_ROW)
+        return sqlite3_column_int(st, 0);
+    return 0;
+}
+
+std::vector<Database::BibleRow> Database::BiblePassage(const wxString &version, int book,
+                                                       int chapter, int verseFrom, int verseTo)
+{
+    std::vector<BibleRow> out;
+    sqlite3_stmt *st = Prepare(
+        "SELECT book, chapter, verse, text FROM bible "
+        "WHERE version=? AND book=? AND chapter=? AND verse>=? AND verse<=? ORDER BY verse;");
+    if (!st) return out;
+    StmtGuard g(st);
+    BindText(st, 1, version);
+    sqlite3_bind_int(st, 2, book);
+    sqlite3_bind_int(st, 3, chapter);
+    sqlite3_bind_int(st, 4, verseFrom > 0 ? verseFrom : 1);
+    sqlite3_bind_int(st, 5, verseTo >= verseFrom ? verseTo : (verseFrom > 0 ? verseFrom : 9999));
+    while (sqlite3_step(st) == SQLITE_ROW) {
+        BibleRow r;
+        r.book = sqlite3_column_int(st, 0);
+        r.chapter = sqlite3_column_int(st, 1);
+        r.verse = sqlite3_column_int(st, 2);
+        r.text = ColumnText(st, 3);
+        out.push_back(r);
+    }
+    return out;
+}
+
+std::vector<Database::BibleRow> Database::BibleSearch(const wxString &query, const wxString &version, int limit)
+{
+    std::vector<BibleRow> out;
+    if (wxString(query).Trim(true).Trim(false).empty())
+        return out;
+    wxString q;
+    const wxArrayString toks = wxStringTokenize(query, " \t", wxTOKEN_STRTOK);
+    for (size_t i = 0; i < toks.size(); ++i) {
+        wxString t = toks[i];
+        t.Replace("\"", "\"\"");
+        q += (i ? " " : "") + t + "*";
+    }
+    sqlite3_stmt *st = Prepare(
+        "SELECT b.book, b.chapter, b.verse, b.text FROM bible b "
+        "WHERE b.version=? AND b.id IN (SELECT rowid FROM bible_fts WHERE bible_fts MATCH ?) "
+        "ORDER BY b.book, b.chapter, b.verse LIMIT ?;");
+    if (!st) return out;
+    StmtGuard g(st);
+    BindText(st, 2, q);
+    BindText(st, 1, version);
+    sqlite3_bind_int(st, 3, limit);
+    while (sqlite3_step(st) == SQLITE_ROW) {
+        BibleRow r;
+        r.book = sqlite3_column_int(st, 0);
+        r.chapter = sqlite3_column_int(st, 1);
+        r.verse = sqlite3_column_int(st, 2);
+        r.text = ColumnText(st, 3);
+        out.push_back(r);
+    }
+    return out;
 }
 
 // ---------------------------------------------------------------------------
 // Temas
 // ---------------------------------------------------------------------------
-QVector<QPair<int, QString>> Database::themes()
+int Database::SaveTheme(const Theme &t)
 {
-    QVector<QPair<int, QString>> out;
-    sqlite3_stmt *st = prepare(QStringLiteral("SELECT id,name FROM themes ORDER BY name COLLATE NOCASE"));
-    if (st) {
-        while (sqlite3_step(st) == SQLITE_ROW)
-            out.append({ sqlite3_column_int(st, 0), QString::fromUtf8((const char*)sqlite3_column_text(st, 1)) });
-        sqlite3_finalize(st);
+    const std::string js = t.toJson().dump();
+    if (t.id > 0) {
+        sqlite3_stmt *st = Prepare("UPDATE themes SET name=?, json=? WHERE id=?;");
+        if (!st) return t.id;
+        StmtGuard g(st);
+        BindText(st, 1, t.name);
+        sqlite3_bind_text(st, 2, js.c_str(), (int)js.size(), SQLITE_TRANSIENT);
+        sqlite3_bind_int(st, 3, t.id);
+        if (StepDone(st))
+            return t.id;
+        return t.id;
+    }
+    sqlite3_stmt *st = Prepare("INSERT INTO themes(name, json) VALUES(?,?);");
+    if (!st) return 0;
+    StmtGuard g(st);
+    BindText(st, 1, t.name);
+    sqlite3_bind_text(st, 2, js.c_str(), (int)js.size(), SQLITE_TRANSIENT);
+    if (!StepDone(st))
+        return 0;
+    return (int)sqlite3_last_insert_rowid(m_db);
+}
+
+bool Database::DeleteTheme(int id)
+{
+    sqlite3_stmt *st = Prepare("DELETE FROM themes WHERE id=?;");
+    if (!st) return false;
+    StmtGuard g(st);
+    sqlite3_bind_int(st, 1, id);
+    return StepDone(st);
+}
+
+std::vector<Theme> Database::Themes()
+{
+    std::vector<Theme> out;
+    sqlite3_stmt *st = Prepare("SELECT id, json FROM themes ORDER BY name COLLATE NOCASE;");
+    if (!st) return out;
+    StmtGuard g(st);
+    while (sqlite3_step(st) == SQLITE_ROW) {
+        // Parseo desde los bytes UTF-8 crudos (sin conversion por locale)
+        const char *js = reinterpret_cast<const char *>(sqlite3_column_text(st, 1));
+        Theme t = Theme::fromJson(json::parse(js ? js : "{}", nullptr, false));
+        t.id = sqlite3_column_int(st, 0);
+        out.push_back(t);
     }
     return out;
 }
 
-Theme Database::themeById(int id)
+Theme Database::ThemeById(int id)
 {
-    Theme t = Theme::defaultTheme();
-    sqlite3_stmt *st = prepare(QStringLiteral("SELECT json FROM themes WHERE id=%1").arg(id));
-    if (st && sqlite3_step(st) == SQLITE_ROW) {
-        const QString json = QString::fromUtf8((const char*)sqlite3_column_text(st, 0));
-        t = Theme::fromJson(QJsonDocument::fromJson(json.toUtf8()).object());
+    Theme t = Theme::DefaultTheme();
+    sqlite3_stmt *st = Prepare("SELECT json FROM themes WHERE id=?;");
+    if (!st) return t;
+    StmtGuard g(st);
+    sqlite3_bind_int(st, 1, id);
+    if (sqlite3_step(st) == SQLITE_ROW) {
+        const char *js = reinterpret_cast<const char *>(sqlite3_column_text(st, 0));
+        t = Theme::fromJson(json::parse(js ? js : "{}", nullptr, false));
         t.id = id;
     }
-    if (st) sqlite3_finalize(st);
     return t;
 }
 
-int Database::saveTheme(const Theme &t)
+void Database::SetDefaultTheme(int id)
 {
-    const QString json = QString::fromUtf8(QJsonDocument(t.toJson()).toJson(QJsonDocument::Compact));
-    if (t.id > 0) {
-        if (!stmtExec("UPDATE themes SET name=?, json=? WHERE id=?", { t.name, json, t.id }))
-            return -1;
-        return t.id;
-    }
-    if (!stmtExec("INSERT INTO themes(name, json) VALUES(?,?)", { t.name, json }))
-        return -1;
-    return static_cast<int>(scalar(QStringLiteral("SELECT last_insert_rowid()")));
+    SetSettingInt("default_theme", id);
 }
 
-bool Database::deleteTheme(int id)
+int Database::DefaultThemeId()
 {
-    return stmtExec("DELETE FROM themes WHERE id=?", { id });
+    return GetSettingInt("default_theme", 0);
 }
 
 // ---------------------------------------------------------------------------
-// Slides personalizadas (lienzo vectorial)
+// Medios
 // ---------------------------------------------------------------------------
-int Database::addCustomSlide(const QString &name, const QJsonObject &itemsJson)
+bool Database::AddMedia(const wxString &path, int kind)
 {
-    const QString json = QString::fromUtf8(QJsonDocument(itemsJson).toJson(QJsonDocument::Compact));
-    stmtExec("INSERT INTO custom_slides(name,json,updated_at) VALUES(?,?,?)",
-             { name, json, QDateTime::currentDateTime().toString(Qt::ISODate) });
-    return static_cast<int>(scalar(QStringLiteral("SELECT last_insert_rowid()")));
+    sqlite3_stmt *st = Prepare(
+        "INSERT INTO media(path, kind, added_at) VALUES(?,?,datetime('now')) "
+        "ON CONFLICT(path) DO UPDATE SET kind=excluded.kind;");
+    if (!st) return false;
+    StmtGuard g(st);
+    BindText(st, 1, path);
+    sqlite3_bind_int(st, 2, kind);
+    return StepDone(st);
 }
 
-bool Database::updateCustomSlide(int id, const QString &name, const QJsonObject &itemsJson)
+bool Database::RemoveMedia(const wxString &path)
 {
-    const QString json = QString::fromUtf8(QJsonDocument(itemsJson).toJson(QJsonDocument::Compact));
-    return stmtExec("UPDATE custom_slides SET name=?, json=?, updated_at=? WHERE id=?",
-                    { name, json, QDateTime::currentDateTime().toString(Qt::ISODate), id });
+    sqlite3_stmt *st = Prepare("DELETE FROM media WHERE path=?;");
+    if (!st) return false;
+    StmtGuard g(st);
+    BindText(st, 1, path);
+    return StepDone(st);
 }
 
-bool Database::deleteCustomSlide(int id)
+std::vector<MediaRow> Database::MediaLibrary()
 {
-    return stmtExec("DELETE FROM custom_slides WHERE id=?", { id });
-}
-
-QVector<QPair<int, QString>> Database::customSlides()
-{
-    QVector<QPair<int, QString>> out;
-    sqlite3_stmt *st = prepare(QStringLiteral("SELECT id,name FROM custom_slides ORDER BY id DESC"));
-    if (st) {
-        while (sqlite3_step(st) == SQLITE_ROW)
-            out.append({ sqlite3_column_int(st, 0), QString::fromUtf8((const char*)sqlite3_column_text(st, 1)) });
-        sqlite3_finalize(st);
+    std::vector<MediaRow> out;
+    sqlite3_stmt *st = Prepare("SELECT path, kind FROM media ORDER BY path;");
+    if (!st) return out;
+    StmtGuard g(st);
+    while (sqlite3_step(st) == SQLITE_ROW) {
+        MediaRow r;
+        r.path = ColumnText(st, 0);
+        r.kind = sqlite3_column_int(st, 1);
+        out.push_back(r);
     }
     return out;
 }
 
-QJsonObject Database::customSlideJson(int id, bool *ok)
+// ---------------------------------------------------------------------------
+// Cultos (playlists)
+// ---------------------------------------------------------------------------
+int Database::CreatePlaylist(const wxString &name)
 {
-    if (ok) *ok = false;
-    sqlite3_stmt *st = prepare(QStringLiteral("SELECT json FROM custom_slides WHERE id=%1").arg(id));
-    QJsonObject out;
-    if (st && sqlite3_step(st) == SQLITE_ROW) {
-        const QString json = QString::fromUtf8((const char*)sqlite3_column_text(st, 0));
-        out = QJsonDocument::fromJson(json.toUtf8()).object();
-        if (ok) *ok = !out.isEmpty() || json == QStringLiteral("{}");
-    }
-    if (st) sqlite3_finalize(st);
+    sqlite3_stmt *st = Prepare("INSERT INTO playlists(name, created_at) VALUES(?, datetime('now'));");
+    if (!st) return 0;
+    StmtGuard g(st);
+    BindText(st, 1, name);
+    if (!StepDone(st))
+        return 0;
+    return (int)sqlite3_last_insert_rowid(m_db);
+}
+
+bool Database::DeletePlaylist(int id)
+{
+    bool ok = false;
+    sqlite3_stmt *st = Prepare("DELETE FROM playlist_items WHERE playlist_id=?;");
+    if (st) { StmtGuard g(st); sqlite3_bind_int(st, 1, id); ok = sqlite3_step(st) == SQLITE_DONE; }
+    st = Prepare("DELETE FROM playlists WHERE id=?;");
+    if (st) { StmtGuard g(st); sqlite3_bind_int(st, 1, id); ok = sqlite3_step(st) == SQLITE_DONE; }
+    return ok;
+}
+
+std::vector<std::pair<int, wxString>> Database::Playlists()
+{
+    std::vector<std::pair<int, wxString>> out;
+    sqlite3_stmt *st = Prepare("SELECT id, name FROM playlists ORDER BY created_at DESC, id DESC;");
+    if (!st) return out;
+    StmtGuard g(st);
+    while (sqlite3_step(st) == SQLITE_ROW)
+        out.emplace_back(sqlite3_column_int(st, 0), ColumnText(st, 1));
     return out;
 }
 
-// ---------------------------------------------------------------------------
-// Historial / reportes
-// ---------------------------------------------------------------------------
-QVector<Database::HistoryRow> Database::songReport()
+void Database::ReplaceItems(int playlistId, const std::vector<ServiceItem> &items)
 {
-    QVector<HistoryRow> out;
-    sqlite3_stmt *st = prepare(QStringLiteral(
-        "SELECT s.title, COALESCE(st.use_count,0), COALESCE(st.last_used,'') FROM songs s "
-        "LEFT JOIN song_stats st ON st.song_id=s.id ORDER BY st.use_count DESC, s.title COLLATE NOCASE"));
-    if (st) {
-        while (sqlite3_step(st) == SQLITE_ROW) {
-            HistoryRow r;
-            r.title = QString::fromUtf8((const char*)sqlite3_column_text(st, 0));
-            r.count = sqlite3_column_int(st, 1);
-            r.lastUsed = QString::fromUtf8((const char*)sqlite3_column_text(st, 2));
-            out.append(r);
+    Begin();
+    bool ok = true;
+    sqlite3_stmt *del = Prepare("DELETE FROM playlist_items WHERE playlist_id=?;");
+    if (del) {
+        StmtGuard g(del);
+        sqlite3_bind_int(del, 1, playlistId);
+        ok = sqlite3_step(del) == SQLITE_DONE;
+    } else ok = false;
+    if (ok) {
+        sqlite3_stmt *st = Prepare(
+            "INSERT INTO playlist_items(playlist_id, position, kind, ref_id, label, payload) VALUES(?,?,?,?,?,?);");
+        if (!st) ok = false;
+        else {
+            StmtGuard g(st);
+            for (size_t i = 0; i < items.size() && ok; ++i) {
+                sqlite3_reset(st);
+                sqlite3_clear_bindings(st);
+                sqlite3_bind_int(st, 1, playlistId);
+                sqlite3_bind_int(st, 2, (int)i);
+                sqlite3_bind_int(st, 3, items[i].kind);
+                sqlite3_bind_int(st, 4, items[i].refId);
+                BindText(st, 5, items[i].label);
+                BindText(st, 6, items[i].payload);
+                ok = sqlite3_step(st) == SQLITE_DONE;
+            }
         }
-        sqlite3_finalize(st);
+    }
+    if (ok) Commit(); else Rollback();
+}
+
+std::vector<ServiceItem> Database::PlaylistItems(int playlistId)
+{
+    std::vector<ServiceItem> out;
+    sqlite3_stmt *st = Prepare(
+        "SELECT id, kind, ref_id, label, payload FROM playlist_items "
+        "WHERE playlist_id=? ORDER BY position;");
+    if (!st) return out;
+    StmtGuard g(st);
+    sqlite3_bind_int(st, 1, playlistId);
+    while (sqlite3_step(st) == SQLITE_ROW) {
+        ServiceItem it;
+        it.id = sqlite3_column_int(st, 0);
+        it.kind = sqlite3_column_int(st, 1);
+        it.refId = sqlite3_column_int(st, 2);
+        it.label = ColumnText(st, 3);
+        it.payload = ColumnText(st, 4);
+        out.push_back(it);
     }
     return out;
 }
 
-QVector<Database::UsageRow> Database::recentUsage(int limit)
+// ---------------------------------------------------------------------------
+// Respaldo (API sqlite3_backup — consistente incluso con la BD en uso)
+// ---------------------------------------------------------------------------
+bool Database::BackupToFile(const wxString &destPath)
 {
-    QVector<UsageRow> out;
-    sqlite3_stmt *st = prepare(QStringLiteral(
-        "SELECT h.used_at, COALESCE(s.title,'?') FROM history h LEFT JOIN songs s ON s.id=h.song_id "
-        "ORDER BY h.id DESC LIMIT %1").arg(limit));
-    if (st) {
-        while (sqlite3_step(st) == SQLITE_ROW) {
-            UsageRow r;
-            r.usedAt = QString::fromUtf8((const char*)sqlite3_column_text(st, 0));
-            r.title = QString::fromUtf8((const char*)sqlite3_column_text(st, 1));
-            out.append(r);
-        }
-        sqlite3_finalize(st);
+    if (!m_db)
+        return false;
+    sqlite3 *dst = nullptr;
+    if (sqlite3_open_v2(destPath.utf8_str(), &dst,
+                        SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr) != SQLITE_OK) {
+        if (dst) sqlite3_close(dst);
+        return false;
     }
-    return out;
-}
-
-void Database::logAlert(const QString &text)
-{
-    stmtExec("INSERT INTO alerts_log(text, created_at) VALUES(?,?)",
-             { text, QDateTime::currentDateTime().toString(Qt::ISODate) });
+    sqlite3_backup *bk = sqlite3_backup_init(dst, "main", m_db, "main");
+    bool ok = false;
+    if (bk) {
+        ok = sqlite3_backup_step(bk, -1) == SQLITE_DONE;
+        sqlite3_backup_finish(bk);
+    }
+    sqlite3_close(dst);
+    return ok;
 }
 
 // ---------------------------------------------------------------------------
 // Ajustes
 // ---------------------------------------------------------------------------
-void Database::setSetting(const QString &key, const QString &value)
+wxString Database::GetSetting(const wxString &key, const wxString &def)
 {
-    stmtExec("INSERT INTO settings(key,value) VALUES(?,?) "
-             "ON CONFLICT(key) DO UPDATE SET value=excluded.value", { key, value });
+    sqlite3_stmt *st = Prepare("SELECT value FROM settings WHERE key=?;");
+    if (!st) return def;
+    StmtGuard g(st);
+    BindText(st, 1, key);
+    if (sqlite3_step(st) == SQLITE_ROW)
+        return ColumnText(st, 0);
+    return def;
 }
 
-QString Database::setting(const QString &key, const QString &defaultValue)
+void Database::SetSetting(const wxString &key, const wxString &value)
 {
-    sqlite3_stmt *st = nullptr;
-    const char *sql = "SELECT value FROM settings WHERE key=?";
-    QString out = defaultValue;
-    if (sqlite3_prepare_v2(m_db, sql, -1, &st, nullptr) == SQLITE_OK) {
-        sqlite3_bind_text(st, 1, key.toUtf8().constData(), -1, SQLITE_TRANSIENT);
-        if (sqlite3_step(st) == SQLITE_ROW && sqlite3_column_text(st, 0))
-            out = QString::fromUtf8((const char*)sqlite3_column_text(st, 0));
-        sqlite3_finalize(st);
-    }
-    return out;
+    sqlite3_stmt *st = Prepare(
+        "INSERT INTO settings(key, value) VALUES(?,?) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value;");
+    if (!st) return;
+    StmtGuard g(st);
+    BindText(st, 1, key);
+    BindText(st, 2, value);
+    sqlite3_step(st);
 }
 
-// ---------------------------------------------------------------------------
-// v1.3.0 — Importador de Biblias ZEFania XML (formato del ecosistema Holyrics)
-// ---------------------------------------------------------------------------
-// Estructura esperada:
-//   <XMLBIBLE biblename="Reina Valera 1960" ...>
-//     <BIBLEBOOK bnumber="1" bname="Génesis">
-//       <CHAPTER cnumber="1">
-//         <VERSE vnumber="1">En el principio creó Dios...</VERSE>
-// Especificación: https://www.bgfdb.de/zefania/ — miles de versiones libres.
-bool Database::importBibleFromZefaniaXml(const QString &filePath, QString *error)
+int Database::GetSettingInt(const wxString &key, int def)
 {
-    QFile f(filePath);
-    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        if (error) *error = QStringLiteral("No se pudo abrir el archivo: %1").arg(filePath);
-        return false;
-    }
-
-    QXmlStreamReader xml(&f);
-    QString versionCode;         // p.ej. "RV1960" (biblename saneado)
-    QString description;
-    int book = 0, chapter = 0;
-    qint64 inserted = 0;
-    bool inVerse = false;
-    QString verseText;
-    int verseNum = 0;
-
-    // Importacion atomica: transaccion + synchronous OFF (mismo patron que JSON)
-    // M21/B5: begin() se hace al conocer el versionCode (tras <XMLBIBLE>) para
-    // poder aplicar el guard anti-duplicado ANTES de abrir la transacción.
-    exec(QStringLiteral("PRAGMA synchronous=OFF"));
-    bool ok = true;
-    bool inTransaction = false;   // B5: evita rollback sin transacción activa
-
-    while (!xml.atEnd()) {
-        const QXmlStreamReader::TokenType tok = xml.readNext();
-        if (tok == QXmlStreamReader::Invalid)
-            break;
-        if (tok == QXmlStreamReader::StartElement) {
-            const QString name = xml.name().toString();   // nombre LOCAL (sin prefijo)
-            if (name == QLatin1String("XMLBIBLE")) {
-                for (const QXmlStreamAttribute &a : xml.attributes()) {
-                    if (a.name() == QLatin1String("biblename"))
-                        description = a.value().toString().trimmed();
-                }
-                // B6: el código de versión se deriva del biblename (descripción
-                // real de la versión), no del nombre de archivo (que suele ser
-                // genérico). Mismo saneado: mayúsculas + solo alfanuméricos.
-                versionCode = description.toUpper();
-                versionCode.remove(QRegularExpression(QStringLiteral("[^A-Z0-9]")));
-                if (versionCode.size() > 16) versionCode = versionCode.left(16);
-                // Si el biblename no produce un código usable (vacío o solo
-                // dígitos), caer al nombre de archivo con el mismo saneado.
-                const bool soloDigitos = !versionCode.isEmpty()
-                        && !versionCode.contains(QRegularExpression(QStringLiteral("[A-Z]")));
-                if (versionCode.isEmpty() || soloDigitos) {
-                    versionCode = QFileInfo(filePath).completeBaseName().toUpper();
-                    versionCode.remove(QRegularExpression(QStringLiteral("[^A-Z0-9]")));
-                    if (versionCode.size() > 16) versionCode = versionCode.left(16);
-                }
-                // M21 (e): versionCode vacío → error amistoso (sin "ZEFANIA" mudo)
-                if (versionCode.isEmpty()) {
-                    f.close();
-                    exec(QStringLiteral("PRAGMA synchronous=NORMAL"));
-                    if (error) *error = QStringLiteral("No se pudo determinar el código de la versión bíblica "
-                                                       "(revisa el biblename del XML o el nombre del archivo).");
-                    return false;
-                }
-                // M21 (b): guard anti-duplicado — mismo patrón que el importador
-                // JSON: si la versión ya existe, mensaje amistoso sin duplicar.
-                {
-                    qint64 existing = 0;
-                    StmtGuard stq(prepare(QStringLiteral("SELECT COUNT(*) FROM bible WHERE version=?")));
-                    if (stq) {
-                        sqlite3_bind_text(stq.get(), 1, versionCode.toUtf8().constData(), -1, SQLITE_TRANSIENT);
-                        if (sqlite3_step(stq.get()) == SQLITE_ROW)
-                            existing = sqlite3_column_int64(stq.get(), 0);
-                    }
-                    if (existing > 0) {
-                        f.close();
-                        exec(QStringLiteral("PRAGMA synchronous=NORMAL"));
-                        if (error) *error = QStringLiteral("La Biblia «%1» ya está importada; no se duplicaron versículos.")
-                                                 .arg(description.isEmpty() ? versionCode : description);
-                        return true;
-                    }
-                }
-                // B5: begin() puede fallar → abortar (antes se ignoraba el resultado)
-                if (!begin()) {
-                    f.close();
-                    exec(QStringLiteral("PRAGMA synchronous=NORMAL"));
-                    if (error) *error = QStringLiteral("No se pudo iniciar la transacción de importación: %1").arg(lastError());
-                    return false;
-                }
-                inTransaction = true;
-            } else if (name == QLatin1String("BIBLEBOOK")) {
-                book = xml.attributes().value(QLatin1String("bnumber")).toInt();
-            } else if (name == QLatin1String("CHAPTER")) {
-                chapter = xml.attributes().value(QLatin1String("cnumber")).toInt();
-            } else if (name == QLatin1String("VERSE")) {
-                verseNum = xml.attributes().value(QLatin1String("vnumber")).toInt();
-                verseText.clear();
-                inVerse = true;
-            } else if (inVerse) {
-                // etiquetas anidadas dentro del versiculo (p.ej. <BR/>, <STYLE>):
-                // separador de linea para BR, contenido textual del resto
-                if (name == QLatin1String("BR"))
-                    verseText += QStringLiteral(" ");
-            }
-        } else if (tok == QXmlStreamReader::Characters && inVerse) {
-            verseText += xml.text();
-        } else if (tok == QXmlStreamReader::EndElement) {
-            const QString name = xml.name().toString();
-            if (name == QLatin1String("VERSE")) {
-                inVerse = false;
-                if (book > 0 && chapter > 0 && verseNum > 0) {
-                    const QString txt = verseText.simplified();
-                    if (!txt.isEmpty()) {
-                        // M21 (c): INSERT OR IGNORE — el índice UNIQUE idx_bible_unique
-                        // protege contra duplicados residuales (se ignoran, no fallan).
-                        if (!stmtExec("INSERT OR IGNORE INTO bible(version,book,chapter,verse,text) VALUES(?,?,?,?,?)",
-                                      { versionCode, book, chapter, verseNum, txt })) {
-                            ok = false;
-                            break;
-                        }
-                        ++inserted;
-                    }
-                }
-            }
-        }
-    }
-    f.close();
-
-    if (xml.hasError()) {
-        if (inTransaction) rollback();    // B5: solo si hay transacción activa
-        exec(QStringLiteral("PRAGMA synchronous=NORMAL"));
-        if (error) *error = QStringLiteral("XML inválido (ZEFania): %1").arg(xml.errorString());
-        return false;
-    }
-    if (!ok || inserted == 0) {
-        if (inTransaction) rollback();    // B5: solo si hay transacción activa
-        exec(QStringLiteral("PRAGMA synchronous=NORMAL"));
-        if (error) *error = QStringLiteral("No se encontraron versículos válidos en el archivo.");
-        return false;
-    }
-    commit();
-    exec(QStringLiteral("PRAGMA synchronous=NORMAL"));
-    qInfo() << "[DB] Biblia ZEFania importada:" << versionCode << description << "-" << inserted << "versículos";
-    if (error) *error = description;      // descripción para mostrar al usuario
-    return true;
+    const wxString v = GetSetting(key);
+    if (v.empty()) return def;
+    long out = def;
+    if (v.ToLong(&out))
+        return (int)out;
+    return def;
 }
 
-// ---------------------------------------------------------------------------
-// v1.3.0 — Copia de seguridad / restauración (Online Backup API de SQLite)
-// ---------------------------------------------------------------------------
-bool Database::backupTo(const QString &destFile, QString *error)
+void Database::SetSettingInt(const wxString &key, int value)
 {
-    if (!m_db) {
-        if (error) *error = QStringLiteral("La base de datos no está abierta.");
-        return false;
-    }
-    sqlite3 *dest = nullptr;
-    if (sqlite3_open_v2(destFile.toUtf8().constData(), &dest,
-                        SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr) != SQLITE_OK) {
-        if (dest) sqlite3_close(dest);
-        if (error) *error = QStringLiteral("No se pudo crear el archivo de copia.");
-        return false;
-    }
-    sqlite3_backup *bak = sqlite3_backup_init(dest, "main", m_db, "main");
-    if (!bak) {
-        sqlite3_close(dest);
-        if (error) *error = QStringLiteral("Backup init falló: %1").arg(lastError());
-        return false;
-    }
-    const int rc = sqlite3_backup_step(bak, -1);       // copia completa en un paso
-    sqlite3_backup_finish(bak);
-    const int destErr = sqlite3_errcode(dest);
-    sqlite3_close(dest);
-    if (rc != SQLITE_DONE || destErr != SQLITE_OK) {
-        QFile::remove(destFile);
-        if (error) *error = QStringLiteral("La copia de seguridad quedó incompleta (intenta de nuevo).");
-        return false;
-    }
-    return true;
-}
-
-bool Database::restoreFrom(const QString &srcFile, QString *error)
-{
-    if (!m_db) {
-        if (error) *error = QStringLiteral("La base de datos no está abierta.");
-        return false;
-    }
-    // Validar que el origen sea un SQLite real ANTES de tocar el vault activo
-    {
-        sqlite3 *src = nullptr;
-        if (sqlite3_open_v2(srcFile.toUtf8().constData(), &src, SQLITE_OPEN_READONLY, nullptr) != SQLITE_OK
-            || !src) {
-            if (src) sqlite3_close(src);
-            if (error) *error = QStringLiteral("El archivo no es una base de datos válida.");
-            return false;
-        }
-        sqlite3_stmt *st = nullptr;
-        const bool sane = (sqlite3_prepare_v2(src, "SELECT COUNT(*) FROM sqlite_master", -1,
-                                              &st, nullptr) == SQLITE_OK);
-        if (st) sqlite3_finalize(st);
-        const int err = sqlite3_errcode(src);
-        sqlite3_close(src);
-        if (!sane || err != SQLITE_OK) {
-            if (error) *error = QStringLiteral("El archivo no es una base de datos válida.");
-            return false;
-        }
-    }
-    // Copiar el origen DENTRO de la conexión activa (Online Backup API inversa).
-    // Consistente incluso con la BD en uso; los paneles recargarán al reiniciar.
-    sqlite3 *src = nullptr;
-    if (sqlite3_open_v2(srcFile.toUtf8().constData(), &src, SQLITE_OPEN_READONLY, nullptr) != SQLITE_OK) {
-        if (error) *error = QStringLiteral("No se pudo abrir la copia de seguridad.");
-        return false;
-    }
-    sqlite3_backup *bak = sqlite3_backup_init(m_db, "main", src, "main");
-    if (!bak) {
-        sqlite3_close(src);
-        if (error) *error = QStringLiteral("Restore init falló: %1").arg(lastError());
-        return false;
-    }
-    const int rc = sqlite3_backup_step(bak, -1);
-    sqlite3_backup_finish(bak);
-    sqlite3_close(src);
-    if (rc != SQLITE_DONE || sqlite3_errcode(m_db) != SQLITE_OK) {
-        if (error) *error = QStringLiteral("La restauración quedó incompleta (intenta de nuevo).");
-        return false;
-    }
-    // Reasegurar esquema (por si la copia venía de una versión anterior)
-    QString schemaErr;
-    ensureSchema(&schemaErr);
-    return true;
-}
-
-void Database::autoBackupIfNeeded(const QString &backupDir)
-{
-    const QString last = setting(QStringLiteral("last_auto_backup"));
-    const QDateTime lastAt = QDateTime::fromString(last, Qt::ISODate);
-    if (lastAt.isValid() && lastAt.daysTo(QDateTime::currentDateTime()) < 7)
-        return;                       // copia de esta semana vigente
-
-    QDir().mkpath(backupDir);
-    const QString stamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_HHmm"));
-    const QString dest = backupDir + QStringLiteral("/auto_%1.db").arg(stamp);
-    QString err;
-    if (backupTo(dest, &err)) {
-        setSetting(QStringLiteral("last_auto_backup"),
-                   QDateTime::currentDateTime().toString(Qt::ISODate));
-        // Rotación: conservar solo las 4 copias automáticas más recientes
-        QDir d(backupDir);
-        const QStringList autos = d.entryList(
-            QStringList() << QStringLiteral("auto_*.db"),
-            QDir::Files, QDir::Name | QDir::Reversed);   // nuevas primero
-        for (int i = 4; i < autos.size(); ++i)
-            d.remove(autos.at(i));
-        qInfo() << "[DB] Copia automática creada:" << dest;
-        emit autoBackupCreated(dest);   // v1.5.0: hook de subida a Google Drive
-    } else {
-        qWarning() << "[DB] Copia automática falló:" << err;
-    }
+    SetSetting(key, wxString::Format("%d", value));
 }

@@ -1,172 +1,122 @@
 // ============================================================================
 //  LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
 // ============================================================================
-//  Database.h : Motor de persistencia SQLite 3.50 embebido (amalgamation
-//  vendorizada) con FTS5 para busqueda instantanea de canciones, biblias
-//  multiversion, cultos, temas, historial y ajustes.
-//  Se usa la API C de sqlite3 directamente (sin QtSql) para garantizar FTS5.
+//  Database.h : Acceso SQLite (amalgamation estatica + FTS5) — canciones,
+//  biblia, temas, biblioteca de medios, cultos, ajustes y estadisticas.
+//  Port de la edicion Qt v1.6.0 (mismo esquema, mismo indice FTS con
+//  remove_diacritics, mismos triggers).
 // ============================================================================
 #ifndef LUMINA_DATABASE_H
 #define LUMINA_DATABASE_H
 
-#include "Models.h"
-#include "BibleRef.h"
+#include "Types.h"
 
-#include <QObject>
-#include <QString>
-#include <QVector>
-#include <QVariantMap>
-#include <QJsonObject>
+#include <sqlite3.h>
+
 #include <functional>
+#include <vector>
 
-struct sqlite3;
-struct sqlite3_stmt;
-
-class Database : public QObject
+// ---------------------------------------------------------------------------
+// Guard RAII de statements (StmtGuard del port Qt)
+// ---------------------------------------------------------------------------
+class StmtGuard
 {
-    Q_OBJECT
 public:
-    explicit Database(QObject *parent = nullptr);
-    ~Database() override;
+    explicit StmtGuard(sqlite3_stmt *st) : m_st(st) {}
+    ~StmtGuard() { if (m_st) sqlite3_finalize(m_st); }
+    StmtGuard(const StmtGuard &) = delete;
+    StmtGuard &operator=(const StmtGuard &) = delete;
+    sqlite3_stmt *get() const { return m_st; }
+private:
+    sqlite3_stmt *m_st;
+};
 
-    bool open(const QString &dbFile, QString *error = nullptr);
-    void close();
-    bool isOpen() const { return m_db != nullptr; }
-    QString lastError() const { return m_lastError; }
+class Database
+{
+public:
+    Database() = default;
+    ~Database();
 
-    // ------------------------------ Canciones -------------------------------
-    int  addSong(const Song &s);
-    bool updateSong(const Song &s);
-    bool deleteSong(int id);
-    Song songById(int id);
-    QVector<SongRow> searchSongs(const QString &term, int limit = 80);
-    QVector<SongRow> allSongs();
-    void touchSongUsage(int songId);            // historial + estadisticas
+    Database(const Database &) = delete;
+    Database &operator=(const Database &) = delete;
 
-    // ----------------------- Etiquetas (tags) v1.0.3 -----------------------
-    // Tags semanticos para canciones (feature del spec Holyrics):
-    // asignar palabras clave y luego filtrar por etiqueta.
-    int  addTag(const QString &name);                       // idempotente
-    bool setSongTags(int songId, const QStringList &tags);  // reemplaza
-    QStringList songTags(int songId);
-    QVector<QPair<int, QString>> allTags();                 // (id, nombre) ordenado por uso
-    QVector<SongRow> searchByTag(const QString &tag);        // canciones con la etiqueta
+    bool Open(const wxString &path, wxString *error = nullptr);
+    void Close();
+    bool IsOpen() const { return m_db != nullptr; }
 
-    // ----------------- Tags extendidos v1.4.0 (spec Holyrics: --------------
-    // "asignar etiquetas a temas, fondos de imagenes, videos y canciones").
-    // resource_tags generaliza la asociacion: kind = 'theme' (key = id del
-    // tema como texto) o 'media' (key = ruta normalizada del archivo).
-    bool setThemeTags(int themeId, const QStringList &tags);
-    QStringList themeTags(int themeId);
-    QStringList allTagNames();                              // nombres unicos (completadores)
+    // --- Canciones ----------------------------------------------------------
+    int  AddSong(const Song &s, wxString *error = nullptr);
+    bool UpdateSong(const Song &s);
+    bool DeleteSong(int id);
+    Song SongById(int id);
+    struct SearchFilter { wxString q; wxString tag; };
+    std::vector<Song> SearchSongs(const SearchFilter &f, int limit = 500);
+    void LogSongUse(int songId);
+    int  SongUseCount(int songId);
 
-    // Biblioteca de fondos (media library): imagenes/videos catalogados con
-    // etiquetas para la "galeria por etiqueta" del spec Holyrics.
-    struct MediaRow { QString path; int kind; };            // kind: 0 imagen, 1 video
-    bool addMedia(const QString &path, int kind);
-    bool removeMedia(const QString &path);
-    QVector<MediaRow> mediaLibrary();
-    bool setMediaTags(const QString &path, const QStringList &tags);
-    QStringList mediaTags(const QString &path);
-    QVector<MediaRow> mediaByTag(const QString &tag);
+    // --- Tags (canciones, temas y fondos) -----------------------------------
+    std::vector<wxString> AllTagNames();
+    void SetSongTags(int songId, const std::vector<wxString> &tags);
+    std::vector<wxString> SongTags(int songId);
+    void SetResourceTags(const wxString &kind, const wxString &key, const std::vector<wxString> &tags);
+    std::vector<wxString> ResourceTags(const wxString &kind, const wxString &key);
 
-    // ----------------- Automatizacion semantica v1.4.0 ---------------------
-    // Regla del spec Holyrics: "si se reproduce una cancion con la etiqueta
-    // X, aplicar el tema Y y seleccionar un fondo con la etiqueta Z".
-    struct TagRule
-    {
-        int     id = 0;
-        QString songTag;
-        int     themeId = 0;
-        QString bgTag;              // opcional: fondo por etiqueta
-        bool    enabled = true;
-    };
-    int  addTagRule(const QString &songTag, int themeId, const QString &bgTag);
-    bool deleteTagRule(int id);
-    bool setTagRuleEnabled(int id, bool enabled);
-    QVector<TagRule> tagRules();
+    // --- Biblia -------------------------------------------------------------
+    struct BibleRow { int book, chapter, verse; wxString text; };
+    bool ImportBible(const wxString &version, const wxString &name,
+                     const std::vector<BibleRow> &rows, wxString *error = nullptr,
+                     const std::function<bool(int, int)> &progress = {});
+    std::vector<wxString> BibleVersions();
+    bool BibleHasData();
+    int  BibleVerseCount(const wxString &version);
+    std::vector<BibleRow> BiblePassage(const wxString &version, int book, int chapter,
+                                       int verseFrom, int verseTo);
+    std::vector<BibleRow> BibleSearch(const wxString &query, const wxString &version, int limit = 300);
 
-    // ------------------------------ Biblias ---------------------------------
-    QStringList bibleVersions();
-    bool importBibleFromJsonResource(const QString &resourcePath, const QString &versionCode,
-                                     const QString &licenseNote, QString *error);
-    // v1.3.0: importador de Biblias en formato ZEFania XML (.xml) — el formato
-    // estándar del ecosistema Holyrics (miles de versiones libres disponibles).
-    // <XMLBIBLE><BIBLEBOOK bnumber><CHAPTER cnumber><VERSE vnumber>texto.
-    // M21/B6: el código de versión se deriva del atributo biblename (fallback:
-    // nombre de archivo saneado); guard anti-duplicado + índice UNIQUE
-    // (version,book,chapter,verse) creado en ensureSchema.
-    bool importBibleFromZefaniaXml(const QString &filePath, QString *error);
-    QVector<BibleRef::Verse> bibleChapter(const QString &version, int book, int chapter);
-    BibleRef::Verse bibleVerse(const QString &version, int book, int chapter, int verse);
-    QVector<BibleRef::Verse> bibleRange(const QString &version, int book, int chapter, int vFrom, int vTo);
-    QVector<QPair<BibleRef::VerseRef, QString>> bibleWordSearch(const QString &version,
-                                                                const QString &term, int limit = 60);
+    // --- Temas --------------------------------------------------------------
+    int  SaveTheme(const Theme &t);              // inserta o actualiza
+    bool DeleteTheme(int id);
+    std::vector<Theme> Themes();
+    Theme ThemeById(int id);
+    void SetDefaultTheme(int id);
+    int  DefaultThemeId();
 
-    // ------------------------------ Cultos ----------------------------------
-    int  createPlaylist(const QString &name);
-    bool deletePlaylist(int id);
-    QVector<QPair<int, QString>> playlists();
-    QVector<ServiceItem> playlistItems(int playlistId);
-    int  addPlaylistItem(int playlistId, const ServiceItem &item);   // al final
-    bool removePlaylistItem(int itemId);
-    bool movePlaylistItem(int itemId, bool up);
-    bool clearPlaylistItems(int playlistId);
+    // --- Biblioteca de medios ------------------------------------------------
+    bool AddMedia(const wxString &path, int kind);
+    bool RemoveMedia(const wxString &path);
+    std::vector<MediaRow> MediaLibrary();
 
-    // ------------------------------ Temas -----------------------------------
-    QVector<QPair<int, QString>> themes();
-    Theme themeById(int id);
-    // v1.2.0: devuelve el id del tema (insert o update). Antes devolvía bool
-    // y el id de un tema recién creado se perdía — "Guardar como nuevo" dejaba
-    // el editor apuntando a id 0 y el siguiente guardado fallaba en silencio.
-    int  saveTheme(const Theme &t);
-    bool deleteTheme(int id);
+    // --- Cultos (playlists) ---------------------------------------------------
+    int  CreatePlaylist(const wxString &name);
+    bool DeletePlaylist(int id);
+    std::vector<std::pair<int, wxString>> Playlists();
+    void ReplaceItems(int playlistId, const std::vector<ServiceItem> &items);
+    std::vector<ServiceItem> PlaylistItems(int playlistId);
 
-    // --------------------------- Slides personalizadas ----------------------
-    int  addCustomSlide(const QString &name, const QJsonObject &itemsJson);
-    bool updateCustomSlide(int id, const QString &name, const QJsonObject &itemsJson);
-    bool deleteCustomSlide(int id);
-    QVector<QPair<int, QString>> customSlides();
-    QJsonObject customSlideJson(int id, bool *ok = nullptr);
+    // --- Ajustes --------------------------------------------------------------
+    wxString GetSetting(const wxString &key, const wxString &def = wxString());
+    void SetSetting(const wxString &key, const wxString &value);
+    int  GetSettingInt(const wxString &key, int def = 0);
+    void SetSettingInt(const wxString &key, int value);
 
-    // ------------------------------ Historial -------------------------------
-    struct HistoryRow { QString title; int count; QString lastUsed; };
-    QVector<HistoryRow> songReport();
-    struct UsageRow { QString usedAt; QString title; };
-    QVector<UsageRow> recentUsage(int limit = 200);
-    void logAlert(const QString &text);
-
-    // ------------------------------ Ajustes ---------------------------------
-    void  setSetting(const QString &key, const QString &value);
-    QString setting(const QString &key, const QString &defaultValue = QString());
-
-    // -------------------- Copia de seguridad (v1.3.0) -----------------------
-    // Alternativa offline-safe a la sincronización en la nube (spec Holyrics:
-    // Drive). Usa la Online Backup API de SQLite (consistente, sin bloquear).
-    bool backupTo(const QString &destFile, QString *error = nullptr);
-    bool restoreFrom(const QString &srcFile, QString *error = nullptr);   // aplicar al reiniciar
-    void autoBackupIfNeeded(const QString &backupDir);                    // semanal, rota 4
-
-    // ------------------------------ Utilidades ------------------------------
-    bool exec(const QString &sql);
-    bool begin()  { return exec(QStringLiteral("BEGIN")); }
-    bool commit() { return exec(QStringLiteral("COMMIT")); }
-    bool rollback(){ return exec(QStringLiteral("ROLLBACK")); }
-    qint64 scalar(const QString &sql);
-
-signals:
-    // v1.5.0 — respaldo automático semanal creado (para subirlo a Google
-    // Drive si el usuario activó la subida automática — spec §3.4).
-    void autoBackupCreated(const QString &path);
+    // --- Utilidades ------------------------------------------------------------
+    bool Exec(const wxString &sql, wxString *error = nullptr);
+    wxString LastError() const { return m_lastError; }
+    bool BackupToFile(const wxString &destPath);
 
 private:
-    bool ensureSchema(QString *error);
-    void seedDefaults();
-    bool stmtExec(const char *sql, const QVector<QVariant> &binds = QVector<QVariant>());
-    sqlite3_stmt *prepare(const QString &sql);
+    sqlite3_stmt *Prepare(const wxString &sql);
+    bool BindText(sqlite3_stmt *st, int idx, const wxString &v);
+    wxString ColumnText(sqlite3_stmt *st, int col);
+    bool StepDone(sqlite3_stmt *st);
+    bool Begin();
+    bool Commit();
+    void Rollback();
+    bool EnsureSchema(wxString *error = nullptr);
+    void SeedDefaults();
 
     sqlite3 *m_db = nullptr;
-    QString  m_lastError;
+    wxString m_lastError;
 };
 
 #endif // LUMINA_DATABASE_H

@@ -1,223 +1,232 @@
 // ============================================================================
 //  LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
 // ============================================================================
-//  Lyrics.h : Parser de letras estructuradas.
+//  Lyrics.h : Parser de letras estructuradas (port de la edicion Qt v1.6.0).
 //  Formato soportado:
 //    [Verso 1] / [Coro] / [Puente] / [Tag] / [Intro] / [Final]
-//    Lineas de texto; lineas de acordes (cifrado) automaticamente detectadas
+//    Lineas de texto; lineas de acordes (cifrado) detectadas automaticamente
 //    y adjuntas a la linea siguiente. Lineas en blanco separan bloques.
+//  Incluye TODAS las correcciones del Modo Hinario (v1.2.0 + M16 v1.6.0):
+//    (c) cancion solo-coros NO se proyecta vacia (camino lineal);
+//    (d) [Coro] repetido se deduplica: se usa el primer coro unicamente.
 // ============================================================================
 #ifndef LUMINA_LYRICS_H
 #define LUMINA_LYRICS_H
 
-#include "Models.h"
+#include "Types.h"
 #include "Chords.h"
 
-#include <QStringList>
-#include <QRegularExpression>
+#include <vector>
+#include <algorithm>
 
 class Lyrics
 {
 public:
     struct Section
     {
-        QString tag;                    // "Verso 1", "Coro", ...
-        QVector<SlideLine> lines;
+        wxString tag;                    // "Verso 1", "Coro", ...
+        std::vector<SlideLine> lines;
+    };
+
+    struct BuildOptions
+    {
+        bool  titleSlide       = true;   // slide inicial con titulo/artista
+        bool  endBlank         = false;  // slide final en blanco
+        bool  chorusInterleave = false;  // Modo Hinario: coro intercalado
+        int   maxLinesPerSlide = 4;
+        bool  stripChords      = true;   // audiencia no ve cifras
+        bool  latinChords      = true;
+        int   transpose        = 0;
     };
 
     // Parsea la letra cruda en secciones etiquetadas
-    static QVector<Section> parse(const QString &raw)
+    static std::vector<Section> Parse(const wxString &raw)
     {
-        QVector<Section> sections;
-        const QStringList lines = raw.split(QRegularExpression(QStringLiteral("\r?\n")));
+        std::vector<Section> sections;
         Section current;
-        current.tag = QStringLiteral("Letra");
+        current.tag = "Letra";
+        wxString pendingChords;
 
-        // Detecta etiqueta de acorde-token: p.ej "[Do]" sola en linea = etiqueta NO acorde
-        static const QRegularExpression simpleTag(QStringLiteral("^\\s*\\[([^\\]]{1,40})\\]\\s*$"));
-
-        // CORRECCION: era un miembro estatico de clase — fuga de estado entre
-        // llamadas (los acordes finales de una cancion contaminaban la
-        // siguiente). Ahora es estado local del parseo.
-        QString pendingChords;
-
-        for (const QString &rawLine : lines) {
-            const QString line = rawLine;
-            QRegularExpressionMatch mt = simpleTag.match(line);
-            if (mt.hasMatch()) {
-                const QString tagText = mt.captured(1).trimmed();
-                // Si el contenido del corchete NO es un acorde, es etiqueta de seccion
-                if (!Chords::isChordToken(tagText) || tagText.contains(QRegularExpression(QStringLiteral("\\s")))) {
-                    flush(sections, current);
-                    current = Section();
-                    current.tag = tagText;
-                    continue;
-                }
-            }
-            if (line.trimmed().isEmpty()) {
-                continue; // separador de bloque dentro de seccion
-            }
-            if (Chords::isChordLine(line)) {
-                // linea de acordes: se adjunta a la proxima linea de texto
-                pendingChords = line;
+        const int n = (int)raw.Length();
+        int lineStart = 0;
+        for (int pos = 0; pos <= n; ++pos) {
+            const bool atEnd = (pos == n);
+            const wxChar ch = atEnd ? wxChar('\n') : wxChar(raw[pos]);
+            if (ch != '\n' && !(ch == '\r' && pos + 1 < n && raw[pos + 1] == '\n') && ch != '\r')
                 continue;
-            }
-            current.lines.append(SlideLine(line, pendingChords));
-            pendingChords.clear();
+            // Extrae la linea [lineStart, pos)
+            wxString line = raw.Mid(lineStart, pos - lineStart);
+            if (!atEnd && ch == '\r')
+                ++pos;                                   // consume \n tras \r
+            lineStart = pos + 1;
+
+            ProcessLine(line, sections, current, pendingChords);
         }
-        flush(sections, current);
-        if (sections.isEmpty()) {
-            Section s; s.tag = QStringLiteral("Letra");
-            sections.append(s);
+        Flush(sections, current);
+        if (sections.empty()) {
+            Section s;
+            s.tag = "Letra";
+            sections.push_back(s);
         }
         return sections;
     }
 
     // Construye las slides de una cancion para proyeccion
-    struct BuildOptions
+    static std::vector<Slide> BuildSlides(const Song &song, const BuildOptions &opt)
     {
-        bool  titleSlide   = true;    // slide inicial con titulo/artista
-        bool  endBlank     = false;   // slide final en blanco
-        bool  chorusInterleave = false; // Modo Hinario: coro intercalado
-        int   maxLinesPerSlide = 4;
-        bool  stripChords  = true;    // audiencia no ve cifras
-        bool  latinChords  = true;
-        int   transpose    = 0;
-    };
-
-    static QVector<Slide> buildSlides(const Song &song, const BuildOptions &opt)
-    {
-        QVector<Slide> out;
+        std::vector<Slide> out;
         if (opt.titleSlide) {
             Slide s;
             s.kind = Slide::Title;
             s.title = song.title;
-            QStringList head;
-            if (!song.artist.isEmpty()) head << song.artist;
-            if (!song.key.isEmpty())    head << QStringLiteral("Tono: %1").arg(song.key);
-            if (song.bpm > 0)           head << QStringLiteral("%1 BPM").arg(song.bpm);
-            s.lines.append(SlideLine(song.title));
-            if (!head.isEmpty()) s.lines.append(SlideLine(head.join(QStringLiteral("  ·  "))));
-            s.ref = QStringLiteral("song:%1").arg(song.id);
-            out.append(s);
+            wxString head;
+            if (!song.artist.empty()) head += song.artist;
+            if (!song.key.empty())    head += (head.empty() ? wxString() : wxString(L"  ·  ")) + wxString("Tono: ") + song.key;
+            if (song.bpm > 0)         head += (head.empty() ? wxString() : wxString(L"  ·  ")) + wxString::Format("%d BPM", song.bpm);
+            s.lines.push_back(SlideLine(song.title));
+            if (!head.empty())
+                s.lines.push_back(SlideLine(head));
+            out.push_back(s);
         }
 
-        QVector<Section> sections = parse(song.lyrics);
-        // Dividir secciones largas en bloques de maxLinesPerSlide.
-        // v1.2.0: se conserva la AGRUPACIÓN por sección original (sectionBlocks):
-        // el intercalado del coro (hinario) debe ocurrir tras cada VERSO
-        // completo, no tras cada bloque paginado de un verso largo (el bloque
-        // es solo un artefacto de paginación).
-        QVector<QVector<Section>> sectionBlocks;
-        QVector<Section> blocks;
+        std::vector<Section> sections = Parse(song.lyrics);
+
+        // Divide secciones largas en bloques de maxLinesPerSlide conservando la
+        // agrupacion por seccion original (el intercalado del coro ocurre tras
+        // cada VERSO completo, no entre bloques paginados).
+        std::vector<std::vector<Section>> sectionBlocks;
+        std::vector<Section> blocks;
         for (const Section &sec : sections) {
-            QVector<Section> parts;
-            if (sec.lines.size() <= opt.maxLinesPerSlide) {
-                parts.append(sec);
+            std::vector<Section> parts;
+            if ((int)sec.lines.size() <= opt.maxLinesPerSlide) {
+                parts.push_back(sec);
             } else {
-                for (int i = 0; i < sec.lines.size(); i += opt.maxLinesPerSlide) {
+                for (size_t i = 0; i < sec.lines.size(); i += (size_t)opt.maxLinesPerSlide) {
                     Section part;
                     part.tag = sec.tag;
-                    const int end = qMin(i + opt.maxLinesPerSlide, sec.lines.size());
-                    for (int j = i; j < end; ++j) part.lines.append(sec.lines.at(j));
-                    parts.append(part);
+                    const size_t end = std::min(i + (size_t)opt.maxLinesPerSlide, sec.lines.size());
+                    for (size_t j = i; j < end; ++j)
+                        part.lines.push_back(sec.lines[j]);
+                    parts.push_back(part);
                 }
             }
-            sectionBlocks.append(parts);
-            blocks << parts;
+            sectionBlocks.push_back(parts);
+            for (const Section &b : parts)
+                blocks.push_back(b);
         }
-        auto isChorusTag = [](const QString &t) {
-            return t.compare(QStringLiteral("coro"), Qt::CaseInsensitive) == 0;
+
+        auto isChorusTag = [](const wxString &t) {
+            return t.CmpNoCase("coro") == 0;
         };
 
-        // Localiza el primer coro para el modo hinario
+        // Localiza el primer coro (para el modo hinario clasico)
         int chorusIdx = -1;
-        for (int i = 0; i < blocks.size(); ++i)
-            if (isChorusTag(blocks.at(i).tag)) { chorusIdx = i; break; }
+        for (size_t i = 0; i < blocks.size(); ++i) {
+            if (isChorusTag(blocks[i].tag)) { chorusIdx = (int)i; break; }
+        }
 
         if (opt.chorusInterleave && chorusIdx >= 0) {
-            // Modo Hinario (v1.2.0 corregido): el coro se intercala tras CADA
-            // verso COMPLETO (todas sus slides paginadas) y los bloques de coro
-            // sueltos se omiten para no cantarlo dos veces: V1 C V2 C.
-            // CORRECCION v1.2.0 (a y b):
-            //  (a) si el coro era más largo que maxLinesPerSlide se dividía en
-            //      varios bloques y SOLO se intercalaba el primero — el resto
-            //      del coro se perdía (continue los descartaba);
-            //  (b) si un VERSO largo se dividía en bloques, el coro se
-            //      intercalaba ENTRE los bloques del mismo verso (a mitad de
-            //      la estrofa). Ahora se respeta la sección original.
-            // CORRECCION v1.6.0 (M16):
-            //  (c) canción cuyo ÚNICO bloque es [Coro] (cantos cortos): el
-            //      bucle se saltaba todas las secciones y la letra entera
-            //      desaparecía de la proyección → si no hay versos, caer al
-            //      camino lineal;
-            //  (d) letras con [Coro] repetido tras cada verso (formato común
-            //      de letras importadas): se acumulaban TODOS los bloques de
-            //      coro y se cantaban N veces seguidas tras cada verso (V1 C C
-            //      V2 C C) → usar SOLO el primer bloque de coro.
-            QVector<Section> chorusBlocks;
-            QVector<Section> verseBlocks;
-            for (int s = 0; s < sections.size(); ++s) {
-                if (isChorusTag(sections.at(s).tag)) {
-                    if (chorusBlocks.isEmpty())
-                        chorusBlocks << sectionBlocks.at(s);   // (d) primer coro únicamente
+            // Modo Hinario (v1.2.0 + M16 + mejora wx v2.0.0):
+            //  (c) solo-coros -> camino lineal (no se pierde la letra);
+            //  (d) [Coro] repetido -> usar SOLO el primer coro;
+            //  (e) el coro se intercala tras el VERSO COMPLETO (todas sus
+            //      paginas), no entre las paginas de un mismo verso: se
+            //      preserva la agrupacion por verso (grupos completos).
+            std::vector<Section> chorusBlocks;
+            std::vector<std::vector<Section>> verseGroups;
+            for (size_t s = 0; s < sections.size(); ++s) {
+                if (isChorusTag(sections[s].tag)) {
+                    if (chorusBlocks.empty())
+                        chorusBlocks = sectionBlocks[s];      // (d) primer coro
                 } else {
-                    verseBlocks << sectionBlocks.at(s);
+                    verseGroups.push_back(sectionBlocks[s]);  // (e) verso completo
                 }
             }
-            if (verseBlocks.isEmpty()) {
-                // (c) solo coros: proyección lineal tal cual (el coro no se pierde)
+            if (verseGroups.empty()) {
+                // (c) solo coros: proyeccion lineal tal cual
                 for (const auto &group : sectionBlocks)
                     for (const Section &b : group)
-                        out.append(sectionToSlide(b, song, opt));
+                        out.push_back(SectionToSlide(b, song, opt));
             } else {
-                for (const Section &b : verseBlocks) {
-                    out.append(sectionToSlide(b, song, opt));
-                    // coro tras CADA verso completo (V1 C V2 C)
-                    for (const Section &ch : chorusBlocks)
-                        out.append(sectionToSlide(ch, song, opt));
+                for (const auto &group : verseGroups) {
+                    for (const Section &b : group)
+                        out.push_back(SectionToSlide(b, song, opt));
+                    for (const Section &ch : chorusBlocks)     // V1 C V2 C
+                        out.push_back(SectionToSlide(ch, song, opt));
                 }
             }
         } else {
             for (const auto &group : sectionBlocks)
                 for (const Section &b : group)
-                    out.append(sectionToSlide(b, song, opt));
+                    out.push_back(SectionToSlide(b, song, opt));
         }
 
         if (opt.endBlank) {
-            Slide s; s.kind = Slide::Blank; s.title = song.title;
-            out.append(s);
+            Slide s;
+            s.kind = Slide::Blank;
+            s.title = song.title;
+            out.push_back(s);
         }
         return out;
     }
 
     // Texto plano de una slide (sin acordes), para listas/overlay web
-    static QString plainText(const Slide &s)
+    static wxString PlainText(const Slide &s)
     {
-        QStringList out;
-        for (const SlideLine &l : s.lines) out << l.text;
-        return out.join(QChar('\n'));
+        wxString out;
+        for (size_t i = 0; i < s.lines.size(); ++i) {
+            if (i) out += '\n';
+            out += s.lines[i].text;
+        }
+        return out;
     }
 
 private:
-    static void flush(QVector<Section> &sections, Section &current)
+    static void ProcessLine(const wxString &rawLine, std::vector<Section> &sections,
+                            Section &current, wxString &pendingChords)
     {
-        if (!current.lines.isEmpty()) sections.append(current);
+        const wxString line = rawLine;
+        // Etiqueta de seccion: "[texto]" sola en linea, sin ser acorde
+        const wxString trimmed = wxString(line).Trim(true).Trim(false);
+        if (trimmed.StartsWith("[") && trimmed.EndsWith("]") && trimmed.Length() > 2) {
+            const wxString tagText = wxString(trimmed.Mid(1, trimmed.Length() - 2)).Trim(true).Trim(false);
+            const bool isChord = !tagText.Contains(' ') && Chords::IsChordToken(tagText);
+            if (!tagText.empty() && !isChord) {
+                Flush(sections, current);
+                current = Section();
+                current.tag = tagText;
+                return;
+            }
+        }
+        if (trimmed.empty())
+            return;                     // separador de bloque
+        if (Chords::IsChordLine(line)) {
+            pendingChords = line;       // se adjunta a la proxima linea de texto
+            return;
+        }
+        current.lines.push_back(SlideLine(line, pendingChords));
+        pendingChords.clear();
     }
 
-    static Slide sectionToSlide(const Section &sec, const Song &song, const BuildOptions &opt)
+    static void Flush(std::vector<Section> &sections, Section &current)
+    {
+        if (!current.lines.empty())
+            sections.push_back(current);
+    }
+
+    static Slide SectionToSlide(const Section &sec, const Song &song, const BuildOptions &opt)
     {
         Slide s;
         s.kind = Slide::Text;
         s.title = song.title;
         s.refLabel = sec.tag;
-        s.ref = QStringLiteral("song:%1").arg(song.id);
         for (const SlideLine &l : sec.lines) {
             if (opt.stripChords)
-                s.lines.append(SlideLine(l.text));
+                s.lines.push_back(SlideLine(l.text));
             else
-                s.lines.append(SlideLine(l.text,
-                    l.chords.isEmpty() ? QString() : Chords::transposeLine(l.chords, opt.transpose, opt.latinChords)));
+                s.lines.push_back(SlideLine(l.text,
+                    l.chords.empty() ? wxString()
+                                     : Chords::TransposeLine(l.chords, opt.transpose, opt.latinChords)));
         }
         return s;
     }

@@ -1,8 +1,19 @@
 # ============================================================================
-#  LuminaPresentation Suite - CI/CD
-#  Compila binarios nativos Windows x86 + x64 (Qt 5.15.2 MinGW 7.3),
-#  empaqueta portable con Qt + LibVLC + licencias y publica el Release.
-#  Trigger: push de tags v* | workflow_dispatch | push a main (solo artefactos)
+#  LuminaPresentation Suite - CI/CD (edición wxWidgets)
+#  Copyright (c) 2026 Isaac. Licencia View-Only.
+# ----------------------------------------------------------------------------
+#  Compila el programa de escritorio NATIVO (C++17 / wxWidgets 3.2 estático)
+#  para Windows x86 (Win7 SP1+) y x64, con runtime estático (/MT) para que el
+#  paquete portable NO requiera ningún redistributable ni instalación.
+#
+#  Estrategia:
+#   1) wxWidgets 3.2.x se compila desde fuente con CMake (estático + /MT) y
+#      se cachea por versión+arquitectura+toolset (los runs siguientes son
+#      rápidos).
+#   2) La app se configura con CMake (modo CONFIG de wx: targets wx::*).
+#   3) GATE: tools/verify_portable.py audita los imports PE del paquete
+#      (garantiza cero dependencias externas).
+#   4) En tags v*: publica GitHub Release con los zips portable + SHA256SUMS.
 # ============================================================================
 name: Build & Release
 
@@ -18,418 +29,181 @@ permissions:
 
 env:
   APP_NAME: LuminaPresentationSuite
-  # Version dinamica: nombre del tag (vN.N.N) al hacer push de tags;
-  # fallback v1.5.0 en pushes a main (solo artefactos) y workflow_dispatch.
-  APP_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.6.0' }}
-  VLC_VERSION: "3.0.21"
+  APP_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'v2.0.0' }}
+  WX_VERSION: "3.2.8.1"
 
 jobs:
   build:
-    name: Build ${{ matrix.arch }}
+    name: Build ${{ matrix.arch }} (wx static /MT)
     runs-on: windows-latest
     strategy:
       fail-fast: false
       matrix:
         include:
-          - arch: x64
-            qt_arch: win64_mingw81
-            mingw_tool: qt.tools.win64_mingw810
-            vlc_url: https://download.videolan.org/pub/videolan/vlc/3.0.21/win64/vlc-3.0.21-win64.7z
-            # Runtime MinGW requerido por las Qt5*.dll precompiladas (enlace dinamico)
-            mingw_runtime: libgcc_s_seh-1.dll,libstdc++-6.dll,libwinpthread-1.dll
           - arch: x86
-            qt_arch: win32_mingw81
-            mingw_tool: qt.tools.win32_mingw810
-            vlc_url: https://download.videolan.org/pub/videolan/vlc/3.0.21/win32/vlc-3.0.21-win32.7z
-            mingw_runtime: libgcc_s_dw2-1.dll,libstdc++-6.dll,libwinpthread-1.dll
+            cmake_gen_arch: Win32
+          - arch: x64
+            cmake_gen_arch: x64
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Qt 5.15.2 (MinGW, ${{ matrix.arch }})
-        uses: jurplel/install-qt-action@v4
+      - name: Configurar MSVC (${{ matrix.arch }})
+        uses: ilammy/msvc-dev-cmd@v1
         with:
-          version: '5.15.2'
-          host: 'windows'
-          target: 'desktop'
-          arch: ${{ matrix.qt_arch }}
-          cache: true
-          cache-key-prefix: 'qt-5152-${{ matrix.arch }}'
-          setup-python: 'false'
+          arch: ${{ matrix.arch }}
 
-      - name: Install MinGW 8.1 toolchain (${{ matrix.arch }})
+      # ---------------------------------------------------------------------
+      # wxWidgets estático (/MT) — compilar y cachear
+      # ---------------------------------------------------------------------
+      - name: Cache wxWidgets ${{ env.WX_VERSION }} (${{ matrix.arch }})
+        id: wxcache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/wx-install
+          key: wx-${{ env.WX_VERSION }}-${{ matrix.arch }}-mt-v1
+
+      - name: Descargar wxWidgets ${{ env.WX_VERSION }}
+        if: steps.wxcache.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
-          $ErrorActionPreference = 'Stop'
-          python -m pip install --quiet --disable-pip-version-check "aqtinstall==3.3.*"
-          # aqt 3.x: subcomando 'install-tool' + argumento 'desktop' (renovado desde 'tool')
-          python -m aqt install-tool windows desktop tools_mingw81 ${{ matrix.mingw_tool }} -O "$env:QT_ROOT_DIR"
-          if ($LASTEXITCODE -ne 0) { throw "aqt tool fallo" }
-          $mingwBin = Get-ChildItem -Path "$env:QT_ROOT_DIR\Tools" -Directory | `
-            Where-Object { $_.Name -like 'mingw810*' } | Select-Object -First 1
-          if (-not $mingwBin) { throw "No se encontro la carpeta de MinGW 8.1" }
-          $binPath = Join-Path $mingwBin.FullName 'bin'
-          echo "MINGW_BIN=$binPath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          Write-Host "MinGW en: $binPath"
+          $url = "https://github.com/wxWidgets/wxWidgets/releases/download/v$env:WX_VERSION/wxWidgets-$env:WX_VERSION.zip"
+          Write-Host "Descargando $url"
+          Invoke-WebRequest -Uri $url -OutFile wx.zip
+          Expand-Archive -Path wx.zip -DestinationPath wx-src -Force
 
-      - name: Add MinGW to PATH
+      - name: Compilar wxWidgets estático (/MT)
+        if: steps.wxcache.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
-          echo "$env:MINGW_BIN" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-          gcc --version | Select-Object -First 1
+          cmake -S wx-src -B wx-build `
+            -A ${{ matrix.cmake_gen_arch }} `
+            -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/wx-install `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DwxBUILD_SHARED_LIBS=OFF `
+            -DwxBUILD_MONOLITHIC=OFF `
+            -DwxBUILD_SAMPLES=OFF `
+            -DwxBUILD_TESTS=OFF `
+            -DwxBUILD_DEMOS=OFF `
+            -DwxBUILD_MSVC_RUNTIME_DLL=OFF `
+            -DwxUSE_STC=0 -DwxUSE_XRC=0 -DwxUSE_HTML=0 `
+            -DwxUSE_WEBVIEW=0 -DwxUSE_RIBBON=0 -DwxUSE_PROPGRID=0 `
+            -DwxUSE_RICHTEXT=0 -DwxUSE_OPENGL=0 -DwxUSE_DEBUGREPORT=0 `
+            -DwxUSE_PRINTF_POS_PARAMS=1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build wx-build --config Release --parallel $env:NUMBER_OF_PROCESSORS
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --install wx-build --config Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Download LibVLC ${{ env.VLC_VERSION }} (${{ matrix.arch }})
+      # ---------------------------------------------------------------------
+      # Aplicación
+      # ---------------------------------------------------------------------
+      - name: Configurar aplicación
         shell: pwsh
         run: |
-          $ErrorActionPreference = 'Stop'
-          Invoke-WebRequest -Uri '${{ matrix.vlc_url }}' -OutFile "vlc.7z" -MaximumRedirection 10
-          & "C:\Program Files\7-Zip\7z.exe" x "vlc.7z" -o"vlc_dist" -y | Out-Null
-          # El 7z extrae a una carpeta raiz tipo 'vlc-3.0.21/': detectarla automaticamente
-          $vlcRoot = Get-ChildItem "vlc_dist" -Directory | Where-Object { Test-Path (Join-Path $_.FullName 'libvlc.dll') } | Select-Object -First 1
-          if (-not $vlcRoot) { throw "libvlc.dll no encontrada tras extraer" }
-          Write-Host "VLC extraido en: $($vlcRoot.FullName)"
-          echo "VLC_ROOT=$($vlcRoot.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          cmake -S . -B build -A ${{ matrix.cmake_gen_arch }} `
+            -DCMAKE_PREFIX_PATH=${{ github.workspace }}/wx-install `
+            -DCMAKE_BUILD_TYPE=Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Configure (CMake)
+      - name: Compilar aplicación (0 errores / 0 warnings)
         shell: pwsh
         run: |
-          $ErrorActionPreference = 'Stop'
-          cmake -S . -B build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release `
-            -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
-          if ($LASTEXITCODE -ne 0) { throw "Fallo la configuracion CMake" }
+          cmake --build build --config Release --parallel $env:NUMBER_OF_PROCESSORS
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Build
+      # ---------------------------------------------------------------------
+      # Empaquetado portable + GATE de verificación
+      # ---------------------------------------------------------------------
+      - name: Empaquetar portable
         shell: pwsh
         run: |
-          $ErrorActionPreference = 'Stop'
-          cmake --build build -j $env:NUMBER_OF_PROCESSORS
-          if ($LASTEXITCODE -ne 0) { throw "Fallo la compilacion" }
+          $stage = "staging/${{ env.APP_NAME }}-${{ env.APP_VERSION }}-win-${{ matrix.arch }}-portable"
+          New-Item -ItemType Directory -Force -Path "$stage/resources/data", "$stage/resources/img" | Out-Null
+          Copy-Item "build/Release/${{ env.APP_NAME }}.exe" "$stage/"
+          Copy-Item "resources/data/bible_rvr1909.json" "$stage/resources/data/"
+          Copy-Item "resources/img/logo.png" "$stage/resources/img/"
+          Copy-Item "resources/img/logo128.png" "$stage/resources/img/"
+          Copy-Item "LICENSE.md" "$stage/"
+          @'
+          LuminaPresentation Suite v2.0.0 «Horizonte» (wxWidgets)
+          ======================================================
 
-      - name: Deploy (DLLs Qt + plugins + VLC + licencias)
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $stage = "deploy_stage"
-          $qt = $env:QT_ROOT_DIR
-          New-Item -ItemType Directory -Force -Path $stage | Out-Null
-          Copy-Item "build\${{ env.APP_NAME }}.exe" "$stage\"
+          PROGRAMA PORTABLE — no requiere instalación, ni permisos de
+          administrador, ni conexión a internet.
 
-          # ---------------------------------------------------------------
-          # RUNTIME DE MinGW (FIX v1.0.2 - CRITICO):
-          # Las Qt5*.dll y los plugins de Qt vienen precompilados por el propio
-          # Qt con enlace DINAMICO a libgcc/libstdc++/libwinpthread. El exe usa
-          # -static-libgcc/-static-libstdc++, pero eso NO cubre las DLLs de Qt.
-          # Sin estas 3 DLLs, el paquete muere al arrancar en cualquier Windows
-          # limpio con "El codigo de ejecucion no puede continuar porque no se
-          # encontro libwinpthread-1.dll" (defecto de la Release v1.0.1).
-          # Se copian desde el toolchain MinGW 8.1 instalado por aqt (MINGW_BIN).
-          # ---------------------------------------------------------------
-          foreach ($dll in '${{ matrix.mingw_runtime }}'.Split(',')) {
-            $src = Join-Path $env:MINGW_BIN $dll
-            if (-not (Test-Path $src)) { throw "Falta DLL del runtime MinGW: $dll (buscada en $env:MINGW_BIN)" }
-            Copy-Item $src "$stage\"
-            Write-Host "Runtime MinGW copiado: $dll"
-          }
+          1) Descomprimir en cualquier carpeta.
+          2) Ejecutar LuminaPresentationSuite.exe.
 
-          # ---------------------------------------------------------------
-          # Despliegue manual determinista de Qt 5.15 (windeployqt falla en
-          # CI con "Unable to find the platform plugin"). Se copian unicamente
-          # las DLLs de los modulos enlazados (Core Gui Widgets Network
-          # WebSockets PrintSupport) y los plugins que Qt carga en runtime.
-          # ---------------------------------------------------------------
-          $qtDlls = @(
-            'Qt5Core.dll','Qt5Gui.dll','Qt5Widgets.dll','Qt5Network.dll',
-            'Qt5WebSockets.dll','Qt5PrintSupport.dll','Qt5Svg.dll',
-            'Qt5Qml.dll'
-          )
-          foreach ($dll in $qtDlls) {
-            if (-not (Test-Path "$qt\bin\$dll")) { throw "Falta DLL de Qt: $dll" }
-            Copy-Item "$qt\bin\$dll" "$stage\"
-          }
-          # Fallback grafico dynamic-GL (PCs sin aceleradora / Win7): si existe se incluye
-          foreach ($dll in @('libEGL.dll','libGLESv2.dll','opengl32sw.dll','d3dcompiler_47.dll')) {
-            if (Test-Path "$qt\bin\$dll") { Copy-Item "$qt\bin\$dll" "$stage\" }
-            else { Write-Host "AVISO: $dll no presente en el paquete Qt (se omite)" }
-          }
+          Todo va incluido: wxWidgets estático, SQLite+FTS5 y la Biblia
+          RVR1909 completa. La base de datos se crea sola en Data\ en el
+          primer arranque.
 
-          $plugins = [ordered]@{
-            'platforms\qwindows.dll'                 = 'platforms'
-            'styles\qwindowsvistastyle.dll'          = 'styles'
-            'printsupport\windowsprintersupport.dll' = 'printsupport'
-            'iconengines\qsvgicon.dll'               = 'iconengines'
-            'imageformats\qgif.dll'                  = 'imageformats'
-            'imageformats\qico.dll'                  = 'imageformats'
-            'imageformats\qjpeg.dll'                 = 'imageformats'
-            'imageformats\qsvg.dll'                  = 'imageformats'
-            'imageformats\qtiff.dll'                 = 'imageformats'
-          }
-          foreach ($rel in $plugins.Keys) {
-            $src = Join-Path "$qt\plugins" $rel
-            if (-not (Test-Path $src)) { throw "Falta plugin de Qt: $rel" }
-            $destDir = Join-Path $stage $plugins[$rel]
-            New-Item -ItemType Directory -Force -Path $destDir | Out-Null
-            Copy-Item $src $destDir
-          }
-          Write-Host "Qt desplegado: $($qtDlls.Count) DLLs + $($plugins.Count) plugins"
+          Atajos: F5 en vivo · F6 negro · F7 limpiar · F8 logo ·
+                  F9 versículo rápido · F11 modo presentación ·
+                  Ctrl+F buscar · Ctrl+N nueva canción
 
-          # Motor VLC embebido (carga dinamica en runtime desde <appdir>/vlc/)
-          New-Item -ItemType Directory -Force -Path "$stage\vlc" | Out-Null
-          Copy-Item "$env:VLC_ROOT\libvlc.dll"     "$stage\vlc\"
-          Copy-Item "$env:VLC_ROOT\libvlccore.dll" "$stage\vlc\"
-          if (Test-Path "$env:VLC_ROOT\libcompat.dll") { Copy-Item "$env:VLC_ROOT\libcompat.dll" "$stage\vlc\" }
-          if (Test-Path "$env:VLC_ROOT\AUTHORS.txt")  { Copy-Item "$env:VLC_ROOT\AUTHORS.txt"  "$stage\vlc\VLCAuthors.txt" }
-          if (Test-Path "$env:VLC_ROOT\COPYING.txt")  { Copy-Item "$env:VLC_ROOT\COPYING.txt"  "$stage\vlc\VLCCopying.txt" }
-          Copy-Item "$env:VLC_ROOT\plugins" "$stage\vlc\plugins" -Recurse
+          Control remoto móvil (Ajustes): http://<ip-del-pc>:8088
 
-          # Licencias y documentacion
-          Copy-Item "LICENSE.md" "$stage\"
-          Copy-Item "README.md" "$stage\"
-          Write-Host "Staging listo"
+          Binarios de uso libre · Código fuente bajo Licencia View-Only.
+          '@ | Set-Content -Path "$stage/LEEME.txt" -Encoding UTF8
 
-      - name: Verify portable deps (gate PE imports)
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          # GATE anti-regresion (defecto v1.0.1): audita las tablas de imports
-          # PE de TODOS los binarios del staging y falla el build si falta
-          # alguna DLL requerida que no sea de sistema Windows.
-          python tools/verify_portable.py deploy_stage ${{ matrix.arch }}
-          if ($LASTEXITCODE -ne 0) { throw "Gate de dependencias portable FALLADO (ver arriba)" }
+          python tools/verify_portable.py "$stage" ${{ matrix.arch }}
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Compress-Archive -Path "$stage/*" -DestinationPath "${stage}.zip" -Force
+          Write-Host "Paquete: ${stage}.zip"
 
-      - name: Package (zip + SHA256)
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $out = "${{ env.APP_NAME }}-${{ env.APP_VERSION }}-${{ matrix.arch }}-portable"
-          Compress-Archive -Path "deploy_stage\*" -DestinationPath "$out.zip" -Force
-          $hash = (Get-FileHash "$out.zip" -Algorithm SHA256).Hash
-          "$hash  $out.zip" | Out-File -Encoding ascii "SHA256SUMS-${{ matrix.arch }}.txt"
-          Get-Content "SHA256SUMS-${{ matrix.arch }}.txt"
-
-      - name: Upload artifact
+      - name: Subir artefacto
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.APP_NAME }}-${{ env.APP_VERSION }}-${{ matrix.arch }}-portable
-          path: |
-            LuminaPresentationSuite-${{ env.APP_VERSION }}-${{ matrix.arch }}-portable.zip
-            SHA256SUMS-${{ matrix.arch }}.txt
-          retention-days: 14
+          name: portable-${{ matrix.arch }}
+          path: staging/*.zip
 
+  # -------------------------------------------------------------------------
+  # Release (solo tags v*)
+  # -------------------------------------------------------------------------
   release:
-    name: Create GitHub Release
+    name: Publicar Release
     needs: build
-    runs-on: ubuntu-latest
-    # v1.2.0: la release se publica SOLO con tag v* (antes también se disparaba
-    # con workflow_dispatch y el fallback de versión podía machacar/re-taggear
-    # una release publicada de la misma versión).
     if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
     steps:
-      - name: Download x64 artifact
+      - name: Descargar artefactos
         uses: actions/download-artifact@v4
         with:
-          name: ${{ env.APP_NAME }}-${{ env.APP_VERSION }}-x64-portable
-          path: artifacts/x64
-      - name: Download x86 artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: ${{ env.APP_NAME }}-${{ env.APP_VERSION }}-x86-portable
-          path: artifacts/x86
+          path: artifacts
 
-      - name: Prepare release files
+      - name: SHA256SUMS
+        shell: bash
         run: |
-          mkdir -p rel
-          cp artifacts/x64/LuminaPresentationSuite-${{ env.APP_VERSION }}-x64-portable.zip rel/
-          cp artifacts/x86/LuminaPresentationSuite-${{ env.APP_VERSION }}-x86-portable.zip rel/
-          cat artifacts/x64/SHA256SUMS-x64.txt artifacts/x86/SHA256SUMS-x86.txt > rel/SHA256SUMS.txt
-          ls -la rel/
+          cd artifacts
+          find . -name "*.zip" -exec sha256sum {} \; | sed 's|artifacts/||' > SHA256SUMS.txt
+          cat SHA256SUMS.txt
 
-      # ------------------------------------------------------------------
-      # v1.2.0 — GATE 1: limpieza de DRAFTS fantasma para este tag.
-      # Defecto v1.1.0: la release se "creó" con éxito (log: "Release ready")
-      # pero jamás quedó publicada — quedó como DRAFT invisible (ni el tag de
-      # la página web, ni API pública). El GITHUB_TOKEN sí puede ver drafts;
-      # se eliminan los drafts residuales del tag actual antes de publicar.
-      # ------------------------------------------------------------------
-      - name: Purge stale draft releases for this tag
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
-        run: |
-          echo "Buscando drafts residuales para el tag $TAG..."
-          IDS=$(curl -sf -H "Authorization: Bearer $GH_TOKEN" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
-            | jq -r ".[] | select(.draft == true and .tag_name == \"$TAG\") | .id")
-          for id in $IDS; do
-            echo "Eliminando draft residual #$id (tag $TAG)"
-            curl -sf -X DELETE -H "Authorization: Bearer $GH_TOKEN" \
-              "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/$id" || true
-          done
-          echo "Limpieza de drafts completada."
-
-      - name: Create Release
+      - name: Publicar
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          name: LuminaPresentation Suite ${{ env.APP_VERSION }}
+          name: LuminaPresentation Suite ${{ github.ref_name }} «Horizonte» (wxWidgets)
+          body: |
+            **Programa de escritorio NATIVO (C++17 / wxWidgets 3.2 estático)** — no requiere instalación.
+
+            ## Descargas
+            - `LuminaPresentationSuite-${{ github.ref_name }}-win-x86-portable.zip` — **Windows 7 SP1 a Windows 11 (32 bits)**
+            - `LuminaPresentationSuite-${{ github.ref_name }}-win-x64-portable.zip` — **Windows 7 SP1 a Windows 11+ (64 bits)**
+            - `SHA256SUMS.txt` — integridad de los paquetes
+
+            ## Novedades v2.0.0 «Horizonte» — reescritura completa con wxWidgets
+            - **Motor nativo wxWidgets 3.2** enlazado estático con runtime /MT: **cero dependencias externas** (sin redistributables, sin Qt, sin VLC) — descomprimir y ejecutar en Win7 SP1+ x32 hasta Win11+.
+            - **UI/UX nueva**: biblioteca en pestañas (Canciones/Biblia/Medios/Temas), culto persistente con reordenamiento, previsualización dual EN VIVO/SIGUIENTE con render real, toolbar de control con transposición en vivo, barra de estado informativa y modo presentación (F11).
+            - **Canciones**: SQLite+FTS5 (búsqueda instantánea sin acentos), etiquetas, editor con reparto en slides en vivo, transposición de acordes latinos/anglosajonos, Modo Hinario corregido (coro tras el verso completo, dedupe).
+            - **Biblia RVR1909 incluida** (31.084 versículos), referencias tipadas `Jn 3:16`, búsqueda por palabras, versículo rápido F9.
+            - **Salida fullscreen** multi-pantalla con fondo sólido/gradiente/imagen, contorno, sombra, ajuste tipográfico automático, Lower Third y video (DirectShow).
+            - **Control remoto HTTP** embebido: panel móvil, `/api/cmd`, `/api/state`, `/api/live.txt`, token opcional.
+            - **CI verificado**: 63/63 checks de núcleo + auditoría PE de portabilidad.
           draft: false
           prerelease: false
-          make_latest: true
-          body: |
-            ## LuminaPresentation Suite ${{ env.APP_VERSION }}
-
-            **Proyección multimedia híbrida nativa** — C++17 / Qt 5.15 LTS · sin JVM · sin Electron.
-
-            ### Paquetes portables (todo incluido)
-            | Archivo | Arquitectura | Sistemas |
-            |---|---|---|
-            | `LuminaPresentationSuite-${{ env.APP_VERSION }}-x64-portable.zip` | 64 bits | Windows 7 SP1 → Windows 11 |
-            | `LuminaPresentationSuite-${{ env.APP_VERSION }}-x86-portable.zip` | 32 bits | Windows 7 SP1 → Windows 10 |
-
-            - Descomprimir y ejecutar `LuminaPresentationSuite.exe` — **no requiere instalación**.
-            - Incluye: motor Qt + **runtime MinGW**, **LibVLC 3.0.21** (todos los codecs), **Biblia RVR1909 completa** y temas.
-            - Verifica la integridad con `SHA256SUMS.txt`.
-            - Control remoto móvil: `http://<ip-del-pc>:8088/remote.html` · Overlay OBS: `http://<ip>:8088/overlay.html`
-
-            ### 🛡 Novedades v1.6.0 «ESTABILIDAD» — auditoría profunda: 3 críticos + 19 medios + 15 bajos corregidos
-            - **🔥 FIX CRÍTICO — servidor remoto (doble free)**: reiniciar el servidor (Ajustes › Aplicar) con un móvil/tablet conectado por WebSocket **corrompía la memoria y colgaba el proceso** (SIGABRT reproducido). Los clientes ahora se cierran y desacoplan de forma segura en cada start()/stop().
-            - **🔥 FIX CRÍTICO — crash al terminar cualquier video/audio**: el monitor de estado usaba el reproductor LibVLC justo después de que el manejador de fin lo liberaba (desreferencia NULL en builds release de Windows).
-            - **🔥 FIX CRÍTICO — PPTX en blanco en la cola del culto**: las slides rasterizadas del PowerPoint se creaban con un tipo interno que el proyector no dibuja — proyectar un PPTX desde la cola mostraba solo el fondo. Ahora se proyecta la imagen renderizada (mismo camino probado del lienzo libre).
-            - **🛡 Servidor remoto endurecido**: con token configurado, **también el WebSocket y los endpoints de estado** lo exigen (antes solo /api/cmd); buffer HTTP limitado a 64 KB (antes un cliente malicioso podía agotar la RAM); rutas desconocidas responden 404 (antes 200); el token se reenvía desde remote.html/overlay.html/director.html.
-            - **☁ Google Drive**: subida **resumable en streaming** (el multipart anterior fallaba con vaults > 5 MB y duplicaba el archivo en RAM); la reconexión de cuenta ya no borra el refresh token si cancelas el navegador; la rotación usa el token correcto y registra sus errores.
-            - **⚙ Módulos JS**: recargar módulos ya no fuga un motor QJS por recarga y el **registro en vivo vuelve a funcionar** tras la primera recarga; `httpGet` sigue redirecciones HTTP→HTTPS.
-            - **🎹 MIDI In persistente**: el mapa nota→comando y el interruptor se restauran al arrancar (antes el pedal dejaba de funcionar tras reiniciar hasta re-guardar).
-            - **📺 Video que no tapa la proyección**: ejecutar el siguiente ítem del culto (o proyectar canción/versículo) con un video en pantalla lo detiene y oculta — antes la audiencia seguía viendo el video anterior. El audio puro (pista bajo las letras) NO se interrumpe.
-            - **🎵 Modo Hinario corregido**: canciones cuyo único bloque es [Coro] ya no se proyectan vacías; letras con [Coro] repetido tras cada verso ya no lo cantan N veces seguidas (V1 C V2 C exacto).
-            - **📖 Importador de Biblias**: reimportar el mismo ZEFania ya no duplica todos los versículos (índice UNIQUE + guard amistoso + dedupe automático de BDs antiguas); el código de versión sale del biblename real (dos traducciones distintas ya no se mezclan).
-            - **🔍 Búsquedas**: términos con «%1»/«%2» (ej. «100%1») ya no corrompen el SQL de FTS (parámetros enlazados).
-            - **🖼 Proyección nítida en escalados de Windows 125–150 %**: la salida ahora se rasteriza al devicePixelRatio real (antes texto y fondos se reescalaban borrosos); el resaltado bíblico recupera el contorno y la sombra del tema.
-            - **📊 PPTX**: importación acotada en memoria (videos embebidos de cientos de MB ya no van a RAM); exportación verifica cada escritura, emite txBody válido para slides sin texto (PowerPoint ya no pide reparar) y limpia caracteres de control; grupos y tablas mejor soportados.
-            - **🧭 Pantalla Director**: recupera el acento de color del tema (código muerto conectado); la pantalla elegida se recuerda entre sesiones; las pantallas guardadas se restauran en la toolbar desde el arranque.
-            - **⌨ Cola del culto**: el primer «siguiente» del móvil/MIDI tras iniciar el culto avanza al ítem 2 (antes repetía el 1); importar un plan de Planning Center con otro culto seleccionado ya no mezcla colas.
-            - **🚀 Rendimiento**: Stage View ya no re-pule todo su QSS en cada slide; cache de imágenes con recencia real (fondo + actual + siguiente).
-            - **✅ Suite de regresión**: 45 checks automatizados — incluida la re-entrada del servidor con clientes conectados y el hinario — todos en verde.
-
-            ### 🌐 Novedades v1.5.0 «NEXO» — integraciones de la especificación completa
-            - **🧭 Pantalla 3 «Director / Instrucciones»** (spec §3.3 multiview): tercera salida independiente para el director del servicio — ítem actual y SIGUIENTE con preview, notas, reloj, temporizador y **registro persistente de mensajes del operador**; también vía navegador en `http://<ip>:8088/director.html`.
-            - **📅 Planning Center Online** (spec §3.3): importa planes futuros del culto con un Personal Access Token — las canciones se emparejan con las de tu biblioteca (insensible a mayúsculas/acentos) y el resto entra como ítems de texto con sus notas.
-            - **☁ Respaldo en Google Drive** (spec §3.4): conexión OAuth por navegador (loopback, sin copiar códigos), subida manual + **subida automática de la copia semanal**, descarga de la copia más reciente y rotación de 4 — todo en la carpeta oculta de la aplicación en Drive.
-            - **⚙ Módulos JavaScript / JSLib** (spec §3.3): coloca archivos `.js` en `<datos>/modules/` y automatiza con sockets TCP y WebSocket persistentes, HTTP GET, temporizadores y eventos (`jslib.onEvent('slide_next', …)`); registro en vivo en Comunicación › Módulos JS.
-            - **🖼 TIF en imágenes** (spec §3.2): JPG, PNG, GIF, BMP y **TIF** en medios, drag & drop y fondos (plugin qtiff empaquetado; TIFF se proyecta por la ruta nativa Qt).
-            - **📊 PPTX con herencia de 4 niveles** (spec §4.3): la exportación ahora escribe theme + slideMaster + slideLayout + slides enlazados (modelo Tema → Maestro → Diseño → Diapositiva del estándar OpenXML).
-            - **🧠 Lazy loading real** (spec §2.5): solo el elemento actual y el siguiente se precargan (cache de 2 imágenes) — memoria acotada en equipos de 4 GB.
-            - **📋 Log estructurado + captura de crashes** (spec §2.6): timestamp + nivel + módulo emisor, rotación al superar 2 MB y registro de excepciones no controladas (código/dirección/módulo) en Windows.
-            - **🛠 Skills de calidad en el desarrollo**: lint qt-cpp-review (60+ reglas) y disciplinas qt-ui-design aplicadas a las secciones nuevas.
-
-            ### 🧠 Novedades v1.4.0 «PRISMA» — automatización semántica + accesibilidad
-            - **🧠 Automatización semántica por etiquetas** (spec Holyrics: «si se reproduce una canción con la etiqueta 'lento', aplicar el tema 'calma' y seleccionar un fondo con la etiqueta 'ocaso'»): crea reglas etiqueta → tema (+ fondo por etiqueta) en Comunicación › Automatización semántica; al proyectar una canción, la primera regla que coincide se aplica EN VIVO sin tocar la plantilla. Coincidencia insensible a mayúsculas y acentos.
-            - **🏷 Etiquetas en temas y fondos** (spec Holyrics: «asignar etiquetas a temas, fondos de imágenes, videos y canciones»): los temas llevan etiquetas editables (con autocompletado) y la nueva **Biblioteca de fondos** del panel Temas cataloga imágenes/videos con etiquetas — filtra por etiqueta («agua», «ocaso»…) y aplica cualquiera como fondo con doble clic.
-            - **🎹 MIDI In** (spec Holyrics: eventos de disparo externos «recibir un comando MIDI»): conecta un pedal/pad MIDI y dispara los comandos del presentador (siguiente, anterior, negro, logo, cola…) con el mismo vocabulario del control remoto web. Mapa nota → comando editable con defaults didácticos (octava de Do) y botón «Probar nota».
-            - **♿ Comprobador de accesibilidad WCAG** (spec PowerPoint: Accessibility Checker): ratios de contraste en vivo del título y cuerpo contra el fondo del tema (peor caso en gradientes), clasificados como Correcto/Advertencia/Error — con umbral AA 4.5:1 y texto grande 3:1.
-            - **🎬 FIX — fondos de video al cambiar de tema**: antes, pasar de un tema con fondo de video a otro sin video dejaba el video anterior SONANDO y visible encima del nuevo tema; ahora se detiene automáticamente.
-            - **🛠 Calidad interna**: guard RAII para todos los statements nuevos de SQLite (StmtGuard), consultas const noexcept en MediaEngine y marshalling seguro hilo-winmm → hilo-Qt en MIDI In (disciplinas cpp-pro); Comunicación ahora con scroll para pantallas pequeñas.
-
-            ### 🌟 Novedades v1.3.0 «AURORA» — nueva interfaz gráfica + funciones de las especificaciones
-            - **🎨 GUI «Aurora» completa**: tema visual global profesional (sidebar de navegación con secciones BIBLIOTECA/DISEÑO/SERVICIO/SISTEMA, tablas con zebra, botones primarios/dorado, inputs, combos, scrollbars finas, menús, diálogos y tooltips rediseñados).
-            - **🖥 Modo Presentación (F11)**: consola mínima del operador según el spec maestro — el dock de proyección se expande a toda la ventana con transporte grande (Anterior/Siguiente/Negro/Logo/Fondo/Versículo); F11 restaura la consola completa.
-            - **Dock «En vivo» rediseñado**: chip EN VIVO + marco dorado al proyectar, **reloj en vivo**, **mini-preview de la SIGUIENTE slide** (vista de moderador, spec PowerPoint) y **multiview con miniatura del Stage View** (spec Holyrics), chip de cuenta regresiva siempre visible.
-            - **⌨ Atajos de teclado personalizables** (spec Holyrics): 9 acciones reasignables desde Ajustes › Atajos (QKeySequenceEdit, valores de fábrica restaurables, persistidos en el vault).
-            - **💾 Copia de seguridad y restauración del vault** (alternativa offline-safe a la sincronización en la nube): copia manual + **auto-backup semanal con rotación de 4**, y snapshot de seguridad automático antes de restaurar.
-            - **📡 Mensajes a los remotos conectados** («Custom Messages» del spec Holyrics): el operador envía avisos que aparecen como toast en los móviles/tablets — sin interrumpir la proyección.
-            - **📖 Importador de Biblias ZEFania XML**: importa cualquier versión del ecosistema Holyrics (RVR1960, NVI, KJV…) y úsala como principal o en paralelo (botón en el panel Biblia).
-            - **🖼 Exportar en vivo a PNG** (spec PowerPoint: «exportar diapositivas como imágenes»): todas las slides del elemento en vivo a 1920×1080, junto al PDF/PPTX existente.
-            - **🖱 Drag & Drop global**: arrastra una imagen/video sobre la ventana → fondo en vivo; arrastra un .txt → importa la canción (directivas @titulo/@autor/@tono/@bpm).
-            - **🎬 Posición inicial de medios** (spec Holyrics): campo «Iniciar en (segundos)» para saltar intros en clips.
-            - **Chip de estado del servidor** en la barra de estado (verde/rojo con puerto) + diálogo «Acerca de» con información del sistema.
-
-            ### Novedades v1.2.0 — auditoría integral + corrección de 6 defectos críticos
-            - **🔥 FIX CRÍTICO — Versículo rápido (F9)**: `showSlideIndex()` cerraba el overlay ANTES de proyectar el versículo — el F9 proyectaba la slide equivocada (la 0 de la canción) y con nada en vivo podía **colgar la aplicación**. El overlay ahora se gestiona en `goLive()` y el F9 conserva el punto de retorno (Esc vuelve a la canción).
-            - **🔥 FIX CRÍTICO — botón Logo (L)**: `QSize * 0.5` no existe en Qt 5.15 y GCC lo resolvía como `QSize * 0` — el logo se escalaba a 0×0 y **jamás se proyectaba**.
-            - **🔥 FIX CRÍTICO — MIDI Out**: `midiOutOpen` se llamaba con 2 de sus 5 parámetros — corrupción de pila garantizada en x86 (Win7 32 bits) al activar MIDI.
-            - **🔥 FIX CRÍTICO — Lienzo libre**: "Proyectar esta slide" emitía un `Slide::Custom` que **nadie renderizaba** (salida vacía). Ahora el lienzo se rasteriza a PNG y se proyecta; además las slides del lienzo se pueden **añadir a la cola del culto** y ejecutarse desde el móvil.
-            - **🔥 FIX CRÍTICO — lista de temas**: la lista nunca estaba conectada — al hacer clic en un tema el editor seguía mostrando el anterior y "Guardar cambios" **sobrescribía la plantilla equivocada**.
-            - **🔥 FIX CRÍTICO — panel Ajustes destruía la configuración**: los valores persistidos (puertos, transición, tema, autostart, pantallas) nunca se cargaban — abrir Ajustes y pulsar "Aplicar" **machacaba todo con los defaults**.
-            - **Triggers duplicados**: la navegación por teclado/remoto disparaba los triggers (OBS/MIDI/webhook) DOS veces por pulsación.
-            - **Cola de culto — Biblia**: los items con referencia (`Jn 3:16`) proyectaban el CAPÍTULO COMPLETO en vez de la referencia guardada; el F9 también ignora ahora el rango (`Sal 23:1-3` proyecta 1-3).
-            - **Modo Hinario**: coro largo completo (antes solo se intercalaba su primer bloque) y coro tras cada VERSO completo (no entre sus slides paginadas).
-            - **"＋ A culto"**: añade al culto SELECCIONADO en el panel Cultos (antes siempre al más reciente).
-            - **PPTX con acentos/ñ**: las rutas con caracteres no-ANSI fallaban en Windows ("ZIP inválido") — importación y exportación corregidas.
-            - **Sombras del texto** invisibles (`Qt::NoPen` en `drawText`), fondos "cover" descentrados, logo en el preview/exportación.
-            - **App "zombie" al salir**: cerrar la app con la proyección activa dejaba el proceso vivo con la pantalla congelada; doble clic en la salida abre/cierra la proyección (rescate en monitor único).
-            - **Control remoto**: estado inicial al conectar (antes "— sin contenido —" hasta el primer comando); multilínea correcta en el móvil.
-            - **Reconexión automática de OBS** tras reiniciar OBS; fuga de memoria del webhook corregida.
-            - **Acordes**: notas naturales corregidas en la transposición de enarmónicos; los acordes "slash" (Sol/Fa) transponen también el bajo (y aceptan notación latina).
-            - **Stage View**: colores del tema aplicados de verdad (fondo/texto/cifras); una alerta nueva ya no es borrada por el temporizador de la anterior.
-            - Reordenar cultos: "▼" ya no mueve el primer item tras recargar; "Guardar como nuevo" de temas ya no deja el editor inconsistente.
-            - Limpieza: reason phrase HTTP real (401 Unauthorized), purga de temporales de PPTX (>3 días), fuga del buffer HTTP de clientes abortados, `running()==false` tras detener el servidor.
-
-            ### Novedades v1.1.0 — funciones nuevas (specs Holyrics + PowerPoint)
-            - **🌐 API HTTP de comandos** (Componente 3 del spec): `GET /api/cmd?c=next|prev|black|clear|logo|goto|i=N|qnext|qprev|alert&text=…` con **token opcional** configurable en Ajustes (estilo Holyrics). Endpoint `/api/live.txt` en **texto plano** para usar como fuente de texto en OBS Studio / integraciones simples.
-            - **🧾 Exportación a PDF** del escenario en vivo (spec: exportar a «PPTX y PDF»): cada diapositiva se rasteriza a página 16:9 desde el panel PowerPoint.
-            - **📌 Lower Third** (Componente 2 del spec): superposición inferior semitransparente con barra dorada, título y texto — botón directo en la barra de herramientas.
-            - **✨ Resaltado de palabras bíblicas** (spec Holyrics: «destacar palabras específicas»): campo «Destacar» en el panel Biblia; las palabras se proyectan en dorado (búsqueda insensible a acentos y mayúsculas).
-            - **🎵 Modo Hinario configurable** (coro intercalado tras cada verso, incluido el último) + **densidad de proyección** (2–8 líneas por slide) en Ajustes › Canciones.
-            - **🎼 Transposición en vivo del Stage View**: el selector de semitonos en Canciones ahora aplica la transposición REAL a las cifras del monitor de músicos y se persiste (antes solo mostraba un mensaje).
-            - **⏭ Cola del culto desde el móvil**: botones «Culto: siguiente / anterior» en el control remoto (`qnext`/`qprev` también por API HTTP).
-            - **＋ A culto en PowerPoint**: los items PPTX ahora guardan la ruta del archivo y se ejecutan desde la cola del culto (antes la señal existía pero nunca se emitía y los items no podían reproducirse).
-
-            ### Correcciones v1.1.0
-            - **Referencias bíblicas con espacio tras la coma** (`1 Co 13, 4-7`): el parser las rechazaba en silencio; ahora se normalizan correctamente.
-            - **Versículo rápido (F9) doble**: un segundo F9 machacaba el estado guardado y `Esc` restauraba la diapositiva equivocada.
-            - **Parseo de query HTTP**: `QUrlQuery` no elimina la ruta — los parámetros (`c=`, `token=`) llegaban vacíos; ahora se extrae solo la parte posterior a `?`.
-            - **Panel de Medios conectado**: la señal `positionChanged` nunca estaba conectada (barra de progreso y tiempo muertos); además el fin del medio limpia la salida y dispara el trigger `media_stop`.
-            - **Fondos de video**: al cambiar de diapositiva el video de fondo se reiniciaba (parpadeo); ahora continúa si es el mismo archivo.
-            - **Ajustes ↔ Toolbar**: la pantalla elegida en Ajustes ahora se refleja y aplica en los selectores de la barra.
-
-            ### Novedades v1.0.3
-            - **🏷 Sistema de etiquetas semánticas para canciones**: asigna palabras clave a cada canción (ej: `lento`, `navidad`, `entrada`, `ofrenda`) y filtra la biblioteca con un clic. Directiva `@tags a,b,c` en importación `.txt`.
-
-            ### Correcciones v1.0.2
-            - **FIX CRÍTICO — arranque en Windows limpio**: los paquetes v1.0.1 omitían el runtime de MinGW (`libwinpthread-1.dll`, `libstdc++-6.dll`, `libgcc_s_dw2-1/seh-1.dll`) que las DLLs de Qt importan de forma dinámica. Ahora el runtime viaja DENTRO del paquete.
-            - **Gate de dependencias en CI**: `verify_portable` audita las tablas de imports PE de los 380+ binarios del paquete y **falla el build** si falta cualquier DLL no-sistema.
-            - Verificación de arquitectura x86/x64 de todos los PE del paquete.
-
-            ### Correcciones v1.0.1 (sobre v1.0.0)
-            - **Importación PPTX arreglada** (parser XML con nombres locales + conversión EMU→px)
-            - **Búsqueda de canciones arreglada** (`ORDER BY rank` en subquery FTS5)
-            - **Biblia con acentos arreglada** (NFD + filtrado de marcas combinantes)
-            - **Exportación PPTX con texto real** · acordes sin fuga de estado · puerto WS dinámico en el remoto
-            - Lienzo: rectángulos redondeados reales y corrección de fuga de memoria
-            - Crossfade sin asignaciones por frame + cierre ordenado del servidor embebido
-            - FTS robusto ante términos con guiones/paréntesis/AND
           files: |
-            rel/LuminaPresentationSuite-${{ env.APP_VERSION }}-x64-portable.zip
-            rel/LuminaPresentationSuite-${{ env.APP_VERSION }}-x86-portable.zip
-            rel/SHA256SUMS.txt
-
-      # ------------------------------------------------------------------
-      # v1.2.0 — GATE 2: verificación POST-publicación. La v1.1.0 reportó
-      # "Release ready" pero la release quedó como draft fantasma (invisible
-      # en la web y en la API pública). Este gate consulta el API con el
-      # GITHUB_TOKEN y FALLA el job si la release no está PUBLICADA y con sus
-      # 3 assets — el CI ya no puede "ponerse verde" con la release rota.
-      # ------------------------------------------------------------------
-      - name: Verify published release (gate anti draft-fantasma)
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
-        run: |
-          for attempt in 1 2 3 4 5; do
-            echo "Intento $attempt: verificando release publicada para el tag $TAG..."
-            DATA=$(curl -sf -H "Authorization: Bearer $GH_TOKEN" \
-              "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/$TAG") || DATA=""
-            if [ -n "$DATA" ]; then
-              DRAFT=$(echo "$DATA" | jq -r ".draft")
-              ASSETS=$(echo "$DATA" | jq -r ".assets | length")
-              URL=$(echo "$DATA" | jq -r ".html_url")
-              echo "draft=$DRAFT assets=$ASSETS url=$URL"
-              if [ "$DRAFT" = "false" ] && [ "$ASSETS" -ge 3 ]; then
-                echo "✅ Release PUBLICADA correctamente con $ASSETS assets: $URL"
-                exit 0
-              fi
-            fi
-            sleep 10
-          done
-          echo "❌ FALLO: la release del tag $TAG no quedó publicada con sus assets."
-          echo "   Revisa los logs del paso 'Create Release' — NO se marcó el run en verde."
-          exit 1
+            artifacts/**/*.zip
+            artifacts/SHA256SUMS.txt

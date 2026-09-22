@@ -1,176 +1,230 @@
 // ============================================================================
 //  LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
 // ============================================================================
-//  Chords.h : Transposicion de acordes/cifras musicales en tiempo real
-//  para el Stage View. Soporta notacion anglosajona (C, D, E...) y
-//  latina (Do, Re, Mi...), con alteraciones (#, b) y sufijos (m, 7, sus...).
+//  Chords.h : Transposicion de acordes/cifras musicales en tiempo real.
+//  Soporta notacion anglosajona (C, D, E...) y latina (Do, Re, Mi...), con
+//  alteraciones (#, b), sufijos (m, 7, sus...) y bajo slash ("Sol/Fa", "C/E").
+//  Port de la edicion Qt (v1.6.0) — misma tabla de semitonos y sufijos.
 // ============================================================================
 #ifndef LUMINA_CHORDS_H
 #define LUMINA_CHORDS_H
 
-#include <QString>
-#include <QStringList>
-#include <QRegularExpression>
+#include <wx/string.h>
+#include <wx/tokenzr.h>
+
+#include <vector>
 
 class Chords
 {
 public:
-    static const QStringList &anglo()
+    // Semitono relativo a C (0..11) de una nota; -1 si invalida.
+    static int NoteToSemitone(const wxString &noteRaw)
     {
-        static const QStringList a = { QStringLiteral("c"), QStringLiteral("c#"), QStringLiteral("db"),
-                                       QStringLiteral("d"), QStringLiteral("d#"), QStringLiteral("eb"),
-                                       QStringLiteral("e"), QStringLiteral("f"), QStringLiteral("f#"),
-                                       QStringLiteral("gb"), QStringLiteral("g"), QStringLiteral("g#"),
-                                       QStringLiteral("ab"), QStringLiteral("a"), QStringLiteral("a#"),
-                                       QStringLiteral("bb"), QStringLiteral("b") };
-        return a;
-    }
-
-    // Convierte un nombre de nota a semitono relativo a C (0..11). -1 si invalido.
-    static int noteToSemitone(const QString &noteRaw)
-    {
-        const QString n = noteRaw.trimmed();
-        if (n.isEmpty()) return -1;
-        static const QStringList latin = { QStringLiteral("do"), QStringLiteral("do#"), QStringLiteral("reb"),
-                                           QStringLiteral("re"), QStringLiteral("re#"), QStringLiteral("mib"),
-                                           QStringLiteral("mi"), QStringLiteral("fa"), QStringLiteral("fa#"),
-                                           QStringLiteral("solb"), QStringLiteral("sol"), QStringLiteral("sol#"),
-                                           QStringLiteral("lab"), QStringLiteral("la"), QStringLiteral("la#"),
-                                           QStringLiteral("sib"), QStringLiteral("si") };
-        static const int latinSem[17] = { 0, 1, 1, 2, 3, 3, 4, 5, 6, 6, 7, 8, 8, 9, 10, 10, 11 };
-        const QString lower = n.toLower();
-        for (int i = 0; i < latin.size(); ++i)
-            if (lower == latin.at(i)) return latinSem[i];
-        for (int i = 0; i < anglo().size(); ++i)
-            if (lower == anglo().at(i)) return angloSemitone(i);
-        // Nota simple anglosajona de una letra (con alteracion: "B#", "Fb"...)
-        const QChar c = lower.at(0);
-        int idx = QStringLiteral("cdefgab").indexOf(c);
-        if (idx >= 0) {
-            // CORRECCION v1.2.0: las notas naturales NO están en idx*2 —
-            // c=0, d=2, e=4, f=5, g=7, a=9, b=11. El mapeo anterior (idx*2)
-            // daba semitonos erróneos (d->1, e->3, f->5...) y la transposición
-            // de enarmónicos no tabulados caía en la nota equivocada.
+        const wxString n = wxString(noteRaw).Trim(true).Trim(false).Lower();
+        if (n.empty())
+            return -1;
+        // Notacion latina (la mas larga primero: "solb", "sol#"...)
+        struct LatinEntry { const char *name; int semi; };
+        static const LatinEntry latin[] = {
+            { "solb", 6 }, { "sol#", 8 }, { "sol", 7 },
+            { "do#", 1 },  { "dob", -1 }, { "do", 0 },
+            { "reb", 1 },  { "re#", 3 },  { "re", 2 },
+            { "mib", 3 },  { "mi", 4 },
+            { "fa#", 6 },  { "fab", 4 },  { "fa", 5 },
+            { "lab", 8 },  { "la#", 10 }, { "la", 9 },
+            { "sib", 10 }, { "si", 11 },
+        };
+        for (const LatinEntry &e : latin) {
+            if (n == e.name && e.semi >= 0)
+                return e.semi;
+        }
+        // Notacion anglosajona completa (con enarmonicos)
+        struct AngloEntry { const char *name; int semi; };
+        static const AngloEntry anglo[] = {
+            { "c", 0 }, { "c#", 1 }, { "db", 1 }, { "d", 2 }, { "d#", 3 },
+            { "eb", 3 }, { "e", 4 }, { "f", 5 }, { "f#", 6 }, { "gb", 6 },
+            { "g", 7 }, { "g#", 8 }, { "ab", 8 }, { "a", 9 }, { "a#", 10 },
+            { "bb", 10 }, { "b", 11 },
+        };
+        for (const AngloEntry &e : anglo) {
+            if (n == e.name)
+                return e.semi;
+        }
+        // Nota simple con alteracion arbitraria ("b#", "fb"...)
+        if (n.Length() >= 1 && wxString("cdefgab").Find(n[0]) != wxNOT_FOUND) {
             static const int natSemi[7] = { 0, 2, 4, 5, 7, 9, 11 };
+            int idx = wxString("cdefgab").Find(n[0]);
             int base = natSemi[idx];
-            if (lower.size() > 1) {
-                if (lower.at(1) == QChar('#')) base += 1;
-                else if (lower.at(1) == QChar('b')) base -= 1;
+            if (n.Length() > 1) {
+                if (n[1] == '#') base += 1;
+                else if (n[1] == 'b') base -= 1;
             }
             return ((base % 12) + 12) % 12;
         }
         return -1;
     }
 
-    static QString semitoneToNote(int semi, bool latinNotation)
+    static wxString SemitoneToNote(int semi, bool latinNotation)
     {
         semi = ((semi % 12) + 12) % 12;
         if (latinNotation) {
-            static const QStringList l = { QStringLiteral("Do"), QStringLiteral("Do#"), QStringLiteral("Re"),
-                                           QStringLiteral("Re#"), QStringLiteral("Mi"), QStringLiteral("Fa"),
-                                           QStringLiteral("Fa#"), QStringLiteral("Sol"), QStringLiteral("Sol#"),
-                                           QStringLiteral("La"), QStringLiteral("La#"), QStringLiteral("Si") };
-            return l.at(semi);
+            static const wxString l[12] = { "Do", "Do#", "Re", "Re#", "Mi", "Fa",
+                                            "Fa#", "Sol", "Sol#", "La", "La#", "Si" };
+            return l[semi];
         }
-        static const QStringList a = { QStringLiteral("C"), QStringLiteral("C#"), QStringLiteral("D"),
-                                       QStringLiteral("D#"), QStringLiteral("E"), QStringLiteral("F"),
-                                       QStringLiteral("F#"), QStringLiteral("G"), QStringLiteral("G#"),
-                                       QStringLiteral("A"), QStringLiteral("A#"), QStringLiteral("B") };
-        return a.at(semi);
+        static const wxString a[12] = { "C", "C#", "D", "D#", "E", "F",
+                                        "F#", "G", "G#", "A", "A#", "B" };
+        return a[semi];
     }
 
-    // Determina si una linea completa es una linea de acordes (cifrado)
-    static bool isChordLine(const QString &line)
+    // Valida un token de acorde: raiz (latina o anglo) + alteracion +
+    // sufijo (m/maj/min/dim/aug/sus/add + digitos) + bajo opcional "/nota".
+    static bool IsChordToken(const wxString &tk)
     {
-        const QString t = line.trimmed();
-        if (t.isEmpty()) return false;
-        // Tokeniza por espacios; casi todos los tokens deben ser acordes validos
-        const QStringList tokens = t.split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
-        if (tokens.size() > 12) return false;
+        wxString root, tail, bass;
+        int rootSemi = 0;
+        return ParseToken(tk, &root, &rootSemi, &tail, &bass);
+    }
+
+    // Determina si una linea completa es una linea de acordes (cifrado).
+    static bool IsChordLine(const wxString &line)
+    {
+        const wxString t = wxString(line).Trim(true).Trim(false);
+        if (t.empty())
+            return false;
+        wxStringTokenizer tok(t, " \t");
+        const int count = tok.CountTokens();
+        if (count > 12 || count < 1)
+            return false;
         int ok = 0;
-        for (const QString &tk : tokens) {
-            if (isChordToken(tk)) ok++;
+        while (tok.HasMoreTokens()) {
+            if (IsChordToken(tok.GetNextToken()))
+                ok++;
         }
-        return ok == tokens.size() && ok >= 1;
+        return ok == count;
     }
 
-    static bool isChordToken(const QString &tk)
+    // Transpone una linea de acordes completa 'semi' semitonos, conservando
+    // la alineacion espacial (reemplazo token a token con relleno).
+    static wxString TransposeLine(const wxString &chordLine, int semi, bool latinNotation)
     {
-        if (tk.isEmpty() || tk.size() > 10) return false;
-        // v1.2.0: el bajo de los acordes "slash" ahora acepta TAMBIÉN notas
-        // latinas ("Sol/Fa", "Do/Mi") — antes solo "/A-G" y los slash latinos
-        // no se reconocían como acordes (jamás se transponían).
-        static const QRegularExpression re(
-            QStringLiteral("^(?:[A-G](?:#|b)?|(?:Do|Re|Mi|Fa|Sol|La|Si)(?:#|b)?)(?:m|maj|min|dim|aug|sus|add)?[0-9]*(?:/(?:[A-G](?:#|b)?|(?:Do|Re|Mi|Fa|Sol|La|Si)(?:#|b)?))?$"),
-            QRegularExpression::CaseInsensitiveOption);
-        return re.match(tk).hasMatch();
-    }
-
-    // Transpone una linea de acordes completa 'semi' semitonos.
-    static QString transposeLine(const QString &chordLine, int semi, bool latinNotation)
-    {
-        if (semi == 0 || chordLine.trimmed().isEmpty()) return chordLine;
-        // Alineacion preservada: reemplaza token a token rellenando con espacios
-        QString out;
+        if (semi == 0 || wxString(chordLine).Trim(true).Trim(false).empty())
+            return chordLine;
+        wxString out;
         out.reserve(chordLine.size());
         int i = 0;
-        const int n = chordLine.size();
+        const int n = (int)chordLine.Length();
         while (i < n) {
-            QChar c = chordLine.at(i);
-            if (c.isSpace()) { out += c; ++i; continue; }
+            const wxChar c = chordLine[i];
+            if (c == ' ' || c == '\t') {
+                out += c;
+                ++i;
+                continue;
+            }
             int j = i;
-            while (j < n && !chordLine.at(j).isSpace()) ++j;
-            const QString token = chordLine.mid(i, j - i);
-            out += transposeChordToken(token, semi, latinNotation);
+            while (j < n && chordLine[j] != ' ' && chordLine[j] != '\t')
+                ++j;
+            const wxString token = chordLine.Mid(i, j - i);
+            const wxString transposed = TransposeChordToken(token, semi, latinNotation);
+            out += transposed;
+            // Relleno para conservar columnas del cifrado
+            for (int k = (int)transposed.Length(); k < (int)token.Length(); ++k)
+                out += ' ';
             i = j;
         }
         return out;
     }
 
-    // Transpone un token de acorde; devuelve el original si no es acorde valido
-    static QString transposeChordToken(const QString &tk, int semi, bool latinNotation)
+    // Transpone un token de acorde; devuelve el original si no es acorde valido.
+    static wxString TransposeChordToken(const wxString &tk, int semi, bool latinNotation)
     {
-        if (!isChordToken(tk)) return tk;
-        static const QRegularExpression head(
-            QStringLiteral("^(Do|Re|Mi|Fa|Sol|La|Si|[A-G])(#|b)?"),
-            QRegularExpression::CaseInsensitiveOption);
-        QRegularExpressionMatch m = head.match(tk);
-        if (!m.hasMatch()) return tk;
-        QString base = m.captured(1);
-        const QString alter = m.captured(2);
-        const int srcSemi = noteToSemitone(base + alter);
-        if (srcSemi < 0) return tk;
-        const int dst = ((srcSemi + semi) % 12 + 12) % 12;
-        // CORRECCION v1.2.0: en acordes "slash" ("Sol/Fa", "C/E") la nota del
-        // BAJO no se transponía — el acorde quedaba mezclado en dos tonalidades.
-        // Se transpone también la nota tras la barra.
-        const QString tail = tk.mid(m.capturedLength(0));
-        const int slash = tail.lastIndexOf(QChar('/'));
-        QString out = semitoneToNote(dst, latinNotation) + tail.left(slash);
-        if (slash >= 0) {
-            const QString bassPart = tail.mid(slash + 1);
-            QString bass = bassPart;
-            static const QRegularExpression bassHead(
-                QStringLiteral("^(Do|Re|Mi|Fa|Sol|La|Si|[A-G])(#|b)?"),
-                QRegularExpression::CaseInsensitiveOption);
-            QRegularExpressionMatch bm = bassHead.match(bassPart);
-            if (bm.hasMatch()) {
-                const int bassSemi = noteToSemitone(bm.captured(1) + bm.captured(2));
-                if (bassSemi >= 0)
-                    bass = semitoneToNote(((bassSemi + semi) % 12 + 12) % 12, latinNotation) +
-                           bassPart.mid(bm.capturedLength(0));
-            }
-            out += QChar('/') + bass;
+        wxString root, tail, bass;
+        int rootSemi = -1;
+        if (!ParseToken(tk, &root, &rootSemi, &tail, &bass))
+            return tk;
+        const int dst = ((rootSemi + semi) % 12 + 12) % 12;
+        wxString out = SemitoneToNote(dst, latinNotation) + tail;
+        if (!bass.empty()) {
+            wxString bassRoot, bassTail;
+            int bassSemi = -1;
+            if (ParseToken(bass, &bassRoot, &bassSemi, &bassTail, nullptr))
+                bass = SemitoneToNote(((bassSemi + semi) % 12 + 12) % 12, latinNotation) + bassTail;
+            out += "/" + bass;
         }
         return out;
     }
 
 private:
-    // Tabla para pares (#/b) de la lista anglo: c c# db d d# eb e f f# gb g g# ab a a# bb b
-    static int angloSemitone(int idx)
+    // Parsea "Root[alter][suffix][/bass]".
+    //   rootOut/rootSemi : raiz reconocida
+    //   tailOut          : sufijo posterior a la raiz+alteracion (antes del /)
+    //   bassOut          : nota del bajo tras la barra (puede ser nullptr)
+    static bool ParseToken(const wxString &tk, wxString *rootOut, int *rootSemi,
+                           wxString *tailOut, wxString *bassOut)
     {
-        static const int map[17] = { 0, 1, 1, 2, 3, 3, 4, 5, 6, 6, 7, 8, 8, 9, 10, 10, 11 };
-        return map[idx];
+        if (tk.empty() || tk.Length() > 10)
+            return false;
+        // Sufijo valido: letras del conjunto m/M/a/j/i/n/d/s/u y digitos
+        static const wxString okChars = "mMajindsu0123456789";
+        wxString work = tk;
+        wxString bass;
+        const int slash = work.Find('/', true);
+        if (slash != wxNOT_FOUND) {
+            bass = work.Mid(slash + 1);
+            work = work.Left(slash);
+            if (bass.empty())
+                return false;
+        }
+        if (work.empty())
+            return false;
+        // Validacion de sufijo posterior a la raiz
+        // (la raiz se detecta primero; aqui se comprueba el resto)
+        // Raiz latina (probar las mas largas primero)
+        static const wxString latinRoots[7] = { "sol", "do", "re", "mi", "fa", "la", "si" };
+        static const int latinSemis[7] = { 7, 0, 2, 4, 5, 9, 11 };
+        const wxString lower = work.Lower();
+        int semi = -1;
+        size_t rootLen = 0;
+        for (int i = 0; i < 7; ++i) {
+            if (lower.StartsWith(latinRoots[i])) {
+                semi = latinSemis[i];
+                rootLen = latinRoots[i].Length();
+                break;
+            }
+        }
+        // Raiz anglosajona (letra unica A-G): a=9, b=11, c=0, d=2, e=4, f=5, g=7
+        if (semi < 0 && lower[0] >= 'a' && lower[0] <= 'g') {
+            static const int semiForAG[7] = { 9, 11, 0, 2, 4, 5, 7 };
+            semi = semiForAG[(int)(lower[0] - 'a')];
+            rootLen = 1;
+        }
+        if (semi < 0)
+            return false;
+        // Alteracion
+        if (rootLen < lower.Length() && (lower[rootLen] == '#' || lower[rootLen] == 'b')) {
+            if (lower[rootLen] == '#')
+                semi += 1;
+            else
+                semi -= 1;
+            ++rootLen;
+        }
+        // En latinos, "b" alteracion vs "si(b)"… "dob/reb" ya cubiertos; ok.
+        semi = ((semi % 12) + 12) % 12;
+        // Sufijo: caracteres validos solamente
+        const wxString suffix = lower.Mid(rootLen);
+        for (size_t k = 0; k < suffix.Length(); ++k) {
+            if (okChars.Find(suffix[k]) == wxNOT_FOUND)
+                return false;
+        }
+        // No puede ser una palabra de texto comun que empiece igual (ej: "Fa" de una
+        // letra con mayuscula). Heuristica del port original: tokens de 1-2 letras
+        // sin sufijo son acordes solo si la linea completa fue detectada como cifrado
+        // (IsChordLine ya exige tokens validos en toda la linea).
+        if (rootOut)   *rootOut = work.Left(rootLen);
+        if (rootSemi)  *rootSemi = semi;
+        if (tailOut)   *tailOut = work.Mid(rootLen);
+        if (bassOut)   *bassOut = bass;
+        return true;
     }
 };
 

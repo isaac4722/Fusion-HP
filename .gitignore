@@ -34,6 +34,8 @@ ui_*.h
 Thumbs.db
 desktop.ini
 
+staging/
+
 # Datos locales de prueba
 *.db
 *.sqlite

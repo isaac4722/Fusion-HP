@@ -1,0 +1,45 @@
+// ============================================================================
+//  LuminaPresentation Suite - resources/app.rc.in
+//  Recurso de version + icono de la aplicacion (Windows)
+// ============================================================================
+#include <windows.h>
+
+#define APSTUDIO_READONLY_SYMBOLS
+#undef APSTUDIO_READONLY_SYMBOLS
+
+#define VER_FILEVERSION             @PROJECT_VERSION_MAJOR@,@PROJECT_VERSION_MINOR@,@PROJECT_VERSION_PATCH@,0
+#define VER_FILEVERSION_STR         "@PROJECT_VERSION@.0\0"
+#define VER_PRODUCTVERSION          @PROJECT_VERSION_MAJOR@,@PROJECT_VERSION_MINOR@,@PROJECT_VERSION_PATCH@,0
+#define VER_PRODUCTVERSION_STR      "@PROJECT_VERSION@.0\0"
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION    VER_FILEVERSION
+ PRODUCTVERSION VER_PRODUCTVERSION
+ FILEFLAGSMASK  0x3fL
+ FILEFLAGS      0x0L
+ FILEOS         VOS_NT_WINDOWS32
+ FILETYPE       VFT_APP
+ FILESUBTYPE    0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "0c0a04b0"
+        BEGIN
+            VALUE "CompanyName",      "Isaac"
+            VALUE "FileDescription",  "LuminaPresentation Suite - Proyeccion multimedia para culto"
+            VALUE "FileVersion",      VER_FILEVERSION_STR
+            VALUE "InternalName",     "LuminaPresentationSuite"
+            VALUE "LegalCopyright",   "(c) 2026 Isaac. Binarios de uso libre - codigo View-Only."
+            VALUE "OriginalFilename", "LuminaPresentationSuite.exe"
+            VALUE "ProductName",      "LuminaPresentation Suite"
+            VALUE "ProductVersion",   VER_PRODUCTVERSION_STR
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0c0a, 1200
+    END
+END
+
+// Icono de la aplicacion (ruta absoluta resuelta por CMake)
+APPICON ICON "@CMAKE_CURRENT_SOURCE_DIR@/resources/img/app.ico"
