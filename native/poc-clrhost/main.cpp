@@ -292,8 +292,28 @@ int wmain(int argc, wchar_t** argv)
     // RPC_E_CHANGED_MODE: ya hay un apartamento (MTA) — también sirve.
     const bool comInitialized = SUCCEEDED(hrInit) || hrInit == RPC_E_CHANGED_MODE;
 
-    // ---- 1) mscoree.dll vía LoadLibrary (máxima compatibilidad Win7) ------
-    HMODULE hMscoree = LoadLibraryW(L"mscoree.dll");
+    // ---- 1) mscoree.dll: ruta directa del shim .NET 4 (determinista) ------
+    //  El System32\mscoree.dll de algunos sistemas/runners puede responder
+    //  E_NOINTERFACE; el shim REAL vive junto al runtime instalado:
+    //    x64 → %WINDIR%\Microsoft.NET\Framework64\v4.0.30319\mscoree.dll
+    //    x86 → %WINDIR%\Microsoft.NET\Framework\v4.0.30319\mscoree.dll
+    //  Se intenta la ruta directa, luego el nombre simple (Win7 SP1 OK).
+    HMODULE hMscoree = nullptr;
+    {
+        wchar_t path[MAX_PATH];
+        // El bitness del PROCESO decide la carpeta del runtime (Framework64/Framework)
+        const wchar_t* dir = (sizeof(void*) == 8) ? L"Microsoft.NET\\Framework64"
+                                                  : L"Microsoft.NET\\Framework";
+        UINT k = GetEnvironmentVariableW(L"WINDIR", path, MAX_PATH);
+        if (k > 0 && k < MAX_PATH - 64) {
+            wchar_t full[MAX_PATH];
+            _snwprintf_s(full, MAX_PATH, MAX_PATH - 1, L"%ls\\%ls\\v4.0.30319\\mscoree.dll", path, dir);
+            full[MAX_PATH - 1] = 0;
+            hMscoree = LoadLibraryW(full);
+        }
+    }
+    if (hMscoree == nullptr)
+        hMscoree = LoadLibraryW(L"mscoree.dll");
     if (hMscoree == nullptr)
         return Fail(L"mscoree.dll no se pudo cargar (.NET Framework ausente o corrupto)");
 
