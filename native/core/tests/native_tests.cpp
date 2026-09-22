@@ -113,6 +113,14 @@ int main() {
     CHECK(Chords::IsChordToken("Sol/Fa"));
     CHECK(Chords::IsChordToken("C/E"));
     CHECK(Chords::IsChordToken("Am7"));
+    CHECK(Chords::IsChordToken("Csus4"));
+    CHECK(Chords::IsChordToken("Cadd9"));
+    CHECK(Chords::IsChordToken("Cdim"));
+    CHECK(Chords::IsChordToken("Caug"));      // v4.2.0: 'g' de «aug» en kOkChars
+    CHECK(Chords::IsChordToken("Caug7"));
+    CHECK(Chords::IsChordLine("Csus4  Cadd9  Cdim  Caug"));
+    CHECK(!Chords::IsChordToken("cinco"));    // raíz C + sufijo con 'c' → rechazado
+    CHECK(!Chords::IsChordToken("cuatro"));   // raíz C + "uatro" → 'u' no arranque de sufijo
     // Alineación preservada: mismos espacios interiores + relleno que conserva
     // la columna del token ("Sol"→"La" es más corto → relleno final).
     const std::string tl = Chords::TransposeLine("Do  Sol", 2, true);

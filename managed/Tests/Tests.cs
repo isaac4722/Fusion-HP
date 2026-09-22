@@ -40,6 +40,8 @@ namespace lumina.tests
             Run("MiniJson: números long/double y literales", TestMiniJsonNumbers);
             Run("MiniJson: tolerancia a BOM UTF-8", TestMiniJsonBom);
             Run("ScenarioBuilder: estructura del JSON de escenario", TestScenarioStructure);
+            Run("ChordUtil: IsChordLine con el criterio del núcleo", TestChordUtilIsChordLine);
+            Run("ChordUtil: DetectKey y tonalidad latina", TestChordUtilDetectKey);
             Run("Settings: roundtrip portable", TestSettingsRoundtrip);
 
             // --- Núcleo nativo (condicionales) -----------------------------------
@@ -53,6 +55,7 @@ namespace lumina.tests
             Run("Nativo: ScenarioBuilder → LoadScenario==0", TestNativeLoadScenario, libOk);
             Run("Nativo: SongParse de la canción del builder", TestNativeSongParse, libOk);
             Run("Nativo: BibleRefResolve Jn 3:16", TestNativeRefResolve, libOk);
+            Run("Nativo: ChordsTranspose Do Sol → Re# La# (+3)", TestNativeChordsTranspose, libOk);
             Run("Nativo: BD INSERT/SELECT/FTS5", TestNativeDb, libOk);
 
             int failed = Failures.Count;
@@ -299,7 +302,7 @@ namespace lumina.tests
         private static void TestNativeVersion()
         {
             string v = LuminaEngine.Version();
-            AssertTrue(v.StartsWith("LuminaCore", StringComparison.Ordinal) && v.Contains("4.1"),
+            AssertTrue(v.StartsWith("LuminaCore", StringComparison.Ordinal) && v.Contains("4.2"),
                 "version=\"" + v + "\"");
         }
 
@@ -329,6 +332,51 @@ namespace lumina.tests
             AssertTrue(MiniJson.GetInt(o, "book", 0) == 43, "book 43");
             AssertTrue(MiniJson.GetInt(o, "chapter", 0) == 3, "chapter 3");
             AssertTrue(MiniJson.GetInt(o, "verse", 0) == 16, "verse 16");
+        }
+
+        private static void TestNativeChordsTranspose()
+        {
+            // +3 semitonos en notación latina: Do Sol → Re# La# · Am Fa → Dom Sol#
+            Dictionary<string, object> a = MiniJson.Parse(LuminaEngine.ChordsTranspose("Do   Sol", 3, true));
+            AssertTrue(MiniJson.GetString(a, "line", "") == "Re#   La#",
+                "Do Sol +3 → «" + MiniJson.GetString(a, "line", "") + "»");
+            Dictionary<string, object> b = MiniJson.Parse(LuminaEngine.ChordsTranspose("Am             Fa", 3, true));
+            AssertTrue(MiniJson.GetString(b, "line", "") == "Dom             Sol#",
+                "Am Fa +3 → «" + MiniJson.GetString(b, "line", "") + "»");
+            // Los tokens que no son acordes pasan intactos (comportamiento del núcleo).
+            Dictionary<string, object> c = MiniJson.Parse(LuminaEngine.ChordsTranspose("Aleluya, aleluya", 3, true));
+            AssertTrue(MiniJson.GetString(c, "line", "") == "Aleluya, aleluya",
+                "letra sin acordes intacta");
+        }
+
+        /* ----------------------------------------------- ChordUtil (v4.2.0) - */
+
+        private static void TestChordUtilIsChordLine()
+        {
+            // Positivos: cifrados reales (latinos y anglosajones)
+            AssertTrue(ChordUtil.IsChordLine("Do      Sol"), "Do Sol");
+            AssertTrue(ChordUtil.IsChordLine("Am             Fa"), "Am Fa");
+            AssertTrue(ChordUtil.IsChordLine("Fa#m7/C#"), "Fa#m7/C#");
+            AssertTrue(ChordUtil.IsChordLine("Csus4  Cadd9  Cdim  Caug"), "sufijos");
+            AssertTrue(ChordUtil.IsChordLine("Sol7"), "Sol7");
+            // Negativos: palabras españolas que NO son acordes (puerta del núcleo)
+            AssertTrue(!ChordUtil.IsChordLine("dos"), "dos");
+            AssertTrue(!ChordUtil.IsChordLine("mis"), "mis");
+            AssertTrue(!ChordUtil.IsChordLine("fue"), "fue");
+            AssertTrue(!ChordUtil.IsChordLine("das"), "das");
+            AssertTrue(!ChordUtil.IsChordLine("Primera línea de la letra"), "frase normal");
+            AssertTrue(!ChordUtil.IsChordLine("Aleluya, aleluya"), "Aleluya, aleluya");
+            AssertTrue(!ChordUtil.IsChordLine(""), "vacía");
+            AssertTrue(!ChordUtil.IsChordLine(null), "null");
+        }
+
+        private static void TestChordUtilDetectKey()
+        {
+            AssertTrue(ChordUtil.DetectKey("[Verso 1]\nDo           Sol\nAleluya, aleluya") == "Do", "Do");
+            AssertTrue(ChordUtil.DetectKey("Mi             Si\nJehová es mi pastor") == "Mi", "Mi");
+            AssertTrue(ChordUtil.DetectKey("Fa#m7/C#\ntexto") == "Fa#", "Fa#m7/C#");
+            AssertTrue(ChordUtil.DetectKey("solo letra sin acordes") == "—", "sin acordes");
+            AssertTrue(ChordUtil.DetectKey("") == "—", "vacío");
         }
 
         private static void TestNativeDb()

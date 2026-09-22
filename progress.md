@@ -420,3 +420,26 @@
   a "4.1" — punto conocido, revisado en los 3 arneses).
 - Validación local: managed 0 err/0 warn (net35+net48); selftest 138/138; PoC nativo 37/37;
   Tests net8 PASS.
+
+## 2026-09-22 — v4.2.0 «ACORDES»: Biblioteca de temas múltiples + transposición de acordes en vivo
+- Biblioteca de temas (Lumina.UI/MainForm.cs): nueva sección en Temas con ListBox de
+  data\themes\*.json y botones Guardar / Cargar (y doble clic) / Renombrar / Eliminar;
+  nombre de archivo seguro (SafeThemeFileName), etiqueta «En uso:», protección del tema
+  «Predeterminado», refresh tras cada operación y sincronización con settings (Theme).
+- Transposición en vivo del editor: etiqueta «Tono:» con detección del primer acorde
+  (ChordUtil.DetectKey, notación latina) reactiva a TextChanged; botón «Transponer ahora»
+  reescribe SOLO las líneas de cifrado del editor vía lumina_chords_transpose (+/- el
+  NumericUpDown, latina), conserva la letra intacta y reinicia el desplazamiento a 0.
+- ChordUtil.cs (nuevo, Lumina.Core): port 1:1 de Chords.cpp (ParseToken/IsChordLine/
+  DetectKey) — el MISMO criterio del núcleo evita falsos positivos («dos», «mis»,
+  «fue», «das», «cinco», «cuatro» no son acordes).
+- BUG FIX (núcleo + port): «Caug»/«Caug7» se rechazaban porque 'g' (de aug) no estaba
+  en kOkChars/OkChars. Añadido 'g' en Chords.cpp y ChordUtil.cs; la puerta de arranque
+  del sufijo sigue bloqueando palabras reales. Aserciones nuevas en el arnés nativo
+  (Csus4/Cadd9/Cdim/Caug/Caug7 + rechazo de «cinco»/«cuatro»).
+- Versión 4.2.0: kVersion, lumina_version, APP_VERSION (ci.yml), launcher, MainForm,
+  README (novedades + descargas + historial) y los 3 gates de versión («4.1»→«4.2»).
+- Validación local: native 0 err/0 warn → lumina_selftest **146/146** (+8 aserciones),
+  lumina_poc_native **37/37 PASS** (versión «LuminaCore 4.2.0»); managed dotnet build
+  Lumina.sln → **0 errores/0 warnings** (net35+net48); Tests net8 **13/13 PASS** con
+  librería nativa (incluye 2 tests nuevos de ChordUtil y ChordsTranspose nativo).

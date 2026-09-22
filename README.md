@@ -1,4 +1,4 @@
-# LuminaPresentation Suite v4.1.0 «LUMINA»
+# LuminaPresentation Suite v4.2.0 «ACORDES»
 
 **Proyección para iglesias con arquitectura híbrida: núcleo C++17 nativo + interfaz C# (.NET Framework 4.8/3.5)**
 — motor de proyección en tiempo real con la agilidad de desarrollo de .NET,
@@ -13,13 +13,29 @@
 
 1. Ir a **[Releases](https://github.com/isaac4722/Fusion-HP/releases)**.
 2. Descargar el paquete para tu arquitectura:
-   - `LuminaPresentation-3.0.0-win-x86.zip` — **Windows 7 SP1 … Windows 11 (32 bits)**
-   - `LuminaPresentation-3.0.0-win-x64.zip` — **Windows 7 SP1 … Windows 11+ (64 bits)**
+   - `LuminaPresentation-4.2.0-win-x86.zip` — **Windows 7 SP1 … Windows 11 (32 bits)**
+   - `LuminaPresentation-4.2.0-win-x64.zip` — **Windows 7 SP1 … Windows 11+ (64 bits)**
 3. Descomprimir y ejecutar **`LuminaLauncher.exe`**: detecta el runtime .NET disponible
    y lanza la interfaz correcta. **El usuario nunca instala nada**:
    - Windows 10 1903+ / Windows 11 → **.NET Framework 4.8** integrado en el SO.
    - Windows 7 SP1 / 8.x → **.NET Framework 3.5 SP1** integrado (variante de línea base).
    - El motor C++ (`LuminaCore.dll`) va enlazado estáticamente (/MT): **cero redistributables**.
+
+## 🌟 Novedades v4.2.0 «ACORDES»
+
+- **Biblioteca de temas múltiples** (nuevo): guarda, carga (doble clic), renombra y
+  elimina temas en `data\themes\*.json` — ya no hay un solo tema activo, se pueden
+  preparar paletas por canción o por servicio. El tema en uso queda marcado («En uso»)
+  y se protege el tema «Predeterminado» de eliminación accidental.
+- **Transposición de acordes en vivo** (nuevo): en el editor de canciones se detecta
+  la **tonalidad** del cifrado en tiempo real («Tono: Sol») con el MISMO criterio del
+  núcleo (ChordUtil — sin falsos positivos en español: «dos», «mis», «fue» no son
+  acordes). El botón **«Transponer ahora»** reescribe las líneas de cifrado del editor
+  vía `lumina_chords_transpose` (notación latina Do-Re-Mi), conservando la alineación
+  de la letra columna por columna; la letra pasa intacta.
+- **Núcleo**: `lumina_chords_transpose` con puerta de acordes endurecida (sufijos
+  sus/add/dim/aug, alteraciones, slash-chords «Fa#m7/C#») y pruebas del arnés
+  nativo + PoC + Tests gestionados ampliadas.
 
 ## 🌟 Novedades v4.1.0 «LUMINA»
 
@@ -111,5 +127,8 @@ En Windows, `native/` compila con MSVC (`-A Win32` o `-A x64`) y produce `Lumina
 - **v4.0.0 «LUMINA»** — producto renombrado a LuminaPresentation Suite,
   interfaz rediseñada (tema oscuro, navegación lateral, chips de estado) y blindaje
   completo anti-crash (modos degradados, pre-chequeos del launcher y logs de diagnóstico).
-- **v4.1.0 «LUMINA»** — la presente: **editor de Temas visual** con vista previa en vivo
+- **v4.1.0 «LUMINA»** — editor de Temas visual con vista previa en vivo
   (colores, tipografía, contorno/sombra, imagen de fondo) y persistencia del tema en ajustes.
+- **v4.2.0 «ACORDES»** — la presente: **biblioteca de temas múltiples**
+  (guardar/cargar/renombrar/eliminar en `data\themes`) y **transposición de acordes
+  en vivo** en el editor con detección de tonalidad (criterio compartido núcleo/UI).

@@ -52,8 +52,8 @@ bool ParseToken(const std::string& tk, std::string* rootOut, int* rootSemi,
                 std::string* tailOut, std::string* bassOut) {
     if (tk.empty() || tk.size() > 10)
         return false;
-    // Sufijo válido: letras del conjunto m/M/a/j/i/n/d/s/u y dígitos
-    static const char* const kOkChars = "mMajindsu0123456789";
+    // Sufijo válido: letras del conjunto m/M/a/j/i/n/d/s/u/g («aug») y dígitos
+    static const char* const kOkChars = "mMajindsug0123456789";  // v4.2.0: +g para Caug/Caug7
     std::string work = tk;
     std::string bass;
     const size_t slash = work.find_last_of('/');

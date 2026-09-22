@@ -2,7 +2,7 @@
 //  LuminaPresentation / LuminaPresentation Suite - native/launcher/LuminaLauncher.cpp
 //  Copyright (c) 2026 Isaac. Licencia View-Only.
 // ----------------------------------------------------------------------------
-//  Lanzador NATIVO del paquete portable híbrido v4.1.0 «LUMINA»
+//  Lanzador NATIVO del paquete portable híbrido v4.2.0 «ACORDES»
 //  (Win32 puro: sin MFC, sin ATL, sin CRT dinámico — /MT).
 //
 //  Responsabilidad (docs/architecture-hybrid.md §2):
@@ -43,7 +43,7 @@ static const DWORD kMinReleaseNet48 = 528040u;
 static const wchar_t* kTargetNet48 = L"LuminaPresentation.exe";
 static const wchar_t* kTargetNet35 = L"LuminaPresentation35.exe";
 
-static const wchar_t* kWindowTitle = L"LuminaPresentation v4.1.0 «LUMINA»";
+static const wchar_t* kWindowTitle = L"LuminaPresentation v4.2.0 «ACORDES»";
 
 // ---------------------------------------------------------------------------
 // Registro: lectura de DWORD con vista de 64 bits garantizada

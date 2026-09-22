@@ -46,7 +46,7 @@ concurrency:
 
 env:
   DOTNET_VERSION: '8.0.x'
-  APP_VERSION: '4.1.0'
+  APP_VERSION: '4.2.0'
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -419,7 +419,7 @@ jobs:
             Copy-Item artifacts/managed/ui-publish-net35/LuminaPresentation35.exe "$stage/"
           }
           @'
-          LuminaPresentation v4.1.0 «LUMINA» — núcleo C++ + interfaz C#
+          LuminaPresentation v4.2.0 «ACORDES» — núcleo C++ + interfaz C#
           =====================================================
 
           PROGRAMA PORTABLE — no requiere instalación ni permisos de
@@ -493,13 +493,13 @@ jobs:
       - name: Publicar
         uses: softprops/action-gh-release@v2
         with:
-          name: "LuminaPresentation ${{ github.ref_name }} «LUMINA»"
+          name: "LuminaPresentation ${{ github.ref_name }} «ACORDES»"
           body: |
-            **LuminaPresentation v4.1.0 «LUMINA» — núcleo C++ + interfaz C# .NET Framework 4.8/3.5**
+            **LuminaPresentation v4.2.0 «ACORDES» — núcleo C++ + interfaz C# .NET Framework 4.8/3.5**
 
             ## Descargas
-            - `LuminaPresentation-4.0.0-win-x86.zip` — **Windows 7 SP1 a Windows 11 (32 bits)**
-            - `LuminaPresentation-4.0.0-win-x64.zip` — **Windows 7 SP1 a Windows 11+ (64 bits)**
+            - `LuminaPresentation-4.2.0-win-x86.zip` — **Windows 7 SP1 a Windows 11 (32 bits)**
+            - `LuminaPresentation-4.2.0-win-x64.zip` — **Windows 7 SP1 a Windows 11+ (64 bits)**
             - `SHA256SUMS.txt` — integridad de los paquetes
 
             ## Arquitectura híbrida

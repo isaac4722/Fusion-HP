@@ -1,5 +1,5 @@
 // ============================================================================
-//  LuminaPresentation Suite v4.0.0 «LUMINA» — managed/Lumina.UI/MainForm.cs
+//  LuminaPresentation Suite v4.2.0 «ACORDES» — managed/Lumina.UI/MainForm.cs
 //  Copyright (c) 2026 Isaac. Licencia View-Only.
 // ============================================================================
 //  MainForm.cs : ventana principal (WinForms, todo el layout en código — sin
@@ -433,7 +433,7 @@ namespace lumina.ui
     public sealed class MainForm : Form
     {
         private const string AppName = "LuminaPresentation Suite";
-        private const string AppVersion = "4.0.0";
+        private const string AppVersion = "4.2.0";
         private const string AppTitle = AppName + " — v" + AppVersion;
 
         /* ------------------------------------------------------------ servicios */
@@ -459,6 +459,14 @@ namespace lumina.ui
         private TextBox _txtThemeImagePath;
         private ComboBox _cmbThemeImageMode;
         private ContentPanel _themePreview;
+
+        // Biblioteca de temas (v4.2.0) — data\themes\*.json
+        private ListBox _lstThemes;
+        private Label _lblThemeApplied;
+        private string _appliedThemeName = "—";
+
+        // Transposición de acordes en el editor (v4.2.0)
+        private Label _lblSongKey;
 
         /* --------------------------------------------------------------- culto */
         private readonly List<ScenarioItem> _serviceItems = new List<ScenarioItem>();
@@ -888,7 +896,7 @@ namespace lumina.ui
 
             FlowLayoutPanel opts = new FlowLayoutPanel();
             opts.Dock = DockStyle.Bottom;
-            opts.Height = 78;
+            opts.Height = 112;
             opts.WrapContents = false;
             opts.FlowDirection = FlowDirection.TopDown;
             opts.Padding = new Padding(0, 4, 0, 0);
@@ -910,6 +918,20 @@ namespace lumina.ui
             row1.Controls.Add(lt);
             row1.Controls.Add(_numTranspose);
 
+            // v4.2.0 — tonalidad detectada + transposición en vivo del texto
+            FlowLayoutPanel rowT = new FlowLayoutPanel();
+            rowT.WrapContents = false;
+            rowT.Height = 36;
+            rowT.Padding = new Padding(0, 2, 0, 0);
+            _lblSongKey = UiTheme.MkLabel("Tono: —", UiTheme.TextSecondary, UiTheme.Small, true);
+            _lblSongKey.Width = 230;
+            _lblSongKey.TextAlign = ContentAlignment.MiddleLeft;
+            _lblSongKey.Margin = new Padding(0, 9, 12, 0);
+            Button btnTransposeNow = UiTheme.MkButton("Transponer ahora", "secondary", delegate { TransposeEditorNow(); });
+            btnTransposeNow.Width = 150;
+            rowT.Controls.Add(_lblSongKey);
+            rowT.Controls.Add(btnTransposeNow);
+
             FlowLayoutPanel row2 = new FlowLayoutPanel();
             row2.WrapContents = false;
             row2.Height = 34;
@@ -920,6 +942,7 @@ namespace lumina.ui
             row2.Controls.Add(btnSave);
 
             opts.Controls.Add(row1);
+            opts.Controls.Add(rowT);
             opts.Controls.Add(row2);
 
             editor.Controls.Add(_txtSongLyrics);
@@ -930,6 +953,13 @@ namespace lumina.ui
             editor.Controls.Add(l1);
             editor.Controls.Add(opts);
             _txtSongLyrics.BringToFront();
+
+            // v4.2.0 — tonalidad en vivo del editor (detección del primer acorde)
+            _txtSongLyrics.TextChanged += delegate
+            {
+                _lblSongKey.Text = "Tono: " + ChordUtil.DetectKey(_txtSongLyrics.Text);
+            };
+            _lblSongKey.Text = "Tono: " + ChordUtil.DetectKey(_txtSongLyrics.Text);
 
             // ---- búsqueda ----
             ContentPanel search;
@@ -1211,6 +1241,32 @@ namespace lumina.ui
             img.Controls.Add(btnImg);
             form.Controls.Add(img);
 
+            // ---------------- biblioteca de temas (v4.2.0) ----------------
+            form.Controls.Add(ThemeSection("Biblioteca de temas (data\\themes)"));
+            _lblThemeApplied = UiTheme.MkLabel("En uso: —", UiTheme.TextSecondary, UiTheme.Small, true);
+            _lblThemeApplied.Height = 18;
+            form.Controls.Add(WrapTop(_lblThemeApplied, 18));
+
+            _lstThemes = new ListBox();
+            _lstThemes.BackColor = UiTheme.InputBg;
+            _lstThemes.ForeColor = UiTheme.TextPrimary;
+            _lstThemes.BorderStyle = BorderStyle.FixedSingle;
+            _lstThemes.IntegralHeight = false;
+            _lstThemes.Height = 96;
+            _lstThemes.Font = UiTheme.Small;
+            _lstThemes.DoubleClick += delegate { LoadThemeFromLibrary(); };
+            form.Controls.Add(WrapTop(_lstThemes, 96));
+
+            FlowLayoutPanel themeLibBtns = new FlowLayoutPanel();
+            themeLibBtns.WrapContents = false;
+            themeLibBtns.Height = 34;
+            themeLibBtns.Padding = new Padding(0, 2, 0, 0);
+            themeLibBtns.Controls.Add(UiTheme.MkButton("Guardar", "secondary", delegate { SaveThemeToLibrary(); }));
+            themeLibBtns.Controls.Add(UiTheme.MkButton("Cargar", "secondary", delegate { LoadThemeFromLibrary(); }));
+            themeLibBtns.Controls.Add(UiTheme.MkButton("Renombrar", "secondary", delegate { RenameThemeInLibrary(); }));
+            themeLibBtns.Controls.Add(UiTheme.MkButton("✕ Eliminar", "danger", delegate { DeleteThemeFromLibrary(); }));
+            form.Controls.Add(themeLibBtns);
+
             props.Controls.Add(form);
 
             // ---------------- tarjeta derecha: vista previa ----------------
@@ -1429,15 +1485,242 @@ namespace lumina.ui
         {
             if (!RequireEngine()) return;
             _theme = BuildThemeFromControls();
+            _appliedThemeName = _theme.Name;
+            SaveSettings();
+            RefreshThemeLibrary(_theme.Name);
             if (_lastScenarioItems == null || _lastScenarioItems.Count == 0)
             {
                 Status("Tema listo. Carga una canción o pasaje para verlo con el nuevo tema.");
-                SaveSettings();
                 return;
             }
             LoadScenarioFromItems(_lastScenarioItems, _lastScenarioName);
-            SaveSettings();
             Status("Tema «" + _theme.Name + "» aplicado al escenario activo.");
+        }
+
+        /* ======================================================================
+         *  BIBLIOTECA DE TEMAS (v4.2.0) — data\themes\*.json
+         * ==================================================================== */
+
+        private string ThemesDirPath()
+        {
+            return Path.Combine(_settings.DataDir, "themes");
+        }
+
+        /// <summary>Nombre de archivo seguro (portable) para un tema.</summary>
+        private static string SafeThemeFileName(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return "Sin nombre";
+            char[] invalid = Path.GetInvalidFileNameChars();
+            char[] chars = name.ToCharArray();
+            for (int i = 0; i < chars.Length; i++)
+            {
+                if (Array.IndexOf(invalid, chars[i]) >= 0 || chars[i] == '\\' || chars[i] == '/')
+                    chars[i] = '_';
+            }
+            string s = new string(chars).Trim();
+            if (s.Length == 0) s = "Sin nombre";
+            if (s.Length > 60) s = s.Substring(0, 60);
+            return s;
+        }
+
+        /// <summary>Recarga el ListBox desde data\themes; selecciona selectName si existe.</summary>
+        private void RefreshThemeLibrary(string selectName)
+        {
+            if (_lstThemes == null) return;
+            _lstThemes.BeginUpdate();
+            _lstThemes.Items.Clear();
+            try
+            {
+                string dir = ThemesDirPath();
+                if (Directory.Exists(dir))
+                {
+                    string[] files = Directory.GetFiles(dir, "*.json");
+                    Array.Sort(files, StringComparer.OrdinalIgnoreCase);
+                    foreach (string f in files)
+                        _lstThemes.Items.Add(Path.GetFileNameWithoutExtension(f));
+                }
+            }
+            catch (Exception)
+            {
+                // Lectura de directorio fallida: la biblioteca queda vacía (no bloquea).
+            }
+            _lstThemes.EndUpdate();
+            if (selectName != null)
+            {
+                for (int i = 0; i < _lstThemes.Items.Count; i++)
+                {
+                    if (string.Equals(Convert.ToString(_lstThemes.Items[i], CultureInfo.InvariantCulture),
+                                      selectName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        _lstThemes.SelectedIndex = i;
+                        break;
+                    }
+                }
+            }
+            if (_lblThemeApplied != null)
+                _lblThemeApplied.Text = "En uso: " + _appliedThemeName;
+        }
+
+        private void SaveThemeToLibrary()
+        {
+            Theme t = BuildThemeFromControls();
+            _theme = t;
+            try
+            {
+                string dir = ThemesDirPath();
+                if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+                string path = Path.Combine(dir, SafeThemeFileName(t.Name) + ".json");
+                File.WriteAllText(path, MiniJson.Serialize(t.ToDict()) + "\n", new UTF8Encoding(false));
+                SaveSettings();
+                RefreshThemeLibrary(t.Name);
+                Status("Tema «" + t.Name + "» guardado en la biblioteca (data\\themes).");
+            }
+            catch (Exception ex)
+            {
+                Status("No se pudo guardar el tema: " + ex.Message);
+            }
+        }
+
+        private void LoadThemeFromLibrary()
+        {
+            if (_lstThemes == null || _lstThemes.SelectedItem == null)
+            {
+                Status("Selecciona un tema de la biblioteca (o doble clic para cargarlo).");
+                return;
+            }
+            string name = Convert.ToString(_lstThemes.SelectedItem, CultureInfo.InvariantCulture);
+            string path = Path.Combine(ThemesDirPath(), SafeThemeFileName(name) + ".json");
+            try
+            {
+                Dictionary<string, object> o = MiniJson.Parse(File.ReadAllText(path, new UTF8Encoding(false)));
+                _theme = Theme.FromDict(o);
+                ApplyThemeToControls();
+                Status("Tema «" + _theme.Name + "» cargado al editor.");
+            }
+            catch (Exception ex)
+            {
+                Status("No se pudo cargar el tema «" + name + "»: " + ex.Message);
+            }
+        }
+
+        private void RenameThemeInLibrary()
+        {
+            if (_lstThemes == null || _lstThemes.SelectedItem == null)
+            {
+                Status("Selecciona un tema de la biblioteca.");
+                return;
+            }
+            string old = Convert.ToString(_lstThemes.SelectedItem, CultureInfo.InvariantCulture);
+            string neu = (_txtThemeName.Text ?? string.Empty).Trim();
+            if (neu.Length == 0 || string.Equals(neu, old, StringComparison.OrdinalIgnoreCase))
+            {
+                Status("Escribe el nuevo nombre en el campo «Nombre» y pulsa Renombrar.");
+                return;
+            }
+            try
+            {
+                string dir = ThemesDirPath();
+                string oldPath = Path.Combine(dir, SafeThemeFileName(old) + ".json");
+                string newPath = Path.Combine(dir, SafeThemeFileName(neu) + ".json");
+                if (!File.Exists(oldPath)) { Status("El archivo del tema ya no está (¿se movió?)."); return; }
+                if (File.Exists(newPath)) { Status("Ya existe un tema llamado «" + neu + "»."); return; }
+                Dictionary<string, object> o = MiniJson.Parse(File.ReadAllText(oldPath, new UTF8Encoding(false)));
+                o["name"] = neu;
+                File.WriteAllText(newPath, MiniJson.Serialize(o) + "\n", new UTF8Encoding(false));
+                File.Delete(oldPath);
+                if (string.Equals(_appliedThemeName, old, StringComparison.OrdinalIgnoreCase)) _appliedThemeName = neu;
+                if (string.Equals(_settings.Theme, old, StringComparison.OrdinalIgnoreCase))
+                {
+                    _settings.Theme = neu;
+                    SaveSettings();
+                }
+                RefreshThemeLibrary(neu);
+                _txtThemeName.Text = neu;
+                Status("Tema «" + old + "» renombrado a «" + neu + "».");
+            }
+            catch (Exception ex)
+            {
+                Status("No se pudo renombrar: " + ex.Message);
+            }
+        }
+
+        private void DeleteThemeFromLibrary()
+        {
+            if (_lstThemes == null || _lstThemes.SelectedItem == null)
+            {
+                Status("Selecciona un tema de la biblioteca.");
+                return;
+            }
+            string name = Convert.ToString(_lstThemes.SelectedItem, CultureInfo.InvariantCulture);
+            if (string.Equals(name, "Predeterminado", StringComparison.OrdinalIgnoreCase))
+            {
+                Status("El tema «Predeterminado» no se puede eliminar.");
+                return;
+            }
+            try
+            {
+                string path = Path.Combine(ThemesDirPath(), SafeThemeFileName(name) + ".json");
+                if (File.Exists(path)) File.Delete(path);
+                if (string.Equals(_appliedThemeName, name, StringComparison.OrdinalIgnoreCase))
+                    _appliedThemeName = "—";
+                RefreshThemeLibrary(null);
+                Status("Tema «" + name + "» eliminado de la biblioteca.");
+            }
+            catch (Exception ex)
+            {
+                Status("No se pudo eliminar: " + ex.Message);
+            }
+        }
+
+        /* ======================================================================
+         *  TRANSPOSICIÓN EN VIVO DEL EDITOR (v4.2.0)
+         * ==================================================================== */
+
+        /// <summary>
+        /// Aplica la transposición del NumericUpDown AL TEXTO del editor: cada
+        /// línea de acordes (criterio del núcleo, ChordUtil.IsChordLine) se
+        /// reescribe vía lumina_chords_transpose (notación latina). La letra
+        /// pasa intacta; el desplazamiento vuelve a 0 tras aplicar.
+        /// </summary>
+        private void TransposeEditorNow()
+        {
+            if (!RequireEngine()) return;
+            string raw = _txtSongLyrics.Text ?? string.Empty;
+            if (raw.Length == 0) { Status("La letra está vacía: nada que transponer."); return; }
+            int semi = (int)_numTranspose.Value;
+            if (semi == 0) { Status("Desplazamiento 0: ajusta «Transponer» antes de aplicar."); return; }
+
+            string[] lines = raw.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+            StringBuilder sb = new StringBuilder();
+            int changed = 0;
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string ln = lines[i];
+                if (ChordUtil.IsChordLine(ln))
+                {
+                    try
+                    {
+                        Dictionary<string, object> o = MiniJson.Parse(LuminaEngine.ChordsTranspose(ln, semi, true));
+                        ln = MiniJson.GetString(o, "line", ln);
+                        changed++;
+                    }
+                    catch (Exception)
+                    {
+                        // Sin núcleo accesible para esta línea: se deja tal cual.
+                    }
+                }
+                sb.Append(ln);
+                if (i < lines.Length - 1) sb.Append("\r\n");
+            }
+            if (changed == 0)
+            {
+                Status("No hay líneas de acordes: escribe el cifrado sobre la letra (p. ej. «Do Sol»).");
+                return;
+            }
+            _txtSongLyrics.Text = sb.ToString();
+            _numTranspose.Value = 0;
+            Status("Acordes transpuestos " + (semi > 0 ? "+" : "") + semi +
+                   " semitonos (notación latina) — " + changed + " línea(s).");
         }
 
         /// <summary>
@@ -2580,6 +2863,9 @@ namespace lumina.ui
                 }
             }
             ApplyThemeToControls();
+            // Biblioteca de temas (v4.2.0): escanea data\themes y marca el tema en uso.
+            _appliedThemeName = _settings.Theme;
+            RefreshThemeLibrary(_settings.Theme);
         }
 
         private void SaveSettings()
