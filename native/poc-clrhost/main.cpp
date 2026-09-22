@@ -349,9 +349,9 @@ int wmain(int argc, wchar_t** argv)
         fflush(stdout);
 
         ComPtr<IUnknown> unkDefault;
-        hr = corHost->GetDefaultAppDomain(&unkDefault);
+        hr = corHost->GetDefaultDomain(&unkDefault);   // ICorRuntimeHost::GetDefaultDomain
         if (FAILED(hr) || !unkDefault.Ok())
-            return FailHr(L"ICorRuntimeHost::GetDefaultAppDomain", hr);
+            return FailHr(L"ICorRuntimeHost::GetDefaultDomain", hr);
 
         ComPtr<IDispatch> dispDefault;
         hr = unkDefault->QueryInterface(__uuidof(IDispatch), (void**)&dispDefault);
