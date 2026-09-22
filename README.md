@@ -1,8 +1,8 @@
-# LuminaPresentation Suite
+# LuminaPresentation Suite — Fusion-HP v3.0.0 «HÍBRIDA»
 
-**Proyección multimedia híbrida nativa (C++17 / wxWidgets 3.2 estático)** — la convergencia entre
-la agilidad operativa de Holyrics y la potencia de composición de PowerPoint,
-**sin JVM, sin JavaFX, sin .NET, sin Electron y sin redistributables**.
+**Proyección para iglesias con arquitectura híbrida: núcleo C++17 nativo + interfaz C# (.NET Framework 4.8/3.5)**
+— motor de proyección en tiempo real con la agilidad de desarrollo de .NET,
+**sin JVM, sin Electron, sin redistributables y sin instalaciones**.
 
 > ⚠️ Código fuente bajo **Licencia de Solo Lectura (View-Only)** — ver [LICENSE.md](LICENSE.md).
 > Los binarios publicados en [Releases](https://github.com/isaac4722/Fusion-HP/releases) son de uso libre.
@@ -13,86 +13,72 @@ la agilidad operativa de Holyrics y la potencia de composición de PowerPoint,
 
 1. Ir a **[Releases](https://github.com/isaac4722/Fusion-HP/releases)**.
 2. Descargar el paquete para tu arquitectura:
-   - `LuminaPresentationSuite-v2.0.0-win-x86-portable.zip` — **Windows 7 SP1 … Windows 11 (32 bits)**
-   - `LuminaPresentationSuite-v2.0.0-win-x64-portable.zip` — **Windows 7 SP1 … Windows 11+ (64 bits)**
-3. Descomprimir en cualquier carpeta y ejecutar `LuminaPresentationSuite.exe`.
-   **Todo va incluido**: wxWidgets estático (runtime /MT), SQLite+FTS5 y la Biblia RVR1909
-   completa. La base de datos se crea sola en `Data\` en el primer arranque.
-   **No requiere permisos de administrador, redistributables ni internet.**
+   - `Fusion-HP-3.0.0-win-x86.zip` — **Windows 7 SP1 … Windows 11 (32 bits)**
+   - `Fusion-HP-3.0.0-win-x64.zip` — **Windows 7 SP1 … Windows 11+ (64 bits)**
+3. Descomprimir y ejecutar **`FusionLauncher.exe`**: detecta el runtime .NET disponible
+   y lanza la interfaz correcta. **El usuario nunca instala nada**:
+   - Windows 10 1903+ / Windows 11 → **.NET Framework 4.8** integrado en el SO.
+   - Windows 7 SP1 / 8.x → **.NET Framework 3.5 SP1** integrado (variante de línea base).
+   - El motor C++ (`FusionCore.dll`) va enlazado estáticamente (/MT): **cero redistributables**.
 
-## ✨ Características (v2.0.0 «Horizonte» — edición wxWidgets)
+## 🧩 Arquitectura híbrida (v3.0.0)
 
-| Módulo | Detalle |
-|---|---|
-| 🎨 **UI/UX nueva** | Biblioteca en pestañas (Canciones / Biblia / Medios / Temas), panel de culto persistente con reordenamiento (Alt+↑/↓), **previsualización dual EN VIVO / SIGUIENTE con render fiel al proyector**, toolbar de control con transposición en vivo, barra de estado informativa y **iconos vectoriales nítidos a cualquier DPI** |
-| 🎵 **Canciones** | SQLite + **FTS5** (búsqueda instantánea por título/autor/letra, sin acentos), **etiquetas** (lento, navidad, entrada…), editor con vista previa del reparto en slides, densidad 2–8 líneas/slide, **transposición de acordes EN VIVO** (latinos Do/Re/Mi y anglosajonos, con bajo «Sol/Fa»), **Modo Hinario** (coro intercalado tras cada verso completo, coros repetidos deduplicados) |
-| 📖 **Biblia** | **RVR1909 completa incluida** (31.084 versículos, dominio público), referencias tipadas `Jn 3:16`, `salmo 23:1-4`, `1 co 13, 4-7`, búsqueda por palabras (FTS sin acentos), **versículo rápido F9** desde cualquier parte, importación de otras versiones en JSON |
-| 🖥 **Salida fullscreen** | Multi-pantalla (selector de proyector o ventana de prueba), fondo sólido/gradiente/imagen (Llenar/Ajustar), texto con **contorno + sombra y ajuste tipográfico automático**, contador de slide opcional, **Lower Third** con barra dorada, video por DirectShow (`wxMediaCtrl`) |
-| 🎬 **Medios** | Biblioteca de imágenes/videos con etiquetas, envío a pantalla (fondo en vivo) y al culto, soporte PNG/JPG/GIF/BMP/TIFF/WebP y MP4/WMV/AVI/MOV/MKV |
-| 🖌 **Temas** | Plantillas maestras desacopladas (fondo + tipografía título/cuerpo + contorno + sombra + alineación + MAYÚSCULAS), editor con **previsualización en vivo** y **comprobador de contraste WCAG** (ratio AA/AAA), tema predeterminado |
-| 🗓 **Cultos** | Playlists ordenadas (canciones, biblia, avisos, imágenes, videos) guardadas en la BD con **persistencia automática**, abrir/guardar `.json`, exportación CSV con escapado correcto, avance automático al terminar un ítem |
-| 📱 **Control remoto** | Servidor HTTP embebido: **panel móvil** (tema oscuro, estado en vivo cada 2,5 s), `GET /api/cmd?c=next\|prev\|black\|clear\|logo\|goto\|alert`, `/api/state` (JSON), `/api/live.txt` (texto plano para OBS), **token opcional** |
-| 💾 **Datos portables** | Modo portable (carpeta `Data\` junto al exe) con respaldo de un clic (API `sqlite3_backup`), respaldos en `Data\backups\` |
-| ⌨ **Atajos** | F5 en vivo · F6 negro · F7 limpiar · F8 logo · **F9 versículo rápido** · F11 modo presentación · Ctrl+F buscar · Ctrl+N nueva canción · Ctrl+S/O guardar/abrir culto. En la pantalla de salida: →/Espacio avanza, ← retrocede, Esc limpia |
+| Capa | Tecnología | Contenido |
+|---|---|---|
+| **Motor / Núcleo** | **C++17** (`FusionCore.dll`, /MT) | Proyección nativa Win32+GDI (doble búfer, contorno+sombra, ajuste tipográfico), modelo de escenario, acordes (latina/anglosajona + transposición), letras con Modo Hinario, referencias bíblicas (66 libros), **parser JSON de canciones** (esquema propio + subconjunto OpenLP) y **parser .BIB de biblias** (detección automática), **SQLite+FTS5** embebido, eventos por callbacks, API C plana estable (`fusion.h`) |
+| **Interfaz** | **C# WinForms** (`FusionHP.exe`, net48; línea base net35) | Editor de escenarios, bibliotecas (canciones/biblia), control En Vivo, vista previa renderizada por el motor, temas, importadores JSON/.BIB, ajustes |
+| **Datos** | **C#** (orquestación) + SQLite nativo | CRUD siempre con **parámetros enlazados**; canciones con FTS5, biblia con índice UNIQUE + dedupe idempotente |
+| **API local** | **C# HttpListener** | `/api/state`, `/api/cmd`, `/api/live.txt` y webhook OBS — solo localhost, token opcional |
+| **Puente** | **P/Invoke** (vía A elegida) | ABI C plana: UTF-8, sin excepciones cruzando la frontera, búfer uniforme `out/cap/needed`, eventos en hilo dedicado |
 
-## 🏗 Arquitectura
+**Decisiones documentadas** (matriz completa en [docs/architecture-hybrid.md](docs/architecture-hybrid.md)):
+las vías **C++/CLI**, **COM Interop con registro** y **CLR Hosting** fueron evaluadas;
+la vía A (C# dueño del proceso + DLL nativa) es la elegida por robustez y ABI estable.
+El **CLR Hosting queda implementado y validado como PoC** (`native/poc-clrhost`) —
+fallback arquitectónico probado en CI («CLRHOST PASS»).
 
-```
-src/
-├── main.cpp            Aplicación (instancia única, semillas, arranque seguro)
-├── core/               Núcleo sin dependencias de UI
-│   ├── Types.h         Modelos + JSON (nlohmann, UTF-8 explícito)
-│   ├── Database.{h,cpp} SQLite amalgamation + FTS5 (canciones, biblia,
-│   │                    temas, medios, cultos, tags, ajustes, respaldo)
-│   ├── Chords.h        Transposición de acordes (latinos + anglosajones)
-│   ├── Lyrics.h        Parser [Verso]/[Coro] + reparto en slides + hinario
-│   ├── BibleRef.h      Tabla canónica de 66 libros + parser de referencias
-│   ├── Renderer.{h,cpp} Motor de render (wxGraphicsContext): fondos,
-│   │                    contorno/sombra, auto-ajuste, WCAG, cache LRU
-│   └── AppPaths.h      Datos portables + wxConfig
-├── net/WebServer.{h,cpp}  Servidor HTTP remoto (wxSockets, sin hilos)
-└── ui/                 Interfaz wxWidgets
-    ├── MainFrame.*     Consola del operador + motor EN VIVO
-    ├── OutputFrame.*   Ventana de salida fullscreen (modos + video)
-    ├── PreviewPanel.*  Previsualización dual
-    ├── SongsPanel · BiblePanel · MediaPanel · ThemesPanel · ServicePanel
-    ├── SongEditor · ThemeEditor · SettingsDialog
-    ├── Icons.*         Fábrica de iconos vectoriales (sin assets)
-    └── AppEvents.*     Eventos panel→frame (desacoplamiento)
-third_party/            SQLite amalgamation + nlohmann/json (header-only)
-resources/              Biblia RVR1909 (JSON), icono, logo, recursos .rc
-tools/                  verify_portable.py (gate PE) + selftest.cpp (63 checks)
-```
+## ✅ PoC de comunicación C++ ↔ C# (validado en tests)
 
-**Decisiones técnicas clave:**
-- **wxWidgets 3.2 estático + runtime /MT** → el exe no depende de ninguna DLL externa:
-  verificado por `tools/verify_portable.py` (auditoría de imports PE) en cada build de CI.
-- **Compatibilidad Win7 SP1 → Win11+**: wx 3.2 soporta Win7+, `_WIN32_WINNT=0x0601`,
-  manifest con `PerMonitorV2` (proyección nítida en escalados 125–150 %).
-- **Sin hilos en el servidor remoto**: wxSocket por eventos en el hilo principal —
-  los comandos se despachan vía cola de eventos del frame (sin condiciones de carrera,
-  cierre seguro con clientes conectados).
-- **JSON siempre en UTF-8 explícito** (`ToUtf8`/`FromUtf8`): inmune al locale del sistema.
+El encargo pedía validar la viabilidad **antes** de construir la interfaz. El PoC es
+ejecutable y forma parte del CI:
 
-## 🔨 Compilar desde fuente
+- **`PoC.Managed`** (C#, net35+net48+net8.0): 12 verificaciones — carga de la DLL,
+  UTF-8 ida/vuelta, callbacks desde el hilo del motor, canción JSON, .BIB, referencias,
+  acordes, BD+FTS5, escenario/en vivo y estrés (1000 pings + 200 next/prev).
+  Gate del CI: **«POC PASS 12/12»** en x86 y x64 contra las DLL reales.
+- **`fusion_poc_native`** (C++): 37 verificaciones del API C en modo headless.
+- **`fusion_selftest`** (C++): 138 checks de lógica (acordes, hinario, .BIB, SQLite…).
+- **`fusion_poc_clrhost`** (C++): hospedaje del CLR desde C++ puro + facade COM-visible.
+- **`FusionHP.Tests`** (C#, net8/net48): MiniJson, builder de escenarios, settings.
+
+## 📖 Formatos
+
+- **Canciones JSON**: esquema propio `{title,artist,key,bpm,blocks:[{label,lines}],…}`
+  con importación tolerante estilo OpenLP (`authors`, `lyrics` con `[Verso 1]`…).
+- **Biblias .BIB**: [docs/bib-format.md](docs/bib-format.md) — directivas `#VERSION/#NAME`,
+  filas `libro<sep>cap<sep>vers<sep>texto` (TAB / `|` / `;;`), variante `Libro 1:1 texto`,
+  UTF-8/CP1252 automático. Muestra completa incluida: `resources/data/sample/rvr1909.bib`
+  (generada con `tools/make_sample_bib.py` desde la RVR1909 de 31.084 versículos).
+
+## 🛠 Compilar
 
 ```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DwxWidgets_ROOT_DIR=<wx-estático>
-cmake --build build --config Release
+# Núcleo nativo (Linux/Windows: partes portables + tests)
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build --config Release
+./build/native/fusion_selftest && ./build/native/fusion_poc_native
+
+# Capa gestionada (net35+net48 con ref assemblies; funciona también en Linux)
+dotnet build managed/FusionHP.sln -c Release
+dotnet run --project managed/Tests --framework net8.0   # con libFusionCore.so junto al exe: tests completos
 ```
 
-En Linux (GTK) basta `sudo apt install libwxgtk3.2-dev libwxgtk-media3.2-dev` y `cmake -S . -B build`.
-El CI (`.github/workflows/build.yml`) compila wxWidgets 3.2.8.1 estático con /MT para x86 y x64.
+En Windows, `native/` compila con MSVC (`-A Win32` o `-A x64`) y produce `FusionCore.dll` /MT.
 
-## 🧪 Pruebas
+## 📜 Historial
 
-`tools/selftest.cpp` ejecuta **63 checks** del núcleo (acordes y transposición, parser de
-letras y Modo Hinario con las correcciones M16, referencias bíblicas, SQLite+FTS5,
-tags, importación sin duplicados, cultos, ajustes). El gate `tools/verify_portable.py`
-audita el paquete portable antes de publicar.
-
-## 📜 Licencia
-
-Código fuente bajo **Licencia de Solo Lectura (View-Only)** — ver [LICENSE.md](LICENSE.md).
-Los binarios publicados en Releases son de **uso libre**.
-Biblia RVR1909: dominio público.
+- **v1.x (Qt 5.15)** — serie «NEXO/ESTABILIDAD»: auditoría profunda (37 defectos corregidos),
+  API HTTP+WS, PPTX, MIDI, OBS, Planning Center, Drive.
+- **v2.0.0 «HORIZONTE» (wxWidgets)** — reescritura nativa completa (código archivado en
+  `apps/native-wx-src` con su historial).
+- **v3.0.0 «HÍBRIDA»** — la presente: núcleo C++ puro + capa .NET, CI de 7 jobs con gates
+  de interop, empaquetado portable x86/x64 y releases automáticos.

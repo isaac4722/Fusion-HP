@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net35;net48</TargetFrameworks>
+    <OutputType>WinExe</OutputType>
+    <RootNamespace>fusion.ui</RootNamespace>
+    <AssemblyName>FusionHP.UI</AssemblyName>
+    <Summary>Interfaz WinForms de LuminaPresentation Suite (vía A: C# dueño del proceso).</Summary>
+    <ApplicationIcon></ApplicationIcon>
+    <!--
+      DECISIÓN DOCUMENTADA: <UseWindowsForms> FUNCIONA en net35+net48 con el SDK
+      de .NET 8 en Linux SIEMPRE QUE (a) el paquete de ref assemblies esté
+      presente (Directory.Build.props) y (b) EnableWindowsTargeting=true. Se
+      verificó localmente: net35 y net48 compilan System.Windows.Forms sin
+      errores → la UI MANTIENE la dualidad net35;net48 (no fue necesario
+      recortarla a net48). En ejecución real, net35 requiere el CLR 2.0/3.5 del
+      sistema (Win7 SP1 lo trae de fábrica) y GDI+ (gdiplus.dll, presente).
+    -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../FusionHP.Core/FusionHP.Core.csproj" />
+    <ProjectReference Include="../FusionHP.Bridge/FusionHP.Bridge.csproj" />
+    <ProjectReference Include="../FusionHP.Api/FusionHP.Api.csproj" />
+  </ItemGroup>
+
+</Project>

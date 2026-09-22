@@ -39,3 +39,10 @@ staging/
 # Datos locales de prueba
 *.db
 *.sqlite
+
+# Capa gestionada C# (salidas de build)
+managed/**/bin/
+managed/**/obj/
+artifacts-managed/
+staging/
+dist/

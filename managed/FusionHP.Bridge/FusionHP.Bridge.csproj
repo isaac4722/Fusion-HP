@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net35;net48</TargetFrameworks>
+    <RootNamespace>fusion.bridge</RootNamespace>
+    <AssemblyName>FusionHP.Bridge</AssemblyName>
+    <Summary>Puente P/Invoke hacia el núcleo nativo FusionCore (ABI C plana, UTF-8).</Summary>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../FusionHP.Core/FusionHP.Core.csproj" />
+  </ItemGroup>
+
+</Project>

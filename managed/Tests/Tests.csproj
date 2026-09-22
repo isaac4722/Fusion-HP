@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net48</TargetFrameworks>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>fusion.tests</RootNamespace>
+    <AssemblyName>FusionHP.Tests</AssemblyName>
+    <Summary>Arnés de pruebas propio (selftest) para la capa gestionada: MiniJson, builder, settings y núcleo nativo.</Summary>
+    <!-- FUSION_SKIP_NATIVE=1 → salta los chequeos nativos contándolos como SKIPPED. -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../FusionHP.Core/FusionHP.Core.csproj" />
+    <ProjectReference Include="../FusionHP.Bridge/FusionHP.Bridge.csproj" />
+  </ItemGroup>
+
+</Project>

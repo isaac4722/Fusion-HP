@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net35;net48</TargetFrameworks>
+    <RootNamespace>fusion.api</RootNamespace>
+    <AssemblyName>FusionHP.Api</AssemblyName>
+    <Summary>API local HTTP (HttpListener) de Fusion-HP: estado, comandos, live.txt y webhook OBS.</Summary>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../FusionHP.Core/FusionHP.Core.csproj" />
+    <ProjectReference Include="../FusionHP.Bridge/FusionHP.Bridge.csproj" />
+  </ItemGroup>
+
+</Project>

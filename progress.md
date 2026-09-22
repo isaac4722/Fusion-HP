@@ -330,3 +330,25 @@
 - Gates: build local Linux GTK **0 errores / 0 warnings** (wx 3.2.8) · selftest **63/63 OK** · smoke offscreen de la app real OK (BD+seed+31.084 versículos+GUI sin crash) · CI Windows x86+x64 → pendiente del run del tag v2.0.0
 - Bloqueos: ninguno
 - Siguiente: commit → push → tag v2.0.0 → CI → verificación de release publicada (assets + SHA256 + verify_portable + FileVersion 2.0.0.0)
+
+## 2026-09-22 — v3.0.0 «HÍBRIDA»: arquitectura C++ + .NET con PoC de interop validado
+- Petición del usuario: evolución a arquitectura híbrida — núcleo C++ (motor/render/lógica crítica) + C# (.NET Framework) para UI/datos/API local; evaluar mínimo .NET (3.5 SP1) con meta 4.8; Win7 x32→Win11 autocontenido; PoC de comunicación C++↔C# ANTES de la UI; incluir JSON (canciones) y .BIB (biblias).
+- Arquitectura (docs/architecture-hybrid.md): vías evaluadas C++/CLI, COM Interop y CLR Hosting; elegida **vía A** (C# dueño del proceso + FusionCore.dll con API C plana: UTF-8, códigos de estado, búfer out/cap/needed, eventos en hilo dedicado). CLR Hosting implementado como PoC de respaldo (native/poc-clrhost + facade COM-visible sin registro).
+- Núcleo C++17 (native/core): Engine (estado+escenario+eventos thread-safe), Storage (SQLite+FTS5, binds SIEMPRE, dedupe bible heredado v1.6.0 con guard de existencia), SongModel (esquema propio+OpenLP), Lyrics/Chords (port 1:1 wx v2.0.0 + puerta de sufijos reales: "dos/mis/fue" ya no son acordes), BibleRef (66 libros), BibleBib (.BIB con detección TAB/pipe/;;/colon, UTF-8/CP1252, directivas), Scripture, Renderer/Projector (Win32 GDI, solo WIN32).
+- Capa C# (managed, multi-target net35;net48 + tests net8.0, LangVersion 7.3, cero NuGet funcionales): FusionHP.Bridge (P/Invoke Cdecl, GCHandle del delegado, pump a SynchronizationContext, DbExec de UNA sola llamada — contrato de efectos), FusionHP.Core (MiniJson propio net35, Models, ScenarioBuilder, Settings portable), FusionHP.Api (HttpListener localhost + token + webhook OBS), FusionHP.UI (WinForms 5 pestañas, vista previa vía engine, importadores), PoC.Managed (12 checks), PocFacade (COM-visible), Tests (arnés propio).
+- CI/CD (ci.yml, reemplaza al wx): 7 jobs — native-windows (x86/x64 /MT + gates selftest/poc), native-linux, managed (net35+net48 ref assemblies + tests net8.0 + publish UI), **interop (gate «POC PASS 12/12» x86/x64)**, **clrhost-poc (gate «CLRHOST PASS»)**, package (portable+verify_portable+SHA256) y release en tags v*.
+- Bugs encontrados y corregidos durante la integración (todos reproducidos por tests antes del fix):
+  1. Lyrics::BuildSlides ignoraba blocks (usaba song.lyrics crudo) → Parse(LyricsText()).
+  2. Heurística de acordes aceptaba palabras comunes ("dos"=Do+"s", "mis", "fue", "das") → puerta de arranque de sufijo real (m/M/#/b/dígito/sus/add/dim/aug).
+  3. Storage::Exec solo ejecutaba la PRIMERA sentencia de un script multi-statement (biblia/FTS no se creaban) → iteración pzTail.
+  4. Dedupe de migración corría sin tabla bible en BD nueva → guard sqlite_master.
+  5. fusion_db_exec rechazaba len=-1 → convención NUL-terminada en GetIn y fusion_bib_parse.
+  6. **Deadlock**: ShowSlide/Next/Prev llamaban PostStateEvent→StateJson() dentro del mutex no recursivo → eventos fuera del lock.
+  7. **Doble ejecución de INSERT**: Bridge DbExec usaba patrón medir/llamar (2 llamadas) → UNA sola llamada + reintento solo para SELECT/WITH.
+  8. MainForm corrupto a mitad de escritura (agente interrumpido) + DictEquals sin List<object> + campo _text sin usar (CS0649).
+- Gates locales: build nativo Linux **0 errores/0 warnings** (falso positivo sqlite3 silenciado por target) · fusion_selftest **138/138** · fusion_poc_native **37/37** · **POC PASS 12/12** (net8 + libFusionCore.so) · TESTS PASS **10/10** · build gestionado **0 errores/0 warnings** en net35+net48+net8.
+- Herramientas: make_sample_bib.py (RVR1909→.BIB, 31.084 versículos, determinista), verify_portable.py reescrito (contrato v3.0.0, exports PE), FusionLauncher (detección NDP 4.8/3.5 + propagación exit code).
+- Formato .BIB documentado (docs/bib-format.md) + muestra rvr1909.bib incluida.
+- Gates pendientes del CI (primer run): POC PASS 12/12 en x86+x64 Windows, CLRHOST PASS x86+x64, verify_portable, release.
+- Bloqueos: ninguno.
+- Siguiente: push → verificar CI verde → tag v3.0.0 → release con zips x86/x64 + SHA256 → verificación de assets.
