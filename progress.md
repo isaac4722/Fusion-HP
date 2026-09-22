@@ -483,3 +483,29 @@
 - Docs: README (descargas/novedades/arquitectura/historial), roadmap (lo cubierto vs. lo bloqueado por credenciales), PlanningCenter.md (formato de plan JSON actual + plan OAuth), DriveBackup.md (respaldo real + plan OAuth), DirectorWindow.md (DirectorForm real).
 - Bloqueos: ninguno (los que había eran del proceso, no del código).
 - Siguiente: commit → push main → CI verde → tag v5.1.0 → release → verificación de assets (descarga + verify_portable + selfcheck del ZIP).
+
+## 2026-09-23 — CIERRE v5.1.0 «FUNDAMENTO»: CI verde, tag, release verificada de extremo a extremo
+- 3 iteraciones de CI durante el ciclo (todas documentadas, ninguna debilitada):
+  [1] run 35770544472 — workflow no arrancó: `name:` de paso con ':' sin combrar rompía el YAML (fix e260004);
+  [2] run 35770766255/35771702697 — el NUEVO gate de humo destapó un bug REAL de build: el PRIMER publish
+      tras el build de la solución reusaba el PE AnyCPU (el checkpoint no trackea PlatformTarget) → el exe
+      «x86» corría como 64 bits y moría con BadImageFormatException contra LuminaCore.dll x86. El
+      diagnóstico se hizo visible gracias al AttachConsole + volcado del log de sesión añadidos al gate.
+      Fix: build con PlatformTarget + copia del bin (el SDK 10 del runner deriva RID del PlatformTarget
+      en dotnet publish → NETSDK1047) + Assert-PeBitness en CI + detector AnyCPU en verify_portable.py.
+  [3] runs 35773586311 (main) y 35774238926 (tag) — SUCCESS al primer intento.
+- **Release v5.1.0 PUBLICADA** (draft=false): x64 3.5 MB · x86 3.2 MB · SHA256SUMS.
+- Verificación independiente post-publicación (descarga real de ambos ZIPs):
+  * **Contenido COMPLETO** (el bug de v5.0.0 resuelto): 15 archivos — LuminaLauncher.exe + net48\
+    (exe+config+LuminaCore.dll+Lumina.Core/Bridge/Api.dll) + net35\ (ídem) + resources\data\bible_rvr1909.json + README.txt.
+  * **Bitness correcto en los 6 exes**: paquete x86 → PE32 con 32BITREQUIRED (gestionados) y x86 nativo;
+    paquete x64 → PE32+ en los tres.
+  * **Gate de humo del run del tag: exit 0 en AMBAS variantes** (net48 y net35 — el runner instaló .NET 3.5
+    y la baseline corrió sobre CLR2 real).
+  * verify_portable.py OK en ambos paquetes extraídos (layout 15/15, 11 PE auditados, 22 exports contractuales).
+- Gates finales: CI main=success · CI tag=success + release publicada · selfcheck net48=0 · selfcheck net35=0 ·
+  verify_portable=OK x86 y x64 · bitness=correcto en los 6 exes · arnés local=23/23 · validate-export=PASS.
+- Bloqueos: ninguno.
+- Siguiente: ninguna — v5.1.0 «FUNDAMENTO» cerrada: la app ABRE con .NET mínimo 3.5 (usa 4.8 si está),
+  el paquete viaja completo y auto-verificado, y los 20 requisitos del spec quedan cubiertos o documentados
+  con plan técnico en docs/roadmap.md (los 2 pendientes requieren credenciales del propietario).
