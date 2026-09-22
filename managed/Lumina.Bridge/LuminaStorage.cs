@@ -1,7 +1,7 @@
 // ============================================================================
-//  Fusion-HP / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
+//  LuminaPresentation / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
 // ============================================================================
-//  FusionStorage.cs : ayudantes de la capa de datos sobre fusion_db_exec.
+//  LuminaStorage.cs : ayudantes de la capa de datos sobre lumina_db_exec.
 //  REGLAS: el SQL SIEMPRE usa parámetros enlazados ("params") — jamás se
 //  interpola texto de usuario (contrato de la arquitectura). El esquema vive
 //  en el núcleo (Storage.cpp: songs / bible / *_fts / settings); aquí solo se
@@ -9,11 +9,11 @@
 // ============================================================================
 using System;
 using System.Collections.Generic;
-using fusion.core;
+using lumina.core;
 
-namespace fusion.bridge
+namespace lumina.bridge
 {
-    public static class FusionStorage
+    public static class LuminaStorage
     {
         /* ------------------------------------------------- construir requests */
 

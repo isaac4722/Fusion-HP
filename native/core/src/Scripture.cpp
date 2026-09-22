@@ -1,5 +1,5 @@
 // ============================================================================
-//  Fusion-HP / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
+//  LuminaPresentation / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
 // ============================================================================
 //  Scripture.cpp : slides de escritura bíblica — resuelve la referencia con
 //  BibleRef y agrupa maxVersesPerSlide versos por slide. refLabel = "Libro
@@ -13,7 +13,7 @@
 
 #include <algorithm>
 
-namespace fusion {
+namespace lumina {
 
 bool Scripture::BuildSlides(const std::string& ref,
                             const std::vector<std::string>& verseTexts,
@@ -47,4 +47,4 @@ bool Scripture::BuildSlides(const std::string& ref,
     return true;
 }
 
-} // namespace fusion
+} // namespace lumina

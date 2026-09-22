@@ -1,5 +1,5 @@
 // ============================================================================
-//  Fusion-HP / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
+//  LuminaPresentation / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
 // ============================================================================
 //  ApiServer.cs : API local HTTP sobre HttpListener (disponible desde .NET 2.0;
 //  sin async/await para mantener la compatibilidad net35). SOLO escucha en
@@ -7,14 +7,14 @@
 //  por conexión.
 //
 //  Rutas:
-//    GET  /api/state      → JSON de estado (fusion_state_json)
+//    GET  /api/state      → JSON de estado (lumina_state_json)
 //    POST /api/cmd        → {"action":"next|prev|black|clear|show|load|ping",
 //                            "index":N,"on":bool,"scenario":…,"msg":"…"}
 //    GET  /api/live.txt   → texto plano del slide actual + título
 //    POST /obs            → webhook OBS {"event":"START|STOP|SLIDE","payload":…}
 //
 //  Token opcional: si el token configurado no es "", /api/* exige ?token= o el
-//  encabezado X-Fusion-Token (401 si falta). /obs queda abierto a propósito:
+//  encabezado X-Lumina-Token (401 si falta). /obs queda abierto a propósito:
 //  solo registra y reenvía (no controla el motor).
 //
 //  Apagado limpio: Stop() cierra el listener y espera (con tope) al hilo de
@@ -26,10 +26,10 @@ using System.Diagnostics;
 using System.Net;
 using System.Text;
 using System.Threading;
-using fusion.bridge;
-using fusion.core;
+using lumina.bridge;
+using lumina.core;
 
-namespace fusion.api
+namespace lumina.api
 {
     /// <summary>Args del webhook OBS reenviado a los suscriptores gestionados.</summary>
     public sealed class ObsWebhookEventArgs : EventArgs
@@ -45,7 +45,7 @@ namespace fusion.api
         private const int MaxBodyBytes = 4 * 1024 * 1024;   // tope anti-OOM (4 MB)
         private const int MaxObsLog = 50;                   // bitácora circular del webhook
 
-        private readonly FusionEngine _engine;
+        private readonly LuminaEngine _engine;
         private readonly int _port;
         private readonly string _token;                     // "" = sin token
         private readonly object _sync = new object();
@@ -66,7 +66,7 @@ namespace fusion.api
         /// </summary>
         public Func<string> LiveTextProvider;
 
-        public ApiServer(FusionEngine engine, int port, string token)
+        public ApiServer(LuminaEngine engine, int port, string token)
         {
             if (engine == null) throw new ArgumentNullException("engine");
             if (port < 1024 || port > 65535) throw new ArgumentOutOfRangeException("port",
@@ -121,7 +121,7 @@ namespace fusion.api
                 _running = true;
                 _acceptThread = new Thread(AcceptLoop);
                 _acceptThread.IsBackground = true;
-                _acceptThread.Name = "FusionHP.Api.Accept";
+                _acceptThread.Name = "Lumina.Api.Accept";
                 _acceptThread.Start();
             }
         }
@@ -196,7 +196,7 @@ namespace fusion.api
                 try
                 {
                     WriteJson(ctx, 500, "{\"ok\":0,\"error\":\"interno\"}");
-                    Trace.WriteLine("FusionHP.Api: error no manejado: " + ex.Message);
+                    Trace.WriteLine("Lumina.Api: error no manejado: " + ex.Message);
                 }
                 catch (Exception) { /* el cliente se fue: nada que hacer */ }
             }
@@ -298,11 +298,11 @@ namespace fusion.api
             }
 
             StringBuilder sb = new StringBuilder();
-            sb.Append("{\"ok\":").Append(status == FusionStatus.Ok ? 1 : 0);
+            sb.Append("{\"ok\":").Append(status == LuminaStatus.Ok ? 1 : 0);
             sb.Append(",\"status\":").Append(status.ToString(System.Globalization.CultureInfo.InvariantCulture));
             if (extra.Length > 0) { sb.Append(',').Append(extra); }
             sb.Append('}');
-            WriteJson(ctx, status == FusionStatus.Ok ? 200 : 400, sb.ToString());
+            WriteJson(ctx, status == LuminaStatus.Ok ? 200 : 400, sb.ToString());
         }
 
         /// <summary>load: "scenario" como string JSON o como objeto; actualiza el catálogo live.</summary>
@@ -310,17 +310,17 @@ namespace fusion.api
         {
             object sc;
             string scenarioJson;
-            if (!req.TryGetValue("scenario", out sc) || sc == null) return FusionStatus.ErrArg;
+            if (!req.TryGetValue("scenario", out sc) || sc == null) return LuminaStatus.ErrArg;
             if (sc is string)
                 scenarioJson = (string)sc;
             else
                 scenarioJson = MiniJson.Serialize(sc);
 
             int status = _engine.LoadScenario(scenarioJson);
-            if (status == FusionStatus.Ok)
+            if (status == LuminaStatus.Ok)
             {
                 List<SlideView> views = ScenarioBuilder.FlattenScenario(scenarioJson,
-                    delegate(string sj) { return FusionEngine.SongParse(sj); });
+                    delegate(string sj) { return LuminaEngine.SongParse(sj); });
                 lock (_sync) { _slides.Clear(); _slides.AddRange(views); }
                 extra = "\"slideCount\":" + views.Count.ToString(System.Globalization.CultureInfo.InvariantCulture);
             }
@@ -442,13 +442,13 @@ namespace fusion.api
 
         /* ----------------------------------------------------------- varios */
 
-        /// <summary>Token en ?token= o X-Fusion-Token (solo /api/*; "" = deshabilitado).</summary>
+        /// <summary>Token en ?token= o X-Lumina-Token (solo /api/*; "" = deshabilitado).</summary>
         private bool CheckToken(HttpListenerContext ctx)
         {
             if (_token.Length == 0) return true;
             string qs = ctx.Request.QueryString["token"];
             if (qs != null && qs == _token) return true;
-            string hdr = ctx.Request.Headers["X-Fusion-Token"];
+            string hdr = ctx.Request.Headers["X-Lumina-Token"];
             return hdr != null && hdr == _token;
         }
 

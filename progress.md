@@ -362,3 +362,41 @@
   - clrhost en runners: alternativa CLR hosting vía hostfxr (núcleos .NET) o probar en windows-2019 (imagen con .NET FX en rutas estándar).
   - FusionHP35.exe (variante net35 de la UI) reservada en el launcher/paquete; el Core/Api/Bridge ya son net35.
   - Expansión UI: temas editor visual, medios (imágenes/video DirectShow), impresión, más integraciones OBS/remote.
+
+## 2026-09-22 — v4.0.0 «LUMINA»: renombrado de producto, GUI nueva y blindaje anti-crash
+- Petición del usuario: el nombre correcto es **LuminaPresentation Suite** (no Fusion-HP);
+  la release v3.0.0 «dejó de funcionar» al abrir; pide GUI buena y verificación visual.
+- Renombrado íntegro y mecánico (sed ordenado + git mv + verificación de cero restos):
+  Fusion-HP→LuminaPresentation (marca), FusionHP→Lumina (proyectos/namespaces),
+  FusionCore→LuminaCore, FusionLauncher→LuminaLauncher, FUSION_*/fusion_*/Fusion*→LUMINA_*/lumina_*/Lumina*,
+  exe de UI = **LuminaPresentation.exe** (AssemblyName explícito), sln = Lumina.sln,
+  cabecera C = lumina/lumina.h, FusionHP35→LuminaPresentation35. Preservadas las URLs del
+  repo (isaac4722/Fusion-HP) y la palabra española «fusionarse». Contratos actualizados:
+  verify_portable (LuminaLauncher.exe/LuminaPresentation.exe/LuminaCore.dll, export lumina_create),
+  ci.yml (artefactos/zips LuminaPresentation-4.0.0-win-*, README.txt del paquete), PoC
+  (facade lumina.poc.LuminaFacade, prefijo LUMINA-FACADE-OK), cabecera HTTP X-Lumina-Token.
+- Versión 4.0.0 en kVersion/lumina_version/APP_VERSION/launcher/títulos; gate del PoC nativo
+  actualizado a "4.0" (detectado por el propio arnés: PASS 37/37 tras el fix).
+- Blindaje anti-crash («la app SIEMPRE abre»):
+  1) Program.cs: Application.ThreadException + AppDomain.UnhandledException + try/catch en Main
+     → diálogo en español con causa + sugerencias, y log automático data/logs/lumina-*.log
+     (SO, bits, CLR, .NET 4.8 por registro, presencia de LuminaCore.dll, permisos de data/).
+  2) LuminaEngine.Start: DllNotFound/BadImage/EntryPoint/TypeInitialization → LuminaException
+     con instrucciones concretas (extraer ZIP, bitness, mezcla de versiones) + FreeCallback().
+  3) MainForm: CreateEngine en try/catch → **modo limitado** (ventana operativa, chip Núcleo
+     rojo, RequireEngine() en toda acción del motor); nunca un crash por el núcleo.
+  4) LuminaLauncher: pre-chequeo de LuminaCore.dll junto al exe con mensaje accionable
+     (causa típica: ejecutar desde dentro del ZIP) + CreateProcess con workdir del paquete.
+- GUI nueva (mockup G-1 validado con agent-browser y transcrita 1:1 a WinForms net35+net48):
+  tema oscuro plano (página #12141A, barras #171A21, tarjetas #1B1F28, acento ámbar #F0A93B),
+  barra lateral owner-drawn (5 secciones, iconos vectoriales, barra activa 3px, tarjeta de
+  salida), cabecera con chips de estado (Núcleo/BD/API), tarjetas con título, ListView con
+  cabeceras y filas owner-drawn (zebra + selección #2F3646), ListBox/ComboBox owner-drawn,
+  botones planos primary/secondary/danger con hover, inputs #10131A, barra de estado con chips,
+  vista previa 16:9 con chip EN VIVO. Menú sustituido por acciones en página (Proyector,
+  Guardar ajustes, Importar .BIB). Sin MenuStrip. Icono app.ico propio (16..256 px).
+- Correcciones de docking (z-order inverso) en páginas multi-tarjeta (Biblia/Ajustes/Culto).
+- Validación local: managed `dotnet build Lumina.sln -c Release` → 0 errores/0 warnings
+  (net35+net48); native Linux → lumina_selftest **138/138** y lumina_poc_native **37/37 PASS**;
+  Tests net8 con LUMINA_SKIP_NATIVE=1 → PASS (5 skips esperados).
+- Pendiente al cierre: push → CI verde → tag v4.0.0 → release → verificación de assets.

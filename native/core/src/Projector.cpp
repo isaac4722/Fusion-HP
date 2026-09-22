@@ -1,9 +1,9 @@
 // ============================================================================
-//  Fusion-HP / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
+//  LuminaPresentation / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
 // ============================================================================
 //  Projector.cpp : ventana de proyección nativa (hilo propio + WM_PAINT con
 //  doble búfer) y conversiones UTF-8 ↔ UTF-16 de la capa Win32.
-//  Contrato con Engine (ver FusionCore.h):
+//  Contrato con Engine (ver LuminaCore.h):
 //    Show(screenIndex, fullscreen) / Hide() / Close() / SetContent(...).
 //  El contenido se publica por COPIA bajo mutex; el hilo de ventana lo lee
 //  para pintar. Sin bloquear jamás al hilo que llama a la API.
@@ -26,7 +26,7 @@
 #include <thread>
 #include <vector>
 
-namespace fusion {
+namespace lumina {
 
 /* ---------------------------------------------- conversiones Win32 ------ */
 std::wstring Utf8ToWide(const std::string& s) {
@@ -69,7 +69,7 @@ struct Projector::Impl {
     bool dirty = false;
 };
 
-static const wchar_t* kProjClassName = L"FusionProjWindow_v3";
+static const wchar_t* kProjClassName = L"LuminaProjWindow_v3";
 
 Projector::Projector() : impl_(new Impl()) {}
 
@@ -206,12 +206,12 @@ void Projector::WindowLoop() {
                 EnumDisplayMonitors(nullptr, nullptr, MonitorEnumProc, (LPARAM)&ctx);
                 if (ctx.found) rc = ctx.rect;
                 else { rc.left = 0; rc.top = 0; rc.right = GetSystemMetrics(SM_CXSCREEN); rc.bottom = GetSystemMetrics(SM_CYSCREEN); }
-                p->hwnd = CreateWindowExW(WS_EX_TOPMOST, kProjClassName, L"Fusion-HP",
+                p->hwnd = CreateWindowExW(WS_EX_TOPMOST, kProjClassName, L"LuminaPresentation",
                                           WS_POPUP, rc.left, rc.top,
                                           rc.right - rc.left, rc.bottom - rc.top,
                                           nullptr, nullptr, GetModuleHandleW(nullptr), this);
             } else {
-                p->hwnd = CreateWindowExW(0, kProjClassName, L"Fusion-HP (prueba)",
+                p->hwnd = CreateWindowExW(0, kProjClassName, L"LuminaPresentation (prueba)",
                                           WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
                                           960, 540, nullptr, nullptr,
                                           GetModuleHandleW(nullptr), this);
@@ -318,5 +318,5 @@ bool Projector::RenderSlidePng(const Slide& s, const Theme& t,
     return false;
 }
 
-} // namespace fusion
+} // namespace lumina
 

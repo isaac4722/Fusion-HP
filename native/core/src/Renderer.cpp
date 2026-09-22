@@ -1,5 +1,5 @@
 // ============================================================================
-//  Fusion-HP / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
+//  LuminaPresentation / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
 // ============================================================================
 //  Renderer.cpp : implementación GDI(+GDI+) del renderizador de slides.
 //  Decisiones:
@@ -28,7 +28,7 @@
 
 #pragma comment(lib, "gdiplus.lib")
 
-namespace fusion {
+namespace lumina {
 namespace {
 
 /* ------------------------------------------------------------- colores -- */
@@ -346,4 +346,4 @@ bool Renderer::EncodePng(HBITMAP bmp, std::string* pngOut) {
     return true;
 }
 
-} // namespace fusion
+} // namespace lumina

@@ -1,18 +1,18 @@
 // ============================================================================
-//  Fusion-HP / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
+//  LuminaPresentation / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
 // ============================================================================
 //  Models.h : estructuras internas del núcleo (contrato fijo entre módulos).
 //  Todo std::string en UTF-8. Serialización JSON con nlohmann (third_party).
 // ============================================================================
-#ifndef FUSION_MODELS_H
-#define FUSION_MODELS_H
+#ifndef LUMINA_MODELS_H
+#define LUMINA_MODELS_H
 
 #include <string>
 #include <vector>
 
 #include <nlohmann/json.hpp>
 
-namespace fusion {
+namespace lumina {
 
 using json = nlohmann::json;
 
@@ -113,5 +113,5 @@ struct BuildOptions {
     int   transpose        = 0;
 };
 
-} // namespace fusion
-#endif // FUSION_MODELS_H
+} // namespace lumina
+#endif // LUMINA_MODELS_H

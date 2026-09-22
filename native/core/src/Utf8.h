@@ -1,16 +1,16 @@
 // ============================================================================
-//  Fusion-HP / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
+//  LuminaPresentation / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
 // ============================================================================
 //  Utf8.h : utilidades UTF-8 portables (sin wx, sin locale del sistema).
 // ============================================================================
-#ifndef FUSION_UTF8_H
-#define FUSION_UTF8_H
+#ifndef LUMINA_UTF8_H
+#define LUMINA_UTF8_H
 
 #include <string>
 #include <vector>
 #include <cstdint>
 
-namespace fusion {
+namespace lumina {
 
 // Recorta espacios ASCII laterales.
 inline std::string Trim(const std::string& s) {
@@ -149,5 +149,5 @@ std::wstring Utf8ToWide(const std::string& s);
 std::string  WideToUtf8(const std::wstring& w);
 #endif
 
-} // namespace fusion
-#endif // FUSION_UTF8_H
+} // namespace lumina
+#endif // LUMINA_UTF8_H

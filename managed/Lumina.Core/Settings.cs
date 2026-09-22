@@ -1,5 +1,5 @@
 // ============================================================================
-//  Fusion-HP / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
+//  LuminaPresentation / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
 // ============================================================================
 //  Settings : ajustes portables de la aplicación en JSON junto al ejecutable
 //  (carpeta "data"), sin registro de Windows ni rutas de usuario — requisito
@@ -13,9 +13,9 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text;
-using fusion.core;
+using lumina.core;
 
-namespace fusion.core
+namespace lumina.core
 {
     public sealed class Settings
     {

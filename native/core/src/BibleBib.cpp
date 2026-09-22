@@ -1,5 +1,5 @@
 // ============================================================================
-//  Fusion-HP / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
+//  LuminaPresentation / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
 // ============================================================================
 //  BibleBib.cpp : parser .BIB con detección automática (docs/bib-format.md).
 //    * UTF-8 con BOM opcional; CP1252/Latin-1 detectada (bytes UTF-8
@@ -23,7 +23,7 @@
 
 #include <set>
 
-namespace fusion {
+namespace lumina {
 namespace {
 
 /* ------------------------- codificación CP1252 ------------------------- */
@@ -370,4 +370,4 @@ bool BibleBib::Parse(const std::string& bytes, Stats* stats,
     return true;
 }
 
-} // namespace fusion
+} // namespace lumina

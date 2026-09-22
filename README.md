@@ -1,4 +1,4 @@
-# LuminaPresentation Suite — Fusion-HP v3.0.0 «HÍBRIDA»
+# LuminaPresentation Suite v4.0.0 «LUMINA»
 
 **Proyección para iglesias con arquitectura híbrida: núcleo C++17 nativo + interfaz C# (.NET Framework 4.8/3.5)**
 — motor de proyección en tiempo real con la agilidad de desarrollo de .NET,
@@ -13,20 +13,40 @@
 
 1. Ir a **[Releases](https://github.com/isaac4722/Fusion-HP/releases)**.
 2. Descargar el paquete para tu arquitectura:
-   - `Fusion-HP-3.0.0-win-x86.zip` — **Windows 7 SP1 … Windows 11 (32 bits)**
-   - `Fusion-HP-3.0.0-win-x64.zip` — **Windows 7 SP1 … Windows 11+ (64 bits)**
-3. Descomprimir y ejecutar **`FusionLauncher.exe`**: detecta el runtime .NET disponible
+   - `LuminaPresentation-3.0.0-win-x86.zip` — **Windows 7 SP1 … Windows 11 (32 bits)**
+   - `LuminaPresentation-3.0.0-win-x64.zip` — **Windows 7 SP1 … Windows 11+ (64 bits)**
+3. Descomprimir y ejecutar **`LuminaLauncher.exe`**: detecta el runtime .NET disponible
    y lanza la interfaz correcta. **El usuario nunca instala nada**:
    - Windows 10 1903+ / Windows 11 → **.NET Framework 4.8** integrado en el SO.
    - Windows 7 SP1 / 8.x → **.NET Framework 3.5 SP1** integrado (variante de línea base).
-   - El motor C++ (`FusionCore.dll`) va enlazado estáticamente (/MT): **cero redistributables**.
+   - El motor C++ (`LuminaCore.dll`) va enlazado estáticamente (/MT): **cero redistributables**.
 
-## 🧩 Arquitectura híbrida (v3.0.0)
+## 🌟 Novedades v4.0.0 «LUMINA»
+
+- **Nuevo nombre**: el producto es **LuminaPresentation Suite** (antes Fusion-HP).
+  Binarios renombrados: `LuminaLauncher.exe`, `LuminaPresentation.exe` (interfaz) y
+  `LuminaCore.dll` (núcleo nativo).
+- **Interfaz rediseñada por completo**: tema oscuro plano profesional, barra lateral
+  de navegación con iconos vectoriales, cabecera con chips de estado (Núcleo/BD/API),
+  tarjetas, listas owner-drawn y botones planos con hover — diseñada en mockup y
+  transcrita 1:1 a WinForms (funciona igual en Windows 7 que en Windows 11).
+- **«La app siempre abre» (blindaje anti-crash)**:
+  - Manejadores globales de excepciones (hilo de UI + hilos de fondo + `Main`)
+    con diálogo claro en español — **adiós al críptico «dejó de funcionar»**.
+  - **Modo limitado**: si `LuminaCore.dll` no carga, la ventana abre igual, el chip
+    Núcleo se pinta en rojo y cada acción avisa qué falta (nunca un crash).
+  - **Pre-chequeo del launcher**: si ejecutas desde DENTRO del ZIP (causa típica del
+    crash), se explica cómo extraer el paquete ANTES de que falle algo.
+  - **Log de diagnóstico** automático en `data/logs/lumina-*.log` (SO, bits, .NET,
+    presencia de la DLL, permisos) para soporte remoto.
+- Icono propio de la aplicación y metadatos de versión.
+
+## 🧩 Arquitectura híbrida
 
 | Capa | Tecnología | Contenido |
 |---|---|---|
-| **Motor / Núcleo** | **C++17** (`FusionCore.dll`, /MT) | Proyección nativa Win32+GDI (doble búfer, contorno+sombra, ajuste tipográfico), modelo de escenario, acordes (latina/anglosajona + transposición), letras con Modo Hinario, referencias bíblicas (66 libros), **parser JSON de canciones** (esquema propio + subconjunto OpenLP) y **parser .BIB de biblias** (detección automática), **SQLite+FTS5** embebido, eventos por callbacks, API C plana estable (`fusion.h`) |
-| **Interfaz** | **C# WinForms** (`FusionHP.exe`, net48; línea base net35) | Editor de escenarios, bibliotecas (canciones/biblia), control En Vivo, vista previa renderizada por el motor, temas, importadores JSON/.BIB, ajustes |
+| **Motor / Núcleo** | **C++17** (`LuminaCore.dll`, /MT) | Proyección nativa Win32+GDI (doble búfer, contorno+sombra, ajuste tipográfico), modelo de escenario, acordes (latina/anglosajona + transposición), letras con Modo Hinario, referencias bíblicas (66 libros), **parser JSON de canciones** (esquema propio + subconjunto OpenLP) y **parser .BIB de biblias** (detección automática), **SQLite+FTS5** embebido, eventos por callbacks, API C plana estable (`lumina.h`) |
+| **Interfaz** | **C# WinForms** (`LuminaPresentation.exe`, net48; línea base net35) | Editor de escenarios, bibliotecas (canciones/biblia), control En Vivo, vista previa renderizada por el motor, temas, importadores JSON/.BIB, ajustes |
 | **Datos** | **C#** (orquestación) + SQLite nativo | CRUD siempre con **parámetros enlazados**; canciones con FTS5, biblia con índice UNIQUE + dedupe idempotente |
 | **API local** | **C# HttpListener** | `/api/state`, `/api/cmd`, `/api/live.txt` y webhook OBS — solo localhost, token opcional |
 | **Puente** | **P/Invoke** (vía A elegida) | ABI C plana: UTF-8, sin excepciones cruzando la frontera, búfer uniforme `out/cap/needed`, eventos en hilo dedicado |
@@ -46,10 +66,10 @@ ejecutable y forma parte del CI:
   UTF-8 ida/vuelta, callbacks desde el hilo del motor, canción JSON, .BIB, referencias,
   acordes, BD+FTS5, escenario/en vivo y estrés (1000 pings + 200 next/prev).
   Gate del CI: **«POC PASS 12/12»** en x86 y x64 contra las DLL reales.
-- **`fusion_poc_native`** (C++): 37 verificaciones del API C en modo headless.
-- **`fusion_selftest`** (C++): 138 checks de lógica (acordes, hinario, .BIB, SQLite…).
-- **`fusion_poc_clrhost`** (C++): hospedaje del CLR desde C++ puro + facade COM-visible.
-- **`FusionHP.Tests`** (C#, net8/net48): MiniJson, builder de escenarios, settings.
+- **`lumina_poc_native`** (C++): 37 verificaciones del API C en modo headless.
+- **`lumina_selftest`** (C++): 138 checks de lógica (acordes, hinario, .BIB, SQLite…).
+- **`lumina_poc_clrhost`** (C++): hospedaje del CLR desde C++ puro + facade COM-visible.
+- **`Lumina.Tests`** (C#, net8/net48): MiniJson, builder de escenarios, settings.
 
 ## 📖 Formatos
 
@@ -65,14 +85,14 @@ ejecutable y forma parte del CI:
 ```bash
 # Núcleo nativo (Linux/Windows: partes portables + tests)
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build --config Release
-./build/native/fusion_selftest && ./build/native/fusion_poc_native
+./build/native/lumina_selftest && ./build/native/lumina_poc_native
 
 # Capa gestionada (net35+net48 con ref assemblies; funciona también en Linux)
-dotnet build managed/FusionHP.sln -c Release
-dotnet run --project managed/Tests --framework net8.0   # con libFusionCore.so junto al exe: tests completos
+dotnet build managed/Lumina.sln -c Release
+dotnet run --project managed/Tests --framework net8.0   # con libLuminaCore.so junto al exe: tests completos
 ```
 
-En Windows, `native/` compila con MSVC (`-A Win32` o `-A x64`) y produce `FusionCore.dll` /MT.
+En Windows, `native/` compila con MSVC (`-A Win32` o `-A x64`) y produce `LuminaCore.dll` /MT.
 
 ## 📜 Historial
 
@@ -80,5 +100,8 @@ En Windows, `native/` compila con MSVC (`-A Win32` o `-A x64`) y produce `Fusion
   API HTTP+WS, PPTX, MIDI, OBS, Planning Center, Drive.
 - **v2.0.0 «HORIZONTE» (wxWidgets)** — reescritura nativa completa (código archivado en
   `apps/native-wx-src` con su historial).
-- **v3.0.0 «HÍBRIDA»** — la presente: núcleo C++ puro + capa .NET, CI de 7 jobs con gates
-  de interop, empaquetado portable x86/x64 y releases automáticos.
+- **v3.0.0 «HÍBRIDA»** — núcleo C++ puro + capa .NET, PoC de interop validado (12/12),
+  CI de 7 jobs con gates, empaquetado portable x86/x64 y releases automáticos.
+- **v4.0.0 «LUMINA»** — la presente: producto renombrado a LuminaPresentation Suite,
+  interfaz rediseñada (tema oscuro, navegación lateral, chips de estado) y blindaje
+  completo anti-crash (modos degradados, pre-chequeos del launcher y logs de diagnóstico).

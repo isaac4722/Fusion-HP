@@ -1,5 +1,5 @@
 // ============================================================================
-//  Fusion-HP / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
+//  LuminaPresentation / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
 // ============================================================================
 //  MiniJson : parser + serializador JSON propio para net35 (sin System.Text.Json
 //  ni Json.NET). Soporta object/array/string (escapes \n \r \t \b \f \" \\ \/
@@ -21,7 +21,7 @@ using System.Globalization;
 using System.IO;
 using System.Text;
 
-namespace fusion.core
+namespace lumina.core
 {
     public static class MiniJson
     {

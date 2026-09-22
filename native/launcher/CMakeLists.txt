@@ -1,5 +1,5 @@
 # ============================================================================
-#  Fusion-HP — native/launcher/CMakeLists.txt
+#  LuminaPresentation — native/launcher/CMakeLists.txt
 # ----------------------------------------------------------------------------
 #  Proyecto AUTÓNOMO del launcher nativo (no se agrega desde native/CMakeLists
 #  para no tocar la base del núcleo). El CI lo compila con:
@@ -14,28 +14,28 @@
 #   * Solo Win32: el resto de la plataforma no tiene sentido aquí.
 # ============================================================================
 cmake_minimum_required(VERSION 3.16)
-project(FusionLauncher LANGUAGES CXX)
+project(LuminaLauncher LANGUAGES CXX)
 
 if(NOT WIN32)
-    message(FATAL_ERROR "FusionLauncher solo se compila en Windows (Win32).")
+    message(FATAL_ERROR "LuminaLauncher solo se compila en Windows (Win32).")
 endif()
 
-add_executable(FusionLauncher FusionLauncher.cpp)
+add_executable(LuminaLauncher LuminaLauncher.cpp)
 
-set_target_properties(FusionLauncher PROPERTIES
+set_target_properties(LuminaLauncher PROPERTIES
     WIN32_EXECUTABLE TRUE              # /SUBSYSTEM:WINDOWS (GUI)
-    OUTPUT_NAME "FusionLauncher"
+    OUTPUT_NAME "LuminaLauncher"
     CXX_STANDARD 17
     CXX_STANDARD_REQUIRED ON
 )
 
 if(MSVC)
     # CRT estático /MT (Release) — el paquete portable no lleva vcruntime.
-    set_property(TARGET FusionLauncher PROPERTY MSVC_RUNTIME_LIBRARY
+    set_property(TARGET LuminaLauncher PROPERTY MSVC_RUNTIME_LIBRARY
         "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-    target_compile_options(FusionLauncher PRIVATE /W4 /EHsc /utf-8)
-    target_link_libraries(FusionLauncher PRIVATE user32 advapi32)
+    target_compile_options(LuminaLauncher PRIVATE /W4 /EHsc /utf-8)
+    target_link_libraries(LuminaLauncher PRIVATE user32 advapi32)
 else()
     # Rama informativa (p. ej. MinGW): se compila, pero el CI usa MSVC.
-    target_compile_definitions(FusionLauncher PRIVATE UNICODE _UNICODE)
+    target_compile_definitions(LuminaLauncher PRIVATE UNICODE _UNICODE)
 endif()

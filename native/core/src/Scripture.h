@@ -1,10 +1,10 @@
 // Contrato: slides de escritura (rango de versículos → SLIDE_SCRIPTURE).
-#ifndef FUSION_SCRIPTURE_H
-#define FUSION_SCRIPTURE_H
+#ifndef LUMINA_SCRIPTURE_H
+#define LUMINA_SCRIPTURE_H
 
 #include "Models.h"
 
-namespace fusion {
+namespace lumina {
 class Scripture {
 public:
     // Cada verso = una slide (refLabel "Libro C:V"); maxVersesPerSlide>=1
@@ -14,5 +14,5 @@ public:
                             int maxVersesPerSlide,
                             std::vector<Slide>* out);
 };
-} // namespace fusion
+} // namespace lumina
 #endif

@@ -1,22 +1,22 @@
 // Contrato: canción JSON (esquema propio + subconjunto OpenLP) → Song + slides.
-#ifndef FUSION_SONGMODEL_H
-#define FUSION_SONGMODEL_H
+#ifndef LUMINA_SONGMODEL_H
+#define LUMINA_SONGMODEL_H
 
 #include "Models.h"
 #include <nlohmann/json.hpp>
 
-namespace fusion {
+namespace lumina {
 class SongModel {
 public:
     // Rellena song desde JSON; lanza nlohmann::json::exception ante tipos
-    // imposibles (la llamada de API captura y devuelve FUSION_ERR_PARSE).
+    // imposibles (la llamada de API captura y devuelve LUMINA_ERR_PARSE).
     static void FromJson(const json& o, Song* song);
     static json  ToJson(const Song& s);
 
-    // Resultado fusion_song_parse:
+    // Resultado lumina_song_parse:
     // {"ok":1,"song":{...},"slides":[...]} — construye slides con BuildOptions
     // tomadas del propio JSON (titleSlide/endBlank/chorusInterleave/…).
     static json ParseAndBuildSlides(const json& o);
 };
-} // namespace fusion
+} // namespace lumina
 #endif

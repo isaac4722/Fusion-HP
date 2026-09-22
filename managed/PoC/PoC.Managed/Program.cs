@@ -1,5 +1,5 @@
 // ============================================================================
-//  Fusion-HP / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
+//  LuminaPresentation / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
 // ============================================================================
 //  Program.cs : LA PRUEBA DE CONCEPTO FORMAL del puente C# ↔ núcleo nativo.
 //  Código de salida: 0 = PASS, 1 = FAIL. Imprime "POC PASS n/n" o
@@ -11,16 +11,16 @@
 //
 //  Los 12 checks:
 //    1. Carga de la biblioteca nativa (DllImport resuelto)
-//    2. fusion_version: "FusionCore" + "3.0"
+//    2. lumina_version: "LuminaCore" + "3.0"
 //    3. Estructura + handle: create headless != 0; destroy sin crash
-//    4. UTF-8 ida/vuelta por fusion_ping → EV_PONG idéntico (callback)
+//    4. UTF-8 ida/vuelta por lumina_ping → EV_PONG idéntico (callback)
 //    5. Callbacks desde el hilo del motor: EV_STATE con slideCount >= 3 (5 s)
-//    6. fusion_song_parse: ok=1, slides no vacías
-//    7. fusion_bib_parse: .BIB embebido (directivas + TAB + acentos) ok=1,
+//    6. lumina_song_parse: ok=1, slides no vacías
+//    7. lumina_bib_parse: .BIB embebido (directivas + TAB + acentos) ok=1,
 //       verses>=6, version TEST
-//    8. fusion_bible_ref_resolve("Jn 3:16") → 43/3/16
-//    9. fusion_chords_transpose("Do Sol", +2, latin) → "Re La"
-//   10. fusion_db_open + INSERT/SELECT con params + FTS5 MATCH 'aleluya'
+//    8. lumina_bible_ref_resolve("Jn 3:16") → 43/3/16
+//    9. lumina_chords_transpose("Do Sol", +2, latin) → "Re La"
+//   10. lumina_db_open + INSERT/SELECT con params + FTS5 MATCH 'aleluya'
 //   11. Escenario + En Vivo: next→index 0; next×2→index 2; black→true
 //   12. Estrés de marshaling: 200 next/prev + 1000 pings, >=1000 PONG
 // ============================================================================
@@ -30,10 +30,10 @@ using System.Globalization;
 using System.IO;
 using System.Text;
 using System.Threading;
-using fusion.bridge;
-using fusion.core;
+using lumina.bridge;
+using lumina.core;
 
-namespace fusion.poc
+namespace lumina.poc
 {
     internal static class Program
     {
@@ -56,27 +56,27 @@ namespace fusion.poc
 
         private static int Main()
         {
-            Console.WriteLine("PoC.Managed — puente C# ↔ FusionCore (" +
+            Console.WriteLine("PoC.Managed — puente C# ↔ LuminaCore (" +
                 Environment.Version + ")");
 
-            FusionEngine engine = null;
+            LuminaEngine engine = null;
             try
             {
                 // Chequeos 1-2 sin handle.
                 Check(1, "Cargar biblioteca nativa", CheckLibraryLoads);
-                Check(2, "fusion_version empieza por FusionCore y contiene 3.0", CheckVersion);
+                Check(2, "lumina_version empieza por LuminaCore y contiene 3.0", CheckVersion);
 
                 if (Failures.Count == 0)
                 {
                     // Motor headless compartido con callback global.
-                    engine = FusionEngine.Create(true, OnEngineEvent);
-                    Check(3, "fusion_create headless → handle != 0 (y destroy limpio)", delegate { return CheckHandle(engine); });
+                    engine = LuminaEngine.Create(true, OnEngineEvent);
+                    Check(3, "lumina_create headless → handle != 0 (y destroy limpio)", delegate { return CheckHandle(engine); });
                     Check(4, "UTF-8 ida/vuelta por ping → PONG idéntico", delegate { return CheckPingUtf8(engine); });
                     Check(5, "EV_STATE desde el hilo del motor con slideCount>=3", delegate { return CheckStateEvent(engine); });
-                    Check(6, "fusion_song_parse ok=1 y slides", delegate { return CheckSongParse(); });
-                    Check(7, "fusion_bib_parse .BIB embebido (verses>=6, TEST)", delegate { return CheckBibParse(); });
-                    Check(8, "fusion_bible_ref_resolve Jn 3:16 → 43/3/16", delegate { return CheckRefResolve(); });
-                    Check(9, "fusion_chords_transpose Do Sol +2 → Re La", delegate { return CheckChords(); });
+                    Check(6, "lumina_song_parse ok=1 y slides", delegate { return CheckSongParse(); });
+                    Check(7, "lumina_bib_parse .BIB embebido (verses>=6, TEST)", delegate { return CheckBibParse(); });
+                    Check(8, "lumina_bible_ref_resolve Jn 3:16 → 43/3/16", delegate { return CheckRefResolve(); });
+                    Check(9, "lumina_chords_transpose Do Sol +2 → Re La", delegate { return CheckChords(); });
                     Check(10, "BD: INSERT/SELECT con params + FTS5 'aleluya'", delegate { return CheckDatabase(engine); });
                     Check(11, "Escenario + next/next/next + black (eventos)", delegate { return CheckLiveFlow(engine); });
                     Check(12, "Estrés: 200 next/prev + 1000 pings (>=1000 PONG)", delegate { return CheckStress(engine); });
@@ -152,18 +152,18 @@ namespace fusion.poc
 
         /* ------------------------------------------------ callback del motor */
 
-        private static void OnEngineEvent(object sender, FusionEvent e)
+        private static void OnEngineEvent(object sender, LuminaEvent e)
         {
             // Hilo del motor: solo contar/almacenar con lock. NUNCA llamar al motor.
             lock (EvLock)
             {
                 switch (e.Code)
                 {
-                    case FusionEvents.Pong:
+                    case LuminaEvents.Pong:
                         _pongCount++;
                         _lastPong = e.Text;
                         break;
-                    case FusionEvents.State:
+                    case LuminaEvents.State:
                         Dictionary<string, object> st = TryParse(e.Text);
                         if (st != null)
                         {
@@ -171,7 +171,7 @@ namespace fusion.poc
                             _stateArrived.Set();
                         }
                         break;
-                    case FusionEvents.SlideChanged:
+                    case LuminaEvents.SlideChanged:
                         Dictionary<string, object> sc = TryParse(e.Text);
                         if (sc != null)
                         {
@@ -208,16 +208,16 @@ namespace fusion.poc
             // primera llamada si la lib no está o es de otra arquitectura.
             try
             {
-                string v = FusionEngine.Version();
+                string v = LuminaEngine.Version();
                 return v != null && v.Length > 0;
             }
             catch (DllNotFoundException ex)
             {
-                throw new Exception("No se encontró FusionCore (busca libFusionCore.so en Linux / FusionCore.dll en Windows junto al ejecutable). " + ex.Message);
+                throw new Exception("No se encontró LuminaCore (busca libLuminaCore.so en Linux / LuminaCore.dll en Windows junto al ejecutable). " + ex.Message);
             }
             catch (BadImageFormatException ex)
             {
-                throw new Exception("FusionCore encontrada pero con arquitectura incompatible (¿x86 vs x64?). " + ex.Message);
+                throw new Exception("LuminaCore encontrada pero con arquitectura incompatible (¿x86 vs x64?). " + ex.Message);
             }
             catch (EntryPointNotFoundException ex)
             {
@@ -227,12 +227,12 @@ namespace fusion.poc
 
         private static bool CheckVersion()
         {
-            string v = FusionEngine.Version();
+            string v = LuminaEngine.Version();
             Console.WriteLine("        version = \"" + v + "\"");
-            return v.StartsWith("FusionCore", StringComparison.Ordinal) && v.Contains("3.0");
+            return v.StartsWith("LuminaCore", StringComparison.Ordinal) && v.Contains("3.0");
         }
 
-        private static bool CheckHandle(FusionEngine engine)
+        private static bool CheckHandle(LuminaEngine engine)
         {
             if (engine.NativeHandle == IntPtr.Zero) return false;
             // El estado es la prueba viva del handle; destroy se valida al salir
@@ -242,7 +242,7 @@ namespace fusion.poc
             return o != null && MiniJson.GetInt(o, "headless", -1) == 1;
         }
 
-        private static bool CheckPingUtf8(FusionEngine engine)
+        private static bool CheckPingUtf8(LuminaEngine engine)
         {
             string msg = "¡Canción — ñ Á é í ó ú ✓!";
             int before;
@@ -262,15 +262,15 @@ namespace fusion.poc
             throw new Exception("PONG no llegó o difiere. Esperado \"" + msg + "\", recibido \"" + got + "\"");
         }
 
-        private static bool CheckStateEvent(FusionEngine engine)
+        private static bool CheckStateEvent(LuminaEngine engine)
         {
             // Canción de 3 bloques × 2 líneas → título + 3 slides de verso = 4.
             string scenario = ScenarioBuilder.BuildScenarioJson("PoC-5", null,
                 new ScenarioItem[] { ScenarioBuilder.FromSong(PocSong()) });
             ResetWaiters();
             int st = engine.LoadScenario(scenario);
-            if (st != FusionStatus.Ok)
-                throw new Exception("LoadScenario=" + FusionStatus.Name(st));
+            if (st != LuminaStatus.Ok)
+                throw new Exception("LoadScenario=" + LuminaStatus.Name(st));
             if (!WaitFor(_stateArrived, 5000))
                 throw new Exception("EV_STATE no llegó en 5 s");
             lock (EvLock)
@@ -283,7 +283,7 @@ namespace fusion.poc
         private static bool CheckSongParse()
         {
             string json = MiniJson.Serialize(ScenarioBuilder.SongToDict(PocSong()));
-            string res = FusionEngine.SongParse(json);
+            string res = LuminaEngine.SongParse(json);
             Dictionary<string, object> o = TryParse(res);
             if (o == null) return false;
             List<object> slides = MiniJson.GetArray(o, "slides");
@@ -310,7 +310,7 @@ namespace fusion.poc
 
         private static bool CheckBibParse()
         {
-            string res = FusionEngine.BibParse(BibFixture(), null);
+            string res = LuminaEngine.BibParse(BibFixture(), null);
             Dictionary<string, object> o = TryParse(res);
             if (o == null) return false;
             long ok = MiniJson.GetInt(o, "ok", 0);
@@ -322,7 +322,7 @@ namespace fusion.poc
 
         private static bool CheckRefResolve()
         {
-            string res = FusionEngine.BibleRefResolve("Jn 3:16");
+            string res = LuminaEngine.BibleRefResolve("Jn 3:16");
             Dictionary<string, object> o = TryParse(res);
             if (o == null) return false;
             long book = MiniJson.GetInt(o, "book", 0);
@@ -334,7 +334,7 @@ namespace fusion.poc
 
         private static bool CheckChords()
         {
-            string res = FusionEngine.ChordsTranspose("Do Sol", 2, true);
+            string res = LuminaEngine.ChordsTranspose("Do Sol", 2, true);
             Dictionary<string, object> o = TryParse(res);
             if (o == null) return false;
             string line = MiniJson.GetString(o, "line", string.Empty);
@@ -343,35 +343,35 @@ namespace fusion.poc
             return line.Trim() == "Re La".Trim();
         }
 
-        private static bool CheckDatabase(FusionEngine engine)
+        private static bool CheckDatabase(LuminaEngine engine)
         {
             string dbPath = Path.Combine(Path.GetTempPath(),
-                "fusion_poc_" + Guid.NewGuid().ToString("N") + ".db");
+                "lumina_poc_" + Guid.NewGuid().ToString("N") + ".db");
             try
             {
-                if (engine.DbOpen(dbPath) != FusionStatus.Ok)
+                if (engine.DbOpen(dbPath) != LuminaStatus.Ok)
                     throw new Exception("DbOpen falló: " + dbPath);
 
                 // INSERT con params (enlazados — jamás interpolado).
-                string res = engine.DbExec(FusionStorage.BuildExecJson(
+                string res = engine.DbExec(LuminaStorage.BuildExecJson(
                     "INSERT INTO songs(title,author,lyrics) VALUES(?,?,?)",
                     "Prueba POC", "Autor", "Santo, santo, santo aleluya"));
-                if (FusionStorage.Changes(res) != 1) throw new Exception("INSERT no reportó changes=1");
+                if (LuminaStorage.Changes(res) != 1) throw new Exception("INSERT no reportó changes=1");
 
                 // SELECT con params → fila devuelta.
-                res = engine.DbExec(FusionStorage.BuildExecJson(
+                res = engine.DbExec(LuminaStorage.BuildExecJson(
                     "SELECT title FROM songs WHERE title = ?1", "Prueba POC"));
-                List<List<object>> rows = FusionStorage.Rows(res);
+                List<List<object>> rows = LuminaStorage.Rows(res);
                 if (rows.Count != 1 || Cell(rows[0], 0) != "Prueba POC")
                     throw new Exception("SELECT devolvió " + rows.Count + " filas");
 
                 // FTS5: INSERT canción + MATCH 'aleluya'.
-                engine.DbExec(FusionStorage.BuildExecJson(
+                engine.DbExec(LuminaStorage.BuildExecJson(
                     "INSERT INTO songs(title,lyrics) VALUES(?,?)",
                     "Canción FTS", "Canta al Señor aleluya con gozo"));
-                res = engine.DbExec(FusionStorage.BuildExecJson(
+                res = engine.DbExec(LuminaStorage.BuildExecJson(
                     "SELECT rowid FROM songs_fts WHERE songs_fts MATCH ?1", "aleluya"));
-                rows = FusionStorage.Rows(res);
+                rows = LuminaStorage.Rows(res);
                 Console.WriteLine("        fts rows = " + rows.Count);
                 return rows.Count >= 1;
             }
@@ -383,12 +383,12 @@ namespace fusion.poc
             }
         }
 
-        private static bool CheckLiveFlow(FusionEngine engine)
+        private static bool CheckLiveFlow(LuminaEngine engine)
         {
             string scenario = ScenarioBuilder.BuildScenarioJson("PoC-11", null,
                 new ScenarioItem[] { ScenarioBuilder.FromSong(PocSong()) });
             ResetWaiters();
-            if (engine.LoadScenario(scenario) != FusionStatus.Ok)
+            if (engine.LoadScenario(scenario) != LuminaStatus.Ok)
                 throw new Exception("LoadScenario falló");
             if (!WaitFor(_stateArrived, 5000)) throw new Exception("EV_STATE inicial no llegó");
 
@@ -429,7 +429,7 @@ namespace fusion.poc
             throw new Exception("black nunca quedó en true");
         }
 
-        private static bool CheckStress(FusionEngine engine)
+        private static bool CheckStress(LuminaEngine engine)
         {
             // Escenario pequeño para 200 alternancias next/prev.
             string scenario = ScenarioBuilder.BuildScenarioJson("PoC-12", null,
@@ -469,7 +469,7 @@ namespace fusion.poc
         {
             Song s = new Song();
             s.Title = "Canción del PoC";
-            s.Artist = "Fusion-HP";
+            s.Artist = "LuminaPresentation";
             s.ChorusInterleave = false;
             s.TitleSlide = true;
             s.MaxLinesPerSlide = 4;

@@ -1,5 +1,5 @@
 // ============================================================================
-//  Fusion-HP / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
+//  LuminaPresentation / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
 // ============================================================================
 //  Storage.cpp : SQLite embebido (estático) + FTS5. Parámetros SIEMPRE
 //  enlazados (herencia de la auditoría v1.6.0: cero interpolación SQL).
@@ -10,7 +10,7 @@
 #include <sqlite3.h>
 #include <mutex>
 
-namespace fusion {
+namespace lumina {
 
 Database::~Database() { Close(); }
 
@@ -213,4 +213,4 @@ bool Database::ExecJson(const std::string& sqlJson, std::string* outJson, std::s
     return true;
 }
 
-} // namespace fusion
+} // namespace lumina

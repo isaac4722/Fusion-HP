@@ -1,9 +1,9 @@
 // ============================================================================
-//  Fusion-HP / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
+//  LuminaPresentation / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
 // ============================================================================
 //  Engine.cpp : motor del núcleo híbrido — estado, escenario, hilo de eventos.
 // ============================================================================
-#include "FusionCore.h"
+#include "LuminaCore.h"
 #include "Utf8.h"
 #include "SongModel.h"
 #include "Lyrics.h"
@@ -11,15 +11,15 @@
 #include "Storage.h"
 #include "BibleRef.h"
 
-#ifdef FUSION_HAS_WIN32
+#ifdef LUMINA_HAS_WIN32
 #include "Projector.h"
 #endif
 
 #include <nlohmann/json.hpp>
 
-namespace fusion {
+namespace lumina {
 
-static const char* kVersion = "3.0.0";
+static const char* kVersion = "4.0.0";
 
 /* ------------------------------------------------------------- helpers -- */
 // (H-a: SlideToJson no usado fue retirado — warning -Wunused-function;
@@ -66,12 +66,12 @@ std::string Song::LyricsText() const {
 }
 
 /* --------------------------------------------------------------- Engine -- */
-Engine::Engine(const FusionConfig& cfg) : cfg_(cfg) {
-    if (cfg_.structSize != (int32_t)sizeof(FusionConfig)) {
+Engine::Engine(const LuminaConfig& cfg) : cfg_(cfg) {
+    if (cfg_.structSize != (int32_t)sizeof(LuminaConfig)) {
         // ABI distinto: aceptar pero registrar
-        PushEvent(FUSION_EV_LOG, "{\"level\":\"warn\",\"msg\":\"structSize distinto\"}");
+        PushEvent(LUMINA_EV_LOG, "{\"level\":\"warn\",\"msg\":\"structSize distinto\"}");
     }
-#ifdef FUSION_HAS_WIN32
+#ifdef LUMINA_HAS_WIN32
     if (!cfg_.headless) projector_.reset(new Projector());
 #endif
     db_.reset(new Database());
@@ -83,7 +83,7 @@ Engine::~Engine() {
     stop_ = true;
     evCv_.notify_all();
     if (eventThread_.joinable()) eventThread_.join();
-#ifdef FUSION_HAS_WIN32
+#ifdef LUMINA_HAS_WIN32
     if (projector_) { projector_->Close(); projector_.reset(); }
 #endif
     db_.reset();
@@ -114,7 +114,7 @@ void Engine::EventLoop() {
 }
 
 void Engine::PostStateEvent() {
-    PushEvent(FUSION_EV_STATE, StateJson());
+    PushEvent(LUMINA_EV_STATE, StateJson());
 }
 
 void Engine::ReplaceFlatSlides(std::vector<Slide> slides, std::vector<std::string> titles) {
@@ -218,7 +218,7 @@ void Engine::Flatten(std::vector<Slide>* out, std::vector<std::string>* titles) 
     }
 }
 
-FusionStatus Engine::LoadScenario(const std::string& jsonText) {
+LuminaStatus Engine::LoadScenario(const std::string& jsonText) {
     try {
         json j = json::parse(jsonText);
         Scenario sc;
@@ -275,119 +275,119 @@ FusionStatus Engine::LoadScenario(const std::string& jsonText) {
             current_ = -1;
             black_ = false;
             cleared_ = flat_.empty();
-#ifdef FUSION_HAS_WIN32
+#ifdef LUMINA_HAS_WIN32
             if (projector_) projector_->SetContent(flat_, flatTitles_, theme_, -1, false);
 #endif
         }
         PostStateEvent();
-        return FUSION_OK;
+        return LUMINA_OK;
     } catch (const json::exception&) {
-        return FUSION_ERR_PARSE;
+        return LUMINA_ERR_PARSE;
     } catch (const std::exception&) {
-        return FUSION_ERR_PARSE;
+        return LUMINA_ERR_PARSE;
     }
 }
 
-FusionStatus Engine::ShowSlide(int index) {
+LuminaStatus Engine::ShowSlide(int index) {
     {
         std::lock_guard<std::mutex> lk(mx_);
-        if (index < -1 || index >= (int)flat_.size()) return FUSION_ERR_LIMIT;
+        if (index < -1 || index >= (int)flat_.size()) return LUMINA_ERR_LIMIT;
         current_ = index;
         black_ = false;
         cleared_ = (index < 0);
-#ifdef FUSION_HAS_WIN32
+#ifdef LUMINA_HAS_WIN32
         if (projector_) projector_->SetContent(flat_, flatTitles_, theme_, current_, black_);
 #endif
     }
     // Fuera del mutex: PostStateEvent → StateJson() vuelve a tomar mx_
     // (std::mutex NO es recursivo: dentro causaba deadlock — fix v3.0.0).
-    PushEvent(FUSION_EV_SLIDE_CHANGED,
+    PushEvent(LUMINA_EV_SLIDE_CHANGED,
               json{{"index", current_}, {"total", (int)flat_.size()}}.dump());
     if (current_ >= 0) {
-        PushEvent(FUSION_EV_ITEM_CHANGED,
+        PushEvent(LUMINA_EV_ITEM_CHANGED,
                   json{{"item", current_}, {"title", flatTitles_[(size_t)current_]}}.dump());
     }
     PostStateEvent();
-    return FUSION_OK;
+    return LUMINA_OK;
 }
 
-FusionStatus Engine::Next() {
+LuminaStatus Engine::Next() {
     {
         std::lock_guard<std::mutex> lk(mx_);
-        if (flat_.empty()) return FUSION_ERR_STATE;
+        if (flat_.empty()) return LUMINA_ERR_STATE;
         const int n = std::min((int)flat_.size() - 1, current_ + 1);
-        if (n == current_) return FUSION_OK;
+        if (n == current_) return LUMINA_OK;
         current_ = n; black_ = false; cleared_ = false;
-#ifdef FUSION_HAS_WIN32
+#ifdef LUMINA_HAS_WIN32
         if (projector_) projector_->SetContent(flat_, flatTitles_, theme_, current_, black_);
 #endif
     }
-    PushEvent(FUSION_EV_SLIDE_CHANGED,
+    PushEvent(LUMINA_EV_SLIDE_CHANGED,
               json{{"index", current_}, {"total", (int)flat_.size()}}.dump());
-    PushEvent(FUSION_EV_ITEM_CHANGED,
+    PushEvent(LUMINA_EV_ITEM_CHANGED,
               json{{"item", current_}, {"title", flatTitles_[(size_t)current_]}}.dump());
     PostStateEvent();
-    return FUSION_OK;
+    return LUMINA_OK;
 }
 
-FusionStatus Engine::Prev() {
+LuminaStatus Engine::Prev() {
     {
         std::lock_guard<std::mutex> lk(mx_);
-        if (flat_.empty()) return FUSION_ERR_STATE;
+        if (flat_.empty()) return LUMINA_ERR_STATE;
         const int n = std::max(-1, current_ - 1);
-        if (n == current_) return FUSION_OK;
+        if (n == current_) return LUMINA_OK;
         current_ = n;
-#ifdef FUSION_HAS_WIN32
+#ifdef LUMINA_HAS_WIN32
         if (projector_) projector_->SetContent(flat_, flatTitles_, theme_, current_, black_);
 #endif
     }
-    PushEvent(FUSION_EV_SLIDE_CHANGED,
+    PushEvent(LUMINA_EV_SLIDE_CHANGED,
               json{{"index", current_}, {"total", (int)flat_.size()}}.dump());
     if (current_ >= 0)
-        PushEvent(FUSION_EV_ITEM_CHANGED,
+        PushEvent(LUMINA_EV_ITEM_CHANGED,
                   json{{"item", current_}, {"title", flatTitles_[(size_t)current_]}}.dump());
     PostStateEvent();
-    return FUSION_OK;
+    return LUMINA_OK;
 }
 
-FusionStatus Engine::Black(bool on) {
+LuminaStatus Engine::Black(bool on) {
     {
         std::lock_guard<std::mutex> lk(mx_);
         black_ = on;
-#ifdef FUSION_HAS_WIN32
+#ifdef LUMINA_HAS_WIN32
         if (projector_) projector_->SetContent(flat_, flatTitles_, theme_, current_, black_);
 #endif
     }
     PostStateEvent();
-    return FUSION_OK;
+    return LUMINA_OK;
 }
 
-FusionStatus Engine::Clear() {
+LuminaStatus Engine::Clear() {
     {
         std::lock_guard<std::mutex> lk(mx_);
         current_ = -1;
         cleared_ = true;
-#ifdef FUSION_HAS_WIN32
+#ifdef LUMINA_HAS_WIN32
         if (projector_) projector_->SetContent(flat_, flatTitles_, theme_, -1, black_);
 #endif
     }
     PostStateEvent();
-    return FUSION_OK;
+    return LUMINA_OK;
 }
 
-FusionStatus Engine::SetTheme(const std::string& jsonText) {
+LuminaStatus Engine::SetTheme(const std::string& jsonText) {
     try {
         json j = json::parse(jsonText);
         std::lock_guard<std::mutex> lk(mx_);
         theme_ = Theme::FromJson(j, theme_);
         scenario_.theme = theme_;
-#ifdef FUSION_HAS_WIN32
+#ifdef LUMINA_HAS_WIN32
         if (projector_) projector_->SetContent(flat_, flatTitles_, theme_, current_, black_);
 #endif
         PostStateEvent();
-        return FUSION_OK;
+        return LUMINA_OK;
     } catch (const json::exception&) {
-        return FUSION_ERR_PARSE;
+        return LUMINA_ERR_PARSE;
     }
 }
 
@@ -409,33 +409,33 @@ std::string Engine::StateJson() const {
     return j.dump();
 }
 
-FusionStatus Engine::Ping(const std::string& msg) {
-    PushEvent(FUSION_EV_PONG, msg);
-    return FUSION_OK;
+LuminaStatus Engine::Ping(const std::string& msg) {
+    PushEvent(LUMINA_EV_PONG, msg);
+    return LUMINA_OK;
 }
 
-FusionStatus Engine::ProjectorShow(int screenIndex, bool fullscreen) {
-#ifdef FUSION_HAS_WIN32
-    if (!projector_) return FUSION_ERR_UNSUPPORTED;
-    return projector_->Show(screenIndex, fullscreen != 0) ? FUSION_OK : FUSION_ERR_IO;
+LuminaStatus Engine::ProjectorShow(int screenIndex, bool fullscreen) {
+#ifdef LUMINA_HAS_WIN32
+    if (!projector_) return LUMINA_ERR_UNSUPPORTED;
+    return projector_->Show(screenIndex, fullscreen != 0) ? LUMINA_OK : LUMINA_ERR_IO;
 #else
     (void)screenIndex; (void)fullscreen;
-    return FUSION_ERR_UNSUPPORTED;
+    return LUMINA_ERR_UNSUPPORTED;
 #endif
 }
 
-FusionStatus Engine::ProjectorHide() {
-#ifdef FUSION_HAS_WIN32
-    if (!projector_) return FUSION_ERR_UNSUPPORTED;
+LuminaStatus Engine::ProjectorHide() {
+#ifdef LUMINA_HAS_WIN32
+    if (!projector_) return LUMINA_ERR_UNSUPPORTED;
     projector_->Hide();
-    return FUSION_OK;
+    return LUMINA_OK;
 #else
-    return FUSION_ERR_UNSUPPORTED;
+    return LUMINA_ERR_UNSUPPORTED;
 #endif
 }
 
 int Engine::RenderPreviewPng(int slideIndex, std::string* pngOut) {
-#ifdef FUSION_HAS_WIN32
+#ifdef LUMINA_HAS_WIN32
     if (slideIndex < 0 || slideIndex >= (int)flat_.size()) return -1;
     std::lock_guard<std::mutex> lk(mx_);
     return Projector::RenderSlidePng(flat_[(size_t)slideIndex], theme_, 640, 360, pngOut) ? 0 : -1;
@@ -445,24 +445,24 @@ int Engine::RenderPreviewPng(int slideIndex, std::string* pngOut) {
 #endif
 }
 
-FusionStatus Engine::DbOpen(const std::string& pathUtf8) {
+LuminaStatus Engine::DbOpen(const std::string& pathUtf8) {
     std::string err;
     if (!db_->Open(pathUtf8, &err)) {
-        PushEvent(FUSION_EV_ERROR, json{{"where","db.open"},{"error",err}}.dump());
-        return FUSION_ERR_IO;
+        PushEvent(LUMINA_EV_ERROR, json{{"where","db.open"},{"error",err}}.dump());
+        return LUMINA_ERR_IO;
     }
-    return FUSION_OK;
+    return LUMINA_OK;
 }
 
-FusionStatus Engine::DbClose() { db_->Close(); return FUSION_OK; }
+LuminaStatus Engine::DbClose() { db_->Close(); return LUMINA_OK; }
 
-FusionStatus Engine::DbExec(const std::string& sqlJson, std::string* outJson) {
+LuminaStatus Engine::DbExec(const std::string& sqlJson, std::string* outJson) {
     std::string err;
     if (!db_->ExecJson(sqlJson, outJson, &err)) {
-        PushEvent(FUSION_EV_ERROR, json{{"where","db.exec"},{"error",err}}.dump());
-        return FUSION_ERR_IO;
+        PushEvent(LUMINA_EV_ERROR, json{{"where","db.exec"},{"error",err}}.dump());
+        return LUMINA_ERR_IO;
     }
-    return FUSION_OK;
+    return LUMINA_OK;
 }
 
-} // namespace fusion
+} // namespace lumina

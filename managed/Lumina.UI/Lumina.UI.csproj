@@ -3,10 +3,10 @@
   <PropertyGroup>
     <TargetFrameworks>net35;net48</TargetFrameworks>
     <OutputType>WinExe</OutputType>
-    <RootNamespace>fusion.ui</RootNamespace>
-    <AssemblyName>FusionHP</AssemblyName>
+    <RootNamespace>lumina.ui</RootNamespace>
+    <AssemblyName>LuminaPresentation</AssemblyName>
     <Summary>Interfaz WinForms de LuminaPresentation Suite (vía A: C# dueño del proceso).</Summary>
-    <ApplicationIcon></ApplicationIcon>
+    <ApplicationIcon>app.ico</ApplicationIcon>
     <!--
       DECISIÓN DOCUMENTADA: <UseWindowsForms> FUNCIONA en net35+net48 con el SDK
       de .NET 8 en Linux SIEMPRE QUE (a) el paquete de ref assemblies esté
@@ -21,9 +21,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../FusionHP.Core/FusionHP.Core.csproj" />
-    <ProjectReference Include="../FusionHP.Bridge/FusionHP.Bridge.csproj" />
-    <ProjectReference Include="../FusionHP.Api/FusionHP.Api.csproj" />
+    <ProjectReference Include="../Lumina.Core/Lumina.Core.csproj" />
+    <ProjectReference Include="../Lumina.Bridge/Lumina.Bridge.csproj" />
+    <ProjectReference Include="../Lumina.Api/Lumina.Api.csproj" />
   </ItemGroup>
 
 </Project>

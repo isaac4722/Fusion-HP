@@ -1,5 +1,5 @@
 // ============================================================================
-//  Fusion-HP / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
+//  LuminaPresentation / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
 // ============================================================================
 //  Lyrics.cpp : parser de letras estructuradas → slides (port 1:1 de la
 //  edición wx v2.0.0, con M16 y la mejora del Modo Hinario del ciclo v2.0.0).
@@ -23,7 +23,7 @@
 
 #include <algorithm>
 
-namespace fusion {
+namespace lumina {
 namespace {
 
 bool IsChorusTag(const std::string& tag) {
@@ -229,4 +229,4 @@ std::string Lyrics::PlainText(const Slide& s) {
     return out;
 }
 
-} // namespace fusion
+} // namespace lumina

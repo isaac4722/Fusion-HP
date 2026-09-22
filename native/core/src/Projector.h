@@ -1,15 +1,15 @@
 // ============================================================================
-//  Fusion-HP / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
+//  LuminaPresentation / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
 // ============================================================================
 //  Projector.h : ventana(s) de proyección nativas Win32 + hilo propio
 //  (solo Windows). El contenido lo publica el Engine vía SetContent() y la
 //  ventana repinta con el Renderer GDI. La vista previa PNG se genera con el
 //  MISMO renderizador (fuente única de verdad visual).
 // ============================================================================
-#ifndef FUSION_PROJECTOR_H
-#define FUSION_PROJECTOR_H
+#ifndef LUMINA_PROJECTOR_H
+#define LUMINA_PROJECTOR_H
 
-#ifdef FUSION_HAS_WIN32
+#ifdef LUMINA_HAS_WIN32
 
 #include "Models.h"
 
@@ -18,7 +18,7 @@
 #include <string>
 #include <vector>
 
-namespace fusion {
+namespace lumina {
 
 class Projector {
 public:
@@ -53,6 +53,6 @@ private:
                                          WPARAM wp, LPARAM lp);
 };
 
-} // namespace fusion
-#endif // FUSION_HAS_WIN32
-#endif // FUSION_PROJECTOR_H
+} // namespace lumina
+#endif // LUMINA_HAS_WIN32
+#endif // LUMINA_PROJECTOR_H

@@ -1,11 +1,11 @@
 // Contrato: tabla canónica 66 libros + resolución de referencias.
-#ifndef FUSION_BIBLEREF_H
-#define FUSION_BIBLEREF_H
+#ifndef LUMINA_BIBLEREF_H
+#define LUMINA_BIBLEREF_H
 
 #include <string>
 #include <vector>
 
-namespace fusion {
+namespace lumina {
 class BibleRef {
 public:
     struct BookInfo { int number; std::string name; std::vector<std::string> abbrs; };
@@ -16,5 +16,5 @@ public:
     static VerseRef Resolve(const std::string& input);   // "Jn 3:16", "1 co 13,4-7"…
     static std::string FormatRef(const VerseRef& r);
 };
-} // namespace fusion
+} // namespace lumina
 #endif

@@ -1,5 +1,5 @@
 // ============================================================================
-//  Fusion-HP / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
+//  LuminaPresentation / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
 // ============================================================================
 //  ScenarioBuilder : construye el JSON de escenario que acepta el núcleo
 //  (Engine::LoadScenario) a partir de los modelos C#. La CONSTRUCCIÓN de slides
@@ -7,15 +7,15 @@
 //  aquí solo se serializa el contrato {"name","theme",…,"items":[…]}.
 //
 //  Además ofrece FlattenScenario(): aplana un escenario a una lista de vistas
-//  de slide (para la UI y para /api/live.txt) usando fusion_song_parse cuando
+//  de slide (para la UI y para /api/live.txt) usando lumina_song_parse cuando
 //  el llamador provee el parseador de canciones (evita duplicar Lyrics).
 // ============================================================================
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using fusion.core;
+using lumina.core;
 
-namespace fusion.core
+namespace lumina.core
 {
     /// <summary>Vista plana de una slide para listas de UI y live.txt.</summary>
     public sealed class SlideView

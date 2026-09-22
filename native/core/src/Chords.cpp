@@ -1,5 +1,5 @@
 // ============================================================================
-//  Fusion-HP / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
+//  LuminaPresentation / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
 // ============================================================================
 //  Chords.cpp : transposición de acordes/cifrado en tiempo real (port 1:1 de
 //  apps/native-wx-src/core/Chords.h — edición wx v2.0.0, heredada de Qt v1.6.0).
@@ -16,7 +16,7 @@
 
 #include <vector>
 
-namespace fusion {
+namespace lumina {
 namespace {
 
 std::string LowerAsciiCopy(const std::string& s) {
@@ -273,4 +273,4 @@ std::string Chords::TransposeChordToken(const std::string& tk, int semi, bool la
     return TransposeChordTokenImpl(tk, semi, latinNotation);
 }
 
-} // namespace fusion
+} // namespace lumina

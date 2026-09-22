@@ -1,10 +1,10 @@
 # ============================================================================
-#  Fusion-HP / LuminaPresentation Suite — CI/CD híbrido v3.0.0 «HÍBRIDA»
+#  LuminaPresentation / LuminaPresentation Suite — CI/CD híbrido v4.0.0 «LUMINA»
 #  Copyright (c) 2026 Isaac. Licencia View-Only.
 # ----------------------------------------------------------------------------
 #  Pipeline de la arquitectura híbrida (docs/architecture-hybrid.md §6):
 #
-#    native-windows : núcleo C++ (FusionCore.dll /MT) x86+x64 + selftest + PoC nativo
+#    native-windows : núcleo C++ (LuminaCore.dll /MT) x86+x64 + selftest + PoC nativo
 #    native-linux   : port del núcleo (GCC) — regresa rápido el estado del port
 #    managed        : capa C# (net35+net48 con ref assemblies) + tests net8.0
 #    interop        : PoC real C# ↔ DLL nativa (x86/x64, net48; net35 informativo)
@@ -14,16 +14,16 @@
 #    release        : GitHub Release solo en tags v*
 #
 #  CONTRATOS de rutas entre jobs (respetar al mover proyectos):
-#    managed/FusionHP.sln                          (solución gestionada)
-#    managed/FusionHP.UI                           (WinExe net48)
+#    managed/Lumina.sln                          (solución gestionada)
+#    managed/Lumina.UI                           (WinExe net48)
 #    managed/PoC/PoC.Managed                       (net35;net48)
 #    managed/PoC/PocFacade                         (net48;net35) — COM-visible
 #    managed/Tests                                 (net8.0;net48)
 #    Salidas: <proj>/bin/Release/<tfm>/... (SDK-style estándar de dotnet build)
 #    PoC.Managed debe imprimir "POC PASS 12/12" y salir 0 cuando todo pasa.
-#    PocFacade: tipo por defecto "FusionHP.PocFacade.PocFacade" (COMVisible,
+#    PocFacade: tipo por defecto "Lumina.PocFacade.PocFacade" (COMVisible,
 #    MarshalByRefObject/Serializable para cruzar dominios) con métodos
-#    Add(int,int), Echo(string), Version() -> prefijo "FUSION-FACADE-OK".
+#    Add(int,int), Echo(string), Version() -> prefijo "LUMINA-FACADE-OK".
 # ============================================================================
 
 name: CI híbrido
@@ -46,11 +46,11 @@ concurrency:
 
 env:
   DOTNET_VERSION: '8.0.x'
-  APP_VERSION: '3.0.0'
+  APP_VERSION: '4.0.0'
 
 jobs:
   # ---------------------------------------------------------------------------
-  # 1) Núcleo C++ en Windows: FusionCore.dll (/MT) + selftest + PoC nativo
+  # 1) Núcleo C++ en Windows: LuminaCore.dll (/MT) + selftest + PoC nativo
   # ---------------------------------------------------------------------------
   native-windows:
     name: Núcleo C++ ${{ matrix.arch }} (/MT + gates)
@@ -83,22 +83,22 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path "dist/${{ matrix.arch }}" | Out-Null
-          Copy-Item build/native/Release/FusionCore.dll        "dist/${{ matrix.arch }}/"
-          Copy-Item build/native/Release/fusion_selftest.exe   "dist/${{ matrix.arch }}/"
-          Copy-Item build/native/Release/fusion_poc_native.exe "dist/${{ matrix.arch }}/"
+          Copy-Item build/native/Release/LuminaCore.dll        "dist/${{ matrix.arch }}/"
+          Copy-Item build/native/Release/lumina_selftest.exe   "dist/${{ matrix.arch }}/"
+          Copy-Item build/native/Release/lumina_poc_native.exe "dist/${{ matrix.arch }}/"
 
-      - name: GATE fusion_selftest (exit 0)
+      - name: GATE lumina_selftest (exit 0)
         shell: pwsh
         working-directory: dist/${{ matrix.arch }}
         run: |
-          ./fusion_selftest.exe
+          ./lumina_selftest.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: GATE fusion_poc_native headless (exit 0)
+      - name: GATE lumina_poc_native headless (exit 0)
         shell: pwsh
         working-directory: dist/${{ matrix.arch }}
         run: |
-          ./fusion_poc_native.exe
+          ./lumina_poc_native.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Subir artefacto native-${{ matrix.arch }}
@@ -124,8 +124,8 @@ jobs:
       - name: Compilar
         run: cmake --build build --parallel
 
-      - name: GATE fusion_selftest (exit 0)
-        run: ./build/native/fusion_selftest
+      - name: GATE lumina_selftest (exit 0)
+        run: ./build/native/lumina_selftest
 
   # ---------------------------------------------------------------------------
   # 3) Capa gestionada: solución C# (net35+net48) + tests net8.0
@@ -153,13 +153,13 @@ jobs:
       - name: Compilar solución (net35+net48 con ref assemblies)
         shell: pwsh
         run: |
-          dotnet build managed/FusionHP.sln -c Release
+          dotnet build managed/Lumina.sln -c Release
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Tests net8.0 (arnés propio; FUSION_SKIP_NATIVE=1)
+      - name: Tests net8.0 (arnés propio; LUMINA_SKIP_NATIVE=1)
         shell: pwsh
         env:
-          FUSION_SKIP_NATIVE: '1'
+          LUMINA_SKIP_NATIVE: '1'
         run: |
           dotnet run --project managed/Tests --configuration Release --framework net8.0
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -169,14 +169,14 @@ jobs:
         run: |
           # PlatformTarget no invalida los outputs de CoreCompile: sin una
           # limpieza, el segundo publish reusaría el PE32 (AnyCPU/x86) previo.
-          dotnet publish managed/FusionHP.UI -f net48 -c Release --self-contained false -p:PlatformTarget=x86
+          dotnet publish managed/Lumina.UI -f net48 -c Release --self-contained false -p:PlatformTarget=x86
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Move-Item managed/FusionHP.UI/bin/Release/net48/publish managed/FusionHP.UI/bin/Release/net48/publish-x86
-          dotnet clean managed/FusionHP.UI -f net48 -c Release
+          Move-Item managed/Lumina.UI/bin/Release/net48/publish managed/Lumina.UI/bin/Release/net48/publish-x86
+          dotnet clean managed/Lumina.UI -f net48 -c Release
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          dotnet publish managed/FusionHP.UI -f net48 -c Release --self-contained false -p:PlatformTarget=x64
+          dotnet publish managed/Lumina.UI -f net48 -c Release --self-contained false -p:PlatformTarget=x64
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Move-Item managed/FusionHP.UI/bin/Release/net48/publish managed/FusionHP.UI/bin/Release/net48/publish-x64
+          Move-Item managed/Lumina.UI/bin/Release/net48/publish managed/Lumina.UI/bin/Release/net48/publish-x64
 
       - name: Preparar artefacto «managed»
         shell: pwsh
@@ -186,20 +186,20 @@ jobs:
             "$stage/ui-publish-x86","$stage/ui-publish-x64","$stage/poc-net48","$stage/poc-net35",`
             "$stage/pocfacade-net48","$stage/tests-net48" | Out-Null
           # UI net48 publicada POR ARQUITECTURA (para el paquete portable)
-          Copy-Item managed/FusionHP.UI/bin/Release/net48/publish-x86/* "$stage/ui-publish-x86/"
-          Copy-Item managed/FusionHP.UI/bin/Release/net48/publish-x64/* "$stage/ui-publish-x64/"
+          Copy-Item managed/Lumina.UI/bin/Release/net48/publish-x86/* "$stage/ui-publish-x86/"
+          Copy-Item managed/Lumina.UI/bin/Release/net48/publish-x64/* "$stage/ui-publish-x64/"
           # Respaldo: si un publish dejó el exe en otra carpeta, copiar del build
-          if (-not (Test-Path "$stage/ui-publish-x86/FusionHP.exe")) {
-            Copy-Item managed/FusionHP.UI/bin/Release/net48/FusionHP.exe "$stage/ui-publish-x86/"
+          if (-not (Test-Path "$stage/ui-publish-x86/LuminaPresentation.exe")) {
+            Copy-Item managed/Lumina.UI/bin/Release/net48/LuminaPresentation.exe "$stage/ui-publish-x86/"
           }
-          if (-not (Test-Path "$stage/ui-publish-x64/FusionHP.exe")) {
-            Copy-Item managed/FusionHP.UI/bin/Release/net48/FusionHP.exe "$stage/ui-publish-x64/"
+          if (-not (Test-Path "$stage/ui-publish-x64/LuminaPresentation.exe")) {
+            Copy-Item managed/Lumina.UI/bin/Release/net48/LuminaPresentation.exe "$stage/ui-publish-x64/"
           }
           # PoC.Managed (binarios net48 y net35)
           Copy-Item managed/PoC/PoC.Managed/bin/Release/net48/* "$stage/poc-net48/"
           Copy-Item managed/PoC/PoC.Managed/bin/Release/net35/* "$stage/poc-net35/"
           # Facade COM-visible (para el PoC de CLR hosting)
-          Copy-Item managed/PoC/PocFacade/bin/Release/net48/FusionHP.PocFacade.dll "$stage/pocfacade-net48/"
+          Copy-Item managed/PoC/PocFacade/bin/Release/net48/Lumina.PocFacade.dll "$stage/pocfacade-net48/"
           # Tests net48 (informativo)
           Copy-Item managed/Tests/bin/Release/net48/* "$stage/tests-net48/"
 
@@ -211,7 +211,7 @@ jobs:
           if-no-files-found: error
 
   # ---------------------------------------------------------------------------
-  # 4) Interop real: PoC C# (net48) contra FusionCore.dll por arquitectura
+  # 4) Interop real: PoC C# (net48) contra LuminaCore.dll por arquitectura
   # ---------------------------------------------------------------------------
   interop:
     name: Interop C# ↔ nativo (${{ matrix.arch }})
@@ -249,17 +249,17 @@ jobs:
 
       # dotnet build -f net48 produce un .exe que corre sobre .NET Framework 4.8
       # (preinstalado en windows-latest). Para x86 se fuerza PlatformTarget=x86
-      # y el exe corre bajo WoW64; así el proceso casa con FusionCore.dll.
+      # y el exe corre bajo WoW64; así el proceso casa con LuminaCore.dll.
       - name: Compilar PoC.Managed net48 (${{ matrix.arch }})
         shell: pwsh
         run: |
           dotnet build managed/PoC/PoC.Managed -f net48 -c Release -p:PlatformTarget=${{ matrix.arch }}
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Colocar FusionCore.dll (${{ matrix.arch }}) junto al PoC
+      - name: Colocar LuminaCore.dll (${{ matrix.arch }}) junto al PoC
         shell: pwsh
         run: |
-          Copy-Item "artifacts/native-${{ matrix.arch }}/FusionCore.dll" `
+          Copy-Item "artifacts/native-${{ matrix.arch }}/LuminaCore.dll" `
                     "managed/PoC/PoC.Managed/bin/Release/net48/"
 
       - name: 'GATE PoC net48 ${{ matrix.arch }}: «POC PASS 12/12» + exit 0'
@@ -287,7 +287,7 @@ jobs:
           }
           dotnet build managed/PoC/PoC.Managed -f net35 -c Release -p:PlatformTarget=${{ matrix.arch }}
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Copy-Item "artifacts/native-${{ matrix.arch }}/FusionCore.dll" `
+          Copy-Item "artifacts/native-${{ matrix.arch }}/LuminaCore.dll" `
                     "managed/PoC/PoC.Managed/bin/Release/net35/"
           Set-Location managed/PoC/PoC.Managed/bin/Release/net35
           $out = & ./PoC.Managed.exe 2>&1
@@ -337,7 +337,7 @@ jobs:
           path: artifacts
 
       # CMakeLists autónomo con /MT (no toca la base del núcleo).
-      - name: Compilar fusion_poc_clrhost (${{ matrix.arch }})
+      - name: Compilar lumina_poc_clrhost (${{ matrix.arch }})
         shell: pwsh
         run: |
           cmake -S native/poc-clrhost -B bch -A ${{ matrix.cmake_arch }} -DCMAKE_BUILD_TYPE=Release
@@ -354,14 +354,14 @@ jobs:
       - name: Preparar carpeta de ejecución
         shell: pwsh
         run: |
-          Copy-Item managed/PoC/PocFacade/bin/Release/net48/FusionHP.PocFacade.dll bch/Release/
-          Copy-Item "artifacts/native-${{ matrix.arch }}/FusionCore.dll" bch/Release/
+          Copy-Item managed/PoC/PocFacade/bin/Release/net48/Lumina.PocFacade.dll bch/Release/
+          Copy-Item "artifacts/native-${{ matrix.arch }}/LuminaCore.dll" bch/Release/
 
       - name: 'GATE CLRHOST (${{ matrix.arch }}): «CLRHOST PASS» + exit 0'
         shell: pwsh
         run: |
-          $dll = (Resolve-Path 'bch/Release/FusionHP.PocFacade.dll').Path
-          $out = & ./bch/Release/fusion_poc_clrhost.exe $dll 'fusion.poc.FusionFacade' 2>&1
+          $dll = (Resolve-Path 'bch/Release/Lumina.PocFacade.dll').Path
+          $out = & ./bch/Release/lumina_poc_clrhost.exe $dll 'lumina.poc.LuminaFacade' 2>&1
           $code = $LASTEXITCODE
           $out | ForEach-Object { Write-Host "$_" }
           if ($code -ne 0) { Write-Host "EXIT CODE: $code"; exit 1 }
@@ -394,7 +394,7 @@ jobs:
           path: artifacts
 
       # Launcher nativo con su CMakeLists autónomo (mismo patrón que clrhost).
-      - name: Compilar FusionLauncher (${{ matrix.arch }})
+      - name: Compilar LuminaLauncher (${{ matrix.arch }})
         shell: pwsh
         run: |
           cmake -S native/launcher -B blaunch -A ${{ matrix.cmake_arch }} -DCMAKE_BUILD_TYPE=Release
@@ -405,40 +405,40 @@ jobs:
       - name: Armar layout portable
         shell: pwsh
         run: |
-          $stage = "staging/Fusion-HP-${{ matrix.arch }}"
+          $stage = "staging/LuminaPresentation-${{ matrix.arch }}"
           New-Item -ItemType Directory -Force -Path "$stage/resources/data" | Out-Null
-          Copy-Item blaunch/Release/FusionLauncher.exe "$stage/"
-          Copy-Item "artifacts/managed/ui-publish-${{ matrix.arch }}/FusionHP.exe" "$stage/"
-          Copy-Item "artifacts/native-${{ matrix.arch }}/FusionCore.dll" "$stage/"
+          Copy-Item blaunch/Release/LuminaLauncher.exe "$stage/"
+          Copy-Item "artifacts/managed/ui-publish-${{ matrix.arch }}/LuminaPresentation.exe" "$stage/"
+          Copy-Item "artifacts/native-${{ matrix.arch }}/LuminaCore.dll" "$stage/"
           Copy-Item resources/data/bible_rvr1909.json "$stage/resources/data/"
-          # FusionHP35.exe: RESERVADO para cuando FusionHP.UI multi-apunte net35.
+          # LuminaPresentation35.exe: RESERVADO para cuando Lumina.UI multi-apunte net35.
           # Hoy la UI es net48 exclusivo → se omite y se documenta en README.txt
           # (el launcher, si solo hay .NET 3.5, mostrará el mensaje con el
           #  enlace al instalador offline de 4.8).
-          if (Test-Path 'artifacts/managed/ui-publish-net35/FusionHP35.exe') {
-            Copy-Item artifacts/managed/ui-publish-net35/FusionHP35.exe "$stage/"
+          if (Test-Path 'artifacts/managed/ui-publish-net35/LuminaPresentation35.exe') {
+            Copy-Item artifacts/managed/ui-publish-net35/LuminaPresentation35.exe "$stage/"
           }
           @'
-          Fusion-HP v3.0.0 «HÍBRIDA» — núcleo C++ + interfaz C#
+          LuminaPresentation v4.0.0 «LUMINA» — núcleo C++ + interfaz C#
           =====================================================
 
           PROGRAMA PORTABLE — no requiere instalación ni permisos de
           administrador.
 
           1) Descomprimir en cualquier carpeta.
-          2) Ejecutar FusionLauncher.exe: detecta el runtime .NET
+          2) Ejecutar LuminaLauncher.exe: detecta el runtime .NET
              disponible y lanza la variante correcta de la interfaz.
 
           Requisitos (uno de los dos, ya incluidos de fábrica):
             • Windows 10 1903+ / Windows 11 → .NET Framework 4.8 integrado.
             • Windows 7 SP1 / 8.x           → .NET Framework 3.5 integrado.
 
-          NOTA: esta versión incluye la interfaz FusionHP.exe (.NET 4.8).
+          NOTA: esta versión incluye la interfaz LuminaPresentation.exe (.NET 4.8).
           En Windows 7 SP1 sin .NET 4.8, instale el paquete offline:
           https://dotnet.microsoft.com/download/dotnet-framework/net48
 
-          Contenido: FusionLauncher.exe (detección de runtime),
-          FusionHP.exe (interfaz), FusionCore.dll (motor C++ nativo /MT)
+          Contenido: LuminaLauncher.exe (detección de runtime),
+          LuminaPresentation.exe (interfaz), LuminaCore.dll (motor C++ nativo /MT)
           y la Biblia RVR1909 completa (resources/data).
 
           Binarios de uso libre · Código fuente bajo Licencia View-Only.
@@ -447,14 +447,14 @@ jobs:
       - name: GATE verify_portable (${{ matrix.arch }})
         shell: pwsh
         run: |
-          python tools/verify_portable.py "staging/Fusion-HP-${{ matrix.arch }}" ${{ matrix.arch }}
+          python tools/verify_portable.py "staging/LuminaPresentation-${{ matrix.arch }}" ${{ matrix.arch }}
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: ZIP + SHA256
         shell: pwsh
         run: |
-          $zip = "Fusion-HP-${{ env.APP_VERSION }}-win-${{ matrix.arch }}.zip"
-          Compress-Archive -Path "staging/Fusion-HP-${{ matrix.arch }}/*" -DestinationPath $zip -Force
+          $zip = "LuminaPresentation-${{ env.APP_VERSION }}-win-${{ matrix.arch }}.zip"
+          Compress-Archive -Path "staging/LuminaPresentation-${{ matrix.arch }}/*" -DestinationPath $zip -Force
           $hash = (Get-FileHash $zip -Algorithm SHA256).Hash
           "$hash  $zip" | Set-Content -Path SHA256SUMS.txt -Encoding ASCII
           Write-Host "$hash  $zip"
@@ -464,7 +464,7 @@ jobs:
         with:
           name: portable-${{ matrix.arch }}
           path: |
-            Fusion-HP-*.zip
+            LuminaPresentation-*.zip
             SHA256SUMS.txt
           if-no-files-found: error
 
@@ -493,19 +493,19 @@ jobs:
       - name: Publicar
         uses: softprops/action-gh-release@v2
         with:
-          name: "Fusion-HP ${{ github.ref_name }} «HÍBRIDA»"
+          name: "LuminaPresentation ${{ github.ref_name }} «HÍBRIDA»"
           body: |
-            **Fusion-HP v3.0.0 «HÍBRIDA» — núcleo C++ + interfaz C# .NET Framework 4.8/3.5**
+            **LuminaPresentation v4.0.0 «LUMINA» — núcleo C++ + interfaz C# .NET Framework 4.8/3.5**
 
             ## Descargas
-            - `Fusion-HP-3.0.0-win-x86.zip` — **Windows 7 SP1 a Windows 11 (32 bits)**
-            - `Fusion-HP-3.0.0-win-x64.zip` — **Windows 7 SP1 a Windows 11+ (64 bits)**
+            - `LuminaPresentation-4.0.0-win-x86.zip` — **Windows 7 SP1 a Windows 11 (32 bits)**
+            - `LuminaPresentation-4.0.0-win-x64.zip` — **Windows 7 SP1 a Windows 11+ (64 bits)**
             - `SHA256SUMS.txt` — integridad de los paquetes
 
             ## Arquitectura híbrida
-            - **Motor nativo C++17** (`FusionCore.dll`, /MT estático): proyección en ventanas Win32, SQLite+FTS5, parser de canciones JSON y biblias .BIB — cero dependencias externas.
-            - **Interfaz C# WinForms** (`FusionHP.exe`, .NET Framework 4.8): editor de escenarios, bibliotecas, API HTTP local.
-            - **FusionLauncher.exe** (nativo, /MT): detecta el runtime disponible por registro y lanza la variante correcta — el usuario **nunca instala nada**.
+            - **Motor nativo C++17** (`LuminaCore.dll`, /MT estático): proyección en ventanas Win32, SQLite+FTS5, parser de canciones JSON y biblias .BIB — cero dependencias externas.
+            - **Interfaz C# WinForms** (`LuminaPresentation.exe`, .NET Framework 4.8): editor de escenarios, bibliotecas, API HTTP local.
+            - **LuminaLauncher.exe** (nativo, /MT): detecta el runtime disponible por registro y lanza la variante correcta — el usuario **nunca instala nada**.
 
             ## Verificación CI (todas las gates verdes)
             - Núcleo: selftest nativo + PoC API headless (x86 y x64, Windows y Linux).
@@ -515,7 +515,7 @@ jobs:
             - Empaquetado: auditoría PE `verify_portable` + SHA256 por paquete.
 
             ## Instalación
-            Descomprimir y ejecutar `FusionLauncher.exe`. En Win10 1903+/Win11 usa
+            Descomprimir y ejecutar `LuminaLauncher.exe`. En Win10 1903+/Win11 usa
             .NET 4.8 integrado; en Win7 SP1 integra .NET 3.5 o instala 4.8 offline:
             https://dotnet.microsoft.com/download/dotnet-framework/net48
           draft: false

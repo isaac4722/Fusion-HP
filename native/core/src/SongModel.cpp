@@ -1,5 +1,5 @@
 // ============================================================================
-//  Fusion-HP / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
+//  LuminaPresentation / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
 // ============================================================================
 //  SongModel.cpp : canción JSON → Song + slides. Esquema propio:
 //    {id,title,artist,key|"keyName",bpm,tags,lyrics,
@@ -13,13 +13,13 @@
 //  "alternate_title" → title; "authors" (string o array) → artist;
 //  "copyright" y "verse_order_list" se IGNORAN deliberadamente.
 //  Solo se propagan nlohmann::json::exception (contrato de la API C: la
-//  llamada captura y devuelve FUSION_ERR_PARSE).
+//  llamada captura y devuelve LUMINA_ERR_PARSE).
 // ============================================================================
 #include "SongModel.h"
 
 #include "Lyrics.h"
 
-namespace fusion {
+namespace lumina {
 namespace {
 
 // Lecturas tolerantes: tipo distinto al esperado → valor por defecto
@@ -175,4 +175,4 @@ json SongModel::ParseAndBuildSlides(const json& o) {
     return res;
 }
 
-} // namespace fusion
+} // namespace lumina

@@ -1,5 +1,5 @@
 // ============================================================================
-//  Fusion-HP / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
+//  LuminaPresentation / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
 // ============================================================================
 //  Models.cs : clases C# espejo de native/core/src/Models.h (contrato fijo del
 //  núcleo). MAPEO documentado por campo; los nombres JSON siguen el esquema del
@@ -30,9 +30,9 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
-using fusion.core;
+using lumina.core;
 
-namespace fusion.core
+namespace lumina.core
 {
     /// <summary>Especie de slide — espejo del enum SlideKind de Models.h.</summary>
     public static class SlideKind
@@ -55,7 +55,7 @@ namespace fusion.core
         public SlideLine(string text, string chords) { Text = text ?? string.Empty; Chords = chords ?? string.Empty; }
     }
 
-    /// <summary>Slide ya construida (lectura, p. ej. desde fusion_song_parse) — espejo de Slide.</summary>
+    /// <summary>Slide ya construida (lectura, p. ej. desde lumina_song_parse) — espejo de Slide.</summary>
     public sealed class Slide
     {
         public int Kind = SlideKind.Text;    // kind

@@ -1,14 +1,14 @@
 // ============================================================================
-//  Fusion-HP / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
+//  LuminaPresentation / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
 // ============================================================================
 //  native_tests.cpp : arnés de pruebas del núcleo nativo (sin GUI, sin wx).
 //  Valida Chords, Lyrics (Modo Hinario M16), BibleRef, SongModel (esquema
 //  propio + subconjunto OpenLP), BibleBib (.BIB con detección automática),
-//  Scripture y Storage (SQLite+FTS5 a través de la API C de fusion.h, que
+//  Scripture y Storage (SQLite+FTS5 a través de la API C de lumina.h, que
 //  valida también el ABI). 0 fallos = verde (imprime "OK n/n", devuelve 0/1).
 //  Compila en Linux (GCC, -Wall -Wextra -Wpedantic) y Windows (MSVC /W4).
 // ============================================================================
-#include "fusion/fusion.h"
+#include "lumina/lumina.h"
 
 #include "Models.h"
 #include "Utf8.h"
@@ -31,7 +31,7 @@
 #endif
 
 using json = nlohmann::json;
-using namespace fusion;
+using namespace lumina;
 
 static int g_checks = 0, g_failed = 0;
 
@@ -54,12 +54,12 @@ static void Section(const char* name) { std::printf("%s\n", name); }
 template <typename Fn>
 static bool ApiCall(Fn fn, std::string* out) {
     int32_t needed = 0;
-    const FusionStatus s1 = fn(nullptr, 0, &needed);
+    const LuminaStatus s1 = fn(nullptr, 0, &needed);
     if (needed <= 0) return false;
-    if (s1 != FUSION_OK && s1 != FUSION_ERR_LIMIT) return false;
+    if (s1 != LUMINA_OK && s1 != LUMINA_ERR_LIMIT) return false;
     std::vector<char> buf((size_t)needed, '\0');
-    const FusionStatus s2 = fn(buf.data(), needed, &needed);
-    if (s2 != FUSION_OK) return false;
+    const LuminaStatus s2 = fn(buf.data(), needed, &needed);
+    if (s2 != LUMINA_OK) return false;
     size_t len = 0;
     while (len < (size_t)needed && buf[len] != '\0') ++len;
     if (out) out->assign(buf.data(), len);
@@ -71,8 +71,8 @@ template <typename Fn>
 static bool ApiCallOnce(Fn fn, std::string* out) {
     std::vector<char> buf(1 << 20, '\0');
     int32_t needed = (int32_t)buf.size();
-    const FusionStatus s = fn(buf.data(), needed, &needed);
-    if (s != FUSION_OK) return false;
+    const LuminaStatus s = fn(buf.data(), needed, &needed);
+    if (s != LUMINA_OK) return false;
     size_t len = 0;
     while (len < buf.size() && buf[len] != '\0') ++len;
     if (out) out->assign(buf.data(), len);
@@ -81,10 +81,10 @@ static bool ApiCallOnce(Fn fn, std::string* out) {
 
 static std::string TempDbPath() {
 #if defined(_WIN32)
-    return "fusion_selftest_tmp.sqlite3";
+    return "lumina_selftest_tmp.sqlite3";
 #else
     char buf[64];
-    std::snprintf(buf, sizeof(buf), "/tmp/fusion_selftest_%ld.sqlite3", (long)getpid());
+    std::snprintf(buf, sizeof(buf), "/tmp/lumina_selftest_%ld.sqlite3", (long)getpid());
     return std::string(buf);
 #endif
 }
@@ -92,7 +92,7 @@ static std::string TempDbPath() {
 /* ------------------------------------------------------------------ main */
 
 int main() {
-    std::printf("== Selftest del nucleo nativo - Fusion-HP v3.0 ==\n");
+    std::printf("== Selftest del nucleo nativo - LuminaPresentation v4.0 ==\n");
 
     /* ================================================================ 1 == */
     Section("[1] Chords (port wx 1:1)");
@@ -404,56 +404,56 @@ int main() {
     /* ================================================================ 7 == */
     Section("[7] API C (ABI): version/song/chords/bib/ref");
     std::string apiOut;
-    CHECK(ApiCall([](char* o, int32_t c, int32_t* n) { return fusion_version(o, c, n); },
+    CHECK(ApiCall([](char* o, int32_t c, int32_t* n) { return lumina_version(o, c, n); },
                   &apiOut));
-    CHECK(apiOut.compare(0, 10, "FusionCore") == 0);
+    CHECK(apiOut.compare(0, 10, "LuminaCore") == 0);
 
-    // fusion_song_parse con una canción del esquema propio
+    // lumina_song_parse con una canción del esquema propio
     const json apiSong = json::parse(R"({
         "title":"API Song",
         "lyrics":"[Verso 1]\nuno\ndos\n"
     })");
     const std::string songJson = apiSong.dump();
     CHECK(ApiCall([&](char* o, int32_t c, int32_t* n) {
-        return fusion_song_parse(songJson.data(), (int32_t)songJson.size(), o, c, n);
+        return lumina_song_parse(songJson.data(), (int32_t)songJson.size(), o, c, n);
     }, &apiOut));
     const json rp = json::parse(apiOut);
     CHECK(rp["ok"] == 1 && rp["slides"].is_array() && rp["slides"].size() == 2);
 
-    // fusion_chords_transpose conserva la alineación (JSON {"line":...})
+    // lumina_chords_transpose conserva la alineación (JSON {"line":...})
     CHECK(ApiCall([&](char* o, int32_t c, int32_t* n) {
-        return fusion_chords_transpose("Do  Sol", 2, 1, o, c, n);
+        return lumina_chords_transpose("Do  Sol", 2, 1, o, c, n);
     }, &apiOut));
     const json jt = json::parse(apiOut);
     CHECK(jt["line"] == "Re  La ");
 
-    // fusion_bib_parse con el fixture TAB
+    // lumina_bib_parse con el fixture TAB
     CHECK(ApiCall([&](char* o, int32_t c, int32_t* n) {
-        return fusion_bib_parse(bib1.data(), (int32_t)bib1.size(), nullptr, o, c, n);
+        return lumina_bib_parse(bib1.data(), (int32_t)bib1.size(), nullptr, o, c, n);
     }, &apiOut));
     const json jb = json::parse(apiOut);
     CHECK(jb["ok"] == 1 && jb["verses"] == 3 && jb["separator"] == "tab");
     CHECK(jb["sample"].is_array() && jb["sample"].size() == 3);
 
-    // fusion_bible_ref_resolve
+    // lumina_bible_ref_resolve
     CHECK(ApiCall([&](char* o, int32_t c, int32_t* n) {
-        return fusion_bible_ref_resolve("Jn 3:16", o, c, n);
+        return lumina_bible_ref_resolve("Jn 3:16", o, c, n);
     }, &apiOut));
     const json jr = json::parse(apiOut);
     CHECK(jr["book"] == 43 && jr["chapter"] == 3 && jr["verse"] == 16 &&
           jr["name"] == "Juan");
 
     /* ================================================================ 8 == */
-    Section("[8] Storage (SQLite+FTS vía fusion_db_*)");
+    Section("[8] Storage (SQLite+FTS vía lumina_db_*)");
     const std::string dbPath = TempDbPath();
     std::remove(dbPath.c_str());
-    FusionConfig cfg;
+    LuminaConfig cfg;
     std::memset(&cfg, 0, sizeof(cfg));
-    cfg.structSize = (int32_t)sizeof(FusionConfig);
+    cfg.structSize = (int32_t)sizeof(LuminaConfig);
     cfg.headless = 1;
-    FusionHandle h = fusion_create(&cfg);
+    LuminaHandle h = lumina_create(&cfg);
     CHECK(h != nullptr);
-    CHECK(fusion_db_open(h, dbPath.c_str()) == FUSION_OK);
+    CHECK(lumina_db_open(h, dbPath.c_str()) == LUMINA_OK);
 
     // INSERT con parámetros enlazados → changes/lastId
     json qi;
@@ -462,7 +462,7 @@ int main() {
                                 "[Coro]\nGrande es el Senor", "adoracion"});
     const std::string qiS = qi.dump();
     CHECK(ApiCallOnce([&](char* o, int32_t c, int32_t* n) {
-        return fusion_db_exec(h, qiS.c_str(), o, c, n);
+        return lumina_db_exec(h, qiS.c_str(), o, c, n);
     }, &apiOut));
     const json ri = json::parse(apiOut);
     CHECK(ri["changes"] == 1 && ri["lastId"] >= 1);
@@ -473,7 +473,7 @@ int main() {
     qs["params"] = json::array({"grande"});
     const std::string qsS = qs.dump();
     CHECK(ApiCallOnce([&](char* o, int32_t c, int32_t* n) {
-        return fusion_db_exec(h, qsS.c_str(), o, c, n);
+        return lumina_db_exec(h, qsS.c_str(), o, c, n);
     }, &apiOut));
     const json rs = json::parse(apiOut);
     CHECK(rs["rows"].is_array() && rs["rows"].size() == 1);
@@ -484,7 +484,7 @@ int main() {
     qs2["params"] = json::array({"senor"});
     const std::string qs2S = qs2.dump();
     CHECK(ApiCallOnce([&](char* o, int32_t c, int32_t* n) {
-        return fusion_db_exec(h, qs2S.c_str(), o, c, n);
+        return lumina_db_exec(h, qs2S.c_str(), o, c, n);
     }, &apiOut));
     const json rs2 = json::parse(apiOut);
     CHECK(rs2["rows"].is_array() && rs2["rows"].size() == 1);   // 'senor'→'Señor'
@@ -495,11 +495,11 @@ int main() {
                 " VALUES('TST',43,3,16,'Porque de tal manera amó Dios')";
     const std::string qbS = qb.dump();
     CHECK(ApiCallOnce([&](char* o, int32_t c, int32_t* n) {
-        return fusion_db_exec(h, qbS.c_str(), o, c, n);
+        return lumina_db_exec(h, qbS.c_str(), o, c, n);
     }, &apiOut));
     CHECK(json::parse(apiOut)["changes"] == 1);
     CHECK(ApiCallOnce([&](char* o, int32_t c, int32_t* n) {
-        return fusion_db_exec(h, qbS.c_str(), o, c, n);
+        return lumina_db_exec(h, qbS.c_str(), o, c, n);
     }, &apiOut));
     CHECK(json::parse(apiOut)["changes"] == 0);   // ignorada por UNIQUE
 
@@ -507,13 +507,13 @@ int main() {
     qc["sql"] = "SELECT count(*) FROM bible WHERE version='TST'";
     const std::string qcS = qc.dump();
     CHECK(ApiCallOnce([&](char* o, int32_t c, int32_t* n) {
-        return fusion_db_exec(h, qcS.c_str(), o, c, n);
+        return lumina_db_exec(h, qcS.c_str(), o, c, n);
     }, &apiOut));
     CHECK(json::parse(apiOut)["rows"][0][0] == 1);
 
     // Cierre y limpieza
-    CHECK(fusion_db_close(h) == FUSION_OK);
-    fusion_destroy(h);
+    CHECK(lumina_db_close(h) == LUMINA_OK);
+    lumina_destroy(h);
     std::remove(dbPath.c_str());
 
     /* ------------------------------------------------------------- fin -- */

@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net35;net48</TargetFrameworks>
+    <RootNamespace>lumina.core</RootNamespace>
+    <AssemblyName>Lumina.Core</AssemblyName>
+    <Summary>Núcleo de datos gestionado de LuminaPresentation: MiniJson, modelos, builder de escenarios y ajustes portables.</Summary>
+  </PropertyGroup>
+
+</Project>

@@ -1,6 +1,6 @@
 # Formato .BIB (biblias) — especificación y compatibilidad
 
-El núcleo (`fusion_bib_parse`) acepta archivos `.bib` de biblias en texto plano con
+El núcleo (`lumina_bib_parse`) acepta archivos `.bib` de biblias en texto plano con
 **detección automática** de variante. Objetivo: que cualquier biblia exportada a este
 formato simple sea importable sin conversión manual.
 
@@ -36,7 +36,7 @@ Apocalipsis	22	21	La gracia de nuestro Señor Jesucristo sea con vosotros. Amén
 * CP1252/Latin-1 — detectada automáticamente (bytes inválidos UTF-8 + presencia de
   acentos latinos típicos) y convertida a UTF-8.
 
-## 3. Validación y estadísticas (`fusion_bib_parse`)
+## 3. Validación y estadísticas (`lumina_bib_parse`)
 
 Devuelve JSON:
 

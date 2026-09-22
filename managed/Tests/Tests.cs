@@ -1,5 +1,5 @@
 // ============================================================================
-//  Fusion-HP / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
+//  LuminaPresentation / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
 // ============================================================================
 //  Tests.cs : arnés de pruebas propio (estilo selftest, SIN frameworks externos
 //  — el repo no admite dependencias adicionales). Compatible net8.0 y net48.
@@ -11,7 +11,7 @@
 //      hay biblioteca nativa; si no, SKIPPED)
 //    * Settings roundtrip portable (directorio temporal)
 //    * Núcleo nativo: version, song_parse, bible_ref_resolve, db+FTS5 (SKIPPED
-//      sin biblioteca o con FUSION_SKIP_NATIVE=1)
+//      sin biblioteca o con LUMINA_SKIP_NATIVE=1)
 //
 //  Salida: "TESTS PASS n/n (s skips)" y código 0, o "TESTS FAIL …" y código 1.
 // ============================================================================
@@ -20,10 +20,10 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text;
-using fusion.bridge;
-using fusion.core;
+using lumina.bridge;
+using lumina.core;
 
-namespace fusion.tests
+namespace lumina.tests
 {
     internal static class Tests
     {
@@ -33,7 +33,7 @@ namespace fusion.tests
 
         private static int Main()
         {
-            Console.WriteLine("FusionHP.Tests — selftest de la capa gestionada");
+            Console.WriteLine("Lumina.Tests — selftest de la capa gestionada");
 
             // --- Solo gestionado (siempre corren) --------------------------------
             Run("MiniJson: roundtrip completo con acentos y escapes", TestMiniJsonRoundtrip);
@@ -44,12 +44,12 @@ namespace fusion.tests
 
             // --- Núcleo nativo (condicionales) -----------------------------------
             bool skipNative = string.Equals(
-                Environment.GetEnvironmentVariable("FUSION_SKIP_NATIVE"), "1", StringComparison.Ordinal);
+                Environment.GetEnvironmentVariable("LUMINA_SKIP_NATIVE"), "1", StringComparison.Ordinal);
             bool libOk = !skipNative && ProbeNativeLibrary();
-            if (skipNative) Console.WriteLine("  (FUSION_SKIP_NATIVE=1 → chequeos nativos omitidos)");
+            if (skipNative) Console.WriteLine("  (LUMINA_SKIP_NATIVE=1 → chequeos nativos omitidos)");
             else if (!libOk) Console.WriteLine("  (biblioteca nativa ausente → chequeos nativos omitidos)");
 
-            Run("Nativo: fusion_version", TestNativeVersion, libOk);
+            Run("Nativo: lumina_version", TestNativeVersion, libOk);
             Run("Nativo: ScenarioBuilder → LoadScenario==0", TestNativeLoadScenario, libOk);
             Run("Nativo: SongParse de la canción del builder", TestNativeSongParse, libOk);
             Run("Nativo: BibleRefResolve Jn 3:16", TestNativeRefResolve, libOk);
@@ -100,7 +100,7 @@ namespace fusion.tests
         {
             try
             {
-                string v = FusionEngine.Version();
+                string v = LuminaEngine.Version();
                 return v != null && v.Length > 0;
             }
             catch (Exception)
@@ -219,7 +219,7 @@ namespace fusion.tests
         {
             Song s = new Song();
             s.Title = "Canción de pruebas ✓";
-            s.Artist = "Fusion-HP";
+            s.Artist = "LuminaPresentation";
             s.Blocks.Add(Block("Verso 1", "Primera línea ñ", "segunda línea"));
             s.Blocks.Add(Block("Verso 2", "Otra línea áéíóú", "y otra más"));
             s.Blocks.Add(Block("Coro", "Coro de prueba", "aleluya"));
@@ -265,7 +265,7 @@ namespace fusion.tests
         private static void TestSettingsRoundtrip()
         {
             string dir = Path.Combine(Path.GetTempPath(),
-                "fusion_tests_" + Guid.NewGuid().ToString("N"));
+                "lumina_tests_" + Guid.NewGuid().ToString("N"));
             try
             {
                 Settings written = new Settings(dir);
@@ -298,18 +298,18 @@ namespace fusion.tests
 
         private static void TestNativeVersion()
         {
-            string v = FusionEngine.Version();
-            AssertTrue(v.StartsWith("FusionCore", StringComparison.Ordinal) && v.Contains("3.0"),
+            string v = LuminaEngine.Version();
+            AssertTrue(v.StartsWith("LuminaCore", StringComparison.Ordinal) && v.Contains("3.0"),
                 "version=\"" + v + "\"");
         }
 
         private static void TestNativeLoadScenario()
         {
-            using (FusionEngine engine = FusionEngine.Create(true, null))
+            using (LuminaEngine engine = LuminaEngine.Create(true, null))
             {
                 string json = ScenarioJsonForTests();
                 int st = engine.LoadScenario(json);
-                AssertTrue(st == FusionStatus.Ok, "LoadScenario=" + FusionStatus.Name(st));
+                AssertTrue(st == LuminaStatus.Ok, "LoadScenario=" + LuminaStatus.Name(st));
                 Dictionary<string, object> state = MiniJson.Parse(engine.StateJson());
                 AssertTrue(MiniJson.GetInt(state, "slideCount", 0) > 0, "slideCount>0");
             }
@@ -317,7 +317,7 @@ namespace fusion.tests
 
         private static void TestNativeSongParse()
         {
-            string res = FusionEngine.SongParse(SongJsonForTests());
+            string res = LuminaEngine.SongParse(SongJsonForTests());
             Dictionary<string, object> o = MiniJson.Parse(res);
             AssertTrue(MiniJson.GetInt(o, "ok", 0) == 1, "ok==1");
             AssertTrue(MiniJson.GetArray(o, "slides").Count > 0, "slides>0");
@@ -325,7 +325,7 @@ namespace fusion.tests
 
         private static void TestNativeRefResolve()
         {
-            Dictionary<string, object> o = MiniJson.Parse(FusionEngine.BibleRefResolve("Jn 3:16"));
+            Dictionary<string, object> o = MiniJson.Parse(LuminaEngine.BibleRefResolve("Jn 3:16"));
             AssertTrue(MiniJson.GetInt(o, "book", 0) == 43, "book 43");
             AssertTrue(MiniJson.GetInt(o, "chapter", 0) == 3, "chapter 3");
             AssertTrue(MiniJson.GetInt(o, "verse", 0) == 16, "verse 16");
@@ -334,18 +334,18 @@ namespace fusion.tests
         private static void TestNativeDb()
         {
             string dbPath = Path.Combine(Path.GetTempPath(),
-                "fusion_tests_" + Guid.NewGuid().ToString("N") + ".db");
-            using (FusionEngine engine = FusionEngine.Create(true, null))
+                "lumina_tests_" + Guid.NewGuid().ToString("N") + ".db");
+            using (LuminaEngine engine = LuminaEngine.Create(true, null))
             {
                 try
                 {
-                    AssertTrue(engine.DbOpen(dbPath) == FusionStatus.Ok, "DbOpen");
-                    engine.DbExec(FusionStorage.BuildExecJson(
+                    AssertTrue(engine.DbOpen(dbPath) == LuminaStatus.Ok, "DbOpen");
+                    engine.DbExec(LuminaStorage.BuildExecJson(
                         "INSERT INTO songs(title,lyrics) VALUES(?,?)",
                         "Canción FTS", "Santo aleluya al Señor"));
-                    string res = engine.DbExec(FusionStorage.BuildExecJson(
+                    string res = engine.DbExec(LuminaStorage.BuildExecJson(
                         "SELECT rowid FROM songs_fts WHERE songs_fts MATCH ?1", "aleluya"));
-                    AssertTrue(FusionStorage.Rows(res).Count >= 1, "FTS MATCH 'aleluya'");
+                    AssertTrue(LuminaStorage.Rows(res).Count >= 1, "FTS MATCH 'aleluya'");
                 }
                 finally
                 {

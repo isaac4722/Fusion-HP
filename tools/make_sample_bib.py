@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # ============================================================================
-#  Fusion-HP / LuminaPresentation Suite - tools/make_sample_bib.py
+#  LuminaPresentation / LuminaPresentation Suite - tools/make_sample_bib.py
 #  Copyright (c) 2026 Isaac. Licencia View-Only.
 # ----------------------------------------------------------------------------
 #  Convierte resources/data/bible_rvr1909.json (formato interno del repo) al
-#  formato .BIB que parsea el núcleo (fusion_bib_parse — docs/bib-format.md):
+#  formato .BIB que parsea el núcleo (lumina_bib_parse — docs/bib-format.md):
 #
 #      #BIB 1
 #      #VERSION RVR1909

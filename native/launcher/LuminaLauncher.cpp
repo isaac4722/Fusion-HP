@@ -1,8 +1,8 @@
 // ============================================================================
-//  Fusion-HP / LuminaPresentation Suite - native/launcher/FusionLauncher.cpp
+//  LuminaPresentation / LuminaPresentation Suite - native/launcher/LuminaLauncher.cpp
 //  Copyright (c) 2026 Isaac. Licencia View-Only.
 // ----------------------------------------------------------------------------
-//  Lanzador NATIVO del paquete portable híbrido v3.0.0 «HÍBRIDA»
+//  Lanzador NATIVO del paquete portable híbrido v4.0.0 «LUMINA»
 //  (Win32 puro: sin MFC, sin ATL, sin CRT dinámico — /MT).
 //
 //  Responsabilidad (docs/architecture-hybrid.md §2):
@@ -15,8 +15,8 @@
 //         - .NET 3.5  : HKLM\SOFTWARE\Microsoft\NET Framework Setup\NDP\v3.5
 //                       valor "Install" == 1 (incluido de fábrica en Win7 SP1).
 //    2. Elegir el ejecutable gestionado a lanzar:
-//         - .NET 4.8+  -> FusionHP.exe   (interfaz net48, meta preferida)
-//         - .NET 3.5   -> FusionHP35.exe (baseline net35)
+//         - .NET 4.8+  -> LuminaPresentation.exe   (interfaz net48, meta preferida)
+//         - .NET 3.5   -> LuminaPresentation35.exe (baseline net35)
 //         - ninguno    -> MessageBox explicativo (Win7 SP1 trae 3.5 activable y
 //                         enlace al instalador offline de 4.8) y salida 1.
 //    3. Lanzarlo con CreateProcess desde el directorio del propio launcher
@@ -40,10 +40,10 @@
 static const DWORD kMinReleaseNet48 = 528040u;
 
 // Ejecutables gestionados que el paquete portable trae junto al launcher.
-static const wchar_t* kTargetNet48 = L"FusionHP.exe";
-static const wchar_t* kTargetNet35 = L"FusionHP35.exe";
+static const wchar_t* kTargetNet48 = L"LuminaPresentation.exe";
+static const wchar_t* kTargetNet35 = L"LuminaPresentation35.exe";
 
-static const wchar_t* kWindowTitle = L"Fusion-HP v3.0.0 «HÍBRIDA»";
+static const wchar_t* kWindowTitle = L"LuminaPresentation v4.0.0 «LUMINA»";
 
 // ---------------------------------------------------------------------------
 // Registro: lectura de DWORD con vista de 64 bits garantizada
@@ -157,7 +157,8 @@ static void ShowErrorBox(const wchar_t* text)
 
 // Lanza exePath con CreateProcess, espera INFINITE y devuelve el exit code del
 // hijo por outExitCode. Devuelve 0 en éxito; otro valor = GetLastError del fallo.
-static DWORD LaunchAndWait(const wchar_t* exePath, DWORD* outExitCode)
+static DWORD LaunchAndWait(const wchar_t* exePath, const wchar_t* workDir,
+                           DWORD* outExitCode)
 {
     STARTUPINFOW si;
     PROCESS_INFORMATION pi;
@@ -183,7 +184,7 @@ static DWORD LaunchAndWait(const wchar_t* exePath, DWORD* outExitCode)
                         FALSE,        // no heredar manejadores
                         0,            // sin flags especiales
                         nullptr,      // mismo entorno
-                        nullptr,      // mismo directorio actual
+                        workDir,      // directorio actual = carpeta del paquete
                         &si, &pi))
     {
         return GetLastError();
@@ -233,7 +234,7 @@ int WINAPI WinMain(HINSTANCE /*hInstance*/, HINSTANCE /*hPrevInstance*/,
     else
     {
         MessageBoxW(nullptr,
-            L"Fusion-HP no encontró un runtime de .NET Framework compatible "
+            L"LuminaPresentation no encontró un runtime de .NET Framework compatible "
             L"en este equipo.\n\n"
             L"Requisitos (uno de los dos):\n\n"
             L"  • .NET Framework 4.8 — ya incluido de fábrica en "
@@ -272,9 +273,39 @@ int WINAPI WinMain(HINSTANCE /*hInstance*/, HINSTANCE /*hPrevInstance*/,
         return 1;
     }
 
+    // ------------------------------------------------------------------
+    // Guardia CLAVE contra «dejó de funcionar»: el componente nativo
+    // LuminaCore.dll DEBE estar junto al ejecutable gestionado. Si falta
+    // (causa típica: ejecutar desde DENTRO del ZIP sin extraer), el proceso
+    // gestionado arrancaría y moriría con DllNotFoundException, mostrando el
+    // críptico diálogo de Windows. Aquí lo detectamos ANTES con un mensaje
+    // claro y accionable.
+    // ------------------------------------------------------------------
+    wchar_t corePath[MAX_PATH];
+    if (JoinPath(baseDir, L"LuminaCore.dll", corePath, MAX_PATH) &&
+        GetFileAttributesW(corePath) == INVALID_FILE_ATTRIBUTES)
+    {
+        MessageBoxW(nullptr,
+            L"Falta el componente nativo «LuminaCore.dll» en la carpeta del "
+            L"programa, por lo que la interfaz no puede iniciarse.\n\n"
+            L"Causa más común: ejecutar el programa desde DENTRO del archivo "
+            L"ZIP (sin extraer).\n\n"
+            L"Solución:\n"
+            L"  1. Clic derecho sobre el ZIP → «Extraer todo…».\n"
+            L"  2. Abra la carpeta extraída.\n"
+            L"  3. Ejecute LuminaLauncher.exe desde ahí.\n\n"
+            L"Si el archivo sí está en la carpeta, su antivirus pudo ponerlo "
+            L"en cuarentena: restaúrelo y añada la carpeta a las exclusiones.",
+            kWindowTitle, MB_OK | MB_ICONWARNING);
+        return 1;
+    }
+
     // Lanzar y esperar; propagar el exit code del hijo.
+    // El directorio actual del hijo SIEMPRE es la carpeta del paquete:
+    // la BD portable (data/) y los recursos viven relativos a ella, sin
+    // depender de desde dónde el usuario lanzó el launcher.
     DWORD childExit = 1;
-    DWORD err = LaunchAndWait(targetPath, &childExit);
+    DWORD err = LaunchAndWait(targetPath, baseDir, &childExit);
     if (err != 0)
     {
         wchar_t msg[512];
@@ -283,7 +314,7 @@ int WINAPI WinMain(HINSTANCE /*hInstance*/, HINSTANCE /*hPrevInstance*/,
                   L"No se pudo iniciar:\n\n  %s\n\n"
                   L"Código de error del sistema: %lu\n\n"
                   L"Verifique que el paquete esté completo "
-                  L"(el archivo debe estar junto a FusionLauncher.exe).",
+                  L"(el archivo debe estar junto a LuminaLauncher.exe).",
                   target, (unsigned long)err);
         ShowErrorBox(msg);
         return 1;

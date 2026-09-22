@@ -3,13 +3,13 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FusionHP.Core", "FusionHP.Core\FusionHP.Core.csproj", "{6D4F7630-07ED-4C0F-8472-B7BC715A1073}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lumina.Core", "Lumina.Core\Lumina.Core.csproj", "{6D4F7630-07ED-4C0F-8472-B7BC715A1073}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FusionHP.Bridge", "FusionHP.Bridge\FusionHP.Bridge.csproj", "{A80464B1-B304-4021-8AF0-E0DC457DE70C}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lumina.Bridge", "Lumina.Bridge\Lumina.Bridge.csproj", "{A80464B1-B304-4021-8AF0-E0DC457DE70C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FusionHP.Api", "FusionHP.Api\FusionHP.Api.csproj", "{76E49617-82A6-4EA3-8B60-D63401FAE151}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lumina.Api", "Lumina.Api\Lumina.Api.csproj", "{76E49617-82A6-4EA3-8B60-D63401FAE151}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FusionHP.UI", "FusionHP.UI\FusionHP.UI.csproj", "{EA49F17B-B579-4658-8A90-AC3A6BB77EC7}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lumina.UI", "Lumina.UI\Lumina.UI.csproj", "{EA49F17B-B579-4658-8A90-AC3A6BB77EC7}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "PoC", "PoC", "{74A52A37-FCDB-4303-A278-A08E696482FC}"
 EndProject

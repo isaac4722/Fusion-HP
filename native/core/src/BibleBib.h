@@ -1,11 +1,11 @@
 // Contrato: parser .BIB (docs/bib-format.md) — detección automática.
-#ifndef FUSION_BIBLEBIB_H
-#define FUSION_BIBLEBIB_H
+#ifndef LUMINA_BIBLEBIB_H
+#define LUMINA_BIBLEBIB_H
 
 #include "Models.h"
 #include <nlohmann/json.hpp>
 
-namespace fusion {
+namespace lumina {
 struct BibVerse { int book=0; int chapter=0; int verse=0; std::string text; std::string bookName; };
 
 class BibleBib {
@@ -23,5 +23,5 @@ public:
                       std::vector<BibVerse>* verses /*opcional*/,
                       long long maxBytes = 64LL*1024*1024);
 };
-} // namespace fusion
+} // namespace lumina
 #endif

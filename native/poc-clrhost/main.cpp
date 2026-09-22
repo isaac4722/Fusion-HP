@@ -1,10 +1,10 @@
 // ============================================================================
-//  Fusion-HP / LuminaPresentation Suite - native/poc-clrhost/main.cpp
+//  LuminaPresentation / LuminaPresentation Suite - native/poc-clrhost/main.cpp
 //  Copyright (c) 2026 Isaac. Licencia View-Only.
 // ----------------------------------------------------------------------------
 //  PoC de CLR Hosting (vía C de la matriz — docs/architecture-hybrid.md §3):
 //  un proceso C++ puro (sin C++/CLI) arranca el CLR 4 y ejecuta código C#
-//  de la facade COM-visible «FusionHP.PocFacade.dll» vía IDispatch.
+//  de la facade COM-visible «Lumina.PocFacade.dll» vía IDispatch.
 //
 //  Flujo (todo con RAII simple y Release() garantizado en cada paso):
 //    LoadLibrary("mscoree.dll") + GetProcAddress("CLRCreateInstance")
@@ -12,13 +12,13 @@
 //      -> ICLRMetaHost::GetRuntime(L"v4.0.30319", IID_ICLRRuntimeInfo)
 //      -> ICLRRuntimeInfo::GetInterface(CLSID_CorRuntimeHost, IID_ICorRuntimeHost)
 //      -> ICorRuntimeHost::Start()
-//      -> ICorRuntimeHost::CreateDomain(L"FusionPoc", &domain)
+//      -> ICorRuntimeHost::CreateDomain(L"LuminaPoc", &domain)
 //      -> AppDomain (IDispatch)::CreateInstanceFrom(rutaFacade, tipoFacade)
 //      -> ObjectHandle (IDispatch)::Unwrap() -> IDispatch* de la facade
 //      -> GetIDsOfNames + Invoke:
 //           Add(2,3)     == 5
 //           Echo(L"híbrido") == L"híbrido"
-//           Version()    empieza por "FUSION-FACADE-OK"
+//           Version()    empieza por "LUMINA-FACADE-OK"
 //
 //  Salida por stdout: "CLRHOST PASS" y exit 0; cualquier fallo ->
 //  "CLRHOST FAIL <detalle>" y exit 1.
@@ -32,9 +32,9 @@
 //   * CoInitializeEx es opcional para ICorRuntimeHost; se llama por higiene
 //     COM y se tolera RPC_E_CHANGED_MODE.
 //   * Compilación: x86 y x64, /MT (ver native/poc-clrhost/CMakeLists.txt).
-//   * Uso: fusion_poc_clrhost.exe [ruta\FusionHP.PocFacade.dll] [TipoFacade]
-//     (por defecto: FusionHP.PocFacade.dll en CWD y tipo
-//      "fusion.poc.FusionFacade" — clase COM-visible de PocFacade.cs).
+//   * Uso: lumina_poc_clrhost.exe [ruta\Lumina.PocFacade.dll] [TipoFacade]
+//     (por defecto: Lumina.PocFacade.dll en CWD y tipo
+//      "lumina.poc.LuminaFacade" — clase COM-visible de PocFacade.cs).
 // ============================================================================
 #include <windows.h>
 #include <oaidl.h>     // IDispatch, DISPPARAMS, EXCEPINFO
@@ -268,11 +268,11 @@ static HRESULT CreateFacadeIn(IDispatch* domainDisp,
 int wmain(int argc, wchar_t** argv)
 {
     // ---- Parámetros -------------------------------------------------------
-    // argv[1]: ruta de FusionHP.PocFacade.dll (opcional; por defecto en CWD).
+    // argv[1]: ruta de Lumina.PocFacade.dll (opcional; por defecto en CWD).
     // argv[2]: nombre completo del tipo facade (opcional; contrato por
-    //          defecto: namespace FusionHP.PocFacade, clase PocFacade).
-    const wchar_t* dllArg  = (argc > 1) ? argv[1] : L"FusionHP.PocFacade.dll";
-    const wchar_t* facadeType = (argc > 2) ? argv[2] : L"fusion.poc.FusionFacade";
+    //          defecto: namespace Lumina.PocFacade, clase PocFacade).
+    const wchar_t* dllArg  = (argc > 1) ? argv[1] : L"Lumina.PocFacade.dll";
+    const wchar_t* facadeType = (argc > 2) ? argv[2] : L"lumina.poc.LuminaFacade";
 
     wchar_t facadePath[1024];
     DWORD nPath = GetFullPathNameW(dllArg,
@@ -381,11 +381,11 @@ int wmain(int argc, wchar_t** argv)
     if (FAILED(hr))
         return FailHr(L"ICorRuntimeHost::Start", hr);
 
-    // ---- 3) Dominio "FusionPoc" (fallback: dominio por defecto) -----------
+    // ---- 3) Dominio "LuminaPoc" (fallback: dominio por defecto) -----------
     ComPtr<IUnknown> unkDomain;
-    hr = corHost->CreateDomain(L"FusionPoc", nullptr, &unkDomain);
+    hr = corHost->CreateDomain(L"LuminaPoc", nullptr, &unkDomain);
     if (FAILED(hr) || !unkDomain.Ok())
-        return FailHr(L"ICorRuntimeHost::CreateDomain(FusionPoc)", hr);
+        return FailHr(L"ICorRuntimeHost::CreateDomain(LuminaPoc)", hr);
 
     ComPtr<IDispatch> dispDomain;
     hr = unkDomain->QueryInterface(__uuidof(IDispatch), (void**)&dispDomain);
@@ -400,7 +400,7 @@ int wmain(int argc, wchar_t** argv)
     {
         // Plan B: algunos objetos no cruzan dominios sin MarshalByRef/Serializable.
         // El hosting es igual de válido sobre el dominio por defecto.
-        wprintf(L"  (aviso) dominio FusionPoc: %ls — reintentando con el dominio por defecto\n", errBuf);
+        wprintf(L"  (aviso) dominio LuminaPoc: %ls — reintentando con el dominio por defecto\n", errBuf);
         fflush(stdout);
 
         ComPtr<IUnknown> unkDefault;
@@ -453,7 +453,7 @@ int wmain(int argc, wchar_t** argv)
         wcscmp(vEcho.v.bstrVal, L"h\u00EDbrido") != 0)
         return Fail(L"Echo(L\"híbrido\") no devolvió el eco esperado (¿marshaling UTF-16 roto?)");
 
-    // Version() empieza por "FUSION-FACADE-OK"
+    // Version() empieza por "LUMINA-FACADE-OK"
     DISPID idVersion = DISPID_UNKNOWN;
     if (FAILED(GetDispIdOf(facade.Get(), L"Version", &idVersion)))
         return Fail(L"la facade no expone Version");
@@ -462,8 +462,8 @@ int wmain(int argc, wchar_t** argv)
     if (FAILED(hr))
         return FailHr(L"facade.Version()", hr);
     if (vVersion.v.vt != VT_BSTR || vVersion.v.bstrVal == nullptr ||
-        wcsncmp(vVersion.v.bstrVal, L"FUSION-FACADE-OK", 16) != 0)
-        return Fail(L"Version() no empieza por \"FUSION-FACADE-OK\"");
+        wcsncmp(vVersion.v.bstrVal, L"LUMINA-FACADE-OK", 16) != 0)
+        return Fail(L"Version() no empieza por \"LUMINA-FACADE-OK\"");
 
     // ---- 5) Parada limpia ---------------------------------------------------
     corHost->Stop();   // opcional: apaga el CLR antes de salir

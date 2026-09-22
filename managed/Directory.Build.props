@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   ============================================================================
-  Fusion-HP / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
+  LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
   ============================================================================
   Directory.Build.props : propiedades comunes de la capa gestionada C#.
   Objetivo: una única base de código multi-target (net35 = Win7 SP1 integrado,

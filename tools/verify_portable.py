@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
 # ============================================================================
-#  Fusion-HP / LuminaPresentation Suite - tools/verify_portable.py
+#  LuminaPresentation / LuminaPresentation Suite - tools/verify_portable.py
 #  Copyright (c) 2026 Isaac. Licencia View-Only.
 # ----------------------------------------------------------------------------
 #  GATE de empaquetado portable de la v3.0.0 «HÍBRIDA» (núcleo C++ + capa C#).
 #  Audita el layout portable (por arquitectura) en 4 niveles:
 #
 #    1. FICHEROS MÍNIMOS del contrato de empaquetado presentes:
-#         FusionLauncher.exe, FusionHP.exe, FusionCore.dll y
-#         resources/data/bible_rvr1909.json (FusionHP35.exe es OPCIONAL:
-#         solo se espera si FusionHP.UI multi-apunta net35).
+#         LuminaLauncher.exe, LuminaPresentation.exe, LuminaCore.dll y
+#         resources/data/bible_rvr1909.json (LuminaPresentation35.exe es OPCIONAL:
+#         solo se espera si Lumina.UI multi-apunta net35).
 #    2. IMPORTS PE de TODOS los binarios (exe + dll, recursivo): cada DLL
 #       requerida debe estar (a) en el paquete o (b) ser DLL de sistema de
 #       Windows. Falla listando las faltantes. (Herencia v1.0.1: el paquete
 #       salió una vez sin el runtime de MinGW y el exe moría al arrancar.)
-#    3. EXPORTS de FusionCore.dll: la ABI contractual exige el export C
-#       "fusion_create" (docs/architecture-hybrid.md §4). Se parsea la tabla
+#    3. EXPORTS de LuminaCore.dll: la ABI contractual exige el export C
+#       "lumina_create" (docs/architecture-hybrid.md §4). Se parsea la tabla
 #       de exports PE con struct de python puro (sin pefile, sin pip).
-#    4. VS_FIXEDFILEINFO de FusionHP.exe (INFORMATIVO): si el exe lleva
+#    4. VS_FIXEDFILEINFO de LuminaPresentation.exe (INFORMATIVO): si el exe lleva
 #       recurso de versión se imprime la versión 1.2.3.4 parseada del
 #       VS_VERSIONINFO; si no lo lleva, se anota y NO falla.
 #
@@ -35,13 +35,13 @@ import glob
 # Contrato de empaquetado (job «package» de .github/workflows/ci.yml)
 # ---------------------------------------------------------------------------
 REQUIRED_FILES = [
-    'FusionLauncher.exe',                    # nativo: detección de runtime
-    'FusionHP.exe',                          # interfaz gestionada (net48)
-    'FusionCore.dll',                        # motor C++ (/MT)
+    'LuminaLauncher.exe',                    # nativo: detección de runtime
+    'LuminaPresentation.exe',                          # interfaz gestionada (net48)
+    'LuminaCore.dll',                        # motor C++ (/MT)
     'resources/data/bible_rvr1909.json',     # biblia de fábrica
 ]
 REQUIRED_EXPORTS = {
-    'FusionCore.dll': ['fusion_create'],     # ABI contractual (API C plana)
+    'LuminaCore.dll': ['lumina_create'],     # ABI contractual (API C plana)
 }
 
 # DLLs que garantiza el propio sistema operativo Windows (Win7 SP1+).
@@ -255,9 +255,9 @@ def main():
         else:
             print(f'  [FALTA] {rel}')
             failures.append(f'falta el fichero obligatorio {rel}')
-    # FusionHP35.exe es OPCIONAL (solo si la UI multi-apunta net35).
-    has35 = 'fusionhp35.exe' in present_lower
-    print(f'  [info] FusionHP35.exe: '
+    # LuminaPresentation35.exe es OPCIONAL (solo si la UI multi-apunta net35).
+    has35 = 'luminapresentation35.exe' in present_lower
+    print(f'  [info] LuminaPresentation35.exe: '
           f'{"presente (variante net35)" if has35 else "ausente (UI net48 exclusiva; documentado)"}')
 
     # ---- 2) Auditoría de imports PE + arquitectura -------------------------
@@ -317,18 +317,18 @@ def main():
                         for dll, users in sorted(missing.items()))
         failures.append('DLLs requeridas AUSENTES del paquete: ' + det)
 
-    # ---- 3) Exports contractuales de FusionCore.dll ------------------------
+    # ---- 3) Exports contractuales de LuminaCore.dll ------------------------
     core_path = None
     for b in binaries:
-        if os.path.basename(b).lower() == 'fusioncore.dll':
+        if os.path.basename(b).lower() == 'luminacore.dll':
             core_path = b
             break
     if core_path is None:
-        failures.append('no se encontró FusionCore.dll en el paquete')
+        failures.append('no se encontró LuminaCore.dll en el paquete')
     else:
         pe = parsed.get(core_path) or parse_pe(core_path)
-        needed = REQUIRED_EXPORTS['FusionCore.dll']
-        print(f'\n[verify_portable] Exports de FusionCore.dll '
+        needed = REQUIRED_EXPORTS['LuminaCore.dll']
+        print(f'\n[verify_portable] Exports de LuminaCore.dll '
               f'({len(pe.exports)} símbolos): '
               + (', '.join(pe.exports[:12]) + ('…' if len(pe.exports) > 12 else '')))
         for sym in needed:
@@ -336,21 +336,21 @@ def main():
                 print(f'  [ok]   export "{sym}" presente')
             else:
                 print(f'  [FALTA] export "{sym}"')
-                failures.append(f'FusionCore.dll no exporta "{sym}" '
+                failures.append(f'LuminaCore.dll no exporta "{sym}" '
                                 '(ABI contractual rota)')
 
-    # ---- 4) VS_FIXEDFILEINFO de FusionHP.exe (informativo) -----------------
+    # ---- 4) VS_FIXEDFILEINFO de LuminaPresentation.exe (informativo) -----------------
     hp_path = None
     for b in binaries:
-        if os.path.basename(b).lower() == 'fusionhp.exe':
+        if os.path.basename(b).lower() == 'luminapresentation.exe':
             hp_path = b
             break
     if hp_path is not None:
         ver = fixed_file_info_version(parsed.get(hp_path) or parse_pe(hp_path))
         if ver:
-            print(f'\n[verify_portable] FusionHP.exe VS_FIXEDFILEINFO: {ver} (informativo)')
+            print(f'\n[verify_portable] LuminaPresentation.exe VS_FIXEDFILEINFO: {ver} (informativo)')
         else:
-            print('\n[verify_portable] FusionHP.exe sin recurso de versión '
+            print('\n[verify_portable] LuminaPresentation.exe sin recurso de versión '
                   'VS_VERSIONINFO detectable (informativo; no falla el gate)')
 
     # ---- Veredicto ----------------------------------------------------------

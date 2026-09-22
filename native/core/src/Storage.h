@@ -1,6 +1,6 @@
 // Contrato: almacenamiento embebido SQLite+FTS5 (ejecutado por C# vía API).
-#ifndef FUSION_STORAGE_H
-#define FUSION_STORAGE_H
+#ifndef LUMINA_STORAGE_H
+#define LUMINA_STORAGE_H
 
 #include <string>
 #include <vector>
@@ -8,7 +8,7 @@
 
 struct sqlite3;
 
-namespace fusion {
+namespace lumina {
 
 using json = nlohmann::json;
 class Database {
@@ -39,5 +39,5 @@ private:
     bool EnsureSchema(std::string* err);
     sqlite3* db_ = nullptr;
 };
-} // namespace fusion
+} // namespace lumina
 #endif

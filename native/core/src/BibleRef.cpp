@@ -1,5 +1,5 @@
 // ============================================================================
-//  Fusion-HP / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
+//  LuminaPresentation / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
 // ============================================================================
 //  BibleRef.cpp : tabla canónica de los 66 libros (nombres y abreviaturas en
 //  español) y parser de referencias tipadas ("Jn 3:16", "salmo 23:1-6",
@@ -14,7 +14,7 @@
 
 #include <algorithm>
 
-namespace fusion {
+namespace lumina {
 namespace {
 
 // ¿Todos dígitos y no vacío? (equivalente wx IsNumber para este uso)
@@ -279,4 +279,4 @@ std::string BibleRef::FormatRef(const VerseRef& r) {
     return r.bookName + " " + std::to_string(r.chapter);
 }
 
-} // namespace fusion
+} // namespace lumina

@@ -1,11 +1,11 @@
 // ============================================================================
-//  Fusion-HP / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
+//  LuminaPresentation / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
 // ============================================================================
-//  FusionCore.h : motor del núcleo híbrido (impl. en Engine.cpp / Windows en
+//  LuminaCore.h : motor del núcleo híbrido (impl. en Engine.cpp / Windows en
 //  Projector.cpp+Renderer.cpp). Estado + hilo de eventos + proyección.
 // ============================================================================
-#ifndef FUSION_CORE_H
-#define FUSION_CORE_H
+#ifndef LUMINA_CORE_H
+#define LUMINA_CORE_H
 
 #include <string>
 #include <vector>
@@ -16,46 +16,46 @@
 #include <thread>
 #include <condition_variable>
 
-#include "fusion/fusion.h"
+#include "lumina/lumina.h"
 #include "Models.h"
 
-namespace fusion {
+namespace lumina {
 
 struct Event {
     int32_t code = 0;
     std::string payload;          // UTF-8 o binario seguro (PREVIEW: bytes PNG)
 };
 
-#ifdef FUSION_HAS_WIN32
+#ifdef LUMINA_HAS_WIN32
 class Projector;   // Windows-only (Projector.cpp)
 #endif
 class Database;    // Storage.cpp
 
 class Engine {
 public:
-    explicit Engine(const FusionConfig& cfg);
+    explicit Engine(const LuminaConfig& cfg);
     ~Engine();
 
-    /* ------------ API invocada desde fusion_api.cpp (thread-safe) ------- */
+    /* ------------ API invocada desde lumina_api.cpp (thread-safe) ------- */
     std::string Version() const;
 
-    FusionStatus LoadScenario(const std::string& json);
-    FusionStatus ShowSlide(int index);
-    FusionStatus Next();
-    FusionStatus Prev();
-    FusionStatus Black(bool on);
-    FusionStatus Clear();
-    FusionStatus SetTheme(const std::string& json);
+    LuminaStatus LoadScenario(const std::string& json);
+    LuminaStatus ShowSlide(int index);
+    LuminaStatus Next();
+    LuminaStatus Prev();
+    LuminaStatus Black(bool on);
+    LuminaStatus Clear();
+    LuminaStatus SetTheme(const std::string& json);
     std::string  StateJson() const;
-    FusionStatus Ping(const std::string& msg);
+    LuminaStatus Ping(const std::string& msg);
 
-    FusionStatus ProjectorShow(int screenIndex, bool fullscreen);
-    FusionStatus ProjectorHide();
+    LuminaStatus ProjectorShow(int screenIndex, bool fullscreen);
+    LuminaStatus ProjectorHide();
     int  RenderPreviewPng(int slideIndex, std::string* pngOut);   // -1=err
 
-    FusionStatus DbOpen(const std::string& pathUtf8);
-    FusionStatus DbClose();
-    FusionStatus DbExec(const std::string& sqlJson, std::string* outJson);
+    LuminaStatus DbOpen(const std::string& pathUtf8);
+    LuminaStatus DbClose();
+    LuminaStatus DbExec(const std::string& sqlJson, std::string* outJson);
 
     /* ------------ utilidades para módulos ------------------------------ */
     void PushEvent(int32_t code, const std::string& payload);
@@ -70,8 +70,8 @@ private:
     void EventLoop();
     void PostStateEvent();
 
-    FusionConfig   cfg_;
-#ifdef FUSION_HAS_WIN32
+    LuminaConfig   cfg_;
+#ifdef LUMINA_HAS_WIN32
     std::unique_ptr<Projector> projector_;   // no-headless
 #endif
     std::unique_ptr<Database>  db_;
@@ -94,5 +94,5 @@ private:
     bool started_ = false;
 };
 
-} // namespace fusion
-#endif // FUSION_CORE_H
+} // namespace lumina
+#endif // LUMINA_CORE_H
