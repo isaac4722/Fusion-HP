@@ -298,19 +298,28 @@ int wmain(int argc, wchar_t** argv)
     HMODULE hMscoree = nullptr;
     {
         wchar_t path[MAX_PATH];
-        // El bitness del PROCESO decide la carpeta del runtime (Framework64/Framework)
-        const wchar_t* dir = (sizeof(void*) == 8) ? L"Microsoft.NET\\Framework64"
-                                                  : L"Microsoft.NET\\Framework";
+        // El bitness del PROCESO decide la carpeta del runtime (Framework64/Framework);
+        // se prueban AMBAS rutas (por si el runtime instalado es de otro bitness).
+        const wchar_t* dirs[2] = { L"Microsoft.NET\\Framework64", L"Microsoft.NET\\Framework" };
         UINT k = GetEnvironmentVariableW(L"WINDIR", path, MAX_PATH);
-        if (k > 0 && k < MAX_PATH - 64) {
+        for (int i = 0; i < 2 && hMscoree == nullptr && k > 0 && k < MAX_PATH - 64; ++i) {
             wchar_t full[MAX_PATH];
-            _snwprintf_s(full, MAX_PATH, MAX_PATH - 1, L"%ls\\%ls\\v4.0.30319\\mscoree.dll", path, dir);
+            _snwprintf_s(full, MAX_PATH, MAX_PATH - 1,
+                         L"%ls\\%ls\\v4.0.30319\\mscoree.dll", path, dirs[i]);
             full[MAX_PATH - 1] = 0;
-            hMscoree = LoadLibraryW(full);
+            const DWORD attr = GetFileAttributesW(full);
+            wprintf(L"  ruta %ls → %ls\n", dirs[i],
+                    attr != INVALID_FILE_ATTRIBUTES ? L"presente" : L"ausente");
+            if (attr != INVALID_FILE_ATTRIBUTES)
+                hMscoree = LoadLibraryExW(full, nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
+            if (hMscoree == nullptr)
+                wprintf(L"  LoadLibraryEx(%ls) falló (GetLastError=0x%08lX)\n",
+                        full, (unsigned long)GetLastError());
         }
+        // Ambas rutas fuerzan la carga; si ninguna, va el nombre simple abajo.
+        if (hMscoree == nullptr)
+            hMscoree = LoadLibraryW(L"mscoree.dll");
     }
-    if (hMscoree == nullptr)
-        hMscoree = LoadLibraryW(L"mscoree.dll");
     if (hMscoree == nullptr)
         return Fail(L"mscoree.dll no se pudo cargar (.NET Framework ausente o corrupto)");
 

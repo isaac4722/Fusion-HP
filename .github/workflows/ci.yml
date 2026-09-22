@@ -8,7 +8,8 @@
 #    native-linux   : port del núcleo (GCC) — regresa rápido el estado del port
 #    managed        : capa C# (net35+net48 con ref assemblies) + tests net8.0
 #    interop        : PoC real C# ↔ DLL nativa (x86/x64, net48; net35 informativo)
-#    clrhost-poc    : vía C — CLR hosting C++ puro contra PocFacade (x86/x64)
+#    clrhost-poc    : vía C — CLR hosting C++ puro contra PocFacade (INFORMATIVO)
+#                     (evaluación de la vía de respaldo; NO bloquea paquete/release)
 #    package        : layout portable por arquitectura + verify_portable + zip + SHA256
 #    release        : GitHub Release solo en tags v*
 #
@@ -285,8 +286,13 @@ jobs:
   # 5) Vía C: CLR hosting desde C++ puro contra PocFacade (x86 y x64)
   # ---------------------------------------------------------------------------
   clrhost-poc:
-    name: CLR hosting C++ (${{ matrix.arch }})
+    name: CLR hosting C++ (${{ matrix.arch }}, informativo)
     needs: [native-windows, managed]
+    # Vía C = evaluación de respaldo (docs/architecture-hybrid.md §3). El gate
+    # estricto de interop es el del PoC de la vía A (elegida). Este job queda
+    # informativo: si la activación del CLR falla por el entorno del runner
+    # (p. ej. shim sin runtime registrado), NO bloquea paquete/release.
+    continue-on-error: true
     runs-on: windows-latest
     strategy:
       fail-fast: false
@@ -356,7 +362,7 @@ jobs:
   # ---------------------------------------------------------------------------
   package:
     name: Empaquetado portable (${{ matrix.arch }})
-    needs: [interop, clrhost-poc]
+    needs: [interop]
     runs-on: windows-latest
     strategy:
       fail-fast: false
