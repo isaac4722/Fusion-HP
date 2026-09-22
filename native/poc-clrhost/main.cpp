@@ -113,17 +113,14 @@ static int FailHr(const wchar_t* paso, HRESULT hr)
 }
 
 // Formatea un mensaje de error en un búfer fijo con terminación NUL
-// garantizada (_vsnwprintf no la garantiza al truncar).
+// garantizada (_vsnwprintf_s trunca seguro y añade el NUL final).
 static void SetErr(wchar_t* buf, size_t cch, const wchar_t* fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
-    int n = _vsnwprintf(buf, cch - 1, fmt, ap);
+    _vsnwprintf_s(buf, cch, cch - 1, fmt, ap);
     va_end(ap);
-    if (n < 0 || (size_t)n >= cch - 1)
-        buf[cch - 1] = L'\0';
-    else
-        buf[n] = L'\0';
+    buf[cch - 1] = L'\0';
 }
 
 // GetIDsOfNames de un solo nombre.
@@ -317,30 +314,59 @@ int wmain(int argc, wchar_t** argv)
     if (hMscoree == nullptr)
         return Fail(L"mscoree.dll no se pudo cargar (.NET Framework ausente o corrupto)");
 
+    // Diagnóstico: módulo realmente cargado
+    {
+        wchar_t modPath[MAX_PATH] = L"?";
+        GetModuleFileNameW(hMscoree, modPath, MAX_PATH);
+        wprintf(L"  mscoree cargado: %ls\n", modPath);
+        fflush(stdout);
+    }
+
     typedef HRESULT (STDAPICALLTYPE* PFN_CLRCreateInstance)(REFCLSID, REFIID, void**);
+    typedef HRESULT (STDAPICALLTYPE* PFN_CorBind)(LPCWSTR, LPCWSTR, DWORD,
+                                                  REFCLSID, REFIID, void**);
     PFN_CLRCreateInstance pClrCreateInstance =
         (PFN_CLRCreateInstance)GetProcAddress(hMscoree, "CLRCreateInstance");
-    if (pClrCreateInstance == nullptr)
-        return Fail(L"mscoree.dll no exporta CLRCreateInstance (se requiere .NET Framework 4+)");
+    PFN_CorBind pCorBind =
+        (PFN_CorBind)GetProcAddress(hMscoree, "CorBindToRuntimeEx");
 
-    // ---- 2) MetaHost -> Runtime v4 -> ICorRuntimeHost ----------------------
-    ComPtr<ICLRMetaHost> metaHost;
-    HRESULT hr = pClrCreateInstance(kCLSID_CLRMetaHost, __uuidof(ICLRMetaHost),
-                                    (void**)&metaHost);
-    if (FAILED(hr))
-        return FailHr(L"CLRCreateInstance(CLSID_CLRMetaHost, IID_ICLRMetaHost)", hr);
-
-    ComPtr<ICLRRuntimeInfo> runtimeInfo;
-    hr = metaHost->GetRuntime(L"v4.0.30319", __uuidof(ICLRRuntimeInfo),
-                              (void**)&runtimeInfo);
-    if (FAILED(hr))
-        return FailHr(L"ICLRMetaHost::GetRuntime(L\"v4.0.30319\")", hr);
-
+    // ---- 2) Activación multinivel hasta ICorRuntimeHost --------------------
+    //  a) CLRCreateInstance (metahost) — vía moderna .NET 4
+    //  b) CorBindToRuntimeEx — vía clásica (2.0/4.x), misma ICorRuntimeHost
     ComPtr<ICorRuntimeHost> corHost;
-    hr = runtimeInfo->GetInterface(kCLSID_CorRuntimeHost, kIID_ICorRuntimeHost,
-                                   (void**)&corHost);
-    if (FAILED(hr))
-        return FailHr(L"ICLRRuntimeInfo::GetInterface(CLSID_CorRuntimeHost)", hr);
+    HRESULT hr = E_FAIL;
+    if (pClrCreateInstance != nullptr)
+    {
+        ComPtr<ICLRMetaHost> metaHost;
+        hr = pClrCreateInstance(kCLSID_CLRMetaHost, __uuidof(ICLRMetaHost),
+                                (void**)&metaHost);
+        if (SUCCEEDED(hr))
+        {
+            ComPtr<ICLRRuntimeInfo> runtimeInfo;
+            hr = metaHost->GetRuntime(L"v4.0.30319", __uuidof(ICLRRuntimeInfo),
+                                      (void**)&runtimeInfo);
+            if (SUCCEEDED(hr))
+                hr = runtimeInfo->GetInterface(kCLSID_CorRuntimeHost,
+                                               kIID_ICorRuntimeHost,
+                                               (void**)&corHost);
+        }
+        if (SUCCEEDED(hr))
+            wprintf(L"  activación: CLRCreateInstance (metahost)\n");
+    }
+    if ((FAILED(hr) || !corHost.Ok()) && pCorBind != nullptr)
+    {
+        // CorBindToRuntimeEx(vVersion, flavor, flags, rclsid, riid, ppv)
+        hr = pCorBind(L"v4.0.30319", L"wks", 0,
+                      kCLSID_CorRuntimeHost, kIID_ICorRuntimeHost,
+                      (void**)&corHost);
+        if (SUCCEEDED(hr))
+            wprintf(L"  activación: CorBindToRuntimeEx (legacy)\n");
+    }
+    if (FAILED(hr) || !corHost.Ok())
+    {
+        wprintf(L"  (aviso) CLRCreateInstance HR=0x%08lX\n", (unsigned long)hr);
+        return FailHr(L"activación del CLR (metahost + CorBindToRuntimeEx)", hr);
+    }
 
     hr = corHost->Start();
     if (FAILED(hr))
