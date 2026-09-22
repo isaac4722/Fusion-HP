@@ -38,7 +38,7 @@ if(NOT MSVC)
     set_source_files_properties(${CMAKE_SOURCE_DIR}/third_party/sqlite3/sqlite3.c
         PROPERTIES COMPILE_OPTIONS "-Wno-stringop-overread")
 else()
-    target_link_libraries(FusionCore PRIVATE user32 gdi32 gdiplus)
+    target_link_libraries(FusionCore PRIVATE user32 gdi32 gdiplus ole32)
 endif()
 set_target_properties(FusionCore PROPERTIES OUTPUT_NAME "FusionCore")
 

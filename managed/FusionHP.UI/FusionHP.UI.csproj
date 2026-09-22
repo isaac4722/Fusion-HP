@@ -4,7 +4,7 @@
     <TargetFrameworks>net35;net48</TargetFrameworks>
     <OutputType>WinExe</OutputType>
     <RootNamespace>fusion.ui</RootNamespace>
-    <AssemblyName>FusionHP.UI</AssemblyName>
+    <AssemblyName>FusionHP</AssemblyName>
     <Summary>Interfaz WinForms de LuminaPresentation Suite (vía A: C# dueño del proceso).</Summary>
     <ApplicationIcon></ApplicationIcon>
     <!--
