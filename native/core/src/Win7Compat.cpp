@@ -60,8 +60,12 @@ FARPROC WINAPI Win7DelayLoadHook(unsigned dliNotify, DelayLoadInfo* pdli)
 
 } // namespace
 
-// Hook global de delayimp (único delay-load del binario). extern "C" porque
-// delayimp lo busca por nombre C puro.
-extern "C" PfnDliHook __pfnDliNotifyHook2 = &Win7DelayLoadHook;
+// Hook global de delayimp (único delay-load del binario). Debe coincidir
+// EXACTAMENTE con la declaración del delayimp.h del toolset moderno
+// (VS2022+/VS18): «extern "C" const PfnDliHook» — patrón canónico de la doc
+// oficial (learn.microsoft.com, «Understanding the helper function»).
+// Sin el «const» el compilador rechaza con C2373 («different type
+// modifiers»), detectado en el primer run de CI de este ciclo.
+extern "C" const PfnDliHook __pfnDliNotifyHook2 = &Win7DelayLoadHook;
 
 #endif // _WIN32

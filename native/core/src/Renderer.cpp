@@ -255,7 +255,9 @@ void Renderer::DrawSlide(HDC hdc, int w, int h,
             const std::wstring& ln = lines[i].second;
             if (!lines[i].first.empty()) {
                 anyChord = true;
-                HGDIOBJ oc = SelectObject(hdc, fontCh);
+                // v5.2.0: higiene /W4 — el retorno de SelectObject de medición
+                // no se usa (se restaura con font de inmediato).
+                (void)SelectObject(hdc, fontCh);
                 totalH += TextHeight(hdc, lines[i].first) + std::max(2, fontPx / 8);
                 maxW = std::max(maxW, TextWidth(hdc, lines[i].first));
                 SelectObject(hdc, font);
@@ -284,7 +286,8 @@ void Renderer::DrawSlide(HDC hdc, int w, int h,
         const std::wstring& ch = lines[li].first;
         const std::wstring& ln = lines[li].second;
         if (!ch.empty()) {
-            HGDIOBJ oc = SelectObject(hdc, fontCh);
+            // v5.2.0: higiene /W4 — ídem: retorno de medición no usado.
+            (void)SelectObject(hdc, fontCh);
             SetBkMode(hdc, TRANSPARENT);
             SetTextColor(hdc, outline);          // color de acento
             const int cw = TextWidth(hdc, ch);
