@@ -33,6 +33,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Windows.Forms;
@@ -92,6 +93,33 @@ namespace lumina.ui
 
         /* --------------------------------------------------------- selfcheck */
 
+        // WinExe no tiene consola: adjuntarse a la del proceso padre (la CI)
+        // hace visible la salida del selfcheck en el log del runner. Si no hay
+        // consola padre (doble clic), queda silencioso — el archivo de log
+        // siempre queda en data\logs.
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool AttachConsole(uint dwProcessId);
+
+        private const uint ATTACH_PARENT_PROCESS = 0xFFFFFFFF;
+
+        private static void AttachParentConsole()
+        {
+            try
+            {
+                if (AttachConsole(ATTACH_PARENT_PROCESS))
+                {
+                    // Redirigir los writers estándar a la consola recién adjunta.
+                    StreamWriter so = new StreamWriter(Console.OpenStandardOutput());
+                    so.AutoFlush = true;
+                    Console.SetOut(so);
+                    StreamWriter se = new StreamWriter(Console.OpenStandardError());
+                    se.AutoFlush = true;
+                    Console.SetError(se);
+                }
+            }
+            catch (Exception) { /* diagnóstico best-effort */ }
+        }
+
         /// <summary>
         /// Verificación integral SIN GUI: motor nativo, BD temporal, parsers del
         /// núcleo y exportadores PPTX/PDF. Devuelve 0 si TODO pasa; 2 si algo
@@ -100,6 +128,7 @@ namespace lumina.ui
         /// </summary>
         private static int RunSelfCheck()
         {
+            AttachParentConsole();   // mejor esfuerzo: ver la salida en la CI
             WriteSessionLog();
             int failures = 0;
 

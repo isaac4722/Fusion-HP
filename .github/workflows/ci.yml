@@ -511,6 +511,23 @@ jobs:
           # auto-verifica (motor nativo + BD + parsers + exportadores).
           $stage = "staging/LuminaPresentation-${{ matrix.arch }}"
 
+          # Función de diagnóstico: vuelca el log de sesión del selfcheck al
+          # log del runner (el exe es WinExe: su salida no aparece sin esto).
+          function DumpSelfcheckLog([string]$root, [string]$variant) {
+            $logDir = Join-Path $root 'data/logs'
+            if (Test-Path $logDir) {
+              $last = Get-ChildItem $logDir -Filter '*.log' |
+                      Sort-Object LastWriteTime | Select-Object -Last 1
+              if ($last) {
+                Write-Host "===== data\logs\$($last.Name) ($variant) ====="
+                Get-Content $last.FullName | ForEach-Object { Write-Host "  $_" }
+                Write-Host '===== fin del log de sesión ====='
+              }
+            } else {
+              Write-Host "(sin data\logs\ para $variant — el proceso murió antes de escribir el log)"
+            }
+          }
+
           # .NET 3.5 real para la baseline (para probar sobre CLR2). Si el
           # runner no puede instalarlo, el humo net35 bajo CLR4 es INFORMATIVO:
           # una BD real de usuario con solo-4.8 siempre usará la variante net48
@@ -535,6 +552,7 @@ jobs:
                  -ArgumentList '--selfcheck' -WorkingDirectory "$stage" -PassThru -Wait
           Write-Host "net48 --selfcheck exit code: $($p48.ExitCode)"
           if ($p48.ExitCode -ne 0) {
+            DumpSelfcheckLog $stage 'net48'
             Write-Host "::error::La variante net48 no pasó el selfcheck (código $($p48.ExitCode))"
             exit 1
           }
@@ -544,6 +562,7 @@ jobs:
                  -ArgumentList '--selfcheck' -WorkingDirectory "$stage" -PassThru -Wait
           Write-Host "net35 --selfcheck exit code: $($p35.ExitCode)"
           if ($p35.ExitCode -ne 0) {
+            DumpSelfcheckLog $stage 'net35'
             if ($has35) {
               Write-Host "::error::La variante net35 FALLÓ con .NET 3.5 presente (código $($p35.ExitCode))"
               exit 1
