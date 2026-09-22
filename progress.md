@@ -459,3 +459,13 @@
 - Docs: README (novedades+descargas+arquitectura+compilar+historial), docs/export.md, docs/integrations.md, docs/triggers.md, docs/roadmap.md (diferido con plan técnico: PCO/Drive OAuth bloqueados por credenciales del propietario, OSIS, resaltado bíblico, import PPTX, JSLib, codecs, firma) y AGENT.md del repo (contrato de 9 pasos adaptado al stack real).
 - Bloqueos: ninguno.
 - Siguiente: push → CI verde → tag v5.0.0 → release (zips x86/x64 + SHA256SUMS) → verificación de assets.
+
+## 2026-09-23 — CIERRE v5.0.0 «SINERGIA»: CI verde completo, tag y release verificada
+- Run de main (35758997318): los 9 jobs bloqueantes SUCCESS (núcleo x86/x64/Linux, capa C# con el NUEVO gate de exportadores python-pptx+pypdf, interop x86/x64 «POC PASS 12/12», empaquetado x86/x64); clrhost-poc sigue INFORMATIVO (continue-on-error) por el entorno del runner windows-2025 — conocido y documentado desde v3.0.0.
+- Run del tag v5.0.0 (35760141435): mismo resultado + **Release SUCCESS**. CI verde al PRIMER intento en ambos runs.
+- **Release v5.0.0 PUBLICADA** (draft=false): `LuminaPresentation-5.0.0-win-x64.zip` (2299 KB) + `-win-x86.zip` (2116 KB) + `SHA256SUMS.txt`.
+- Verificación independiente post-publicación (descarga real): **SHA256 idénticos** a los publicados (8e04ef89… x64 · f0ec4640… x86); **gate `verify_portable.py` OK en ambos** (layout completo, 3 PE por arquitectura coherentes, 22 exports contractuales de LuminaCore.dll); **versión 5.0.0 en ambas DLL sin restos de 4.2.0**; launcher con título «LuminaPresentation v5.0.0 «SINERGIA»» y README.txt del paquete actualizado con las novedades.
+- Notas para el siguiente ciclo: VS_VERSIONINFO en LuminaPresentation.exe sigue informativo (heredado); clrhost en windows-2019 como alternativa para gatear la vía C (roadmap §Infra); lo diferido con plan técnico queda en docs/roadmap.md (PCO/Drive OAuth requieren credenciales del propietario, OSIS, resaltado bíblico, import PPTX, JSLib, codecs mkv/webm, tercera salida, firma de código).
+- Gates: CI main=success (primer intento) · CI tag=success + release publicada · SHA256=exactos · verify_portable=OK x86 y x64 · versión=5.0.0 sin restos · arnés local=20/20 · validate-export=PASS.
+- Bloqueos: ninguno.
+- Siguiente: ninguna — v5.0.0 «SINERGIA» cerrada: el programa cumple los tres componentes del spec (motor en vivo + editor/exportación + API/activadores/remoto) en Win7 SP1 x32 → Win11 x64, autocontenido, con CI de gates y release verificada de extremo a extremo.
