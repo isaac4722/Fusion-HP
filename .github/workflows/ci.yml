@@ -164,24 +164,32 @@ jobs:
           dotnet run --project managed/Tests --configuration Release --framework net8.0
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Publicar UI net48 (self-contained false)
+      - name: Publicar UI net48 POR ARQUITECTURA (x86 y x64)
         shell: pwsh
         run: |
-          dotnet publish managed/FusionHP.UI -f net48 -c Release --self-contained false
+          dotnet publish managed/FusionHP.UI -f net48 -c Release --self-contained false -p:PlatformTarget=x86
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Move-Item managed/FusionHP.UI/bin/Release/net48/publish managed/FusionHP.UI/bin/Release/net48/publish-x86
+          dotnet publish managed/FusionHP.UI -f net48 -c Release --self-contained false -p:PlatformTarget=x64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Move-Item managed/FusionHP.UI/bin/Release/net48/publish managed/FusionHP.UI/bin/Release/net48/publish-x64
 
       - name: Preparar artefacto «managed»
         shell: pwsh
         run: |
           $stage = 'artifacts-managed'
           New-Item -ItemType Directory -Force -Path `
-            "$stage/ui-publish","$stage/poc-net48","$stage/poc-net35",`
+            "$stage/ui-publish-x86","$stage/ui-publish-x64","$stage/poc-net48","$stage/poc-net35",`
             "$stage/pocfacade-net48","$stage/tests-net48" | Out-Null
-          # UI net48 publicada (para el paquete portable)
-          Copy-Item managed/FusionHP.UI/bin/Release/net48/publish/* "$stage/ui-publish/"
-          # Respaldo: si el publish dejó el exe en otra carpeta, copiar del build
-          if (-not (Test-Path "$stage/ui-publish/FusionHP.exe")) {
-            Copy-Item managed/FusionHP.UI/bin/Release/net48/FusionHP.exe "$stage/ui-publish/"
+          # UI net48 publicada POR ARQUITECTURA (para el paquete portable)
+          Copy-Item managed/FusionHP.UI/bin/Release/net48/publish-x86/* "$stage/ui-publish-x86/"
+          Copy-Item managed/FusionHP.UI/bin/Release/net48/publish-x64/* "$stage/ui-publish-x64/"
+          # Respaldo: si un publish dejó el exe en otra carpeta, copiar del build
+          if (-not (Test-Path "$stage/ui-publish-x86/FusionHP.exe")) {
+            Copy-Item managed/FusionHP.UI/bin/Release/net48/FusionHP.exe "$stage/ui-publish-x86/"
+          }
+          if (-not (Test-Path "$stage/ui-publish-x64/FusionHP.exe")) {
+            Copy-Item managed/FusionHP.UI/bin/Release/net48/FusionHP.exe "$stage/ui-publish-x64/"
           }
           # PoC.Managed (binarios net48 y net35)
           Copy-Item managed/PoC/PoC.Managed/bin/Release/net48/* "$stage/poc-net48/"
@@ -396,7 +404,7 @@ jobs:
           $stage = "staging/Fusion-HP-${{ matrix.arch }}"
           New-Item -ItemType Directory -Force -Path "$stage/resources/data" | Out-Null
           Copy-Item blaunch/Release/FusionLauncher.exe "$stage/"
-          Copy-Item artifacts/managed/ui-publish/FusionHP.exe "$stage/"
+          Copy-Item "artifacts/managed/ui-publish-${{ matrix.arch }}/FusionHP.exe" "$stage/"
           Copy-Item "artifacts/native-${{ matrix.arch }}/FusionCore.dll" "$stage/"
           Copy-Item resources/data/bible_rvr1909.json "$stage/resources/data/"
           # FusionHP35.exe: RESERVADO para cuando FusionHP.UI multi-apunte net35.
