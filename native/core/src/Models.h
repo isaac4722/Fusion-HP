@@ -86,7 +86,7 @@ struct Song {
 
 /* ------------------------------- Escenario ------------------------------ */
 struct ScenarioItem {
-    std::string kind;         // "song" | "scripture" | "blank" | "image" | "text"
+    std::string kind;         // "song" | "scripture" | "blank" | "image" | "text" | "video"
     std::string title;
     Song       song;          // kind=song
     std::string ref;          // kind=scripture ("Jn 3:16-18")
@@ -94,6 +94,8 @@ struct ScenarioItem {
     std::string text;         // kind=text/scripture crudo (versos separados por \n)
     std::string imagePath;    // kind=image
     int   maxLinesPerSlide = 4;  // kind=text
+    int   versesPerSlide = 1;    // kind=scripture (v5.2.0: era "reservado" — el
+                                 // motor ahora lo HONRA; antes siempre 1/slide)
 };
 
 struct Scenario {

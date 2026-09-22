@@ -1,5 +1,5 @@
 // ============================================================================
-//  LuminaPresentation Suite v5.1.1 «APERTURA» — managed/Lumina.UI/Program.cs
+//  LuminaPresentation Suite v5.2.0 «MOTOR» — managed/Lumina.UI/Program.cs
 //  Copyright (c) 2026 Isaac. Licencia View-Only.
 // ============================================================================
 //  Program.cs : punto de entrada WinForms con blindaje anti-crash.
@@ -36,6 +36,18 @@
 //     en ambas variantes ANTES de empaquetar: un paquete cuya ventana no se
 //     pueda construir NO puede volver a publicarse.
 //
+//  v5.2.0 «MOTOR» (lección del bug de v5.1.1 en campo — Win7 SP1 x86):
+//   * El CRT/STL estático de MSVC arrastra GetSystemTimePreciseAsFileTime
+//     (Win8+) como import ESTÁTICO → LoadLibrary(LuminaCore.dll) falla →
+//     la app abría en «modo limitado» (núcleo null) y el botón de la Biblia
+//     lanzaba NullReferenceException en LoadScenarioFromItems.
+//     Fix de raíz: /DELAYLOAD + hook (native/core/src/Win7Compat.cpp) y
+//     gate de imports (tools/verify_win7_imports.py) en la CI.
+//   * Modo  --flowcheck : ejercita los FLUJOS reales de la UI headless:
+//     (1) modo limitado simulado (núcleo null → «Cargar al escenario» debe
+//     avisar, JAMÁS lanzar) y (2) flujo feliz completo (BD temporal con
+//     versículos → pasaje al escenario → slides en vivo). Sale 0/4.
+//
 //  Todo queda registrado en  data/logs/lumina-AAAA-MM-DD_HHMMSS.log  con el
 //  entorno completo (SO, bits, .NET, presencia de LuminaCore.dll, rutas y
 //  permisos) para soporte remoto sin herramientas del usuario.
@@ -56,7 +68,7 @@ namespace lumina.ui
     internal static class Program
     {
         private const string AppName = "LuminaPresentation Suite";
-        private const string AppVersion = "5.1.1";
+        private const string AppVersion = "5.2.0";
 
         /// <summary>Ruta del log de la sesión en curso (null si aún no hay).</summary>
         private static string _logPath;
@@ -68,12 +80,15 @@ namespace lumina.ui
             string[] args = Environment.GetCommandLineArgs();
             bool selfcheck = false;
             bool uicheck = false;
+            bool flowcheck = false;
             foreach (string a in args)
             {
                 if (string.Equals(a, "--selfcheck", StringComparison.OrdinalIgnoreCase))
                     selfcheck = true;
                 else if (string.Equals(a, "--uicheck", StringComparison.OrdinalIgnoreCase))
                     uicheck = true;
+                else if (string.Equals(a, "--flowcheck", StringComparison.OrdinalIgnoreCase))
+                    flowcheck = true;
             }
             if (selfcheck)
             {
@@ -83,6 +98,11 @@ namespace lumina.ui
             if (uicheck)
             {
                 RunUiCheck();   // sale por sí mismo (Environment.Exit) con 0/3
+                return;
+            }
+            if (flowcheck)
+            {
+                RunFlowCheck(); // sale por sí mismo (Environment.Exit) con 0/4
                 return;
             }
 
@@ -334,6 +354,146 @@ namespace lumina.ui
                 : "UICHECK FAIL (" + failures + " fallo/s)");
             LogLine(failures == 0 ? "UICHECK PASS" : "UICHECK FAIL(" + failures + ")");
             Environment.Exit(failures == 0 ? 0 : 3);
+        }
+
+        /* ---------------------------------------------------------- flowcheck */
+
+        /// <summary>
+        /// v5.2.0 «MOTOR»: verificación headless de los FLUJOS de usuario —
+        /// el eslabón que faltaba entre «la ventana se construye» (uicheck) y
+        /// «el binario responde» (selfcheck). Motivo: el bug de v5.1.1 en
+        /// campo — en Win7 SP1 el núcleo no cargaba (import estático Win8+),
+        /// la app abría en modo limitado y «Cargar al escenario» lanzaba
+        /// NullReferenceException en LoadScenarioFromItems. Ni el selfcheck
+        /// ni el uicheck lo detectaban.
+        ///
+        /// Ejercita, sobre el MISMO binario que se va a empaquetar:
+        ///  (1) Modo limitado simulado (núcleo null por reflexión): el flujo
+        ///      Biblia → «Cargar al escenario» debe avisar en la barra de
+        ///      estado y NO lanzar NINGUNA excepción.
+        ///  (2) Flujo feliz completo: BD temporal con versículos propios →
+        ///      pasaje «Jn 3:16» al escenario → _slides con contenido.
+        /// Sale con Environment.Exit: 0 = PASS · 4 = FAIL.
+        /// Compatible con C# 3.0 (net35): sin dynamic ni dinámicos.
+        /// </summary>
+        private static void RunFlowCheck()
+        {
+            AttachParentConsole();   // mejor esfuerzo: ver la salida en la CI
+            WriteSessionLog();
+            int failures = 0;
+            string tempDb = null;
+            try
+            {
+                Application.EnableVisualStyles();
+                Application.SetCompatibleTextRenderingDefault(false);
+
+                using (MainForm form = new MainForm())
+                {
+                    System.Reflection.FieldInfo fEngine = FieldOf(typeof(MainForm), "_engine");
+                    System.Reflection.FieldInfo fDbOpen = FieldOf(typeof(MainForm), "_dbOpen");
+                    System.Reflection.FieldInfo fSlides = FieldOf(typeof(MainForm), "_slides");
+                    System.Reflection.FieldInfo fTxtRef = FieldOf(typeof(MainForm), "_txtRef");
+                    System.Reflection.MethodInfo mLoad = MethodOf(typeof(MainForm),
+                        "LoadScriptureToStage");
+
+                    // ---------- (1) MODO LIMITADO: núcleo caído, JAMÁS lanzar ----------
+                    object savedEngine = fEngine.GetValue(form);
+                    fEngine.SetValue(form, null);
+                    try
+                    {
+                        mLoad.Invoke(form, null);
+                        Console.WriteLine("flowcheck: Biblia→Escenario con núcleo caído OK (aviso, sin excepción)");
+                        LogLine("flowcheck: modo limitado OK (sin NullReferenceException)");
+                    }
+                    catch (System.Reflection.TargetInvocationException tie)
+                    {
+                        // Este es EXACTAMENTE el bug de campo v5.1.1.
+                        Console.WriteLine("flowcheck FALLO (núcleo caído): " + tie.InnerException);
+                        LogLine("flowcheck FALLO (núcleo caído): " + tie.InnerException);
+                        failures++;
+                    }
+                    finally
+                    {
+                        fEngine.SetValue(form, savedEngine);
+                    }
+
+                    // ---------- (2) FLUJO FELIZ: BD temporal → pasaje → slides ----------
+                    try
+                    {
+                        if (savedEngine == null)
+                            throw new InvalidOperationException(
+                                "el motor no arrancó en este entorno (no se puede probar el flujo feliz)");
+                        lumina.bridge.LuminaEngine engine =
+                            (lumina.bridge.LuminaEngine)savedEngine;
+
+                        tempDb = Path.Combine(Path.GetTempPath(),
+                            "lumina-flowcheck-" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".db");
+                        int st = engine.DbOpen(tempDb);
+                        if (st != 0) throw new InvalidOperationException("DbOpen=" + st);
+                        string ins = engine.DbExec(LuminaStorage.BuildExecJson(
+                            "INSERT INTO bible(version,book,chapter,verse,text) VALUES (?,?,?,?,?)",
+                            new object[] { "TEST", (long)43, (long)3, (long)16,
+                                           "Porque de tal manera amó Dios al mundo…" }));
+                        if (ins == null) throw new InvalidOperationException("INSERT sin respuesta");
+
+                        fDbOpen.SetValue(form, true);
+                        System.Windows.Forms.TextBox txtRef =
+                            (System.Windows.Forms.TextBox)fTxtRef.GetValue(form);
+                        txtRef.Text = "Jn 3:16";
+                        mLoad.Invoke(form, null);
+
+                        System.Collections.Generic.List<SlideView> slides =
+                            (System.Collections.Generic.List<SlideView>)fSlides.GetValue(form);
+                        if (slides == null || slides.Count == 0)
+                            throw new InvalidOperationException(
+                                "el pasaje no produjo slides (¿el núcleo no resolvió el versículo?)");
+                        Console.WriteLine("flowcheck: flujo feliz Biblia→Escenario OK ("
+                                          + slides.Count + " slide/s)");
+                        LogLine("flowcheck: flujo feliz OK (" + slides.Count + " slides)");
+                    }
+                    catch (System.Reflection.TargetInvocationException tie)
+                    {
+                        Console.WriteLine("flowcheck FALLO (flujo feliz): " + tie.InnerException);
+                        LogLine("flowcheck FALLO (flujo feliz): " + tie.InnerException);
+                        failures++;
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine("flowcheck FALLO (flujo feliz): " + ex.Message);
+                        LogLine("flowcheck FALLO (flujo feliz): " + ex);
+                        failures++;
+                    }
+                }
+                Console.WriteLine("flowcheck: MainForm liberada OK");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("flowcheck FALLO (construcción): " + ex);
+                LogLine("flowcheck FALLO (construcción): " + ex);
+                failures++;
+            }
+            finally
+            {
+                if (tempDb != null) { try { File.Delete(tempDb); } catch (Exception) { } }
+            }
+
+            Console.WriteLine(failures == 0
+                ? "FLOWCHECK PASS (" + AppVersion + ")"
+                : "FLOWCHECK FAIL (" + failures + " fallo/s)");
+            LogLine(failures == 0 ? "FLOWCHECK PASS" : "FLOWCHECK FAIL(" + failures + ")");
+            Environment.Exit(failures == 0 ? 0 : 4);
+        }
+
+        private static System.Reflection.FieldInfo FieldOf(System.Type t, string name)
+        {
+            return t.GetField(name, System.Reflection.BindingFlags.NonPublic
+                | System.Reflection.BindingFlags.Instance);
+        }
+
+        private static System.Reflection.MethodInfo MethodOf(System.Type t, string name)
+        {
+            return t.GetMethod(name, System.Reflection.BindingFlags.NonPublic
+                | System.Reflection.BindingFlags.Instance);
         }
 
         /* ----------------------------------------------------------- handlers */

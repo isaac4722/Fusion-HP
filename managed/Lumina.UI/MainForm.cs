@@ -1,5 +1,5 @@
 // ============================================================================
-//  LuminaPresentation Suite v4.2.0 «ACORDES» — managed/Lumina.UI/MainForm.cs
+//  LuminaPresentation Suite v5.2.0 «MOTOR» — managed/Lumina.UI/MainForm.cs
 //  Copyright (c) 2026 Isaac. Licencia View-Only.
 // ============================================================================
 //  MainForm.cs : ventana principal (WinForms, todo el layout en código — sin
@@ -22,6 +22,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Globalization;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Windows.Forms;
@@ -468,7 +469,7 @@ namespace lumina.ui
     public sealed class MainForm : Form
     {
         private const string AppName = "LuminaPresentation Suite";
-        private const string AppVersion = "5.1.1";
+        private const string AppVersion = "5.2.0";
         private const string AppTitle = AppName + " — v" + AppVersion;
 
         /* ------------------------------------------------------------ servicios */
@@ -2466,6 +2467,10 @@ namespace lumina.ui
         /// Crea el motor nativo. Si falla (DLL ausente, bitness, memoria…), la
         /// ventana ABRE igual en «modo limitado»: chip Núcleo rojo + avisos en
         /// cada acción. Jamás deja tirar la aplicación por el núcleo.
+        /// v5.2.0 «MOTOR»: el fallo queda COMPLETO en el log de sesión
+        /// (excepción + Win32 GetLastError de un LoadLibrary manual) — el bug
+        /// v5.1.1 en campo («carga la GUI pero más nada») no dejaba rastro
+        /// del POR QUÉ; ahora el log responde en la primera línea de soporte.
         /// </summary>
         private void CreateEngine()
         {
@@ -2475,11 +2480,18 @@ namespace lumina.ui
                 _engine = LuminaEngine.Create(headless, OnEngineEventRaw, _uiCtx);
                 _engine.UiEventReceived += OnEngineUiEvent;
                 _chipCore.SetState("Núcleo " + SafeCoreVersion(), UiTheme.Ok);
+                Program.LogLine("Núcleo: ACTIVO (" + SafeCoreVersion()
+                    + (headless ? ", headless)" : ", proyección Win32)"));
             }
             catch (Exception ex)
             {
                 _engine = null;
                 _chipCore.SetState("Núcleo: error", UiTheme.Err);
+                // v5.2.0: diagnóstico completo en el log — con esto un log de
+                // campo identifica la causa sin preguntar al usuario nada.
+                Program.LogLine("Núcleo: FALLO — " + ex.GetType().Name + ": " + ex.Message);
+                Program.LogLine("Núcleo: detalle «" + ex + "»");
+                Program.LogLine("Núcleo: diagnóstico LoadLibrary: " + NativeLoadDiagnostic());
                 try
                 {
                     MessageBox.Show(this,
@@ -2487,6 +2499,8 @@ namespace lumina.ui
                         ex.Message + "\n\n" +
                         "La ventana abrirá en MODO LIMITADO: la interfaz funciona, pero " +
                         "proyección, base de datos e importaciones requieren el núcleo.\n\n" +
+                        "El detalle técnico quedó registrado en el log de la sesión " +
+                        "(data\\logs).\n\n" +
                         "Solución habitual: extraiga el ZIP completo en una carpeta propia " +
                         "y ejecute LuminaLauncher.exe desde ahí.",
                         AppName + " — núcleo no disponible",
@@ -2495,6 +2509,59 @@ namespace lumina.ui
                 catch (Exception) { /* la ventana vale más que el diálogo */ }
             }
         }
+
+        /// <summary>
+        /// v5.2.0: sondeo manual de carga de LuminaCore.dll para el log —
+        /// traduce el GetLastError del loader a texto accionable
+        /// (126 = dependencia ausente, 127 = export inexistente → API Win8+
+        /// colada como import estático, 193 = bitness incorrecto).
+        /// Solo Windows; best-effort, nunca lanza.
+        /// </summary>
+        private static string NativeLoadDiagnostic()
+        {
+            if (!IsWindows()) return "(no Windows: motor headless de desarrollo)";
+            try
+            {
+                string dir = AppDomain.CurrentDomain.BaseDirectory;
+                string path = System.IO.Path.Combine(dir, "LuminaCore.dll");
+                if (!File.Exists(path))
+                    return "LuminaCore.dll AUSENTE en " + dir;
+                uint err = LoadLibraryForDiagnostic(path);
+                if (err == 0) return "LoadLibrary OK — el fallo es de inicialización, no de carga";
+                string reason;
+                switch (err)
+                {
+                    case 126: reason = "126 ERROR_MOD_NOT_FOUND: falta una DLL dependiente"; break;
+                    case 127: reason = "127 ERROR_PROC_NOT_FOUND: la DLL importa una API que este Windows no tiene (¿import Win8+ estático?)"; break;
+                    case 193: reason = "193 ERROR_BAD_EXE_FORMAT: bitness incorrecto (x86/x64)"; break;
+                    case 5:   reason = "5 ERROR_ACCESS_DENIED: antivirus o permisos"; break;
+                    default:  reason = err + " (ver documentación de GetLastError)"; break;
+                }
+                return "LoadLibrary GetLastError=" + reason;
+            }
+            catch (Exception ex)
+            {
+                return "(sondeo no disponible: " + ex.Message + ")";
+            }
+        }
+
+        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        private static extern IntPtr LoadLibraryW(string lpFileName);
+
+        /// <summary>Carga y libera la DLL nativa: devuelve GetLastError (0 = OK).</summary>
+        private static uint LoadLibraryForDiagnostic(string path)
+        {
+            IntPtr h = LoadLibraryW(path);
+            if (h != IntPtr.Zero)
+            {
+                FreeLibrary(h);
+                return 0;
+            }
+            return (uint)Marshal.GetLastWin32Error();
+        }
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool FreeLibrary(IntPtr hModule);
 
         /// <summary>Guardia para toda acción que necesita el motor.</summary>
         private bool RequireEngine()
@@ -3957,6 +4024,7 @@ namespace lumina.ui
 
         private void ToggleBlack()
         {
+            if (!RequireEngine()) return;   // v5.2.0: defensa interna
             _engine.Black(!_black);
         }
 
@@ -4113,6 +4181,34 @@ namespace lumina.ui
 
         private void LoadScenarioFromItems(IList<ScenarioItem> items, string name)
         {
+            // v5.2.0 «MOTOR» — blindaje del bug de campo v5.1.1: el flujo
+            // Biblia → «Cargar al escenario» llegaba aquí con el núcleo caído
+            // (modo limitado) y _engine.LoadScenario lanzaba
+            // NullReferenceException. Contrato del método: NUNCA lanza;
+            // sin datos o sin núcleo → mensaje claro en la barra de estado.
+            if (!RequireEngine()) return;                      // núcleo caído → aviso, no crash
+            if (items == null || items.Count == 0)
+            {
+                Status("No hay ítems que cargar al escenario.");
+                return;
+            }
+            name = name ?? string.Empty;
+            if (_theme == null) _theme = new Theme();           // defensa adicional
+            try
+            {
+                LoadScenarioFromItemsCore(items, name);
+            }
+            catch (Exception ex)
+            {
+                // La ventana vale más que la operación: registrar y avisar.
+                Status("No se pudo cargar el escenario: " + ex.Message);
+                try { Program.LogLine("LoadScenarioFromItems FALLO: " + ex); }
+                catch (Exception) { }
+            }
+        }
+
+        private void LoadScenarioFromItemsCore(IList<ScenarioItem> items, string name)
+        {
             string json = ScenarioBuilder.BuildScenarioJson(name, _theme, items);
             int st = _engine.LoadScenario(json);
             if (st != LuminaStatus.Ok)
@@ -4141,6 +4237,7 @@ namespace lumina.ui
 
         private void LoadSongToStage()
         {
+            if (!RequireEngine()) return;   // v5.2.0: sin núcleo → aviso, no crash
             Song s = ScenarioBuilder.SongFromEditor(
                 _txtSongTitle.Text, _txtSongArtist.Text, _txtSongLyrics.Text,
                 _chkHymnMode.Checked, (int)_numTranspose.Value);
@@ -4155,6 +4252,7 @@ namespace lumina.ui
 
         private void LoadScriptureToStage()
         {
+            if (!RequireEngine()) return;   // v5.2.0: sin núcleo → aviso, no crash (bug de campo v5.1.1)
             string reference = _txtRef.Text.Trim();
             if (reference.Length == 0)
             {
@@ -4162,8 +4260,14 @@ namespace lumina.ui
                 return;
             }
             string version = _txtVersion.Text.Trim();
+            // v5.2.0 «MOTOR»: resolver los versículos AQUÍ (cuando hay BD) y
+            // entregarlos como texto del ítem. Así la lista «En vivo», el
+            // monitor de escenario y la exportación PPTX/PDF muestran el
+            // pasaje REAL — no solo lo proyecta el núcleo. El motor usa el
+            // texto tal cual (misma consulta que haría él internamente).
+            string versesText = ResolveScriptureText(reference, version);
             ScenarioItem it = ScenarioBuilder.ScriptureItem(
-                reference, version, (int)_numVersesPerSlide.Value, string.Empty);
+                reference, version, (int)_numVersesPerSlide.Value, versesText);
             if (!_dbOpen)
                 Status("Nota: sin BD abierta el núcleo no puede resolver los versículos.");
             LoadScenarioFromItems(new ScenarioItem[] { it }, reference);
@@ -4171,6 +4275,45 @@ namespace lumina.ui
             {
                 _settings.LastBibleVersion = version;
                 SaveSettings();
+            }
+        }
+
+        /// <summary>
+        /// v5.2.0: texto de los versículos de una referencia, desde la BD del
+        /// motor (mismo criterio que Engine::Flatten — bind por versión, rango
+        /// desde el verso inicial, tope 120). Sin BD o referencia inválida →
+        /// "" (el motor intentará su propia resolución al aplanar).
+        /// </summary>
+        private string ResolveScriptureText(string reference, string version)
+        {
+            if (_engine == null || !_dbOpen) return string.Empty;
+            try
+            {
+                string resJson = LuminaEngine.BibleRefResolve(reference);
+                Dictionary<string, object> o = MiniJson.Parse(resJson);
+                if (MiniJson.GetInt(o, "valid", 0) != 1) return string.Empty;
+                long book = MiniJson.GetInt(o, "book", 0);
+                long chapter = MiniJson.GetInt(o, "chapter", 0);
+                long verse = MiniJson.GetInt(o, "verse", 0);
+                long vFrom = verse > 0 ? verse : 1;
+                const int kMaxVerses = 120;
+                string q = LuminaStorage.BuildExecJson(
+                    "SELECT text FROM bible WHERE version=?1 AND book=?2 AND chapter=?3 " +
+                    "AND verse>=?4 AND verse<=?5 ORDER BY verse",
+                    new object[] { version, book, chapter, vFrom, vFrom + kMaxVerses - 1 });
+                string rows = _engine.DbExec(q);
+                List<List<object>> r = LuminaStorage.Rows(rows);
+                StringBuilder sb = new StringBuilder();
+                foreach (List<object> row in r)
+                {
+                    if (sb.Length > 0) sb.Append('\n');
+                    sb.Append(Cell(row, 0));
+                }
+                return sb.ToString();
+            }
+            catch (Exception)
+            {
+                return string.Empty;   // el motor hará su propio intento
             }
         }
 
@@ -4970,6 +5113,7 @@ namespace lumina.ui
         /// </summary>
         private void InsertBibleRows(string version, List<object> rows, long expectedVerses)
         {
+            if (_engine == null) { Status("Sin núcleo no se puede importar."); return; }   // v5.2.0
             try
             {
                 string beginRes = _engine.DbExec(LuminaStorage.RawSqlRequest("BEGIN"));

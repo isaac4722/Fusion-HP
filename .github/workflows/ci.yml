@@ -50,7 +50,7 @@ concurrency:
 
 env:
   DOTNET_VERSION: '8.0.x'
-  APP_VERSION: '5.1.1'
+  APP_VERSION: '5.2.0'
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -90,6 +90,18 @@ jobs:
           Copy-Item build/native/Release/LuminaCore.dll        "dist/${{ matrix.arch }}/"
           Copy-Item build/native/Release/lumina_selftest.exe   "dist/${{ matrix.arch }}/"
           Copy-Item build/native/Release/lumina_poc_native.exe "dist/${{ matrix.arch }}/"
+
+      # v5.2.0 «MOTOR»: gate de compatibilidad Win7 SP1 — ninguna API Win8+
+      # (GetSystemTimePreciseAsFileTime, WaitOnAddress, PathCch*…) puede entrar
+      # como import ESTÁTICO en el binario que se distribuye: en Win7 SP1,
+      # LoadLibrary falla con ERROR_PROCEDURE_NOT_FOUND y la app abre en
+      # «modo limitado» («carga la GUI pero más nada»). Este gate reproduce
+      # esa condición ANTES de publicar (lección del bug de campo v5.1.1).
+      - name: GATE Win7 SP1 — tabla de importaciones de LuminaCore.dll
+        shell: pwsh
+        run: |
+          python tools/verify_win7_imports.py "dist/${{ matrix.arch }}/LuminaCore.dll"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: GATE lumina_selftest (exit 0)
         shell: pwsh
@@ -480,7 +492,7 @@ jobs:
           cmake --build blaunch --config Release --parallel $env:NUMBER_OF_PROCESSORS
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: 'Armar layout portable v5.1.1 (net48 + net35 + raíz compartida)'
+      - name: 'Armar layout portable v5.2.0 (net48 + net35 + raíz compartida)'
         shell: pwsh
         run: |
           $stage = "staging/LuminaPresentation-${{ matrix.arch }}"
@@ -508,7 +520,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path "$stage/data" | Out-Null
 
           @'
-          LuminaPresentation v5.1.1 «APERTURA» — núcleo C++ + interfaz C#
+          LuminaPresentation v5.2.0 «MOTOR» — núcleo C++ + interfaz C#
           =====================================================
 
           PROGRAMA PORTABLE — no requiere instalación ni permisos de
@@ -540,6 +552,16 @@ jobs:
                                   al abrir la base de datos, la app ofrece
                                   instalarla (~31.000 versículos).
 
+          v5.2.0 «MOTOR»: corregido el fallo que dejaba la app «con la GUI
+          pero más nada» en Windows 7 SP1 (reporte de campo): el CRT/STL
+          estático arrastraba un import de una API que NO existe en Win7
+          (GetSystemTimePreciseAsFileTime, de Win8+) → LuminaCore.dll no
+          cargaba → la app abría en modo limitado y «Cargar al escenario»
+          lanzaba NullReferenceException. Ahora esa API se resuelve con
+          delay-load + fallback seguro, la CI audita la tabla de
+          importaciones de cada binario (gate Win7) y ejercita el flujo
+          Biblia→Escenario completo (gate --flowcheck) antes de publicar.
+
           v5.1.1 «APERTURA»: corregido el error que impedía ABRIR la app en
           algunos equipos («Control does not support transparent background
           colors»: el control Chip de la cabecera usaba fondo transparente sin
@@ -557,19 +579,23 @@ jobs:
           Binarios de uso libre · Código fuente bajo Licencia View-Only.
           '@ | Set-Content -Path "$stage/README.txt" -Encoding UTF8
 
-      - name: 'GATE humo: --selfcheck + --uicheck de AMBAS variantes (la app ABRE y la ventana SE CONSTRUYE)'
+      - name: 'GATE humo: --selfcheck + --uicheck + --flowcheck de AMBAS variantes (la app ABRE, la ventana SE CONSTRUYE y los FLUJOS responden)'
         shell: pwsh
         run: |
-          # Este gate existe por dos lecciones de campo:
+          # Este gate existe por tres lecciones de campo:
           #   v5.0.0 — el paquete se publicó sin las DLL gestionadas y la app
           #            moría con FileNotFoundException AL ABRIR → --selfcheck.
           #   v5.1.0 — el control Chip asignaba BackColor=Transparent sin
           #            SupportsTransparentBackColor: ArgumentException en
           #            MainForm..ctor, la app NO ABRÍA… y el --selfcheck (sin
           #            UI) pasaba en verde → --uicheck (v5.1.1).
+          #   v5.1.1 — el núcleo no cargaba en Win7 SP1 (import estático
+          #            Win8+ en el CRT): la app abría en modo limitado y
+          #            «Cargar al escenario» lanzaba NullReferenceException
+          #            → --flowcheck (v5.2.0): flujos reales headless.
           # Ahora el MISMO binario que se va a empaquetar se auto-verifica:
-          # motor nativo + BD + parsers + exportadores (selfcheck) Y la
-          # construcción completa de la ventana principal (uicheck).
+          # motor + BD + exportadores (selfcheck), construcción de la ventana
+          # (uicheck) Y los flujos de usuario (flowcheck).
           $stage = "staging/LuminaPresentation-${{ matrix.arch }}"
 
           # Función de diagnóstico: vuelca el log de sesión del selfcheck al
@@ -662,15 +688,54 @@ jobs:
             }
           }
 
+          # ---- v5.2.0: gate de FLUJOS — Biblia→Escenario, sin excepciones ----
+          # (1) con el núcleo caído (modo limitado simulado): debe avisar,
+          #     JAMÁS lanzar (el bug de campo v5.1.1);
+          # (2) flujo feliz completo: BD temporal → pasaje → slides.
+          Write-Host '--- flowcheck net48 (bloqueante): los FLUJOS responden ---'
+          $p48f = Start-Process -FilePath "$stage/net48/LuminaPresentation.exe" `
+                  -ArgumentList '--flowcheck' -WorkingDirectory "$stage" -PassThru -Wait
+          Write-Host "net48 --flowcheck exit code: $($p48f.ExitCode)"
+          if ($p48f.ExitCode -ne 0) {
+            DumpSelfcheckLog $stage 'net48 flowcheck'
+            Write-Host "::error::La variante net48 no pasó el flowcheck (código $($p48f.ExitCode)) — un flujo de usuario lanza excepción"
+            exit 1
+          }
+
+          Write-Host '--- flowcheck net35 ---'
+          $p35f = Start-Process -FilePath "$stage/net35/LuminaPresentation35.exe" `
+                  -ArgumentList '--flowcheck' -WorkingDirectory "$stage" -PassThru -Wait
+          Write-Host "net35 --flowcheck exit code: $($p35f.ExitCode)"
+          if ($p35f.ExitCode -ne 0) {
+            DumpSelfcheckLog $stage 'net35 flowcheck'
+            if ($has35) {
+              Write-Host "::error::La variante net35 FALLÓ el flowcheck con .NET 3.5 presente (código $($p35f.ExitCode))"
+              exit 1
+            } else {
+              Write-Host "::warning::net35 flowcheck no ejecutable en este runner (sin .NET 3.5): código $($p35f.ExitCode)."
+            }
+          }
+
           # Los checks pudieron crear data\logs\ en el staging: limpiar para que
           # el ZIP distribuido no lleve basura de la fábrica.
           Remove-Item "$stage/data/logs" -Recurse -Force -ErrorAction SilentlyContinue
-          Write-Host 'SELFCHECK+UICHECK PASS (net48 estricto + net35 según entorno)'
+          Write-Host 'SELFCHECK+UICHECK+FLOWCHECK PASS (net48 estricto + net35 según entorno)'
 
       - name: GATE verify_portable (${{ matrix.arch }})
         shell: pwsh
         run: |
           python tools/verify_portable.py "staging/LuminaPresentation-${{ matrix.arch }}" ${{ matrix.arch }}
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # v5.2.0: el gate Win7 también corre sobre el PAQUETE armado (la DLL
+      # que viajará en el ZIP) y sobre el launcher — doble verificación.
+      - name: GATE Win7 SP1 — imports del PAQUETE armado
+        shell: pwsh
+        run: |
+          python tools/verify_win7_imports.py `
+            "staging/LuminaPresentation-${{ matrix.arch }}/net48/LuminaCore.dll" `
+            "staging/LuminaPresentation-${{ matrix.arch }}/net35/LuminaCore.dll" `
+            "staging/LuminaPresentation-${{ matrix.arch }}/LuminaLauncher.exe"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: ZIP + SHA256
@@ -716,14 +781,39 @@ jobs:
       - name: Publicar
         uses: softprops/action-gh-release@v2
         with:
-          name: "LuminaPresentation ${{ github.ref_name }} «APERTURA»"
+          name: "LuminaPresentation ${{ github.ref_name }} «MOTOR»"
           body: |
-            **LuminaPresentation v5.1.1 «APERTURA» — núcleo C++ + interfaz C# (.NET mínimo 3.5 · 4.8 si está disponible)**
+            **LuminaPresentation v5.2.0 «MOTOR» — núcleo C++ + interfaz C# (.NET mínimo 3.5 · 4.8 si está disponible)**
 
             ## Descargas
-            - `LuminaPresentation-5.1.1-win-x86.zip` — **Windows 7 SP1 a Windows 11 (32 bits)**
-            - `LuminaPresentation-5.1.1-win-x64.zip` — **Windows 7 SP1 a Windows 11+ (64 bits)**
+            - `LuminaPresentation-5.2.0-win-x86.zip` — **Windows 7 SP1 a Windows 11 (32 bits)**
+            - `LuminaPresentation-5.2.0-win-x64.zip` — **Windows 7 SP1 a Windows 11+ (64 bits)**
             - `SHA256SUMS.txt` — integridad de los paquetes
+
+            ## ⚠ Corregido en v5.2.0 (crítico — «carga la GUI pero más nada»)
+            Reporte de campo en Windows 7 SP1 x86 con .NET 4.8: la app abría
+            pero NINGUNA acción funcionaba y «Cargar al escenario» (página
+            Biblia) lanzaba `NullReferenceException` en `LoadScenarioFromItems`.
+            **Causa raíz**: el CRT/STL estático de MSVC enlaza
+            `GetSystemTimePreciseAsFileTime` — una API que **solo existe desde
+            Windows 8** — como import ESTÁTICO de `LuminaCore.dll`; en Win7 SP1
+            `LoadLibrary` falla con `ERROR_PROCEDURE_NOT_FOUND` → el núcleo
+            queda en null («modo limitado») → la GUI abre sin motor.
+            Corrección doble:
+            - **Nativo**: `/DELAYLOAD:GetSystemTimePreciseAsFileTime` + hook
+              (`Win7Compat.cpp`) que usa la API real en Win8+ y un fallback
+              seguro (`GetSystemTimeAsFileTime`) en Win7.
+            - **Defensivo**: todos los flujos que tocan el núcleo quedan
+              blindados (aviso en la barra de estado, JAMÁS excepción) y el
+              fallo del núcleo queda registrado con diagnóstico completo
+              (`LoadLibrary` + `GetLastError`) en el log de sesión.
+            Nuevos gates de CI para que NUNCA vuelva a pasar:
+            - **`tools/verify_win7_imports.py`**: audita la tabla de
+              importaciones de cada binario publicado — cero APIs Win8+
+              estáticas, cero runtime dinámico (UCRT/VCRedist).
+            - **`--flowcheck`**: ejercita el flujo Biblia→Escenario completo
+              (con núcleo activo Y en modo limitado simulado) antes de
+              empaquetar. Un flujo que lance excepciones ya no se publica.
 
             ## ⚠ Corregido en v5.1.1 (crítico — la app no abría)
             En v5.1.0, al construir la ventana principal el control `Chip` de la
@@ -782,6 +872,10 @@ jobs:
             - **GATE humo: `--selfcheck` de ambas variantes ANTES de empaquetar.**
             - **GATE UI (v5.1.1): `--uicheck` — ambas variantes construyen la ventana
               principal completa (headless) ANTES de empaquetar.**
+            - **GATE flujos (v5.2.0): `--flowcheck` — Biblia→Escenario completo y en
+              modo limitado simulado, sin excepciones, ANTES de empaquetar.**
+            - **GATE Win7 (v5.2.0): `verify_win7_imports.py` — sin imports estáticos
+              Win8+ ni runtime dinámico en LuminaCore.dll (x86/x64) y launcher.**
             - Empaquetado: auditoría PE `verify_portable` (15 archivos exigidos) + SHA256.
 
             ## Instalación

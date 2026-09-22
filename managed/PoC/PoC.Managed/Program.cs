@@ -229,7 +229,7 @@ namespace lumina.poc
         {
             string v = LuminaEngine.Version();
             Console.WriteLine("        version = \"" + v + "\"");
-            return v.StartsWith("LuminaCore", StringComparison.Ordinal) && v.Contains("5.1");
+            return v.StartsWith("LuminaCore", StringComparison.Ordinal) && v.Contains("5.2");
         }
 
         private static bool CheckHandle(LuminaEngine engine)

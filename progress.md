@@ -573,3 +573,65 @@
 - Siguiente: ninguna — v5.1.1 «APERTURA» cerrada. El error de transparencia que impedía abrir la app
   quedó corregido con doble capa de defensa y el gate --uicheck garantiza que NINGÚN error de
   construcción de la ventana principal pueda volver a publicarse sin que la CI lo detecte primero.
+
+## 2026-09-23 — CICLO v5.2.0 «MOTOR»: «carga la GUI pero más nada» (Win7 SP1) — diagnóstico forense y fix de raíz
+**Reporte de campo** (log lumina-2026-09-22_163606.log, Win7 SP1 x86 + .NET 4.8, paquete 5.1.1 x86):
+la app YA ABRÍA (fix de transparencia v5.1.1 confirmado) pero ninguna acción respondía y «Cargar al
+escenario» (página Biblia) lanzaba `NullReferenceException` en `MainForm.LoadScenarioFromItems` ←
+`LoadScriptureToStage`. Síntoma del usuario: «solo carga la GUI PERO MAS NADA».
+
+**Diagnóstico forense del binario publicado (descarga real del ZIP x86):**
+- La única desreferencia directa del frame del NRE era `_engine.LoadScenario` → **el motor era null**
+  («modo limitado»: la app abría sin núcleo). El log no decía por qué (CreateEngine solo mostraba un
+  MessageBox, no logueaba) — logging corregido en este ciclo.
+- Desensamblado del binario (parser PE propio + capstone): `LuminaCore.dll` importa **ESTÁTICAMENTE**
+  `GetSystemTimePreciseAsFileTime` de KERNEL32 — API que **solo existe desde Windows 8**. La referencia
+  la arrastra el objeto del STL estático de MSVC que implementa `std::condition_variable` (wait y
+  timedwait viven juntos; nuestro código jamás la llama — referencia muerta enlazada por granularidad
+  de objetos). En Win7 SP1: `LoadLibrary` → ERROR_PROCEDURE_NOT_FOUND → P/Invoke falla → núcleo null.
+- Los vecinos del IAT (AcquireSRWLockExclusive / SleepConditionVariableSRW) confirmaron el origen STL.
+
+**Fix de raíz (capa nativa):**
+- `native/core/src/Win7Compat.cpp` (nuevo): hook de delayimp que en Win8+ devuelve la API REAL
+  (precisión µs) y en Win7 el fallback `GetSystemTimeAsFileTime` (grano ~15 ms — de sobra para
+  timeouts de condition_variable).
+- `native/CMakeLists.txt`: `/DELAYLOAD:GetSystemTimePreciseAsFileTime` + `delayimp` (MSVC) → la API
+  sale de la tabla de imports estática; `_WIN32_WINNT=0x0601` explícito (el SDK moderno asume 0x0A00).
+
+**Fix defensivo (capa gestionada — «la ventana vale más que la operación»):**
+- `LoadScenarioFromItems`: guardas (RequireEngine + items null/vacíos + name ?? "" + _theme null) y
+  try/catch que registra en el log de sesión. NUNCA lanza.
+- `LoadScriptureToStage` / `LoadSongToStage` / `ToggleBlack` / `InsertBibleRows`: guardas RequireEngine.
+- `CreateEngine`: el fallo del núcleo queda COMPLETO en el log (excepción + sondeo manual
+  LoadLibraryW/GetLastError con traducción 126/127/193/5) — el próximo log de campo responde solo.
+
+**Fix de calidad del flujo Biblia→Escenario (hueco detectado durante el ciclo):**
+- El texto de los versículos solo vivía en el motor: la lista «En vivo», el monitor de escenario y la
+  exportación PPTX/PDF mostraban slides VACÍAS para pasajes. Ahora `LoadScriptureToStage` resuelve los
+  versículos (misma consulta que el motor) y los entrega como texto del ítem.
+- `versesPerSlide` era «reservado»: el motor SIEMPRE usaba 1. Ahora el struct C++ lo parsea y lo honra
+  (Scripture::BuildSlides) y `FlattenScenario` agrupa igual → lista y proyección ALINEADAS.
+
+**Gates nuevos (impiden recurrencia — «CI sin prueba y error»):**
+- `tools/verify_win7_imports.py`: audita imports ESTÁTICOS de cada PE contra lista de APIs Win8+/Win10+
+  y runtime dinámico prohibido (api-ms-win-crt-*/ucrtbase/vcruntime*). Verificado contra el binario
+  roto v5.1.1: **FAIL** (detecta exactamente el bug) · contra el fix: PASS esperado en CI.
+- `--flowcheck` (Program.cs): (1) modo limitado simulado por reflexión (_engine=null) → «Cargar al
+  escenario» debe AVISAR, jamás lanzar (el bug exacto de campo); (2) flujo feliz completo: BD temporal
+  → INSERT versículos → pasaje Jn 3:16 → slides > 0.
+- CI: gate Win7 en el job nativo (dist/) + sobre el PAQUETE armado (net48/net35 + launcher);
+  `--flowcheck` en el humo de ambas variantes.
+
+**Validación local (Linux, SDK 8.0.425 + nativo GCC):**
+- build Lumina.sln → 0 err/0 warn (net35+net48+net8) · selftest 146/146 · PoC nativo 37/37
+  (aserción de versión 5.1→5.2 en PoCNative.cpp/PoC.Managed/Tests) · tests 23/23 · PoC.Managed 12/12.
+- Arnés local (scripts/flowcheck_local, net8): réplica del flujo feliz a nivel de motor →
+  **FLOWCHECK-LOCAL PASS** (2 versos → 1 slide agrupada por versesPerSlide=2, texto real, ref ok).
+- El delay-load + hook no es verificable en Linux (MSVC-only): la CI lo compila y el gate Win7 lo
+  certifica sobre el binario — si el import siguiera estático, el job nativo FALLA antes de publicar.
+
+**Cobertura vs MDs re-verificada en este ciclo:** 17/17 módulos del spec (sin cambios respecto a
+v5.1.1 — este ciclo fue de corrección de raíz + blindaje, sin superficie nueva).
+- Siguiente: commit → push main → CI verde (selfcheck+uicheck+flowcheck+Win7-imports) → tag v5.2.0 →
+  release → verificación post-publicación (descarga del ZIP x86 + verify_win7_imports sobre lo
+  publicado + gates del run del tag auditados línea a línea).

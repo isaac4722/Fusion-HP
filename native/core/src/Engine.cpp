@@ -19,7 +19,7 @@
 
 namespace lumina {
 
-static const char* kVersion = "5.1.1";
+static const char* kVersion = "5.2.0";
 
 /* ------------------------------------------------------------- helpers -- */
 // (H-a: SlideToJson no usado fue retirado — warning -Wunused-function;
@@ -188,7 +188,9 @@ void Engine::Flatten(std::vector<Slide>* out, std::vector<std::string>* titles,
             }
             std::vector<Slide> sc;
             if (!it.ref.empty() && !verses.empty()) {
-                Scripture::BuildSlides(it.ref, verses, 1, &sc);
+                // v5.2.0: el motor HONRA versesPerSlide del ítem (antes fijo 1)
+                Scripture::BuildSlides(it.ref, verses,
+                                       it.versesPerSlide > 0 ? it.versesPerSlide : 1, &sc);
             } else if (!verses.empty()) {
                 // texto libre agrupado
                 Slide s; s.kind = SLIDE_SCRIPTURE; s.title = it.title;
@@ -261,6 +263,7 @@ LuminaStatus Engine::LoadScenario(const std::string& jsonText) {
                 it.text = io.value("text", std::string());
                 it.imagePath = io.value("imagePath", std::string());
                 it.maxLinesPerSlide = io.value("maxLinesPerSlide", 4);
+                it.versesPerSlide = io.value("versesPerSlide", 1);   // v5.2.0
                 if (io.contains("song") && io["song"].is_object()) loadSong(io["song"], &it);
                 else if (it.kind == "song") {
                     // canción inline (campos de canción al nivel del ítem)

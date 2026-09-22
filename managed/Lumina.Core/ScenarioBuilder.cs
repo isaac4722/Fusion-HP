@@ -155,7 +155,7 @@ namespace lumina.core
                 o["ref"] = it.Ref;
                 o["version"] = it.Version;
                 if (!string.IsNullOrEmpty(it.Text)) o["text"] = it.Text;
-                o["versesPerSlide"] = it.VersesPerSlide; // reservado (núcleo usa 1 hoy)
+                o["versesPerSlide"] = it.VersesPerSlide; // v5.2.0: el núcleo lo honra (agrupa versos/slide)
             }
             if (it.Kind == "text")
             {
@@ -334,7 +334,26 @@ namespace lumina.core
                     string text = MiniJson.GetString(item, "text", string.Empty);
                     if (text.Length > 0)
                         lines.AddRange(text.Replace("\r\n", "\n").Split('\n'));
-                    views.Add(MakeView(views.Count, title, refLabel, lines));
+                    // v5.2.0: agrupar por versículosPorSlide — igual que el
+                    // motor (que ahora HONRA el campo): la lista «En vivo» y la
+                    // proyección quedan ALINEADAS en número de slides.
+                    int per = (int)MiniJson.GetInt(item, "versesPerSlide", 1);
+                    if (per < 1) per = 1;
+                    if (lines.Count == 0)
+                    {
+                        // sin texto (sin BD): una entrada informativa con la referencia
+                        views.Add(MakeView(views.Count, title, refLabel, lines));
+                    }
+                    else
+                    {
+                        for (int i = 0; i < lines.Count; i += per)
+                        {
+                            List<string> group = new List<string>(per);
+                            for (int k = i; k < i + per && k < lines.Count; k++)
+                                group.Add(lines[k]);
+                            views.Add(MakeView(views.Count, title, refLabel, group));
+                        }
+                    }
                     continue;
                 }
 

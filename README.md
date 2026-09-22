@@ -1,4 +1,4 @@
-# LuminaPresentation Suite v5.1.1 «APERTURA»
+# LuminaPresentation Suite v5.2.0 «MOTOR»
 
 **Proyección para iglesias con arquitectura híbrida: núcleo C++17 nativo + interfaz C# (.NET mínimo 3.5 — usa 4.8 si está disponible)**
 — motor de proyección en tiempo real con la agilidad de desarrollo de .NET,
@@ -13,8 +13,8 @@
 
 1. Ir a **[Releases](https://github.com/isaac4722/Fusion-HP/releases)**.
 2. Descargar el paquete para tu arquitectura:
-   - `LuminaPresentation-5.1.1-win-x86.zip` — **Windows 7 SP1 … Windows 11 (32 bits)**
-   - `LuminaPresentation-5.1.1-win-x64.zip` — **Windows 7 SP1 … Windows 11+ (64 bits)**
+   - `LuminaPresentation-5.2.0-win-x86.zip` — **Windows 7 SP1 … Windows 11 (32 bits)**
+   - `LuminaPresentation-5.2.0-win-x64.zip` — **Windows 7 SP1 … Windows 11+ (64 bits)**
 3. Descomprimir el ZIP **completo** y ejecutar **`LuminaLauncher.exe`**.
    **El usuario nunca instala nada**:
    - Windows 10 1903+ / Windows 11 → **.NET Framework 4.8** integrado en el SO
@@ -26,6 +26,26 @@
      + las 3 DLL gestionadas en la carpeta de la variante elegida) y explica con
      claridad qué hacer si falta algo.
    - Ambas variantes comparten la misma carpeta de datos `data\`.
+
+## 🌟 Novedades v5.2.0 «MOTOR»
+
+> **Corrección crítica** (reporte de campo en Win7 SP1 x86 con .NET 4.8):
+> la app abría pero «**solo cargaba la GUI, más nada**» — ninguna acción
+> respondía y «Cargar al escenario» (Biblia) lanzaba `NullReferenceException`
+> en `LoadScenarioFromItems`. **Causa raíz**: el CRT/STL estático de MSVC
+> enlazaba `GetSystemTimePreciseAsFileTime` (API que **solo existe desde
+> Windows 8**) como import **estático** de `LuminaCore.dll` → `LoadLibrary`
+> fallaba en Win7 SP1 con `ERROR_PROCEDURE_NOT_FOUND` → núcleo null →
+> «modo limitado». v5.2.0:
+> - **Fix nativo de raíz**: `/DELAYLOAD` + hook (`Win7Compat.cpp`) — API
+>   real en Win8+, fallback seguro sobre `GetSystemTimeAsFileTime` en Win7.
+> - **Blindaje total de flujos**: toda acción que toca el núcleo avisa en la
+>   barra de estado, **jamás lanza** (además, el fallo del núcleo queda con
+>   diagnóstico completo `LoadLibrary`+`GetLastError` en el log de sesión).
+> - **Gate Win7 en CI** (`tools/verify_win7_imports.py`): audita las tablas
+>   de importación de cada binario publicado — cero APIs Win8+ estáticas.
+> - **Gate de flujos** (`--flowcheck`): Biblia→Escenario completo y en modo
+>   limitado simulado, ANTES de empaquetar.
 
 ## 🌟 Novedades v5.1.1 «APERTURA»
 

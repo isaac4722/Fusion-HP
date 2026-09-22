@@ -104,7 +104,7 @@ int main() {
     CHECK(ApiCall([&](char* o, int32_t c, int32_t* n) {
         return lumina_version(o, c, n);
     }, &v));
-    CHECK(v.find("LuminaCore") == 0 && v.find("5.1") != std::string::npos);
+    CHECK(v.find("LuminaCore") == 0 && v.find("5.2") != std::string::npos);
     std::printf("        version = \"%s\"\n", v.c_str());
 
     /* ---------------------------------------------------- 2 ciclo+UTF-8 */

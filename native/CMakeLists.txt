@@ -18,8 +18,12 @@ set(LUMINA_CORE_SOURCES
 )
 
 if(WIN32)
-    list(APPEND LUMINA_CORE_SOURCES core/src/Renderer.cpp core/src/Projector.cpp)
+    list(APPEND LUMINA_CORE_SOURCES core/src/Renderer.cpp core/src/Projector.cpp
+         core/src/Win7Compat.cpp)
     add_definitions(-DLUMINA_HAS_WIN32=1)
+    # v5.2.0 «MOTOR»: nivel de compatibilidad explícito Win7 SP1. Sin esto el
+    # SDK moderno asume 0x0A00 (Win10) y expone APIs inexistentes en Win7.
+    add_definitions(-D_WIN32_WINNT=0x0601 -DWINVER=0x0601)
 endif()
 
 add_definitions(
@@ -38,7 +42,16 @@ if(NOT MSVC)
     set_source_files_properties(${CMAKE_SOURCE_DIR}/third_party/sqlite3/sqlite3.c
         PROPERTIES COMPILE_OPTIONS "-Wno-stringop-overread")
 else()
-    target_link_libraries(LuminaCore PRIVATE user32 gdi32 gdiplus ole32)
+    target_link_libraries(LuminaCore PRIVATE user32 gdi32 gdiplus ole32 delayimp)
+    # v5.2.0 «MOTOR» (bug de campo v5.1.1 en Win7 SP1 x86): el STL estático
+    # de MSVC arrastra GetSystemTimePreciseAsFileTime (Win8+) como import
+    # ESTÁTICO vía el objeto de std::condition_variable → LoadLibrary falla
+    # en Win7 con ERROR_PROCEDURE_NOT_FOUND. Con /DELAYLOAD pasa a la tabla
+    # delay y el hook de Win7Compat.cpp resuelve: API real en Win8+, fallback
+    # sobre GetSystemTimeAsFileTime en Win7. El gate verify_win7_imports.py
+    # de la CI vela porque ningún otro import Win8+ vuelva a colarse.
+    target_link_options(LuminaCore PRIVATE
+        "/DELAYLOAD:GetSystemTimePreciseAsFileTime")
 endif()
 set_target_properties(LuminaCore PROPERTIES OUTPUT_NAME "LuminaCore")
 
