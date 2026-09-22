@@ -59,12 +59,15 @@ public:
 
     /* ------------ utilidades para módulos ------------------------------ */
     void PushEvent(int32_t code, const std::string& payload);
-    // Aplana todo el escenario a una lista de slides "físicas"
-    void Flatten(std::vector<Slide>* out, std::vector<std::string>* itemTitles);
+    // Aplana todo el escenario a una lista de slides "físicas". itemIdx
+    // devuelve, por slide, el índice del ScenarioItem que la originó (v5.1.0).
+    void Flatten(std::vector<Slide>* out, std::vector<std::string>* itemTitles,
+                 std::vector<int>* itemIdx = nullptr);
     const Theme& theme() const { return theme_; }
 
     // Establece la lista de slides planas (llamado por LoadScenario/scripture)
-    void ReplaceFlatSlides(std::vector<Slide> slides, std::vector<std::string> titles);
+    void ReplaceFlatSlides(std::vector<Slide> slides, std::vector<std::string> titles,
+                            std::vector<int> itemIdx = std::vector<int>());
 
 private:
     void EventLoop();
@@ -81,6 +84,7 @@ private:
     Theme      theme_;
     std::vector<Slide>        flat_;         // slides físicas actuales
     std::vector<std::string>  flatTitles_;   // título de ítem por slide
+    std::vector<int>          flatItems_;    // índice de ítem por slide (v5.1.0)
     int   current_ = -1;                     // índice de slide en vivo
     bool  black_   = false;
     bool  cleared_ = true;

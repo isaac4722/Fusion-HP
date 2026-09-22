@@ -44,6 +44,19 @@ namespace lumina.ui
             KeyDown += delegate(object s, KeyEventArgs e)
             {
                 if (e.KeyCode == Keys.Escape) Close();
+                else if (e.KeyCode == Keys.F11)   // v5.1.0: el comentario lo prometía
+                {
+                    if (FormBorderStyle == FormBorderStyle.None)
+                    {
+                        FormBorderStyle = FormBorderStyle.Sizable;
+                        WindowState = FormWindowState.Maximized;
+                    }
+                    else
+                    {
+                        FormBorderStyle = FormBorderStyle.None;
+                        WindowState = FormWindowState.Normal;
+                    }
+                }
             };
             MouseDoubleClick += delegate { Close(); };
 

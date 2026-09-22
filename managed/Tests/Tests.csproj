@@ -14,9 +14,11 @@
     <ProjectReference Include="../Lumina.Bridge/Lumina.Bridge.csproj" />
   </ItemGroup>
 
-  <!-- DeflateStream (lector ZIP del arnés) en .NET Framework -->
+  <!-- ZipFile/ZipArchive (validación del ZipBackup propio) y DeflateStream
+       en .NET Framework: FileSystem para el lector del arnés de pruebas. -->
   <ItemGroup Condition="'$(TargetFrameworkIdentifier)' == '.NETFramework'">
     <Reference Include="System.IO.Compression" />
+    <Reference Include="System.IO.Compression.FileSystem" />
   </ItemGroup>
 
 </Project>

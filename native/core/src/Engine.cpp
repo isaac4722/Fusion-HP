@@ -19,7 +19,7 @@
 
 namespace lumina {
 
-static const char* kVersion = "5.0.0";
+static const char* kVersion = "5.1.0";
 
 /* ------------------------------------------------------------- helpers -- */
 // (H-a: SlideToJson no usado fue retirado — warning -Wunused-function;
@@ -117,15 +117,23 @@ void Engine::PostStateEvent() {
     PushEvent(LUMINA_EV_STATE, StateJson());
 }
 
-void Engine::ReplaceFlatSlides(std::vector<Slide> slides, std::vector<std::string> titles) {
+void Engine::ReplaceFlatSlides(std::vector<Slide> slides, std::vector<std::string> titles,
+                                std::vector<int> itemIdx) {
     flat_ = std::move(slides);
     flatTitles_ = std::move(titles);
+    flatItems_ = std::move(itemIdx);
     current_ = -1;
     cleared_ = false;
 }
 
-void Engine::Flatten(std::vector<Slide>* out, std::vector<std::string>* titles) {
-    out->clear(); if (titles) titles->clear();
+// itemIdx: para cada slide aplanada, el índice del ScenarioItem que la originó.
+// Los eventos SLIDE_CHANGED/ITEM_CHANGED informan ese índice (v5.1.0: antes
+// se informaba el índice de SLIDE, lo que desincronizaba video/escenario/
+// activadores en cultos con más de un ítem — bug #1 del ciclo FUNDAMENTO).
+void Engine::Flatten(std::vector<Slide>* out, std::vector<std::string>* titles,
+                      std::vector<int>* itemIdx) {
+    out->clear(); if (titles) titles->clear(); if (itemIdx) itemIdx->clear();
+    int itemNumber = 0;
     for (const ScenarioItem& it : scenario_.items) {
         std::vector<Slide> itemSlides;
         if (it.kind == "song") {
@@ -214,7 +222,9 @@ void Engine::Flatten(std::vector<Slide>* out, std::vector<std::string>* titles) 
         for (const Slide& s : itemSlides) {
             out->push_back(s);
             if (titles) titles->push_back(it.title.empty() ? s.title : it.title);
+            if (itemIdx) itemIdx->push_back(itemNumber);
         }
+        ++itemNumber;
     }
 }
 
@@ -268,10 +278,11 @@ LuminaStatus Engine::LoadScenario(const std::string& jsonText) {
             std::lock_guard<std::mutex> lk(mx_);
             scenario_ = std::move(sc);
             theme_ = scenario_.theme;
-            std::vector<Slide> flat; std::vector<std::string> titles;
-            Flatten(&flat, &titles);
+            std::vector<Slide> flat; std::vector<std::string> titles; std::vector<int> items;
+            Flatten(&flat, &titles, &items);
             flat_ = std::move(flat);
             flatTitles_ = std::move(titles);
+            flatItems_ = std::move(items);
             current_ = -1;
             black_ = false;
             cleared_ = flat_.empty();
@@ -301,11 +312,16 @@ LuminaStatus Engine::ShowSlide(int index) {
     }
     // Fuera del mutex: PostStateEvent → StateJson() vuelve a tomar mx_
     // (std::mutex NO es recursivo: dentro causaba deadlock — fix v3.0.0).
+    // "item" = índice del ScenarioItem que originó la slide (v5.1.0).
+    int itemNow = -1;
+    { std::lock_guard<std::mutex> lk(mx_);
+      if (current_ >= 0 && current_ < (int)flatItems_.size()) itemNow = flatItems_[(size_t)current_]; }
     PushEvent(LUMINA_EV_SLIDE_CHANGED,
-              json{{"index", current_}, {"total", (int)flat_.size()}}.dump());
+              json{{"index", current_}, {"item", itemNow},
+                   {"total", (int)flat_.size()}}.dump());
     if (current_ >= 0) {
         PushEvent(LUMINA_EV_ITEM_CHANGED,
-                  json{{"item", current_}, {"title", flatTitles_[(size_t)current_]}}.dump());
+                  json{{"item", itemNow}, {"title", flatTitles_[(size_t)current_]}}.dump());
     }
     PostStateEvent();
     return LUMINA_OK;
@@ -322,10 +338,14 @@ LuminaStatus Engine::Next() {
         if (projector_) projector_->SetContent(flat_, flatTitles_, theme_, current_, black_);
 #endif
     }
+    int itemNow = -1;
+    { std::lock_guard<std::mutex> lk(mx_);
+      if (current_ >= 0 && current_ < (int)flatItems_.size()) itemNow = flatItems_[(size_t)current_]; }
     PushEvent(LUMINA_EV_SLIDE_CHANGED,
-              json{{"index", current_}, {"total", (int)flat_.size()}}.dump());
+              json{{"index", current_}, {"item", itemNow},
+                   {"total", (int)flat_.size()}}.dump());
     PushEvent(LUMINA_EV_ITEM_CHANGED,
-              json{{"item", current_}, {"title", flatTitles_[(size_t)current_]}}.dump());
+              json{{"item", itemNow}, {"title", flatTitles_[(size_t)current_]}}.dump());
     PostStateEvent();
     return LUMINA_OK;
 }
@@ -341,11 +361,15 @@ LuminaStatus Engine::Prev() {
         if (projector_) projector_->SetContent(flat_, flatTitles_, theme_, current_, black_);
 #endif
     }
+    int itemNow = -1;
+    { std::lock_guard<std::mutex> lk(mx_);
+      if (current_ >= 0 && current_ < (int)flatItems_.size()) itemNow = flatItems_[(size_t)current_]; }
     PushEvent(LUMINA_EV_SLIDE_CHANGED,
-              json{{"index", current_}, {"total", (int)flat_.size()}}.dump());
+              json{{"index", current_}, {"item", itemNow},
+                   {"total", (int)flat_.size()}}.dump());
     if (current_ >= 0)
         PushEvent(LUMINA_EV_ITEM_CHANGED,
-                  json{{"item", current_}, {"title", flatTitles_[(size_t)current_]}}.dump());
+                  json{{"item", itemNow}, {"title", flatTitles_[(size_t)current_]}}.dump());
     PostStateEvent();
     return LUMINA_OK;
 }

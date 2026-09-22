@@ -172,6 +172,9 @@ namespace lumina.core
                 // v5.0.0: el núcleo ignora "videoPath" (kind desconocido → blank);
                 // la UI lo usa para reproducir el video sobre la salida.
                 o["videoPath"] = it.VideoPath;
+                // v5.1.0: opciones de reproducción (UI-side; el núcleo las ignora).
+                o["videoLoop"] = it.VideoLoop;
+                o["videoVolume"] = it.VideoVolume;
             }
             // "blank": solo kind+title
             return o;
@@ -239,6 +242,15 @@ namespace lumina.core
             it.Kind = "video";
             it.Title = title ?? string.Empty;
             it.VideoPath = videoPath ?? string.Empty;
+            return it;
+        }
+
+        /// <summary>v5.1.0: ítem de video con opciones de reproducción.</summary>
+        public static ScenarioItem VideoItem(string title, string videoPath, bool loop, int volume0to100)
+        {
+            ScenarioItem it = VideoItem(title, videoPath);
+            it.VideoLoop = loop;
+            it.VideoVolume = Math.Max(0, Math.Min(100, volume0to100));
             return it;
         }
 

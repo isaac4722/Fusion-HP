@@ -4,9 +4,17 @@
     <TargetFrameworks>net35;net48</TargetFrameworks>
     <OutputType>WinExe</OutputType>
     <RootNamespace>lumina.ui</RootNamespace>
-    <AssemblyName>LuminaPresentation</AssemblyName>
+    <AssemblyName Condition="'$(TargetFramework)' == 'net35'">LuminaPresentation35</AssemblyName>
+    <AssemblyName Condition="'$(TargetFramework)' != 'net35'">LuminaPresentation</AssemblyName>
     <Summary>Interfaz WinForms de LuminaPresentation Suite (vía A: C# dueño del proceso).</Summary>
     <ApplicationIcon>app.ico</ApplicationIcon>
+    <!-- v5.1.0 «FUNDAMENTO»: el paquete portable lleva AMBAS variantes
+         (net48\LuminaPresentation.exe y net35\LuminaPresentation35.exe);
+         el launcher nativo elige según el CLR del equipo. La baseline net35
+         ABIENCA en cualquier Windows con .NET ≥ 3.5 y su app.config acepta
+         tanto CLR2 como CLR4 (ver app.net35.config / app.net48.config). -->
+    <AppConfig Condition="'$(TargetFramework)' == 'net35'">app.net35.config</AppConfig>
+    <AppConfig Condition="'$(TargetFramework)' != 'net35'">app.net48.config</AppConfig>
     <!--
       DECISIÓN DOCUMENTADA: <UseWindowsForms> FUNCIONA en net35+net48 con el SDK
       de .NET 8 en Linux SIEMPRE QUE (a) el paquete de ref assemblies esté

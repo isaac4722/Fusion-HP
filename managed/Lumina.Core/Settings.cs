@@ -43,6 +43,12 @@ namespace lumina.core
         public bool AutoAdvanceVideo = true;          // al terminar un video → siguiente slide
         public bool TriggersEnabled = true;           // motor de activadores
 
+        // ---- v5.1.0 «FUNDAMENTO» ----
+        public int ProjectionScreen = 0;              // pantalla del proyector (combo En Vivo)
+        public int DirectorScreen = 2;                // pantalla del Director (3ª salida)
+        public string BackupFolder = string.Empty;    // carpeta de respaldo (Drive/OneDrive local)
+        public bool AutoBackupOnExit = false;         // respaldar data\ al cerrar
+
         public string TriggersFile
         {
             get { return Path.Combine(Path.Combine(_dataDir, "triggers"), "triggers.json"); }
@@ -61,20 +67,43 @@ namespace lumina.core
             _dataDir = Path.Combine(baseDir, "data");
         }
 
-        /// <summary>Directorio del ejecutable (portable). Nunca null.</summary>
+        /// <summary>
+        /// Directorio base portable. v5.1.0: el paquete distribuye la interfaz
+        /// en subcarpetas por runtime (net48\ · net35\) junto a un launcher en
+        /// la raíz; SI el exe vive en una de ellas y la raíz contiene
+        /// LuminaLauncher.exe, la base de datos/logs/temas/respaldos (data\)
+        /// se comparte en la RAÍZ del paquete — así un usuario que pase de 3.5
+        /// a 4.8 no "pierde" sus datos. En cualquier otro layout se usa la
+        /// carpeta del exe (portable clásico).
+        /// </summary>
         public static string DefaultBaseDir()
         {
+            string exeDir;
             try
             {
                 string exe = Environment.GetCommandLineArgs()[0];
-                string dir = Path.GetDirectoryName(Path.GetFullPath(exe));
-                if (!string.IsNullOrEmpty(dir)) return dir;
+                exeDir = Path.GetDirectoryName(Path.GetFullPath(exe));
+                if (string.IsNullOrEmpty(exeDir))
+                    exeDir = AppDomain.CurrentDomain.BaseDirectory ?? ".";
             }
             catch (Exception)
             {
-                // GetCommandLineArgs vacío o ruta rara (hosting raro): fallback.
+                exeDir = AppDomain.CurrentDomain.BaseDirectory ?? ".";
             }
-            return AppDomain.CurrentDomain.BaseDirectory ?? ".";
+            try
+            {
+                string name = Path.GetFileName(exeDir);
+                if (name == "net48" || name == "net35")
+                {
+                    string parent = Path.GetDirectoryName(exeDir.TrimEnd(
+                        Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+                    if (!string.IsNullOrEmpty(parent) &&
+                        File.Exists(Path.Combine(parent, "LuminaLauncher.exe")))
+                        return parent;
+                }
+            }
+            catch (Exception) { /* layout no estándar: carpeta del exe */ }
+            return exeDir;
         }
 
         public string DataDir { get { return _dataDir; } }
@@ -97,6 +126,9 @@ namespace lumina.core
             if (RemoteToken == null) RemoteToken = string.Empty;
             if (MidiDevice < 0) MidiDevice = 0;
             if (StageScreen < 0) StageScreen = 0;
+            if (ProjectionScreen < 0) ProjectionScreen = 0;
+            if (DirectorScreen < 0) DirectorScreen = 0;
+            if (BackupFolder == null) BackupFolder = string.Empty;
         }
 
         /// <summary>Carga desde el directorio dado (o default). Tolerante a errores: devuelve defaults.</summary>
@@ -129,6 +161,10 @@ namespace lumina.core
                 s.StageScreen = (int)MiniJson.GetInt(o, "stageScreen", 1);
                 s.AutoAdvanceVideo = MiniJson.GetBool(o, "autoAdvanceVideo", true);
                 s.TriggersEnabled = MiniJson.GetBool(o, "triggersEnabled", true);
+                s.ProjectionScreen = (int)MiniJson.GetInt(o, "projectionScreen", 0);
+                s.DirectorScreen = (int)MiniJson.GetInt(o, "directorScreen", 2);
+                s.BackupFolder = MiniJson.GetString(o, "backupFolder", string.Empty);
+                s.AutoBackupOnExit = MiniJson.GetBool(o, "autoBackupOnExit", false);
                 s.Normalize();
             }
             catch (Exception)
@@ -161,6 +197,10 @@ namespace lumina.core
             o["stageScreen"] = StageScreen;
             o["autoAdvanceVideo"] = AutoAdvanceVideo;
             o["triggersEnabled"] = TriggersEnabled;
+            o["projectionScreen"] = ProjectionScreen;              // v5.1.0
+            o["directorScreen"] = DirectorScreen;
+            if (BackupFolder.Length > 0) o["backupFolder"] = BackupFolder;
+            o["autoBackupOnExit"] = AutoBackupOnExit;
             string dir = _dataDir;
             if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
             File.WriteAllText(FilePath, MiniJson.Serialize(o) + "\n", new UTF8Encoding(false));

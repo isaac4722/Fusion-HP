@@ -2,9 +2,12 @@
 //  LuminaPresentation / LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
 // ============================================================================
 //  PptxExporter.cs : exportación de Escenarios a PPTX (ISO/IEC-29500 OpenXML)
-//  SIN dependencias externas — System.IO.Packaging (OPC):
-//    * .NET Framework 3.5/4.x : WindowsBase.dll (integrado en el SO, Win7+).
-//    * .NET 8 (tests)         : BCL integrada.
+//  SIN dependencias externas — OPC empaquetado por ZipWriter PROPIO:
+//    * v5.1.0: System.IO.Packaging (WindowsBase.dll) eliminado de raíz:
+//      su ensamblado resuelve distinto entre CLR2 (3.0) y CLR4 (4.0) y ataba
+//      la variante net35 al GAC 3.x. El paquete OPC se escribe ahora con el
+//      mismo motor ZIP del respaldo (ZipWriter: PKWARE APPNOTE.TXT) y corre
+//      IDÉNTICO bajo .NET 3.5 y .NET 4.8.
 //
 //  Cumple el estándar PresentationML mínimo VÁLIDO para PowerPoint:
 //    [Content_Types].xml · _rels/.rels · ppt/presentation.xml (+rels)
@@ -21,7 +24,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.IO.Packaging;
 using System.Text;
 
 namespace lumina.core
@@ -83,22 +85,18 @@ namespace lumina.core
             if (slides == null) slides = new List<ExportSlide>();
             if (theme == null) theme = new Theme();
 
-            MemoryStream ms = new MemoryStream();
-            using (Package pkg = Package.Open(ms, FileMode.Create))
+            // v5.1.0: OPC propio (dict nombre→(tipo, contenido)) — sin WindowsBase.
+            OpcParts parts = new OpcParts();
             {
-                // IMPORTANTE: System.IO.Packaging AUTO-GENERa [Content_Types].xml
-                // al guardar (Default por extensión + Override por parte con tipo
-                // distinto) → NO se crea manualmente (crear da lugar a duplicado)
-                // y cada parte debe declarar su tipo REAL en CreatePart.
-                string bgImagePart = AddImageIfNeeded(pkg, theme.ImagePath);
+                string bgImagePart = AddImageIfNeeded(parts, theme.ImagePath);
                 string[] slideImageParts = new string[slides.Count];
                 for (int i = 0; i < slides.Count; i++)
                 {
                     ExportSlide s = slides[i] ?? new ExportSlide();
-                    slideImageParts[i] = AddImageIfNeeded(pkg, s.ImagePath);
+                    slideImageParts[i] = AddImageIfNeeded(parts, s.ImagePath);
                 }
 
-                AddXmlPart(pkg, "/_rels/.rels", CtRels,
+                AddXmlPart(parts, "/_rels/.rels", CtRels,
                     "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
                     "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">" +
                     "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"ppt/presentation.xml\"/>" +
@@ -107,7 +105,7 @@ namespace lumina.core
                     "</Relationships>");
 
                 // docProps (metadatos: requisito del spec §4.1)
-                AddXmlPart(pkg, "/docProps/core.xml", CtCore,
+                AddXmlPart(parts, "/docProps/core.xml", CtCore,
                     "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
                     "<cp:coreProperties xmlns:cp=\"http://schemas.openxmlformats.org/package/2006/metadata/core-properties\" " +
                     "xmlns:dc=\"http://purl.org/dc/elements/1.1/\" xmlns:dcterms=\"http://purl.org/dc/terms/\" " +
@@ -116,7 +114,7 @@ namespace lumina.core
                     "<dc:creator>LuminaPresentation Suite</dc:creator>" +
                     "<cp:lastModifiedBy>LuminaPresentation Suite</cp:lastModifiedBy>" +
                     "</cp:coreProperties>");
-                AddXmlPart(pkg, "/docProps/app.xml", CtApp,
+                AddXmlPart(parts, "/docProps/app.xml", CtApp,
                     "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
                     "<Properties xmlns=\"http://schemas.openxmlformats.org/officeDocument/2006/extended-properties\" " +
                     "xmlns:vt=\"http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes\">" +
@@ -138,7 +136,7 @@ namespace lumina.core
                     "<p:sldSz cx=\"" + SlideW + "\" cy=\"" + SlideH + "\"/>" +
                     "<p:notesSz cx=\"" + SlideH + "\" cy=\"" + SlideW + "\"/>" +
                     "</p:presentation>");
-                AddXmlPart(pkg, "/ppt/presentation.xml", CtPresentation, pres.ToString());
+                AddXmlPart(parts, "/ppt/presentation.xml", CtPresentation, pres.ToString());
 
                 StringBuilder presRels = new StringBuilder();
                 presRels.Append("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
@@ -148,24 +146,99 @@ namespace lumina.core
                     presRels.Append("<Relationship Id=\"rId" + (i + 1) + "\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide\" Target=\"slides/slide" + i + ".xml\"/>");
                 presRels.Append("<Relationship Id=\"rId" + (slides.Count + 2) + "\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme\" Target=\"theme/theme1.xml\"/>" +
                     "</Relationships>");
-                AddXmlPart(pkg, "/ppt/_rels/presentation.xml.rels", CtRels, presRels.ToString());
+                AddXmlPart(parts, "/ppt/_rels/presentation.xml.rels", CtRels, presRels.ToString());
 
-                WriteTheme(pkg, theme);
-                WriteMasterAndLayout(pkg, theme);
+                WriteTheme(parts, theme);
+                WriteMasterAndLayout(parts, theme);
 
                 for (int i = 0; i < slides.Count; i++)
                 {
                     ExportSlide s = slides[i] ?? new ExportSlide();
                     string slideRels;
                     string xml = BuildSlideXml(s, theme, slideImageParts[i], bgImagePart, out slideRels);
-                    AddXmlPart(pkg, "/ppt/slides/slide" + (i + 1) + ".xml", CtSlide, xml);
-                    AddXmlPart(pkg, "/ppt/slides/_rels/slide" + (i + 1) + ".xml.rels", CtRels, slideRels);
+                    AddXmlPart(parts, "/ppt/slides/slide" + (i + 1) + ".xml", CtSlide, xml);
+                    AddXmlPart(parts, "/ppt/slides/_rels/slide" + (i + 1) + ".xml.rels", CtRels, slideRels);
                 }
             }
+            return BuildOpcZip(parts);
+        }
+
+        // ---------------- contenedor OPC propio (v5.1.0, sin WindowsBase) ----
+
+        private sealed class OpcPart
+        {
+            public string ContentType;
+            public byte[] Data;
+        }
+
+        private sealed class OpcParts
+        {
+            public readonly Dictionary<string, OpcPart> Map =
+                new Dictionary<string, OpcPart>(StringComparer.Ordinal);
+
+            public void Add(string name, string contentType, byte[] data)
+            {
+                OpcPart p = new OpcPart();
+                p.ContentType = contentType;
+                p.Data = data;
+                Map[name] = p;
+            }
+
+            public int CountMedia()
+            {
+                int n = 0;
+                foreach (string k in Map.Keys)
+                    if (k.StartsWith("/ppt/media/image", StringComparison.Ordinal)) n++;
+                return n;
+            }
+        }
+
+        /// <summary>
+        /// Genera [Content_Types].xml (Default por extensión + Override por parte
+        /// XML) y serializa el paquete con ZipWriter — la MISMA estructura que
+        /// producía System.IO.Packaging, ahora verificada por python-pptx en CI.
+        /// </summary>
+        private static byte[] BuildOpcZip(OpcParts parts)
+        {
+            StringBuilder types = new StringBuilder();
+            types.Append("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
+                "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">");
+            bool hasRels = false, hasPng = false, hasJpeg = false, hasXml = false;
+            foreach (KeyValuePair<string, OpcPart> kv in parts.Map)
+            {
+                string k = kv.Key.ToLowerInvariant();
+                if (k.EndsWith(".rels", StringComparison.Ordinal)) hasRels = true;
+                else if (k.EndsWith(".png", StringComparison.Ordinal)) hasPng = true;
+                else if (k.EndsWith(".jpeg", StringComparison.Ordinal)) hasJpeg = true;
+                else if (k.EndsWith(".xml", StringComparison.Ordinal)) hasXml = true;
+            }
+            types.Append("<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>");
+            if (hasPng) types.Append("<Default Extension=\"png\" ContentType=\"image/png\"/>");
+            if (hasJpeg) types.Append("<Default Extension=\"jpeg\" ContentType=\"image/jpeg\"/>");
+            if (hasXml) types.Append("<Default Extension=\"xml\" ContentType=\"application/xml\"/>");
+            // Override por cada parte XML con su tipo REAL (más específico que el
+            // Default «application/xml»: es la regla del estándar OPC).
+            foreach (KeyValuePair<string, OpcPart> kv in parts.Map)
+            {
+                if (kv.Key.EndsWith(".xml", StringComparison.Ordinal))
+                    types.Append("<Override PartName=\"" + kv.Key + "\" ContentType=\"" +
+                                 kv.Value.ContentType + "\"/>");
+            }
+            types.Append("</Types>");
+
+            List<KeyValuePair<string, byte[]>> entries =
+                new List<KeyValuePair<string, byte[]>>(parts.Map.Count + 1);
+            entries.Add(new KeyValuePair<string, byte[]>("[Content_Types].xml",
+                new UTF8Encoding(false).GetBytes(types.ToString())));
+            foreach (KeyValuePair<string, OpcPart> kv in parts.Map)
+                entries.Add(new KeyValuePair<string, byte[]>(kv.Key, kv.Value.Data));
+
+            MemoryStream ms = new MemoryStream();
+            ZipWriter.WriteEntries(ms, entries);
             return ms.ToArray();
         }
 
-        // ---------------- content types reales (la API OPC genera el [Content_Types].xml) ----------------
+        // ---------------- content types reales (para [Content_Types].xml) ----
         private const string CtRels = "application/vnd.openxmlformats-package.relationships+xml";
         private const string CtCore = "application/vnd.openxmlformats-package.core-properties+xml";
         private const string CtApp = "application/vnd.openxmlformats-officedocument.extended-properties+xml";
@@ -181,7 +254,7 @@ namespace lumina.core
         /// Añade la imagen (si existe y es PNG/JPEG) y devuelve su nombre de parte
         /// ("/ppt/media/imageN.ext") o null.
         /// </summary>
-        private static string AddImageIfNeeded(Package pkg, string path)
+        private static string AddImageIfNeeded(OpcParts parts, string path)
         {
             if (string.IsNullOrEmpty(path) || !File.Exists(path)) return null;
             byte[] data;
@@ -190,16 +263,8 @@ namespace lumina.core
             string ext, ctype;
             if (!SniffImage(data, out ext, out ctype)) return null;
 
-            int existing = 0;
-            foreach (PackagePart p in pkg.GetParts())
-            {
-                if (p.Uri.OriginalString.StartsWith("/ppt/media/image", StringComparison.Ordinal)) existing++;
-            }
-            string partName = "/ppt/media/image" + (existing + 1) + "." + ext;
-
-            PackagePart part = pkg.CreatePart(new Uri(partName, UriKind.Relative), ctype, CompressionOption.Normal);
-            using (Stream s = part.GetStream(FileMode.Create))
-                s.Write(data, 0, data.Length);
+            string partName = "/ppt/media/image" + (parts.CountMedia() + 1) + "." + ext;
+            parts.Add(partName, ctype, data);
             return partName;
         }
 
@@ -217,7 +282,7 @@ namespace lumina.core
 
         // ================================================================ tema
 
-        private static void WriteTheme(Package pkg, Theme t)
+        private static void WriteTheme(OpcParts parts, Theme t)
         {
             string accent = HexNoAlpha(t.AccentColor, "3AA6B9");
             string fg = HexNoAlpha(t.FgColor, "FFFFFF");
@@ -268,10 +333,10 @@ namespace lumina.core
                 "</a:fmtScheme>" +
                 "</a:themeElements>" +
                 "</a:theme>";
-            AddXmlPart(pkg, "/ppt/theme/theme1.xml", CtTheme, themeXml);
+            AddXmlPart(parts, "/ppt/theme/theme1.xml", CtTheme, themeXml);
         }
 
-        private static void WriteMasterAndLayout(Package pkg, Theme t)
+        private static void WriteMasterAndLayout(OpcParts parts, Theme t)
         {
             string bg = HexNoAlpha(t.BgColor, "0B1F2A");
             string master =
@@ -285,8 +350,8 @@ namespace lumina.core
                 "<p:clrMap bg1=\"dk1\" tx1=\"lt1\" bg2=\"dk2\" tx2=\"lt2\" accent1=\"accent1\" accent2=\"accent2\" accent3=\"accent3\" accent4=\"accent4\" accent5=\"accent5\" accent6=\"accent6\" hlink=\"hlink\" folHlink=\"folHlink\"/>" +
                 "<p:sldLayoutIdLst><p:sldLayoutId id=\"2147483649\" r:id=\"rId1\"/></p:sldLayoutIdLst>" +
                 "</p:sldMaster>";
-            AddXmlPart(pkg, "/ppt/slideMasters/slideMaster1.xml", CtMaster, master);
-            AddXmlPart(pkg, "/ppt/slideMasters/_rels/slideMaster1.xml.rels", CtRels,
+            AddXmlPart(parts, "/ppt/slideMasters/slideMaster1.xml", CtMaster, master);
+            AddXmlPart(parts, "/ppt/slideMasters/_rels/slideMaster1.xml.rels", CtRels,
                 "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
                 "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">" +
                 "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout\" Target=\"../slideLayouts/slideLayout1.xml\"/>" +
@@ -301,8 +366,8 @@ namespace lumina.core
                 "<p:cSld name=\"Lumina\">" +
                 "<p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/></p:spTree>" +
                 "</p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sldLayout>";
-            AddXmlPart(pkg, "/ppt/slideLayouts/slideLayout1.xml", CtLayout, layout);
-            AddXmlPart(pkg, "/ppt/slideLayouts/_rels/slideLayout1.xml.rels", CtRels,
+            AddXmlPart(parts, "/ppt/slideLayouts/slideLayout1.xml", CtLayout, layout);
+            AddXmlPart(parts, "/ppt/slideLayouts/_rels/slideLayout1.xml.rels", CtRels,
                 "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
                 "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">" +
                 "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster\" Target=\"../slideMasters/slideMaster1.xml\"/>" +
@@ -471,15 +536,9 @@ namespace lumina.core
             return XmlText(s).Replace("\"", "&quot;").Replace("'", "&apos;");
         }
 
-        private static void AddXmlPart(Package pkg, string name, string contentType, string xml)
+        private static void AddXmlPart(OpcParts parts, string name, string contentType, string xml)
         {
-            PackagePart part = pkg.CreatePart(new Uri(name, UriKind.Relative),
-                contentType, CompressionOption.Normal);
-            using (Stream s = part.GetStream(FileMode.Create))
-            {
-                byte[] b = new UTF8Encoding(false).GetBytes(xml);
-                s.Write(b, 0, b.Length);
-            }
+            parts.Add(name, contentType, new UTF8Encoding(false).GetBytes(xml));
         }
     }
 }

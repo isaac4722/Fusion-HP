@@ -3,13 +3,18 @@
 #  LuminaPresentation / LuminaPresentation Suite - tools/verify_portable.py
 #  Copyright (c) 2026 Isaac. Licencia View-Only.
 # ----------------------------------------------------------------------------
-#  GATE de empaquetado portable de la v3.0.0 «HÍBRIDA» (núcleo C++ + capa C#).
+#  GATE de empaquetado portable v5.1.0 «FUNDAMENTO» (núcleo C++ + capa C#).
 #  Audita el layout portable (por arquitectura) en 4 niveles:
 #
-#    1. FICHEROS MÍNIMOS del contrato de empaquetado presentes:
-#         LuminaLauncher.exe, LuminaPresentation.exe, LuminaCore.dll y
-#         resources/data/bible_rvr1909.json (LuminaPresentation35.exe es OPCIONAL:
-#         solo se espera si Lumina.UI multi-apunta net35).
+#    1. FICHEROS MÍNIMOS del contrato de empaquetado presentes (v5.1.0: el
+#       layout por runtime net48\ + net35\ EXIGE TODAS las DLL gestionadas
+#       — Lumina.Core/Bridge/Api — junto a cada exe; este punto es la lección
+#       directa del bug de v5.0.0: el ZIP salió sin ellas y la app moría con
+#       FileNotFoundException al abrir):
+#         LuminaLauncher.exe
+#         net48/LuminaPresentation.exe + .exe.config + 4 DLLs
+#         net35/LuminaPresentation35.exe + .exe.config + 4 DLLs
+#         resources/data/bible_rvr1909.json + README.txt
 #    2. IMPORTS PE de TODOS los binarios (exe + dll, recursivo): cada DLL
 #       requerida debe estar (a) en el paquete o (b) ser DLL de sistema de
 #       Windows. Falla listando las faltantes. (Herencia v1.0.1: el paquete
@@ -33,12 +38,25 @@ import glob
 
 # ---------------------------------------------------------------------------
 # Contrato de empaquetado (job «package» de .github/workflows/ci.yml)
+# v5.1.0: layout por runtime — el launcher elige net48\ o net35\ según el CLR
+# del equipo; TODAS las DLL gestionadas viajan junto a cada exe (lección v5.0.0).
 # ---------------------------------------------------------------------------
 REQUIRED_FILES = [
-    'LuminaLauncher.exe',                    # nativo: detección de runtime
-    'LuminaPresentation.exe',                          # interfaz gestionada (net48)
-    'LuminaCore.dll',                        # motor C++ (/MT)
-    'resources/data/bible_rvr1909.json',     # biblia de fábrica
+    'LuminaLauncher.exe',                    # nativo: detección de runtime + guardas
+    'net48/LuminaPresentation.exe',          # interfaz optimizada (.NET 4.8)
+    'net48/LuminaPresentation.exe.config',   # supportedRuntime v4.0
+    'net48/LuminaCore.dll',                  # motor C++ (/MT) junto al exe
+    'net48/Lumina.Core.dll',                 # exportadores/ajustes (GESTIONADA)
+    'net48/Lumina.Bridge.dll',               # puente P/Invoke (GESTIONADA)
+    'net48/Lumina.Api.dll',                  # API HTTP + mando remoto (GESTIONADA)
+    'net35/LuminaPresentation35.exe',        # baseline (.NET 3.5, Win7 SP1)
+    'net35/LuminaPresentation35.exe.config', # supportedRuntime v2.0.50727 + v4.0
+    'net35/LuminaCore.dll',
+    'net35/Lumina.Core.dll',
+    'net35/Lumina.Bridge.dll',
+    'net35/Lumina.Api.dll',
+    'resources/data/bible_rvr1909.json',     # biblia de fábrica (seeder v5.1.0)
+    'README.txt',
 ]
 REQUIRED_EXPORTS = {
     'LuminaCore.dll': ['lumina_create'],     # ABI contractual (API C plana)
@@ -255,10 +273,9 @@ def main():
         else:
             print(f'  [FALTA] {rel}')
             failures.append(f'falta el fichero obligatorio {rel}')
-    # LuminaPresentation35.exe es OPCIONAL (solo si la UI multi-apunta net35).
-    has35 = 'luminapresentation35.exe' in present_lower
-    print(f'  [info] LuminaPresentation35.exe: '
-          f'{"presente (variante net35)" if has35 else "ausente (UI net48 exclusiva; documentado)"}')
+    has35 = 'net35/luminapresentation35.exe' in present_lower
+    print(f'  [info] variante net35: '
+          f'{"presente (baseline Win7 SP1)" if has35 else "AUSENTE — OBLIGATORIA en v5.1.0"}')
 
     # ---- 2) Auditoría de imports PE + arquitectura -------------------------
     binaries = []

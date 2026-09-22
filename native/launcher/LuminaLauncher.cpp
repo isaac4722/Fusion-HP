@@ -2,7 +2,7 @@
 //  LuminaPresentation / LuminaPresentation Suite - native/launcher/LuminaLauncher.cpp
 //  Copyright (c) 2026 Isaac. Licencia View-Only.
 // ----------------------------------------------------------------------------
-//  Lanzador NATIVO del paquete portable híbrido v4.2.0 «ACORDES»
+//  Lanzador NATIVO del paquete portable híbrido v5.1.0 «FUNDAMENTO»
 //  (Win32 puro: sin MFC, sin ATL, sin CRT dinámico — /MT).
 //
 //  Responsabilidad (docs/architecture-hybrid.md §2):
@@ -14,14 +14,20 @@
 //                       32 bits bajo WOW6432Node NO contienen NDP v4\Full).
 //         - .NET 3.5  : HKLM\SOFTWARE\Microsoft\NET Framework Setup\NDP\v3.5
 //                       valor "Install" == 1 (incluido de fábrica en Win7 SP1).
-//    2. Elegir el ejecutable gestionado a lanzar:
-//         - .NET 4.8+  -> LuminaPresentation.exe   (interfaz net48, meta preferida)
-//         - .NET 3.5   -> LuminaPresentation35.exe (baseline net35)
-//         - ninguno    -> MessageBox explicativo (Win7 SP1 trae 3.5 activable y
-//                         enlace al instalador offline de 4.8) y salida 1.
-//    3. Lanzarlo con CreateProcess desde el directorio del propio launcher
-//       (GetModuleFileName), esperar su fin (WaitForSingleObject INFINITE) y
-//       PROPAGAR su exit code (útil para diagnóstico y para scripts).
+//    2. Elegir el ejecutable gestionado a lanzar (v5.1.0: layout por runtime):
+//         - .NET 4.8+  -> net48\LuminaPresentation.exe   (variante optimizada)
+//         - .NET 3.5   -> net35\LuminaPresentation35.exe (baseline mínima)
+//         - ninguno    -> MessageBox explicativo y salida 1.
+//    3. VERIFICAR el paquete ANTES de lanzar (v5.1.0 — lección de v5.0.0):
+//         el paquete v5.0.0 salió SIN las DLL gestionadas (Lumina.Core.dll…)
+//         y la app moría con FileNotFoundException al abrir. El launcher ahora
+//         exige, junto al exe elegido: LuminaCore.dll (nativa) y las DLLs
+//         gestionadas Lumina.Core.dll / Lumina.Bridge.dll / Lumina.Api.dll;
+//         si falta algo, el mensaje dice EXACTAMENTE qué archivo falta.
+//    4. Lanzarlo con CreateProcess desde el directorio RAÍZ del paquete
+//       (GetModuleFileName), esperar su fin y PROPAGAR su exit code.
+//       La raíz aloja data\ (compartida por ambas variantes: settings.cs
+//       DefaultBaseDir detecta el layout net48/net35 y sube un nivel).
 //
 //  El usuario nunca instala nada: en Win10 1903+/Win11 corre la variante net48
 //  de fábrica; en Win7 SP1 corre la 3.5 (o la 4.8 si se instaló el offline).
@@ -39,11 +45,20 @@
 // (528040 = versión oficial de RTM 4.8; 528049 = 4.8 en Win10 1903+/2004+).
 static const DWORD kMinReleaseNet48 = 528040u;
 
-// Ejecutables gestionados que el paquete portable trae junto al launcher.
-static const wchar_t* kTargetNet48 = L"LuminaPresentation.exe";
-static const wchar_t* kTargetNet35 = L"LuminaPresentation35.exe";
+// Ejecutables gestionados (v5.1.0: subcarpetas por runtime junto al launcher).
+static const wchar_t* kTargetNet48 = L"net48\\LuminaPresentation.exe";
+static const wchar_t* kTargetNet35 = L"net35\\LuminaPresentation35.exe";
 
-static const wchar_t* kWindowTitle = L"LuminaPresentation v5.0.0 «SINERGIA»";
+// Componentes que DEBEN acompañar al exe elegido (v5.1.0: verificación dura —
+// el paquete v5.0.0 se publicó sin ellos y la app no abría).
+static const wchar_t* kRequiredSidecarDlls[] = {
+    L"LuminaCore.dll",     // motor C++ nativo (/MT)
+    L"Lumina.Core.dll",    // exportadores PPTX/PDF · Zefania · activadores · ajustes
+    L"Lumina.Bridge.dll",  // puente P/Invoke al núcleo
+    L"Lumina.Api.dll"      // API HTTP local + mando remoto
+};
+
+static const wchar_t* kWindowTitle = L"LuminaPresentation v5.1.0 «FUNDAMENTO»";
 
 // ---------------------------------------------------------------------------
 // Registro: lectura de DWORD con vista de 64 bits garantizada
@@ -274,30 +289,34 @@ int WINAPI WinMain(HINSTANCE /*hInstance*/, HINSTANCE /*hPrevInstance*/,
     }
 
     // ------------------------------------------------------------------
-    // Guardia CLAVE contra «dejó de funcionar»: el componente nativo
-    // LuminaCore.dll DEBE estar junto al ejecutable gestionado. Si falta
-    // (causa típica: ejecutar desde DENTRO del ZIP sin extraer), el proceso
-    // gestionado arrancaría y moriría con DllNotFoundException, mostrando el
-    // críptico diálogo de Windows. Aquí lo detectamos ANTES con un mensaje
-    // claro y accionable.
+    // Guardias CLAVE contra «no se puede abrir» (v5.1.0 — lección v5.0.0):
+    // TODOS los componentes deben existir JUNTO al exe elegido (en su
+    // subcarpeta net48\ o net35\): el motor nativo LuminaCore.dll y las DLLs
+    // gestionadas. El paquete v5.0.0 se publicó sin las gestionadas y la app
+    // moría al abrir con FileNotFoundException; aquí se detecta ANTES con un
+    // mensaje que dice EXACTAMENTE qué archivo falta.
     // ------------------------------------------------------------------
-    wchar_t corePath[MAX_PATH];
-    if (JoinPath(baseDir, L"LuminaCore.dll", corePath, MAX_PATH) &&
-        GetFileAttributesW(corePath) == INVALID_FILE_ATTRIBUTES)
+    wchar_t targetDir[MAX_PATH];
+    DirNameOf(targetPath, targetDir, MAX_PATH);
+    for (int i = 0; i < (int)(sizeof(kRequiredSidecarDlls) / sizeof(kRequiredSidecarDlls[0])); ++i)
     {
-        MessageBoxW(nullptr,
-            L"Falta el componente nativo «LuminaCore.dll» en la carpeta del "
-            L"programa, por lo que la interfaz no puede iniciarse.\n\n"
-            L"Causa más común: ejecutar el programa desde DENTRO del archivo "
-            L"ZIP (sin extraer).\n\n"
-            L"Solución:\n"
-            L"  1. Clic derecho sobre el ZIP → «Extraer todo…».\n"
-            L"  2. Abra la carpeta extraída.\n"
-            L"  3. Ejecute LuminaLauncher.exe desde ahí.\n\n"
-            L"Si el archivo sí está en la carpeta, su antivirus pudo ponerlo "
-            L"en cuarentena: restaúrelo y añada la carpeta a las exclusiones.",
-            kWindowTitle, MB_OK | MB_ICONWARNING);
-        return 1;
+        wchar_t compPath[MAX_PATH];
+        if (!JoinPath(targetDir, kRequiredSidecarDlls[i], compPath, MAX_PATH)) continue;
+        if (GetFileAttributesW(compPath) == INVALID_FILE_ATTRIBUTES)
+        {
+            wchar_t msg[700];
+            wsprintfW(msg,
+                      L"Falta un componente del programa:\n\n"
+                      L"  %s\\%s\n\n"
+                      L"Causas frecuentes:\n"
+                      L"  1. Ejecutar desde DENTRO del ZIP (sin extraer).\n"
+                      L"  2. Extracción incompleta o antivirus que aisló el archivo.\n\n"
+                      L"Solución: extraiga el ZIP COMPLETO en una carpeta propia "
+                      L"y ejecute LuminaLauncher.exe desde ahí.",
+                      (targetDir[0] == L'.' ? L"" : targetDir), kRequiredSidecarDlls[i]);
+            MessageBoxW(nullptr, msg, kWindowTitle, MB_OK | MB_ICONWARNING);
+            return 1;
+        }
     }
 
     // Lanzar y esperar; propagar el exit code del hijo.

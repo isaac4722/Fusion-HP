@@ -53,6 +53,11 @@ namespace lumina.tests
             Run("TriggerEngine: reglas, condiciones y persistencia", TestTriggerEngine);
             Run("ObsProtocol: handshake V5 y mensajes", TestObsProtocol);
 
+            // --- v5.1.0 «FUNDAMENTO» (siempre corren) ----------------------------
+            Run("BooksTable: 66 libros y referencias legibles", TestBooksTable);
+            Run("BibleJson: lector streaming de biblias JSON", TestBibleJson);
+            Run("ZipBackup: ZIP válido y extraíble", TestZipBackup);
+
             // --- Núcleo nativo (condicionales) -----------------------------------
             bool skipNative = string.Equals(
                 Environment.GetEnvironmentVariable("LUMINA_SKIP_NATIVE"), "1", StringComparison.Ordinal);
@@ -334,7 +339,7 @@ namespace lumina.tests
         private static void TestNativeVersion()
         {
             string v = LuminaEngine.Version();
-            AssertTrue(v.StartsWith("LuminaCore", StringComparison.Ordinal) && v.Contains("5.0"),
+            AssertTrue(v.StartsWith("LuminaCore", StringComparison.Ordinal) && v.Contains("5.1"),
                 "version=\"" + v + "\"");
         }
 
@@ -698,6 +703,146 @@ namespace lumina.tests
             string needle = sub.EndsWith("/Page", StringComparison.Ordinal) ? sub + " " : sub;
             while ((i = s.IndexOf(needle, i, StringComparison.Ordinal)) >= 0) { n++; i += needle.Length; }
             return n;
+        }
+
+        // -------------------------------------------------- v5.1.0 «FUNDAMENTO»
+
+        private static void TestBooksTable()
+        {
+            // 66 libros con numeración canónica continua 1..66.
+            AssertTrue(BooksTable.NameOf(1) == "Génesis", "libro 1 debe ser Génesis");
+            AssertTrue(BooksTable.NameOf(66) == "Apocalipsis", "libro 66 debe ser Apocalipsis");
+            AssertTrue(BooksTable.NameOf(67).Length == 0, "fuera de rango debe dar vacío");
+            AssertTrue(BooksTable.NameOf(43) == "Juan" && BooksTable.AbbrOf(43) == "jn",
+                "libro 43 = Juan / jn (espejo de BibleRef.cpp)");
+            // Referencias legibles que el núcleo debe resolver de vuelta.
+            AssertTrue(BooksTable.Reference(43, 3, 16, 16) == "jn 3:16", "referencia simple");
+            AssertTrue(BooksTable.Reference(43, 3, 16, 18) == "jn 3:16-18", "referencia con rango");
+            AssertTrue(BooksTable.Reference(19, 23, 1, 1) == "sal 23:1", "salmos abrevian 'sal'");
+            // Coherencia con el resolutor del núcleo (si hay biblioteca).
+            if (ProbeNativeLibrary())
+            {
+                foreach (int book in new int[] { 1, 19, 43, 66 })
+                {
+                    string refTxt = BooksTable.Reference(book, 1, 1, 1);
+                    string resJson = LuminaEngine.BibleRefResolve(refTxt);
+                    Dictionary<string, object> o = MiniJson.Parse(resJson);
+                    AssertTrue(MiniJson.GetInt(o, "valid", 0) == 1 &&
+                               MiniJson.GetInt(o, "book", 0) == book,
+                        "el núcleo debe resolver '" + refTxt + "' al libro " + book);
+                }
+            }
+        }
+
+        private static void TestBibleJson()
+        {
+            // Mini-biblia en el formato del paquete (resources/data/*.json).
+            string json =
+                "{\"version\":\"TEST\",\"name\":\"Prueba\",\"license\":\"PD\"," +
+                "\"books\":[" +
+                "{\"n\":1,\"name\":\"Génesis\",\"abbr\":\"Gén\",\"chapters\":[[" +
+                "\"EN el principio crió Dios los cielos y la tierra.\"," +
+                "\"Y la tierra estaba desordenada y vacía.\"]]}," +
+                "{\"n\":43,\"name\":\"Juan\",\"abbr\":\"Jn\",\"chapters\":[[" +
+                "\"Porque de tal manera amó Dios al mundo…\"," +
+                "\"línea con \\\"escape\\\" y \\n salto\"]," +
+                "[\"capítulo dos verso uno\"]]}]}";
+            string dir = Path.Combine(Path.GetTempPath(), "lumina-tests-" +
+                Guid.NewGuid().ToString("N").Substring(0, 8));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                string file = Path.Combine(dir, "bible.json");
+                File.WriteAllText(file, json, new UTF8Encoding(false));
+                BibleJsonResult r = BibleJson.ParseFile(file, 0);
+
+                AssertTrue(r.Version == "TEST" && r.Name == "Prueba", "metadatos leídos");
+                AssertTrue(r.BookCount == 2, "2 libros contados");
+                AssertTrue(r.VerseCount == 5, "5 versículos (haya " + r.VerseCount + ")");
+                AssertTrue(r.SkippedRows == 0, "sin descartes");
+                // Fila [version, book, chapter, verse, text] en orden.
+                List<object> first = (List<object>)r.Rows[0];
+                AssertTrue(Convert.ToString(first[0]) == "TEST" &&
+                           Convert.ToInt64(first[1], CultureInfo.InvariantCulture) == 1 &&
+                           Convert.ToInt64(first[2], CultureInfo.InvariantCulture) == 1 &&
+                           Convert.ToInt64(first[3], CultureInfo.InvariantCulture) == 1 &&
+                           first[4].ToString().StartsWith("EN el principio", StringComparison.Ordinal),
+                    "primera fila correcta");
+                // El escape \" debe quedar como comilla.
+                List<object> esc = (List<object>)r.Rows[3];
+                AssertTrue(esc[4].ToString().IndexOf("\"escape\"", StringComparison.Ordinal) >= 0,
+                    "escape de comillas procesado");
+                // Capítulo 2 de Juan (índice correcto tras arrays anidados).
+                List<object> cap2 = (List<object>)r.Rows[4];
+                AssertTrue(Convert.ToInt64(cap2[2], CultureInfo.InvariantCulture) == 2,
+                    "capítulo 2 bien numerado");
+                // maxVerses recorta y cuenta el resto como descartado.
+                BibleJsonResult clipped = BibleJson.ParseFile(file, 2);
+                AssertTrue(clipped.VerseCount == 2 && clipped.SkippedRows == 3,
+                    "límite de versículos respetado");
+                // JSON corrupto → FormatException, no colgado.
+                File.WriteAllText(file, "{\"version\":\"X\",\"books\":[{", new UTF8Encoding(false));
+                bool threw = false;
+                try { BibleJson.ParseFile(file, 0); }
+                catch (FormatException) { threw = true; }
+                AssertTrue(threw, "JSON truncado debe lanzar FormatException");
+            }
+            finally
+            {
+                try { Directory.Delete(dir, true); } catch (Exception) { }
+            }
+        }
+
+        private static void TestZipBackup()
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "lumina-zip-" +
+                Guid.NewGuid().ToString("N").Substring(0, 8));
+            string sub = Path.Combine(dir, "temas");
+            Directory.CreateDirectory(sub);
+            string zipPath = dir + ".zip";
+            try
+            {
+                File.WriteAllText(Path.Combine(dir, "settings.json"),
+                    "{\"apiPort\":8069}", new UTF8Encoding(false));
+                File.WriteAllText(Path.Combine(sub, "Adventista.json"),
+                    "ñ acentos y \"comillas\"", new UTF8Encoding(false));
+                File.WriteAllText(Path.Combine(dir, "vacio.txt"), "");
+
+                string err = ZipBackup.CreateFromDirectory(dir, zipPath);
+                AssertTrue(err == null, "creación sin errores: " + err);
+                AssertTrue(File.Exists(zipPath) && new FileInfo(zipPath).Length > 150,
+                    "el ZIP existe y tiene contenido");
+
+                // Validación ESTRICTA con un lector ZIP real (net8/net48:
+                // System.IO.Compression.ZipFile está disponible en el arnés).
+                using (System.IO.Compression.ZipArchive za =
+                           System.IO.Compression.ZipFile.OpenRead(zipPath))
+                {
+                    AssertTrue(za.Entries.Count == 3, "3 entradas (haya " + za.Entries.Count + ")");
+                    foreach (System.IO.Compression.ZipArchiveEntry e in za.Entries)
+                    {
+                        // La longitud descomprimida y el CRC los valida el lector.
+                        AssertTrue(e.Length >= 0, "entrada legible: " + e.FullName);
+                        if (e.FullName == "settings.json")
+                        {
+                            using (StreamReader rd = new StreamReader(e.Open(), new UTF8Encoding(false)))
+                                AssertTrue(rd.ReadToEnd().Contains("8069"),
+                                    "contenido íntegro tras descomprimir");
+                        }
+                        if (e.FullName == "temas/Adventista.json")
+                        {
+                            using (StreamReader rd = new StreamReader(e.Open(), new UTF8Encoding(false)))
+                                AssertTrue(rd.ReadToEnd().Contains("ñ acentos"),
+                                    "UTF-8 con ñ íntegro");
+                        }
+                    }
+                }
+            }
+            finally
+            {
+                try { Directory.Delete(dir, true); } catch (Exception) { }
+                try { File.Delete(zipPath); } catch (Exception) { }
+            }
         }
 
         private static void TestZefania()

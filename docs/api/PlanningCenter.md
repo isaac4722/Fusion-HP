@@ -1,58 +1,57 @@
-# PlanningCenter — Sincronización con Planning Center Online
+# Planning Center Online — Integración
 
-## 1. Class Overview
+> Estado v5.1.0 «FUNDAMENTO»: **importación de planes JSON** (implementado y
+> distribuido). La descarga directa por OAuth contra la API de PCO queda en
+> [roadmap](../roadmap.md): requiere credenciales del propietario de la cuenta
+> de la organización (client_id/client_secret), que el proyecto no puede
+> inventar ni embeber.
 
-`PlanningCenter` implementa el requisito de la especificación (§3.3) de **descarga e importación de programas y listas de canciones desde Planning Center Online**. Es un cliente asincrónico de la API v2 de PCO (`https://api.planningcenteronline.com/services/v2`) autenticado con un **Personal Access Token** (Application ID + Secret, HTTP Basic), que expone un flujo de tres pasos orientado a señales para que la GUI reaccione sin bloquear el hilo principal.
+## Qué hace la app HOY
 
-El emparejamiento con la biblioteca local (comparación de títulos normalizada, insensible a mayúsculas y acentos) no vive en esta clase: la realiza `MainWindow::onPcoImportItems`, que convierte los ítems del plan en `ServiceItem` de la cola del culto.
+La página **Culto** trae «Importar plan JSON…», que carga un plan de servicio
+completo como ítems del culto. Está pensado para:
 
-## 2. Project Structure and Dependencies
+- **Listas exportadas de Planning Center Online** (el plan del servicio
+  exportado/adaptado a este formato por el equipo de medios).
+- **Compartir cultos entre equipos** (un operador prepara el plan, otro lo importa).
 
-- **Incluido por**: `main.cpp` (creación), `gui/CommsPanel.h/.cpp` (UI de conexión e importación), `gui/MainWindow.h/.cpp` (importación a la cola).
-- **Referenciado por** `AppContext` como `ctx.pco`.
-- **Requiere**: Qt5 Core y Network. Sin dependencias de terceros.
+## Formato del plan JSON
 
-## 3. Public API
-
-| Método | Tipo | Descripción |
-|---|---|---|
-| `setToken(appId, appSecret)` | `void` | Fija el PAT (recorta espacios). |
-| `hasToken()` | `bool` | ¿Credenciales presentes? |
-| `fetchServiceTypes()` | `void` | Paso 1: lista de ministerios (hasta 100). |
-| `fetchPlans(serviceTypeId)` | `void` | Paso 2: los 15 planes futuros más próximos. |
-| `fetchPlanItems(planId)` | `void` | Paso 3: ítems del plan con `include=song` (hasta 200). |
-
-**Constantes**: `kTimeoutMs = 15000` (todas las peticiones llevan `setTransferTimeout`), `kMaxPlans = 15`, `kMaxItems = 200`.
-
-## 4. Signals
-
-| Señal | Payload | Emisión |
-|---|---|---|
-| `serviceTypesReady` | `(ok, error, QVector<PcoServiceType>)` | Respuesta de `fetchServiceTypes()`. |
-| `plansReady` | `(ok, error, QVector<PcoPlan>)` | Respuesta de `fetchPlans()`. |
-| `itemsReady` | `(ok, error, planId, QVector<PcoItem>)` | Respuesta de `fetchPlanItems()`. |
-
-`ok=false` entrega siempre un mensaje en lenguaje no técnico (spec §2.6): token rechazado, sin conexión, tiempo agotado, TLS, plan inexistente.
-
-## 5. Data Types
-
-- `PcoServiceType`: `id`, `name`.
-- `PcoPlan`: `id`, `serviceTypeId`, `title`, `dates` (legible), `sortDate` (ISO).
-- `PcoItem`: `title`, `description`, `songTitle` (resuelta desde el `include=song`), `isSong`, `sequence`.
-
-## 6. Notas de diseño
-
-- **Validación explícita de JSON** (`isNull()`/`isObject()`) antes de emitir — una respuesta corrupta llega como error amigable, no como lista vacía silenciosa (regla ERR-2 de qt-cpp-review).
-- **Errores TLS registrados** sin ignorarse en ciego (regla ERR-9).
-- **Persistencia del token**: la guarda `CommsPanel` en los ajustes del vault (`pco_app_id` / `pco_app_secret`).
-
-## 7. Usage Example
-
-```cpp
-// CommsPanel (extracto): conectar, cargar planes e importar el seleccionado
-pco->setToken(m_pcoId->text(), m_pcoSecret->text());
-pco->fetchServiceTypes();
-// … al llegar plansReady, el combo de planes se llena; el usuario elige:
-pco->fetchPlanItems(m_pcoPlan->currentData().toString());
-// … itemsReady -> emit pcoImportItems(items) -> MainWindow::onPcoImportItems
+```json
+{
+  "name": "Culto Domingo — Adoración",
+  "items": [
+    { "type": "song",      "title": "Grande es el Señor", "artist": "…",
+      "lyrics": "[Verso 1]\nGrande es el Señor...\n\n[Coro]\n…" },
+    { "type": "scripture", "ref": "jn 3:16-18", "version": "RVR1909" },
+    { "type": "text",      "title": "Bienvenida", "text": "Bienvenidos…" },
+    { "type": "blank",     "title": "Pausa" }
+  ]
+}
 ```
+
+| Campo | Notas |
+|---|---|
+| `name` | Opcional; si viene, se aplica al campo «Nombre» del culto. |
+| `items[].type` | `song` · `scripture` · `text` · `blank` (desconocidos → blanco). |
+| `song.lyrics` | Formato del editor: bloques `[Verso 1]` / `[Coro]`, acordes sobre la línea. |
+| `scripture.ref` | Cualquier referencia del núcleo: `Jn 3:16`, `sal 23:1-6`, `1 co 13,4-7`. Se resuelve contra la BD abierta. |
+| `scripture.version` | Opcional; si se omite usa la última versión utilizada. |
+| `scripture.text` | Alternativa a `ref`: versos crudos separados por `\n`. |
+
+Los ítems importados usan las mismas fábricas (`ScenarioBuilder.*`) que el
+resto de la app: validación de canción por el núcleo y aplanado idéntico.
+
+## Dónde está el código
+
+- `managed/Lumina.UI/MainForm.cs` → `ImportPlanJson()`.
+- `managed/Lumina.Core/ScenarioBuilder.cs` → fábricas de ítems.
+
+## Plan técnico de la descarga directa (roadmap)
+
+1. OAuth 2.0 + PKCE con loopback `http://127.0.0.1:<puerto>/callback`
+   (sin navegador embebido; abre el del sistema).
+2. `GET /services/v2/service_types/{id}/plans?filter=future&order=sort_date`.
+3. Mapeo `plan_item` → este mismo formato JSON (el de arriba pasa a ser el
+   contrato interno de intercambio).
+4. Token en `data\integrations\pco.json` (portable, sin registro).

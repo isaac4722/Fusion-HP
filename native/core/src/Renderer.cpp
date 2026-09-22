@@ -219,14 +219,17 @@ void Renderer::DrawSlide(HDC hdc, int w, int h,
     const COLORREF shadow = RGB(0, 0, 0);
 
     // Líneas visibles (uppercase opcional del tema, solo ASCII — determinista).
-    std::vector<std::wstring> lines;
+    // v5.1.0: cada línea lleva su línea de acordes adjunta (vacía si no hay):
+    // se dibuja ENCIMA de la letra, en acento y al 62% del cuerpo — el modo
+    // "músicos" de Holyrics (requisito del spec, componente 1).
+    std::vector<std::pair<std::wstring, std::wstring> > lines;   // (chords, text)
     for (const SlideLine& l : slide->lines) {
         std::string t = l.text;
         if (theme.uppercase) {
             for (size_t i = 0; i < t.size(); ++i)
                 if (t[i] >= 'a' && t[i] <= 'z') t[i] = (char)(t[i] - 'a' + 'A');
         }
-        lines.push_back(Utf8ToWide(t));
+        lines.push_back(std::make_pair(Utf8ToWide(l.chords), Utf8ToWide(t)));
     }
 
     // Tamaño base de fuente escalado a la altura del lienzo (1080p nominal).
@@ -237,17 +240,30 @@ void Renderer::DrawSlide(HDC hdc, int w, int h,
     // Ajuste tipográfico: reduce 10% hasta caber.
     int totalH = 0;
     HFONT font = nullptr;
+    HFONT fontCh = nullptr;
     for (int iter = 0; iter < 24; ++iter) {
         if (font) DeleteObject(font);
+        if (fontCh) { DeleteObject(fontCh); fontCh = nullptr; }
         font = MakeFont(theme, fontPx, theme.bold || slide->kind == SLIDE_TITLE);
+        fontCh = MakeFont(theme, std::max(12, (int)std::lround(fontPx * 0.62)), true);
         HGDIOBJ old = SelectObject(hdc, font);
         (void)old;
         totalH = 0;
         int maxW = 0;
-        for (const std::wstring& ln : lines) {
+        bool anyChord = false;
+        for (size_t i = 0; i < lines.size(); ++i) {
+            const std::wstring& ln = lines[i].second;
+            if (!lines[i].first.empty()) {
+                anyChord = true;
+                HGDIOBJ oc = SelectObject(hdc, fontCh);
+                totalH += TextHeight(hdc, lines[i].first) + std::max(2, fontPx / 8);
+                maxW = std::max(maxW, TextWidth(hdc, lines[i].first));
+                SelectObject(hdc, font);
+            }
             totalH += TextHeight(hdc, ln);
             maxW = std::max(maxW, TextWidth(hdc, ln));
         }
+        (void)anyChord;
         totalH += gapBase * (int)(lines.size() > 1 ? lines.size() - 1 : 0);
         SelectObject(hdc, GetStockObject(SYSTEM_FONT));
         if (totalH <= maxBlockH && maxW <= (int)(w * 0.9)) break;
@@ -255,6 +271,7 @@ void Renderer::DrawSlide(HDC hdc, int w, int h,
         if (fontPx < 12) { fontPx = 12; font = MakeFont(theme, fontPx, theme.bold); break; }
     }
     if (!font) font = MakeFont(theme, fontPx, theme.bold);
+    if (!fontCh) fontCh = MakeFont(theme, std::max(12, (int)std::lround(fontPx * 0.62)), true);
 
     HGDIOBJ oldFont = SelectObject(hdc, font);
     SetTextAlign(hdc, TA_LEFT | TA_TOP);
@@ -263,7 +280,18 @@ void Renderer::DrawSlide(HDC hdc, int w, int h,
     const int shadowOffset = std::max(2, fontPx / 16);
     const int gap = std::max(6, fontPx / 4);
     int y = y0;
-    for (const std::wstring& ln : lines) {
+    for (size_t li = 0; li < lines.size(); ++li) {
+        const std::wstring& ch = lines[li].first;
+        const std::wstring& ln = lines[li].second;
+        if (!ch.empty()) {
+            HGDIOBJ oc = SelectObject(hdc, fontCh);
+            SetBkMode(hdc, TRANSPARENT);
+            SetTextColor(hdc, outline);          // color de acento
+            const int cw = TextWidth(hdc, ch);
+            TextOutW(hdc, (w - cw) / 2, y, ch.c_str(), (int)ch.size());
+            y += TextHeight(hdc, ch) + std::max(2, fontPx / 8);
+            SelectObject(hdc, font);
+        }
         const int tw = TextWidth(hdc, ln);
         const int x = (w - tw) / 2;
         DrawOutlined(hdc, x, y, ln, outline,
@@ -272,6 +300,7 @@ void Renderer::DrawSlide(HDC hdc, int w, int h,
     }
     SelectObject(hdc, oldFont);
     DeleteObject(font);
+    DeleteObject(fontCh);
 
     // Etiqueta de referencia (arriba-izquierda, color de acento).
     if (!slide->refLabel.empty()) {

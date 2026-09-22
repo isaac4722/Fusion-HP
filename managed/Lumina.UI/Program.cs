@@ -1,13 +1,12 @@
 // ============================================================================
-//  LuminaPresentation Suite v4.0.0 — managed/Lumina.UI/Program.cs
+//  LuminaPresentation Suite v5.1.0 «FUNDAMENTO» — managed/Lumina.UI/Program.cs
 //  Copyright (c) 2026 Isaac. Licencia View-Only.
 // ============================================================================
 //  Program.cs : punto de entrada WinForms con blindaje anti-crash.
 //
-//  Contrato v4.0.0 «LUMINA»: la aplicación SIEMPRE debe abrir. Si algo falla
-//  (núcleo ausente, permisos, datos corruptos…), el usuario ve un diálogo
-//  claro en español con la causa y la ruta del log — NUNCA el críptico
-//  «dejó de funcionar» de Windows.
+//  Contrato: la aplicación SIEMPRE debe abrir. Si algo falla (núcleo ausente,
+//  permisos, datos corruptos…), el usuario ve un diálogo claro en español con
+//  la causa y la ruta del log — NUNCA el críptico «dejó de funcionar».
 //
 //  Capas de defensa:
 //   1) Application.ThreadException   → excepciones del hilo de UI (WinForms
@@ -17,10 +16,19 @@
 //   3) try/catch en Main             → fallos DURANTE la construcción de la
 //      ventana principal (el peor caso: nada que mostrar).
 //
+//  v5.1.0 «FUNDAMENTO»:
+//   * Modo  --selfcheck : arranque SIN ventanas que valida el proceso completo
+//     (carga de LuminaCore.dll + BD temporal + parser de canciones + acordes +
+//     referencias bíblicas + exportadores PPTX/PDF) y sale con código 0/2.
+//     Es el GATE de humo del paquete portable: la CI lo ejecuta en ambas
+//     variantes (net48 y net35) ANTES de empaquetar — así un paquete con DLLs
+//     gestionadas ausentes (el bug de v5.0.0) NO puede volver a publicarse.
+//   * LogLine(string) público: MainForm lleva los errores del núcleo al
+//     archivo de sesión (antes solo iban a Trace).
+//
 //  Todo queda registrado en  data/logs/lumina-AAAA-MM-DD_HHMMSS.log  con el
 //  entorno completo (SO, bits, .NET, presencia de LuminaCore.dll, rutas y
-//  permisos) para soporte remoto sin herramientas del usuario. El logging
-//  está rodeado de try/catch: jamás provoca un crash por sí mismo.
+//  permisos) para soporte remoto sin herramientas del usuario.
 // ============================================================================
 using System;
 using System.Diagnostics;
@@ -28,6 +36,7 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Windows.Forms;
+using lumina.bridge;      // v5.1.0: LuminaStorage en el selfcheck (BD SQLite)
 using lumina.core;
 
 namespace lumina.ui
@@ -35,7 +44,7 @@ namespace lumina.ui
     internal static class Program
     {
         private const string AppName = "LuminaPresentation Suite";
-        private const string AppVersion = "5.0.0";
+        private const string AppVersion = "5.1.0";
 
         /// <summary>Ruta del log de la sesión en curso (null si aún no hay).</summary>
         private static string _logPath;
@@ -43,6 +52,18 @@ namespace lumina.ui
         [STAThread]
         private static void Main()
         {
+            // ---- 0) Modo de verificación automática (CI / soporte técnico) ----
+            string[] args = Environment.GetCommandLineArgs();
+            bool selfcheck = false;
+            foreach (string a in args)
+                if (string.Equals(a, "--selfcheck", StringComparison.OrdinalIgnoreCase))
+                    selfcheck = true;
+            if (selfcheck)
+            {
+                Environment.ExitCode = RunSelfCheck();
+                return;
+            }
+
             // ---- 1) Blindaje global ANTES de tocar cualquier cosa WinForms ----
             AppDomain.CurrentDomain.UnhandledException += OnDomainUnhandledException;
             Application.ThreadException += OnThreadException;
@@ -67,6 +88,136 @@ namespace lumina.ui
                 AppendLog("FATAL en Main (construcción de la ventana): " + ex);
                 ShowFatalDialog("No se pudo iniciar " + AppName, ex);
             }
+        }
+
+        /* --------------------------------------------------------- selfcheck */
+
+        /// <summary>
+        /// Verificación integral SIN GUI: motor nativo, BD temporal, parsers del
+        /// núcleo y exportadores PPTX/PDF. Devuelve 0 si TODO pasa; 2 si algo
+        /// falla (cada paso deja constancia en consola y en el log de sesión).
+        /// Requisito de la salida: NO crear ventanas ni hilos de UI.
+        /// </summary>
+        private static int RunSelfCheck()
+        {
+            WriteSessionLog();
+            int failures = 0;
+
+            // 1) Núcleo nativo (la DLL debe estar junto al exe).
+            try
+            {
+                string v = lumina.bridge.LuminaEngine.Version();
+                Console.WriteLine("selfcheck: núcleo " + v);
+                LogLine("selfcheck: núcleo " + v);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("selfcheck FALLO núcleo: " + ex.Message);
+                LogLine("selfcheck FALLO núcleo: " + ex);
+                failures++;
+            }
+
+            // 2) Motor headless + ciclo de vida completo.
+            lumina.bridge.LuminaEngine engine = null;
+            try
+            {
+                engine = lumina.bridge.LuminaEngine.Create(true, null, null);
+                string songJson = "{\"title\":\"Selfcheck\",\"blocks\":[{\"label\":\"V\","
+                    + "\"lines\":[\"línea uno\",\"línea dos\"]}]}";
+                string parsed = lumina.bridge.LuminaEngine.SongParse(songJson);
+                if (parsed.IndexOf("\"ok\":1", StringComparison.Ordinal) < 0 &&
+                    parsed.IndexOf("\"ok\": 1", StringComparison.Ordinal) < 0)
+                    throw new FormatException("SongParse no devolvió ok=1: " + parsed);
+                Console.WriteLine("selfcheck: SongParse OK");
+
+                string chords = lumina.bridge.LuminaEngine.ChordsTranspose("Do Sol", 2, true);
+                if (chords.IndexOf("Re", StringComparison.Ordinal) < 0)
+                    throw new FormatException("ChordsTranspose inesperado: " + chords);
+                Console.WriteLine("selfcheck: ChordsTranspose OK");
+
+                string refr = lumina.bridge.LuminaEngine.BibleRefResolve("jn 3:16");
+                if (refr.IndexOf("\"book\":43", StringComparison.Ordinal) < 0 &&
+                    refr.IndexOf("\"book\": 43", StringComparison.Ordinal) < 0)
+                    throw new FormatException("BibleRefResolve inesperado: " + refr);
+                Console.WriteLine("selfcheck: BibleRefResolve OK");
+
+                int st = engine.LoadScenario(ScenarioBuilder.BuildScenarioJson(
+                    "selfcheck", new Theme(),
+                    new ScenarioItem[] { ScenarioBuilder.FromSong(
+                        ScenarioBuilder.SongFromEditor("Selfcheck", "", "línea uno\nlínea dos", false, 0)) }));
+                if (st != 0) throw new InvalidOperationException("LoadScenario=" + st);
+                st = engine.Next();
+                if (st != 0) throw new InvalidOperationException("Next=" + st);
+                Console.WriteLine("selfcheck: escenario + Next OK");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("selfcheck FALLO motor: " + ex.Message);
+                LogLine("selfcheck FALLO motor: " + ex);
+                failures++;
+            }
+
+            // 3) BD temporal (SQLite + FTS5 del núcleo).
+            try
+            {
+                string dbPath = Path.Combine(Path.GetTempPath(),
+                    "lumina-selfcheck-" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".db");
+                int st = engine.DbOpen(dbPath);
+                if (st != 0) throw new InvalidOperationException("DbOpen=" + st);
+                string res = engine.DbExec(LuminaStorage.InsertSongRequest(
+                    "Selfcheck", "", "", 0, "", "letra de prueba"));
+                if (res == null) throw new InvalidOperationException("INSERT sin respuesta");
+                Console.WriteLine("selfcheck: BD SQLite+FTS OK");
+                try { File.Delete(dbPath); } catch (Exception) { }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("selfcheck FALLO BD: " + ex.Message);
+                LogLine("selfcheck FALLO BD: " + ex);
+                failures++;
+            }
+
+            // 4) Exportadores PPTX/PDF (módulos gestionados: Lumina.Core.dll).
+            try
+            {
+                string tmp = Path.GetTempPath();
+                SlideView sv = new SlideView();
+                sv.Index = 0;
+                sv.Title = "Selfcheck";
+                sv.RefLabel = "Jn 3:16";
+                sv.Lines.Add("Porque de tal manera amó Dios…");
+                System.Collections.Generic.List<ExportSlide> slides =
+                    new System.Collections.Generic.List<ExportSlide>();
+                slides.Add(new ExportSlide(sv));
+                string pptx = Path.Combine(tmp, "lumina-selfcheck.pptx");
+                string pdf = Path.Combine(tmp, "lumina-selfcheck.pdf");
+                string e1 = PptxExporter.ExportToFile(pptx, "Selfcheck", slides, new Theme());
+                string e2 = PdfExporter.ExportToFile(pdf, "Selfcheck", slides, new Theme());
+                if (e1 != null) throw new InvalidOperationException("PPTX: " + e1);
+                if (e2 != null) throw new InvalidOperationException("PDF: " + e2);
+                if (!File.Exists(pptx) || new FileInfo(pptx).Length < 2000)
+                    throw new InvalidOperationException("PPTX sospechosamente pequeño");
+                if (!File.Exists(pdf) || new FileInfo(pdf).Length < 500)
+                    throw new InvalidOperationException("PDF sospechosamente pequeño");
+                Console.WriteLine("selfcheck: exportadores PPTX/PDF OK");
+                try { File.Delete(pptx); File.Delete(pdf); } catch (Exception) { }
+            }
+            catch (Exception ex)
+            {
+                // Es el fallo del bug v5.0.0 (FileNotFoundException Lumina.Core):
+                // aquí lo detectamos ANTES de empaquetar/publicar.
+                Console.WriteLine("selfcheck FALLO exportadores: " + ex.Message);
+                LogLine("selfcheck FALLO exportadores: " + ex);
+                failures++;
+            }
+
+            if (engine != null) { try { engine.Dispose(); } catch (Exception) { } }
+
+            Console.WriteLine(failures == 0
+                ? "SELFCHECK PASS (" + AppVersion + ")"
+                : "SELFCHECK FAIL (" + failures + " fallo/s)");
+            LogLine(failures == 0 ? "SELFCHECK PASS" : "SELFCHECK FAIL(" + failures + ")");
+            return failures == 0 ? 0 : 2;
         }
 
         /* ----------------------------------------------------------- handlers */
@@ -115,12 +266,14 @@ namespace lumina.ui
                     sb.AppendLine();
                 }
                 sb.AppendLine("Sugerencias rápidas:");
-                sb.AppendLine("  • Si falta «LuminaCore.dll», extraiga el ZIP completo y " +
-                              "ejecute LuminaLauncher.exe desde la carpeta extraída.");
-                sb.AppendLine("  • Evite carpetas de solo lectura (p. ej. «Archivos de programa»): " +
-                              "mueva el paquete a una carpeta propia como «Documentos».");
-                sb.AppendLine("  • Si el antivirus aisló archivos del paquete, restáurelos y " +
-                              "excluya la carpeta del programa.");
+                sb.AppendLine("  • Extraiga el ZIP COMPLETO en una carpeta propia y ejecute");
+                sb.AppendLine("    LuminaLauncher.exe desde esa carpeta (nunca desde dentro del ZIP).");
+                sb.AppendLine("  • El paquete debe contener, junto a LuminaLauncher.exe, las carpetas");
+                sb.AppendLine("    net48\\ y net35\\ con todos sus archivos (exe + Lumina.Core.dll +");
+                sb.AppendLine("    Lumina.Bridge.dll + Lumina.Api.dll + LuminaCore.dll).");
+                sb.AppendLine("  • Evite carpetas de solo lectura (p. ej., «Archivos de programa»).");
+                sb.AppendLine("  • Si el antivirus aisló archivos del paquete, restáurelos y");
+                sb.AppendLine("    excluya la carpeta del programa.");
 
                 MessageBox.Show(sb.ToString(), AppName + " " + AppVersion,
                                 MessageBoxButtons.OK, MessageBoxIcon.Error);
@@ -132,6 +285,16 @@ namespace lumina.ui
         }
 
         /* ----------------------------------------------------------- logging */
+
+        /// <summary>
+        /// v5.1.0: línea de log pública (timestamp + texto) — la usa MainForm
+        /// para llevar los errores del núcleo al archivo de sesión.
+        /// Best-effort: nunca lanza.
+        /// </summary>
+        public static void LogLine(string message)
+        {
+            AppendLog(message);
+        }
 
         // Log de arranque: entorno completo. Si algo falla en una máquina del
         // usuario, este archivo responde el 90% de las preguntas de soporte.
@@ -163,9 +326,10 @@ namespace lumina.ui
                 catch (Exception) { }
 
                 string baseDir = Settings.DefaultBaseDir();
-                sb.AppendLine("Carpeta exe  : " + baseDir);
+                sb.AppendLine("Carpeta base : " + baseDir);
+                sb.AppendLine("Carpeta exe  : " + AppDomain.CurrentDomain.BaseDirectory);
                 sb.AppendLine("LuminaCore   : "
-                    + (File.Exists(Path.Combine(baseDir, "LuminaCore.dll"))
+                    + (File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "LuminaCore.dll"))
                         ? "presente" : "*** AUSENTE ***"));
                 string dataDir = Path.Combine(baseDir, "data");
                 sb.AppendLine("Carpeta data : "
@@ -192,8 +356,9 @@ namespace lumina.ui
             File.AppendAllText(_logPath, text + Environment.NewLine, new UTF8Encoding(false));
         }
 
-        // Carpeta de logs:  <exe>/data/logs  (portable). Si no se puede
-        // escribir ahí (carpeta protegida), %TEMP%\LuminaPresentation.
+        // Carpeta de logs:  <raíz-del-paquete>/data/logs  (portable; compartida
+        // por las variantes net48/net35 gracias a Settings.DefaultBaseDir()).
+        // Si no se puede escribir ahí (carpeta protegida), %TEMP%\LuminaPresentation.
         private static string ResolveLogDir()
         {
             string primary = Path.Combine(Path.Combine(Settings.DefaultBaseDir(), "data"), "logs");

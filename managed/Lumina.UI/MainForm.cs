@@ -453,7 +453,7 @@ namespace lumina.ui
     public sealed class MainForm : Form
     {
         private const string AppName = "LuminaPresentation Suite";
-        private const string AppVersion = "5.0.0";
+        private const string AppVersion = "5.1.0";
         private const string AppTitle = AppName + " — v" + AppVersion;
 
         /* ------------------------------------------------------------ servicios */
@@ -543,7 +543,17 @@ namespace lumina.ui
         private VideoPlayerForm _videoForm;           // video en la salida
         private StageViewForm _stageForm;             // monitor de escenario
         private LowerThirdsOverlay _lowerThird;       // zócalo inferior
+        private DirectorForm _directorForm;           // v5.1.0: 3ª pantalla (director)
         private int _videoSlideIndex = -1;            // slide de video activa (-1 = ninguna)
+
+        // v5.1.0 — Biblia: búsqueda por palabra (FTS5 del núcleo)
+        private TextBox _txtBibleSearch;
+        private ListView _lvBibleResults;
+        private Label _lblBibleSearchInfo;
+
+        // v5.1.0 — Respaldo (Drive/OneDrive-compatible)
+        private TextBox _txtBackupFolder;
+        private CheckBox _chkAutoBackup;
 
         // v5.0.0 — Exportar
         private Label _lblExportInfo;
@@ -814,13 +824,17 @@ namespace lumina.ui
             _btnNext = UiTheme.MkButton("Siguiente ▶", "secondary", delegate { if (RequireEngine()) _engine.Next(); });
             _btnBlack = UiTheme.MkButton("■ Negro", "danger", delegate { if (RequireEngine()) ToggleBlack(); });
             Button btnStage = UiTheme.MkButton("⛭ Escenario", "secondary", delegate { OpenStageView(); });
+            Button btnDirector = UiTheme.MkButton("⚑ Director", "secondary", delegate { OpenDirectorView(); });
             Button btnThird = UiTheme.MkButton("▬ Aviso", "secondary", delegate { ShowLowerThirdDialog(); });
+            Button btnVideoPause = UiTheme.MkButton("⏸ Pausa video", "secondary", delegate { ToggleVideoPause(); });
             transport.Controls.Add(_btnPrev);
             transport.Controls.Add(_btnLive);
             transport.Controls.Add(_btnNext);
             transport.Controls.Add(_btnBlack);
             transport.Controls.Add(btnStage);
+            transport.Controls.Add(btnDirector);
             transport.Controls.Add(btnThird);
+            transport.Controls.Add(btnVideoPause);
 
             FlowLayoutPanel outputRow = new FlowLayoutPanel();
             outputRow.Dock = DockStyle.Bottom;
@@ -830,12 +844,27 @@ namespace lumina.ui
             Label lblScreen = UiTheme.MkLabel("Pantalla:", UiTheme.TextSecondary, UiTheme.Small, true);
             lblScreen.Margin = new Padding(0, 10, 8, 0);
             _cmbScreen = NewDarkCombo();
-            _cmbScreen.Items.Add("0");
-            _cmbScreen.Items.Add("1");
-            _cmbScreen.Items.Add("2");
+            // v5.1.0: pantallas REALES del sistema (antes 0/1/2 fijo — con 4+
+            // monitores no se podía elegir la 4ª). Formato: "N · 1920×1080".
+            try
+            {
+                Screen[] screens = Screen.AllScreens;
+                for (int i = 0; i < screens.Length; i++)
+                {
+                    string label = (i + 1).ToString(CultureInfo.InvariantCulture) + " · " +
+                        screens[i].Bounds.Width + "×" + screens[i].Bounds.Height;
+                    _cmbScreen.Items.Add(label);
+                }
+            }
+            catch (Exception) { _cmbScreen.Items.Add("1 · principal"); }
+            if (_cmbScreen.Items.Count == 0) _cmbScreen.Items.Add("1 · principal");
             _cmbScreen.SelectedIndex = 0;
-            _cmbScreen.Width = 56;
-            _cmbScreen.SelectedIndexChanged += delegate { _navInfoCard.Invalidate(); };
+            _cmbScreen.Width = 120;
+            _cmbScreen.SelectedIndexChanged += delegate
+            {
+                _settings.ProjectionScreen = _cmbScreen.SelectedIndex;
+                _navInfoCard.Invalidate();
+            };
             _chkFullscreen = new CheckBox();
             _chkFullscreen.Text = "Pantalla completa";
             _chkFullscreen.AutoSize = true;
@@ -1140,9 +1169,47 @@ namespace lumina.ui
             import.Controls.Add(btnImport);
             import.Controls.Add(btnImportXml);
 
+            // ---- v5.1.0: búsqueda por PALABRA (FTS5 del núcleo, tabla bible_fts) ----
+            ContentPanel search;
+            Panel searchCard = UiTheme.MkCard("Buscar en la Biblia por palabra", out search);
+            searchCard.Dock = DockStyle.Fill;
+
+            FlowLayoutPanel searchRow = new FlowLayoutPanel();
+            searchRow.Dock = DockStyle.Top;
+            searchRow.Height = 34;
+            searchRow.WrapContents = false;
+            _txtBibleSearch = UiTheme.MkInput(false);
+            _txtBibleSearch.Width = 240;
+            _txtBibleSearch.Margin = new Padding(0, 0, 8, 0);
+            _txtBibleSearch.KeyDown += delegate(object s, KeyEventArgs e)
+            {
+                if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; SearchBibleWords(); }
+            };
+            Button btnBibleSearch = UiTheme.MkButton("Buscar", "secondary", delegate { SearchBibleWords(); });
+            searchRow.Controls.Add(_txtBibleSearch);
+            searchRow.Controls.Add(btnBibleSearch);
+
+            _lvBibleResults = NewDarkList();
+            _lvBibleResults.Columns.Add("Referencia", 170, HorizontalAlignment.Left);
+            _lvBibleResults.Columns.Add("Versículo", 620, HorizontalAlignment.Left);
+            _lvBibleResults.Dock = DockStyle.Fill;
+            _lvBibleResults.DoubleClick += delegate { LoadBibleResultToStage(); };
+
+            _lblBibleSearchInfo = UiTheme.MkLabel(
+                "Busca en TODAS las versiones instaladas (índice FTS5). El término " +
+                "aparece resaltado con «…». Doble clic → carga el pasaje al escenario.",
+                UiTheme.TextDisabled, UiTheme.Small, true);
+            _lblBibleSearchInfo.Dock = DockStyle.Bottom;
+            _lblBibleSearchInfo.Height = 20;
+
+            search.Controls.Add(_lvBibleResults);
+            search.Controls.Add(searchRow);
+            search.Controls.Add(_lblBibleSearchInfo);
+
             // El ORDEN de anexado importa (docking = z-order inverso): los
             // Dock.Top se procesan del último al primero → anexar en orden
-            // inverso al visual deseado.
+            // inverso al visual deseado (arriba: import · medio: pasaje · resto: búsqueda).
+            body.Controls.Add(searchCard);
             body.Controls.Add(importCard);
             body.Controls.Add(passageCard);
             return page;
@@ -1923,13 +1990,21 @@ namespace lumina.ui
 
             FlowLayoutPanel itemBtns = new FlowLayoutPanel();
             itemBtns.Dock = DockStyle.Bottom;
-            itemBtns.Height = 40;
-            itemBtns.WrapContents = false;
+            itemBtns.Height = 78;                 // v5.1.0: dos filas de botones
+            itemBtns.WrapContents = true;
             itemBtns.Padding = new Padding(0, 4, 0, 0);
             itemBtns.Controls.Add(UiTheme.MkButton("↑ Subir", "secondary", delegate { MoveItem(-1); }));
             itemBtns.Controls.Add(UiTheme.MkButton("↓ Bajar", "secondary", delegate { MoveItem(1); }));
             itemBtns.Controls.Add(UiTheme.MkButton("× Eliminar", "secondary", delegate { RemoveItem(); }));
             itemBtns.Controls.Add(UiTheme.MkButton("► Video…", "secondary", delegate { AddVideoItemToService(); }));
+            // v5.1.0 «FUNDAMENTO»: el editor de culto COMPLETO del spec §3.2 —
+            // canciones, pasajes, imágenes, textos/avisos y blancos, sin salir
+            // de la página (antes solo video + JSON externo).
+            itemBtns.Controls.Add(UiTheme.MkButton("♪ Canción actual", "primary", delegate { AddCurrentSongToService(); }));
+            itemBtns.Controls.Add(UiTheme.MkButton("✝ Pasaje bíblico", "primary", delegate { AddCurrentScriptureToService(); }));
+            itemBtns.Controls.Add(UiTheme.MkButton("🖼 Imagen…", "secondary", delegate { AddImageItemToService(); }));
+            itemBtns.Controls.Add(UiTheme.MkButton("✎ Texto/aviso…", "secondary", delegate { AddTextItemToService(); }));
+            itemBtns.Controls.Add(UiTheme.MkButton("□ En blanco", "secondary", delegate { AddBlankItemToService(); }));
 
             list.Controls.Add(_lstItems);
             list.Controls.Add(nameRow);
@@ -1946,6 +2021,10 @@ namespace lumina.ui
             btnImportBib.Dock = DockStyle.Top;
             btnImportBib.Height = 32;
             btnImportBib.Margin = new Padding(0, 8, 0, 0);
+            Button btnImportPlan = UiTheme.MkButton("Importar plan JSON…", "secondary", delegate { ImportPlanJson(); });
+            btnImportPlan.Dock = DockStyle.Top;
+            btnImportPlan.Height = 32;
+            btnImportPlan.Margin = new Padding(0, 8, 0, 0);
             Button btnSend = UiTheme.MkButton("Enviar a proyección", "primary", delegate { SendServiceToStage(); });
             btnSend.Dock = DockStyle.Bottom;
             btnSend.Height = 44;
@@ -1953,6 +2032,7 @@ namespace lumina.ui
 
             // Anexado inverso (docking = z-order inverso): JSON arriba, enviar abajo.
             actions.Controls.Add(btnSend);
+            actions.Controls.Add(btnImportPlan);
             actions.Controls.Add(btnImportBib);
             actions.Controls.Add(btnImportSong);
 
@@ -2044,6 +2124,51 @@ namespace lumina.ui
             dbForm.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             db.Controls.Add(dbForm);
 
+            // ---- v5.1.0: respaldo / sincronización por carpeta ----
+            ContentPanel backup;
+            Panel backupCard = UiTheme.MkCard("Respaldo y sincronización", out backup);
+            backupCard.Dock = DockStyle.Top;
+            backupCard.Height = 170;
+            backupCard.Margin = new Padding(0, 16, 0, 0);
+
+            TableLayoutPanel bkForm = NewGrid(2,
+                new ColumnStyle(SizeType.Absolute, 170),
+                new ColumnStyle(SizeType.Percent, 100));
+
+            bkForm.Controls.Add(FieldLabel("Carpeta de respaldo"), 0, 0);
+            FlowLayoutPanel bkRow = new FlowLayoutPanel();
+            bkRow.Dock = DockStyle.Fill;
+            bkRow.WrapContents = false;
+            bkRow.Padding = new Padding(0, 4, 0, 0);
+            _txtBackupFolder = UiTheme.MkInput(false);
+            _txtBackupFolder.Width = 330;
+            Button btnBrowseBk = UiTheme.MkButton("Explorar…", "secondary", delegate { BrowseBackupFolder(); });
+            Button btnBackupNow = UiTheme.MkButton("Respaldar ahora", "primary", delegate { RunBackupNow(); });
+            bkRow.Controls.Add(_txtBackupFolder);
+            bkRow.Controls.Add(btnBrowseBk);
+            bkRow.Controls.Add(btnBackupNow);
+            bkForm.Controls.Add(bkRow, 1, 0);
+
+            _chkAutoBackup = new CheckBox();
+            _chkAutoBackup.Text = "Respaldar automáticamente al cerrar la aplicación " +
+                "(ZIP de la carpeta data\\ en la carpeta elegida)";
+            _chkAutoBackup.AutoSize = true;
+            _chkAutoBackup.ForeColor = UiTheme.TextSecondary;
+            bkForm.Controls.Add(_chkAutoBackup, 1, 1);
+
+            Label bkNote = UiTheme.MkLabel(
+                "Compatible con Google Drive / OneDrive: apunte la carpeta a la del " +
+                "cliente de sincronización instalado (sin OAuth ni contraseñas) y sus " +
+                "canciones, biblias, temas y ajustes quedarán respaldados en la nube.",
+                UiTheme.TextDisabled, UiTheme.Small, false);
+            bkNote.Dock = DockStyle.Fill;
+            bkNote.Padding = new Padding(0, 4, 0, 0);
+            bkForm.Controls.Add(bkNote, 1, 2);
+
+            for (int i = 0; i < 2; i++) bkForm.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
+            bkForm.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            backup.Controls.Add(bkForm);
+
             // ---- acerca de ----
             ContentPanel about;
             Panel aboutCard = UiTheme.MkCard("Acerca de", out about);
@@ -2075,9 +2200,83 @@ namespace lumina.ui
 
             // Anexado inverso (docking = z-order inverso): about queda abajo.
             body.Controls.Add(aboutCard);
+            body.Controls.Add(backupCard);
             body.Controls.Add(dbCard);
             body.Controls.Add(apiCard);
             return page;
+        }
+
+        /* ------------------------------------------------ v5.1.0: respaldo -- */
+
+        /// <summary>Elige la carpeta de respaldo (p. ej. la de Google Drive).</summary>
+        private void BrowseBackupFolder()
+        {
+            using (FolderBrowserDialog dlg = new FolderBrowserDialog())
+            {
+                dlg.Description = "Carpeta de respaldo (Google Drive / OneDrive / USB…)";
+                dlg.ShowNewFolderButton = true;
+                try
+                {
+                    string cur = _txtBackupFolder.Text.Trim();
+                    if (Directory.Exists(cur)) dlg.SelectedPath = cur;
+                }
+                catch (Exception) { }
+                if (dlg.ShowDialog(this) == DialogResult.OK)
+                {
+                    _txtBackupFolder.Text = dlg.SelectedPath;
+                    _settings.BackupFolder = dlg.SelectedPath;
+                    SaveSettings();
+                }
+            }
+        }
+
+        /// <summary>Respaldar data\ → ZIP con sello de tiempo en la carpeta elegida.</summary>
+        private void RunBackupNow()
+        {
+            _settings.BackupFolder = _txtBackupFolder.Text.Trim();
+            _settings.AutoBackupOnExit = _chkAutoBackup.Checked;
+            SaveSettings();
+            string err = PerformBackup();
+            if (err == null) Status("Respaldo creado en: " + _settings.BackupFolder);
+            else Status("Respaldo falló: " + err);
+        }
+
+        /// <summary>
+        /// Ejecuta el respaldo (compartido por el botón y el cierre automático).
+        /// Devuelve null si OK / no aplicaba; si falla, el mensaje.
+        /// </summary>
+        private string PerformBackup()
+        {
+            try
+            {
+                string folder = _settings.BackupFolder;
+                if (folder.Length == 0) return null;   // sin carpeta: no aplica
+                if (!Directory.Exists(folder))
+                {
+                    try { Directory.CreateDirectory(folder); }
+                    catch (Exception ex) { return "la carpeta no existe: " + ex.Message; }
+                }
+                string dataDir = _settings.DataDir;
+                if (!Directory.Exists(dataDir)) return null;   // nada que respaldar
+                string zipPath = Path.Combine(folder,
+                    "lumina-backup-" + DateTime.Now.ToString("yyyy-MM-dd_HHmmss") + ".zip");
+                string err = ZipBackup.CreateFromDirectory(dataDir, zipPath);
+                if (err != null) return err;
+                // Retención ligera: conservar los 10 más recientes.
+                try
+                {
+                    string[] old = Directory.GetFiles(folder, "lumina-backup-*.zip");
+                    Array.Sort(old, StringComparer.OrdinalIgnoreCase);
+                    for (int i = 0; i + 10 < old.Length; i++)
+                        try { File.Delete(old[i]); } catch (Exception) { }
+                }
+                catch (Exception) { }
+                return null;
+            }
+            catch (Exception ex)
+            {
+                return ex.Message;
+            }
         }
 
         /* --------------------------------------------------- helpers visuales */
@@ -2299,11 +2498,14 @@ namespace lumina.ui
         /* --------------------------------------------------- eventos del motor */
 
         // Hilo del MOTOR: solo diagnóstico (el camino de la UI es UiEventReceived).
+        // v5.1.0: los errores del núcleo van también al LOG de sesión (antes solo
+        // a Trace — un fallo en proyección no dejaba rastro para soporte).
         private void OnEngineEventRaw(object sender, LuminaEvent e)
         {
             if (e.Code == LuminaEvents.Error)
             {
                 try { TraceLine("EV_ERROR " + e.Text); } catch (Exception) { }
+                try { Program.LogLine("ERROR núcleo: " + e.Text); } catch (Exception) { }
             }
         }
 
@@ -3451,8 +3653,9 @@ namespace lumina.ui
                 if (_videoSlideIndex != _currentIndex)
                 {
                     _videoSlideIndex = _currentIndex;
+                    // v5.1.0: loop/volumen del índice (antes hardcodeado false/100).
                     bool ok = _videoForm.Play(curItem.VideoPath, ProjectorScreenBounds(),
-                        loop: false, volume0to100: 100);
+                        loop: curItem.VideoLoop, volume0to100: curItem.VideoVolume);
                     Status(ok ? "Reproduciendo video: " + System.IO.Path.GetFileName(curItem.VideoPath)
                               : "El video no pudo iniciarse (¿Windows Media Player?).");
                 }
@@ -3462,8 +3665,9 @@ namespace lumina.ui
                 StopVideo();
             }
 
-            // ---- escenario (monitor) ----
+            // ---- escenario (monitor) + director (3ª salida) ----
             UpdateStageView(curItem);
+            UpdateDirectorView(curItem);
 
             // ---- texto OBS en vivo ----
             if (_settings.ObsTextSource.Length > 0)
@@ -3570,6 +3774,98 @@ namespace lumina.ui
                 nextItemTitle, refLabel, cur, next);
         }
 
+        /// <summary>v5.1.0: abre la 3ª salida (pantalla del Director).</summary>
+        private void OpenDirectorView()
+        {
+            if (!IsWindows()) { Status("La pantalla del director requiere Windows."); return; }
+            if (_directorForm == null || _directorForm.IsDisposed)
+                _directorForm = new DirectorForm();
+            Screen[] screens = Screen.AllScreens;
+            int idx = Math.Max(0, Math.Min(_settings.DirectorScreen, screens.Length - 1));
+            _directorForm.OpenOn(screens[idx]);
+            UpdateDirectorView(null);
+            Status("Pantalla del director abierta (pantalla " + idx + "). Escape para cerrar; " +
+                   "Espacio/R = cronómetro; notas abajo.");
+        }
+
+        /// <summary>
+        /// v5.1.0: refresca la pantalla del director: texto COMPLETO del ítem
+        /// actual (todas sus líneas, para leer adelantado) + próximo ítem.
+        /// </summary>
+        private void UpdateDirectorView(ScenarioItem curItem)
+        {
+            if (_directorForm == null || _directorForm.IsDisposed || !_directorForm.Visible) return;
+            List<string> cur = new List<string>();
+            if (curItem != null) cur.AddRange(DirectorItemLines(curItem));
+            List<string> next = new List<string>();
+            string nextTitle = string.Empty;
+            if (_lastScenarioItems != null && _lastItemIndex + 1 >= 0 &&
+                _lastItemIndex + 1 < _lastScenarioItems.Count)
+            {
+                ScenarioItem nextItem = _lastScenarioItems[_lastItemIndex + 1];
+                nextTitle = nextItem.Title;
+                next.AddRange(DirectorItemLines(nextItem));
+            }
+            string refLabel = _currentIndex >= 0 && _currentIndex < _slides.Count
+                ? _slides[_currentIndex].RefLabel : string.Empty;
+            _directorForm.SetState(curItem != null ? curItem.Title : string.Empty,
+                nextTitle, refLabel, cur, next);
+        }
+
+        /// <summary>Todas las líneas legibles de un ítem (para el director).</summary>
+        private static List<string> DirectorItemLines(ScenarioItem it)
+        {
+            List<string> lines = new List<string>();
+            if (it == null) return lines;
+            if (it.Kind == "song" && it.Song != null)
+            {
+                string raw = it.Song.LyricsText();
+                foreach (string l in raw.Replace("\r\n", "\n").Split('\n'))
+                {
+                    string t = l.Trim();
+                    if (t.Length > 0 && !t.StartsWith("[", StringComparison.Ordinal))
+                        lines.Add(t);
+                }
+            }
+            else if (it.Kind == "text" && it.Text.Length > 0)
+            {
+                foreach (string l in it.Text.Replace("\r\n", "\n").Split('\n'))
+                    if (l.Trim().Length > 0) lines.Add(l.Trim());
+            }
+            else if (it.Kind == "scripture" && it.Text.Length > 0)
+            {
+                foreach (string l in it.Text.Replace("\r\n", "\n").Split('\n'))
+                    if (l.Trim().Length > 0) lines.Add(l.Trim());
+            }
+            else if (it.Kind == "video")
+            {
+                lines.Add("(video en reproducción: " +
+                    System.IO.Path.GetFileName(it.VideoPath) + ")");
+            }
+            else if (it.Kind == "image")
+            {
+                lines.Add("(imagen: " + System.IO.Path.GetFileName(it.ImagePath) + ")");
+                if (it.Text.Length > 0) lines.Add(it.Text);
+            }
+            else if (it.Title.Length > 0)
+            {
+                lines.Add(it.Title);
+            }
+            return lines;
+        }
+
+        /// <summary>v5.1.0: pausa/reanuda el video en vivo (tecla P / botón).</summary>
+        private void ToggleVideoPause()
+        {
+            if (_videoForm == null || _videoSlideIndex < 0)
+            {
+                Status("No hay video en reproducción.");
+                return;
+            }
+            _videoForm.PauseOrResume();
+            Status("Video en pausa/reanudado (P alterna).");
+        }
+
         /// <summary>Muestra el zócalo (avisos/acciones show_text).</summary>
         private void ShowLowerThird(string line1, string line2, int seconds)
         {
@@ -3647,6 +3943,63 @@ namespace lumina.ui
         private void ToggleBlack()
         {
             _engine.Black(!_black);
+        }
+
+        /* ======================================================================
+         *  v5.1.0 — TECLADO GLOBAL EN VIVO (requisito spec §3.1: «atajos de
+         *  teclado fluidos» / «utilizando el teclado, control remoto o móviles»)
+         *  → / Espacio / AvPág : siguiente slide
+         *  ← / RePág           : slide anterior
+         *  B                    : negro (ocultar salida)
+         *  L                    : limpiar salida
+         *  F5                   : mostrar proyector
+         *  F6 / F7 / F8         : monitor de escenario / director / zócalo
+         *  No intercepta cuando el foco está en un control editable (el texto
+         *  de búsqueda, el editor de canciones…) — las flechas siguen siendo
+         *  del usuario mientras edita.
+         * ==================================================================== */
+        private static bool IsEditable(Control c)
+        {
+            if (c == null) return false;
+            return c is TextBox || c is ComboBox || c is NumericUpDown || c is ListBox;
+        }
+
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            // Las teclas de función SIEMPRE funcionan (no colisionan con edición).
+            if (keyData == Keys.F5) { ShowProjector(); return true; }
+            if (keyData == Keys.F6) { OpenStageView(); return true; }
+            if (keyData == Keys.F7) { OpenDirectorView(); return true; }
+            if (keyData == Keys.F8) { ShowLowerThirdDialog(); return true; }
+
+            // El resto respeta el foco editable.
+            if (IsEditable(ActiveControl)) return base.ProcessCmdKey(ref msg, keyData);
+
+            switch (keyData)
+            {
+                case Keys.Right:
+                case Keys.PageDown:
+                    if (_engine != null) { _engine.Next(); return true; }
+                    break;
+                case Keys.Space:
+                    if (ActiveControl is Button) break;      // barra espaciadora activa botones
+                    if (_engine != null) { _engine.Next(); return true; }
+                    break;
+                case Keys.Left:
+                case Keys.PageUp:
+                    if (_engine != null) { _engine.Prev(); return true; }
+                    break;
+                case Keys.B:
+                    if (_engine != null) { ToggleBlack(); return true; }
+                    break;
+                case Keys.L:
+                    if (_engine != null) { _engine.Clear(); return true; }
+                    break;
+                case Keys.P:
+                    ToggleVideoPause();
+                    return true;
+            }
+            return base.ProcessCmdKey(ref msg, keyData);
         }
 
         private void ShowProjector()
@@ -3842,6 +4195,110 @@ namespace lumina.ui
                 _lblResolve.Text = "Núcleo no disponible: " + ex.Message;
                 _lblResolve.ForeColor = UiTheme.Err;
             }
+        }
+
+        /* ======================================================================
+         *  v5.1.0 — BIBLIA: BÚSQUEDA POR PALABRA (FTS5 · tabla bible_fts)
+         *  El índice lo crea el núcleo al abrir la BD (Storage.cpp) y lo
+         *  mantienen los triggers bible_ai/bible_ad; solo faltaba la consulta
+         *  y la UI — requisito spec §3.2: «búsqueda instantánea por cita o
+         *  palabra clave y opción de resaltado».
+         * ==================================================================== */
+
+        /// <summary>Sanitiza el término para FTS5 (solo palabra + comodín prefijo).</summary>
+        private static string FtsTerm(string raw)
+        {
+            StringBuilder sb = new StringBuilder();
+            foreach (char c in (raw ?? string.Empty))
+            {
+                if (char.IsLetterOrDigit(c)) sb.Append(c);
+                else if (char.IsWhiteSpace(c)) break;   // solo la primera palabra
+            }
+            return sb.ToString().ToLowerInvariant();
+        }
+
+        /// <summary>Resalta el término con «…» (resaltado tolerante a mayúsculas).</summary>
+        private static string HighlightTerm(string text, string term)
+        {
+            if (string.IsNullOrEmpty(text) || term.Length == 0) return text;
+            int idx = text.IndexOf(term, StringComparison.OrdinalIgnoreCase);
+            if (idx < 0) return text;
+            return text.Substring(0, idx) + "«" + text.Substring(idx, term.Length) + "»" +
+                   text.Substring(idx + term.Length);
+        }
+
+        private void SearchBibleWords()
+        {
+            if (!RequireEngine() || !RequireDb()) return;
+            string term = FtsTerm(_txtBibleSearch.Text);
+            if (term.Length == 0)
+            {
+                Status("Escribe una palabra para buscar en la Biblia (p. ej. «misericordia»).");
+                return;
+            }
+            try
+            {
+                // FTS5 del núcleo: MATCH por prefijo (term*) sobre la columna
+                // indexada "text"; version/book/chapter/verse vienen UNINDEXED.
+                string sql = "SELECT version, book, chapter, verse, text FROM bible_fts " +
+                             "WHERE bible_fts MATCH ?1 ORDER BY book, chapter, verse LIMIT 200";
+                string req = LuminaStorage.BuildExecJson(sql, term + "*");
+                string res = _engine.DbExec(req);
+                List<List<object>> rows = LuminaStorage.Rows(res);
+                _lvBibleResults.BeginUpdate();
+                try
+                {
+                    _lvBibleResults.Items.Clear();
+                    foreach (List<object> row in rows)
+                    {
+                        string version = Cell(row, 0);
+                        long book, chapter, verse;
+                        long.TryParse(Cell(row, 1), out book);
+                        long.TryParse(Cell(row, 2), out chapter);
+                        long.TryParse(Cell(row, 3), out verse);
+                        string text = Cell(row, 4);
+                        // Referencia legible con la tabla de 66 libros (espejo C++).
+                        string name = BooksTable.NameOf((int)book);
+                        string abbr = BooksTable.AbbrOf((int)book);
+                        string refTxt = (abbr.Length > 0 ? abbr : "libro " + book) + " " +
+                            chapter + ":" + verse + (version.Length > 0 ? " (" + version + ")" : "");
+                        ListViewItem it = new ListViewItem(refTxt);
+                        it.SubItems.Add(HighlightTerm(text, term));
+                        it.Tag = BooksTable.Reference((int)book, (int)chapter, (int)verse, (int)verse)
+                                 + "|" + version + "|" + (name.Length > 0 ? name : "?");
+                        _lvBibleResults.Items.Add(it);
+                    }
+                }
+                finally
+                {
+                    _lvBibleResults.EndUpdate();
+                }
+                _lblBibleSearchInfo.Text = rows.Count + " versículo(s) con «" + term + "»" +
+                    (rows.Count >= 200 ? " (límite alcanzado — afina la búsqueda)" : "") +
+                    " · doble clic carga el pasaje";
+                Status("Búsqueda bíblica «" + term + "»: " + rows.Count + " resultado(s).");
+            }
+            catch (LuminaException ex)
+            {
+                Status("Búsqueda bíblica falló: " + ex.Message);
+            }
+        }
+
+        /// <summary>Doble clic en un resultado → ese versículo al escenario.</summary>
+        private void LoadBibleResultToStage()
+        {
+            if (_lvBibleResults.SelectedItems.Count == 0) return;
+            string tag = Convert.ToString(_lvBibleResults.SelectedItems[0].Tag,
+                CultureInfo.InvariantCulture);
+            string[] parts = (tag ?? string.Empty).Split('|');
+            if (parts.Length < 2 || parts[0].Length == 0)
+            {
+                Status("No se pudo derivar la referencia de ese versículo.");
+                return;
+            }
+            _txtRef.Text = parts[0];
+            _txtVersion.Text = parts[1];
+            LoadScriptureToStage();
         }
 
         /* ======================================================================
@@ -4232,17 +4689,270 @@ namespace lumina.ui
                 dlg.Filter = "Video (*.mp4;*.wmv;*.avi;*.m4v)|*.mp4;*.wmv;*.avi;*.m4v|" +
                              "Todos los archivos (*.*)|*.*";
                 if (dlg.ShowDialog(this) != DialogResult.OK) return;
-                ScenarioItem it = new ScenarioItem();
-                it.Kind = "video";
-                it.Title = "Video: " + Path.GetFileName(dlg.FileName);
-                it.VideoPath = dlg.FileName;
+
+                // v5.1.0: opciones de reproducción (bucle/volumen) — antes
+                // hardcodeadas (sin bucle, 100) y sin exponer en la UI.
+                bool loop = false;
+                int volume = 100;
+                using (Form opt = new Form())
+                {
+                    opt.Text = "Opciones del video";
+                    opt.StartPosition = FormStartPosition.CenterParent;
+                    opt.FormBorderStyle = FormBorderStyle.FixedDialog;
+                    opt.MinimizeBox = opt.MaximizeBox = false;
+                    opt.ClientSize = new Size(360, 128);
+                    opt.Font = UiTheme.Body;
+                    opt.BackColor = UiTheme.PageBg;
+                    opt.ForeColor = UiTheme.TextPrimary;
+
+                    CheckBox chkLoop = new CheckBox();
+                    chkLoop.Text = "Repetir en bucle";
+                    chkLoop.AutoSize = true;
+                    chkLoop.ForeColor = UiTheme.TextSecondary;
+                    chkLoop.Dock = DockStyle.Top;
+                    chkLoop.Height = 28;
+
+                    Label lv = UiTheme.MkLabel("Volumen (0-100):", UiTheme.TextSecondary, UiTheme.Small, true);
+                    lv.Dock = DockStyle.Top; lv.Height = 20;
+                    NumericUpDown numVol = UiTheme.MkNumeric(0, 100, 100);
+                    numVol.Dock = DockStyle.Top;
+                    numVol.Height = 26;
+
+                    FlowLayoutPanel btns = new FlowLayoutPanel();
+                    btns.Dock = DockStyle.Bottom;
+                    btns.Height = 40;
+                    Button ok = UiTheme.MkButton("Agregar", "primary", delegate { opt.Close(); });
+                    ok.Width = 110;
+                    btns.Controls.Add(ok);
+
+                    opt.Controls.Add(numVol);
+                    opt.Controls.Add(lv);
+                    opt.Controls.Add(chkLoop);
+                    opt.Controls.Add(btns);
+                    if (opt.ShowDialog(this) == DialogResult.OK)
+                    {
+                        loop = chkLoop.Checked;
+                        volume = (int)numVol.Value;
+                    }
+                }
+
+                ScenarioItem it = ScenarioBuilder.VideoItem(
+                    "Video: " + Path.GetFileName(dlg.FileName), dlg.FileName, loop, volume);
                 _serviceItems.Add(it);
                 RefreshServiceList();
-                Status("Video agregado al culto: " + it.Title);
+                Status("Video agregado al culto: " + it.Title +
+                       (loop ? " (bucle, vol " + volume + ")" : " (vol " + volume + ")"));
             }
         }
 
-        /// <summary>INSERT por lotes en transacción (BEGIN/COMMIT vía lumina_db_exec).</summary>
+        /* ------------------------------------------------------------------
+         *  v5.1.0 «FUNDAMENTO» — editor de culto COMPLETO (spec §3.2)
+         * ------------------------------------------------------------------ */
+
+        /// <summary>Agrega la canción que está en el editor (página Canciones).</summary>
+        private void AddCurrentSongToService()
+        {
+            Song s = ScenarioBuilder.SongFromEditor(
+                _txtSongTitle.Text, _txtSongArtist.Text, _txtSongLyrics.Text,
+                _chkHymnMode.Checked, (int)_numTranspose.Value);
+            if (s.Title.Length == 0) s.Title = "Sin título";
+            if (s.Blocks.Count == 0)
+            {
+                Status("El editor de canciones está vacío: escribe la letra primero.");
+                return;
+            }
+            _serviceItems.Add(ScenarioBuilder.FromSong(s));
+            RefreshServiceList();
+            Status("Canción «" + s.Title + "» agregada al culto (" + _serviceItems.Count + " ítems).");
+        }
+
+        /// <summary>Agrega el pasaje bíblico actual de la página Biblia.</summary>
+        private void AddCurrentScriptureToService()
+        {
+            string reference = _txtRef.Text.Trim();
+            if (reference.Length == 0)
+            {
+                Status("Escribe la referencia en la página Biblia (p. ej. Sal 23:1-6).");
+                return;
+            }
+            ScenarioItem it = ScenarioBuilder.ScriptureItem(
+                reference, _txtVersion.Text.Trim(), (int)_numVersesPerSlide.Value, string.Empty);
+            _serviceItems.Add(it);
+            RefreshServiceList();
+            Status("Pasaje «" + reference + "» agregado al culto (" + _serviceItems.Count + " ítems).");
+        }
+
+        /// <summary>Agrega una imagen (JPG/PNG/GIF/BMP/TIF) con pie opcional.</summary>
+        private void AddImageItemToService()
+        {
+            using (OpenFileDialog dlg = new OpenFileDialog())
+            {
+                dlg.Title = "Agregar imagen al culto";
+                dlg.Filter = "Imágenes (*.jpg;*.jpeg;*.png;*.gif;*.bmp;*.tif;*.tiff)|" +
+                             "*.jpg;*.jpeg;*.png;*.gif;*.bmp;*.tif;*.tiff|" +
+                             "Todos los archivos (*.*)|*.*";
+                if (dlg.ShowDialog(this) != DialogResult.OK) return;
+                string caption = string.Empty;
+                // Pie de imagen opcional (etiqueta semántica del spec §3.2).
+                using (Form f = new Form())
+                {
+                    f.Text = "Pie de imagen (opcional)";
+                    f.StartPosition = FormStartPosition.CenterParent;
+                    f.FormBorderStyle = FormBorderStyle.FixedDialog;
+                    f.MinimizeBox = f.MaximizeBox = false;
+                    f.ClientSize = new Size(380, 118);
+                    f.Font = UiTheme.Body;
+                    f.BackColor = UiTheme.PageBg;
+                    f.ForeColor = UiTheme.TextPrimary;
+                    Label l = UiTheme.MkLabel("Texto sobre la imagen (opcional):",
+                        UiTheme.TextSecondary, UiTheme.Small, true);
+                    l.Dock = DockStyle.Top; l.Height = 20;
+                    TextBox t = UiTheme.MkInput(false);
+                    t.Dock = DockStyle.Top;
+                    FlowLayoutPanel btns = new FlowLayoutPanel();
+                    btns.Dock = DockStyle.Bottom; btns.Height = 40;
+                    Button ok = UiTheme.MkButton("Agregar", "primary", delegate { f.Close(); });
+                    ok.Width = 110;
+                    btns.Controls.Add(ok);
+                    f.Controls.Add(t); f.Controls.Add(l); f.Controls.Add(btns);
+                    if (f.ShowDialog(this) == DialogResult.OK) caption = t.Text.Trim();
+                }
+                ScenarioItem it = ScenarioBuilder.ImageItem(
+                    Path.GetFileName(dlg.FileName), dlg.FileName, caption);
+                _serviceItems.Add(it);
+                RefreshServiceList();
+                Status("Imagen agregada al culto: " + it.Title);
+            }
+        }
+
+        /// <summary>Agrega un ítem de texto/aviso con varias líneas.</summary>
+        private void AddTextItemToService()
+        {
+            string text = string.Empty;
+            using (Form f = new Form())
+            {
+                f.Text = "Texto / aviso para el culto";
+                f.StartPosition = FormStartPosition.CenterParent;
+                f.FormBorderStyle = FormBorderStyle.FixedDialog;
+                f.MinimizeBox = f.MaximizeBox = false;
+                f.ClientSize = new Size(420, 240);
+                f.Font = UiTheme.Body;
+                f.BackColor = UiTheme.PageBg;
+                f.ForeColor = UiTheme.TextPrimary;
+                Label l = UiTheme.MkLabel("Líneas a proyectar (una por slide agrupada):",
+                    UiTheme.TextSecondary, UiTheme.Small, true);
+                l.Dock = DockStyle.Top; l.Height = 20;
+                TextBox t = UiTheme.MkInput(true);
+                t.Dock = DockStyle.Fill;
+                t.Text = "Bienvenidos a la casa del Señor";
+                FlowLayoutPanel btns = new FlowLayoutPanel();
+                btns.Dock = DockStyle.Bottom; btns.Height = 40;
+                Button ok = UiTheme.MkButton("Agregar", "primary", delegate { f.Close(); });
+                ok.Width = 110;
+                btns.Controls.Add(ok);
+                f.Controls.Add(t); f.Controls.Add(l); f.Controls.Add(btns);
+                if (f.ShowDialog(this) == DialogResult.OK) text = t.Text;
+            }
+            if (text.Trim().Length == 0) { Status("El texto quedó vacío: no se agregó nada."); return; }
+            string title = text.Trim();
+            int nl = title.IndexOf('\n');
+            if (nl > 0) title = title.Substring(0, nl).Trim();
+            _serviceItems.Add(ScenarioBuilder.TextItem(title, text, 4));
+            RefreshServiceList();
+            Status("Texto agregado al culto: " + title);
+        }
+
+        /// <summary>Agrega una slide en blanco (pausa visual del culto).</summary>
+        private void AddBlankItemToService()
+        {
+            _serviceItems.Add(ScenarioBuilder.BlankItem("En blanco"));
+            RefreshServiceList();
+            Status("Ítem en blanco agregado (" + _serviceItems.Count + " ítems).");
+        }
+
+        /// <summary>
+        /// v5.1.0: importa un PLAN de servicio JSON (formato documentado en
+        /// docs/api/PlanningCenter.md — pensado para listas exportadas de
+        /// Planning Center Online u otros servicios, y para compartir cultos
+        /// entre equipos). Cada elemento puede ser:
+        ///   {"type":"song","title":"…","artist":"…","lyrics":"[V1]\n…"}
+        ///   {"type":"scripture","ref":"jn 3:16-18","version":"RVR1909"}
+        ///   {"type":"text","title":"…","text":"…"}
+        ///   {"type":"blank","title":"…"}
+        /// </summary>
+        private void ImportPlanJson()
+        {
+            using (OpenFileDialog dlg = new OpenFileDialog())
+            {
+                dlg.Title = "Importar plan de servicio JSON";
+                dlg.Filter = "Plan JSON (*.json)|*.json|Todos los archivos (*.*)|*.*";
+                if (dlg.ShowDialog(this) != DialogResult.OK) return;
+                try
+                {
+                    Dictionary<string, object> plan = MiniJson.Parse(
+                        File.ReadAllText(dlg.FileName, new UTF8Encoding(false)));
+                    List<object> items = MiniJson.GetArray(plan, "items");
+                    if (items.Count == 0)
+                    {
+                        MessageBox.Show(this, "El plan no trae elementos (se espera \"items\": [...]).",
+                            "Importar plan", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return;
+                    }
+                    int added = 0;
+                    foreach (object ro in items)
+                    {
+                        Dictionary<string, object> io = ro as Dictionary<string, object>;
+                        if (io == null) continue;
+                        string type = MiniJson.GetString(io, "type", "blank").ToLowerInvariant();
+                        string title = MiniJson.GetString(io, "title", string.Empty);
+                        if (type == "song")
+                        {
+                            Song s = new Song();
+                            s.Title = title.Length > 0 ? title : "Canción";
+                            s.Artist = MiniJson.GetString(io, "artist", string.Empty);
+                            s.Lyrics = MiniJson.GetString(io, "lyrics", string.Empty);
+                            List<SongBlock> blocks = ScenarioBuilder.ParseLyricsBlocks(s.Lyrics);
+                            if (blocks.Count > 0) s.Blocks = blocks;
+                            _serviceItems.Add(ScenarioBuilder.FromSong(s));
+                        }
+                        else if (type == "scripture")
+                        {
+                            string refr = MiniJson.GetString(io, "ref", string.Empty);
+                            if (refr.Length == 0) refr = title;
+                            _serviceItems.Add(ScenarioBuilder.ScriptureItem(refr,
+                                MiniJson.GetString(io, "version", _settings.LastBibleVersion),
+                                1, MiniJson.GetString(io, "text", string.Empty)));
+                        }
+                        else if (type == "text")
+                        {
+                            _serviceItems.Add(ScenarioBuilder.TextItem(title,
+                                MiniJson.GetString(io, "text", title), 4));
+                        }
+                        else
+                        {
+                            _serviceItems.Add(ScenarioBuilder.BlankItem(
+                                title.Length > 0 ? title : "En blanco"));
+                        }
+                        added++;
+                    }
+                    string planName = MiniJson.GetString(plan, "name", string.Empty);
+                    if (planName.Length > 0) _txtServiceName.Text = planName;
+                    RefreshServiceList();
+                    Status("Plan importado: " + added + " ítems agregados al culto.");
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(this, "El plan no se pudo leer: " + ex.Message,
+                        "Importar plan", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
+            }
+        }
+
+        /// <summary>
+        /// INSERT por lotes en transacción. v5.1.0: multi-VALUES de 100 filas
+        /// por sentencia (antes 1 DbExec POR VERSÍCULO — la RVR1909 completa
+        /// exigía ~31.000 llamadas nativas con un búfer de 1 MB cada una).
+        /// </summary>
         private void InsertBibleRows(string version, List<object> rows, long expectedVerses)
         {
             try
@@ -4256,29 +4966,52 @@ namespace lumina.ui
                 long inserted = 0;
                 try
                 {
-                    foreach (object ro in rows)
+                    const int batchSize = 100;
+                    int total = rows.Count;
+                    for (int start = 0; start < total; start += batchSize)
                     {
-                        List<object> row = ro as List<object>;
-                        if (row == null) continue;
-                        // Formatos tolerados: [book,ch,verse,text] o [version,book,ch,verse,text]
-                        string v = row.Count >= 5 ? Cell(row, 0) : version;
-                        int off = row.Count >= 5 ? 1 : 0;
-                        long book, chapter, verse;
-                        if (!long.TryParse(Cell(row, off), out book) ||
-                            !long.TryParse(Cell(row, off + 1), out chapter) ||
-                            !long.TryParse(Cell(row, off + 2), out verse)) continue;
-                        string text = Cell(row, off + 3);
-                        _engine.DbExec(LuminaStorage.InsertBibleVerseRequest(v, book, chapter, verse, text));
-                        inserted++;
+                        int count = Math.Min(batchSize, total - start);
+                        StringBuilder sql = new StringBuilder(
+                            "INSERT OR IGNORE INTO bible(version,book,chapter,verse,text) VALUES ");
+                        List<object> pars = new List<object>(count * 5);
+                        for (int i = 0; i < count; i++)
+                        {
+                            if (i > 0) sql.Append(',');
+                            sql.Append("(?,?,?,?,?)");
+                            List<object> row = rows[start + i] as List<object>;
+                            if (row == null)
+                            {
+                                pars.Add(version); pars.Add(0); pars.Add(0); pars.Add(0); pars.Add("");
+                                continue;
+                            }
+                            // Formatos tolerados: [book,ch,verse,text] o [version,book,ch,verse,text]
+                            string v = row.Count >= 5 ? Cell(row, 0) : version;
+                            int off = row.Count >= 5 ? 1 : 0;
+                            long book, chapter, verse;
+                            if (!long.TryParse(Cell(row, off), out book) ||
+                                !long.TryParse(Cell(row, off + 1), out chapter) ||
+                                !long.TryParse(Cell(row, off + 2), out verse))
+                            {
+                                pars.Add(v); pars.Add(0); pars.Add(0); pars.Add(0); pars.Add("");
+                                continue;
+                            }
+                            pars.Add(v);
+                            pars.Add(book);
+                            pars.Add(chapter);
+                            pars.Add(verse);
+                            pars.Add(Cell(row, off + 3));
+                            inserted++;
+                        }
+                        _engine.DbExec(LuminaStorage.BuildExecJson(sql.ToString(), pars.ToArray()));
                     }
                     _engine.DbExec(LuminaStorage.RawSqlRequest("COMMIT"));
+                    Status("Biblia «" + version + "» importada (" + inserted + " versículos).");
                     MessageBox.Show(this,
                         "Insertados " + inserted + " versículos" +
                         (expectedVerses > 0 && inserted != expectedVerses
                             ? " (esperados " + expectedVerses + "; los duplicados se ignoran)."
                             : "."),
                         "Importar Biblia", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    Status("Biblia «" + version + "» importada (" + inserted + " versículos).");
                 }
                 catch (Exception)
                 {
@@ -4314,6 +5047,13 @@ namespace lumina.ui
             _txtToken.Text = _settings.ApiToken;
             _txtVersion.Text = _settings.LastBibleVersion;
             _txtDbPath.Text = Path.Combine(_settings.DataDir, "lumina.db");
+            // v5.1.0: pantalla del proyector persistida (clamp al combo real).
+            if (_cmbScreen != null && _cmbScreen.Items.Count > 0)
+                _cmbScreen.SelectedIndex = Math.Max(0,
+                    Math.Min(_settings.ProjectionScreen, _cmbScreen.Items.Count - 1));
+            // v5.1.0: respaldo
+            _txtBackupFolder.Text = _settings.BackupFolder;
+            _chkAutoBackup.Checked = _settings.AutoBackupOnExit;
             // v5.0.0: integraciones
             _txtObsUrl.Text = _settings.ObsUrl;
             _txtObsPassword.Text = _settings.ObsPassword;
@@ -4432,6 +5172,7 @@ namespace lumina.ui
             {
                 _dbOpen = true;
                 Status("BD abierta: " + path);
+                MaybeSeedFactoryBible();   // v5.1.0: RVR1909 de fábrica si la BD está vacía
             }
             else
             {
@@ -4439,6 +5180,51 @@ namespace lumina.ui
                 Status("No se pudo abrir la BD (" + LuminaStatus.Name(st) + "): " + path);
             }
             UpdateStatusBar();
+        }
+
+        /// <summary>
+        /// v5.1.0 «FUNDAMENTO»: si la BD no tiene versículos y el paquete trae
+        /// la Reina-Valera 1909 (resources/data/bible_rvr1909.json), se ofrece
+        /// instalarla — el paquete portable incluye una Biblia COMPLETA lista
+        /// para proyectar sin que el usuario busque archivos externos.
+        /// Lector streaming propio (BibleJson): memoria O(1).
+        /// </summary>
+        private void MaybeSeedFactoryBible()
+        {
+            try
+            {
+                string biblePath = Path.Combine(Path.Combine(Path.Combine(
+                    Settings.DefaultBaseDir(), "resources"), "data"), "bible_rvr1909.json");
+                if (!File.Exists(biblePath)) return;
+
+                object countObj = LuminaStorage.Scalar(
+                    _engine.DbExec(LuminaStorage.BuildExecJson("SELECT count(*) FROM bible")));
+                long count = 0;
+                if (countObj != null) long.TryParse(Convert.ToString(countObj,
+                    CultureInfo.InvariantCulture), out count);
+                if (count > 0) return;    // ya hay biblias: no molestar
+
+                if (MessageBox.Show(this,
+                        "La base de datos está vacía y este paquete incluye la Biblia\n" +
+                        "Reina-Valera 1909 completa (dominio público).\n\n" +
+                        "¿Instalarla ahora? (~31.000 versículos; tarda unos segundos)",
+                        "Biblia incluida", MessageBoxButtons.YesNo, MessageBoxIcon.Question)
+                    != DialogResult.Yes) return;
+
+                BibleJsonResult r = BibleJson.ParseFile(biblePath, 0);
+                if (r.VerseCount == 0)
+                {
+                    Status("La biblia incluida no produjo versículos (¿archivo dañado?).");
+                    return;
+                }
+                _txtVersion.Text = r.Version.Length > 0 ? r.Version : "RVR1909";
+                _settings.LastBibleVersion = _txtVersion.Text;
+                InsertBibleRows(r.Version.Length > 0 ? r.Version : "RVR1909", r.Rows, r.VerseCount);
+            }
+            catch (Exception ex)
+            {
+                Status("No se pudo instalar la biblia incluida: " + ex.Message);
+            }
         }
 
         private void UpdateStatusBar()
@@ -4469,6 +5255,7 @@ namespace lumina.ui
                 if (_videoForm != null) { try { _videoForm.Dispose(); } catch (Exception) { } _videoForm = null; }
                 if (_audioForm != null) { try { _audioForm.Dispose(); } catch (Exception) { } _audioForm = null; }
                 if (_stageForm != null) { try { _stageForm.Close(); } catch (Exception) { } _stageForm = null; }
+                if (_directorForm != null) { try { _directorForm.Close(); } catch (Exception) { } _directorForm = null; }
                 if (_lowerThird != null) { try { _lowerThird.Dispose(); } catch (Exception) { } _lowerThird = null; }
                 StopMidi();
                 CloseMidiOut();
@@ -4478,6 +5265,11 @@ namespace lumina.ui
 #endif
                 if (_api != null) { try { _api.Dispose(); } catch (Exception) { } _api = null; }
                 if (_engine != null) { try { _engine.Dispose(); } catch (Exception) { } _engine = null; }
+                // v5.1.0: respaldo automático al salir (si está configurado).
+                if (_settings.AutoBackupOnExit && _settings.BackupFolder.Length > 0)
+                {
+                    try { PerformBackup(); } catch (Exception) { }
+                }
             }
             base.OnFormClosing(e);
         }

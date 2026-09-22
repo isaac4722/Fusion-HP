@@ -20,7 +20,11 @@
          código multi-target se escribe con contratos explícitos. -->
     <Nullable>disable</Nullable>
     <Deterministic>true</Deterministic>
-    <Version>3.0.0</Version>
+    <!-- v5.1.0 «FUNDAMENTO»: la versión de ensamblado acompaña a la del
+         producto (antes quedó congelada en 3.0.0 desde la era wx). UI y capa
+         comparten este valor global → el binding por nombre+versión siempre
+         es coherente entre las builds net35/net48/net8. -->
+    <Version>5.1.0</Version>
     <Product>LuminaPresentation Suite</Product>
     <Company>Isaac</Company>
     <Authors>Isaac</Authors>

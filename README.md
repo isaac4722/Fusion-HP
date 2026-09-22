@@ -1,6 +1,6 @@
-# LuminaPresentation Suite v5.0.0 «SINERGIA»
+# LuminaPresentation Suite v5.1.0 «FUNDAMENTO»
 
-**Proyección para iglesias con arquitectura híbrida: núcleo C++17 nativo + interfaz C# (.NET Framework 4.8/3.5)**
+**Proyección para iglesias con arquitectura híbrida: núcleo C++17 nativo + interfaz C# (.NET mínimo 3.5 — usa 4.8 si está disponible)**
 — motor de proyección en tiempo real con la agilidad de desarrollo de .NET,
 **sin JVM, sin Electron, sin redistributables y sin instalaciones**.
 
@@ -13,13 +13,52 @@
 
 1. Ir a **[Releases](https://github.com/isaac4722/Fusion-HP/releases)**.
 2. Descargar el paquete para tu arquitectura:
-   - `LuminaPresentation-5.0.0-win-x86.zip` — **Windows 7 SP1 … Windows 11 (32 bits)**
-   - `LuminaPresentation-5.0.0-win-x64.zip` — **Windows 7 SP1 … Windows 11+ (64 bits)**
-3. Descomprimir y ejecutar **`LuminaLauncher.exe`**: detecta el runtime .NET disponible
-   y lanza la interfaz correcta. **El usuario nunca instala nada**:
-   - Windows 10 1903+ / Windows 11 → **.NET Framework 4.8** integrado en el SO.
-   - Windows 7 SP1 / 8.x → **.NET Framework 3.5 SP1** integrado (variante de línea base).
+   - `LuminaPresentation-5.1.0-win-x86.zip` — **Windows 7 SP1 … Windows 11 (32 bits)**
+   - `LuminaPresentation-5.1.0-win-x64.zip` — **Windows 7 SP1 … Windows 11+ (64 bits)**
+3. Descomprimir el ZIP **completo** y ejecutar **`LuminaLauncher.exe`**.
+   **El usuario nunca instala nada**:
+   - Windows 10 1903+ / Windows 11 → **.NET Framework 4.8** integrado en el SO
+     (el launcher usa `net48\LuminaPresentation.exe`).
+   - Windows 7 SP1 / 8.x → **.NET Framework 3.5 SP1** integrado de fábrica
+     (el launcher usa `net35\LuminaPresentation35.exe`, la línea base mínima).
    - El motor C++ (`LuminaCore.dll`) va enlazado estáticamente (/MT): **cero redistributables**.
+   - El launcher **verifica el paquete completo antes de lanzar** (exe + DLL nativa
+     + las 3 DLL gestionadas en la carpeta de la variante elegida) y explica con
+     claridad qué hacer si falta algo.
+   - Ambas variantes comparten la misma carpeta de datos `data\`.
+
+## 🌟 Novedades v5.1.0 «FUNDAMENTO»
+
+> **Corrección crítica**: el paquete v5.0.0 se publicó sin las DLL gestionadas
+> y la app no abría. v5.1.0 endurece el proceso de extremo a extremo: paquete
+> completo + gate de humo en CI (`--selfcheck` de ambas variantes ANTES de
+> empaquetar) + verificación dura del layout (`verify_portable` exige los 15
+> archivos del contrato). Además, **.NET mínimo 3.5 con 4.8 opcional** (dos
+> variantes por paquete) y el grueso de huecos del spec cerrados:
+
+- **Teclado en vivo** (requisito §3.1): → / ← / Espacio / AvPág / RePág línea a
+  línea, **B** negro, **L** limpiar, **P** pausa de video, **F5** proyector,
+  **F6** monitor de escenario, **F7** director, **F8** zócalo.
+- **Acordes proyectables**: la línea de cifrado se dibuja en color de acento
+  sobre la letra (modo músicos de Holyrics).
+- **Búsqueda bíblica por palabra** (FTS5 del núcleo) con resaltado del término
+  y doble clic → el versículo se carga al escenario.
+- **Biblia de fábrica**: el paquete incluye la **Reina-Valera 1909 completa**;
+  al abrir la BD, la app ofrece instalarla (importación por lotes, ~31k versículos).
+- **Tercera pantalla — Director** (`DirectorForm`): texto completo del ítem
+  actual y próximo, reloj, **cronómetro** y panel de notas internas.
+- **Editor de culto completo**: botones para agregar canción actual, pasaje
+  bíblico, imagen (JPG/PNG/GIF/BMP/TIF), texto/aviso, blanco e **importación
+  de planes JSON** (formato documentado en `docs/api/PlanningCenter.md`).
+- **Video con bucle/volumen/pausa** (antes hardcodeado) y **pantallas reales
+  del sistema** en el selector (antes 0/1/2 fijo).
+- **Respaldo ZIP a carpeta** compatible con Google Drive/OneDrive (manual o
+  automático al salir) — motor ZIP propio, sin dependencias.
+- **Fixes**: índice de ítem real en los eventos del motor (video/monitor de
+  escenario/activadores desincronizados en cultos multi-ítem), fuga GDI del
+  zócalo, errores del núcleo al log de sesión, `SetWindowLongPtr` seguro en x64.
+- **Sin WindowsBase**: el OPC/PPTX se empaqueta con motor ZIP propio → la
+  variante net35 corre idéntica bajo CLR 2.0 y CLR 4.0 (cero GAC-dependencies).
 
 ## 🌟 Novedades v5.0.0 «SINERGIA»
 
@@ -112,8 +151,8 @@
 | Capa | Tecnología | Contenido |
 |---|---|---|
 | **Motor / Núcleo** | **C++17** (`LuminaCore.dll`, /MT) | Proyección nativa Win32+GDI (doble búfer, contorno+sombra, ajuste tipográfico), modelo de escenario, acordes (latina/anglosajona + transposición), letras con Modo Hinario, referencias bíblicas (66 libros), **parser JSON de canciones** (esquema propio + subconjunto OpenLP) y **parser .BIB de biblias** (detección automática), **SQLite+FTS5** embebido, eventos por callbacks, API C plana estable (`lumina.h`) |
-| **Interfaz** | **C# WinForms** (`LuminaPresentation.exe`, net48; línea base net35) | Editor de escenarios, bibliotecas (canciones/biblia), control En Vivo, vista previa renderizada por el motor, temas, importadores JSON/.BIB/**ZEFania XML**, exportadores **PPTX/PDF**, activadores, ajustes |
-| **Exportación** | **C# propio** | **PPTX** (System.IO.Packaging/OPC: WindowsBase del SO) y **PDF 1.4** (escritor íntegro: AFM+base-14+zlib) — ambos sin NuGet en los binarios distribuidos |
+| **Interfaz** | **C# WinForms** en 2 variantes (`net48\LuminaPresentation.exe` optimizada · `net35\LuminaPresentation35.exe` línea base) | Editor de escenarios, bibliotecas (canciones/biblia con búsqueda FTS por palabra), control En Vivo con teclado, vista previa renderizada por el motor, temas, importadores JSON/.BIB/**ZEFania XML**, exportadores **PPTX/PDF**, activadores, ajustes |
+| **Exportación** | **C# propio** | **PPTX** (OPC empaquetado con `ZipWriter` propio — sin WindowsBase, idéntico en CLR2/CLR4) y **PDF 1.4** (escritor íntegro: AFM+base-14+zlib) — ambos sin NuGet en los binarios distribuidos |
 | **Datos** | **C#** (orquestación) + SQLite nativo | CRUD siempre con **parámetros enlazados**; canciones con FTS5, biblia con índice UNIQUE + dedupe idempotente |
 | **API local** | **C# HttpListener** | `/api/state`, `/api/cmd`, `/api/live.txt` y webhook OBS — solo localhost, token opcional |
 | **Remoto LAN** | **C# TcpListener** | Página del mando móvil + `/remote`, `/api/catalog`, token en LAN — sin permisos de administrador |
@@ -197,3 +236,10 @@ En Windows, `native/` compila con MSVC (`-A Win32` o `-A x64`) y produce `Lumina
   PPTX/PDF**, **video en la salida**, **monitor de escenario**, **lower thirds**,
   **ZEFania XML**, **activadores**, **OBS WebSocket 5**, **MIDI** y **mando
   remoto móvil** — ver [docs/roadmap.md](docs/roadmap.md) para lo diferido.
+- **v5.1.0 «FUNDAMENTO»** — **reparación crítica del paquete portable** (DLL
+  gestionadas incluidas + gate de humo `--selfcheck` + `verify_portable` duro),
+  **.NET mínimo 3.5 con 4.8 opcional** (layout por runtime con `data\` compartida),
+  teclado en vivo, acordes proyectables, búsqueda bíblica por palabra, Biblia
+  RVR1909 de fábrica, tercera pantalla del director, editor de culto completo,
+  video con bucle/volumen/pausa, pantallas reales, respaldo ZIP Drive-compatible
+  y fixes de robustez (índice de ítem, fuga GDI, log del núcleo).

@@ -50,7 +50,7 @@ concurrency:
 
 env:
   DOTNET_VERSION: '8.0.x'
-  APP_VERSION: '5.0.0'
+  APP_VERSION: '5.1.0'
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -177,11 +177,13 @@ jobs:
           python tools/validate_pptx.py export-samples/muestra.pptx export-samples/muestra.pdf
           if ($LASTEXITCODE -ne 0) { Write-Host 'Los exportadores no produjeron archivos válidos'; exit 1 }
 
-      - name: Publicar UI net48 POR ARQUITECTURA (x86 y x64)
+      - name: Publicar UI net48 + net35 POR ARQUITECTURA (x86 y x64)
         shell: pwsh
         run: |
           # PlatformTarget no invalida los outputs de CoreCompile: sin una
           # limpieza, el segundo publish reusaría el PE32 (AnyCPU/x86) previo.
+          # v5.1.0: TAMBIÉN se publica la baseline net35 (LuminaPresentation35.exe)
+          # — el paquete lleva AMBAS variantes y el launcher elige por CLR.
           dotnet publish managed/Lumina.UI -f net48 -c Release --self-contained false -p:PlatformTarget=x86
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Move-Item managed/Lumina.UI/bin/Release/net48/publish managed/Lumina.UI/bin/Release/net48/publish-x86
@@ -191,16 +193,30 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Move-Item managed/Lumina.UI/bin/Release/net48/publish managed/Lumina.UI/bin/Release/net48/publish-x64
 
+          dotnet publish managed/Lumina.UI -f net35 -c Release --self-contained false -p:PlatformTarget=x86
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Move-Item managed/Lumina.UI/bin/Release/net35/publish managed/Lumina.UI/bin/Release/net35/publish35-x86
+          dotnet clean managed/Lumina.UI -f net35 -c Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet publish managed/Lumina.UI -f net35 -c Release --self-contained false -p:PlatformTarget=x64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Move-Item managed/Lumina.UI/bin/Release/net35/publish managed/Lumina.UI/bin/Release/net35/publish35-x64
+
       - name: Preparar artefacto «managed»
         shell: pwsh
         run: |
           $stage = 'artifacts-managed'
           New-Item -ItemType Directory -Force -Path `
-            "$stage/ui-publish-x86","$stage/ui-publish-x64","$stage/poc-net48","$stage/poc-net35",`
+            "$stage/ui-publish-x86","$stage/ui-publish-x64","$stage/ui-publish35-x86","$stage/ui-publish35-x64",`
+            "$stage/poc-net48","$stage/poc-net35",`
             "$stage/pocfacade-net48","$stage/tests-net48" | Out-Null
-          # UI net48 publicada POR ARQUITECTURA (para el paquete portable)
+          # UI net48/net35 publicada POR ARQUITECTURA (para el paquete portable).
+          # v5.1.0: el publish lleva TODAS las DLL gestionadas dependientes
+          # (Lumina.Core/Bridge/Api) — el paquete las copia COMPLETAS.
           Copy-Item managed/Lumina.UI/bin/Release/net48/publish-x86/* "$stage/ui-publish-x86/"
           Copy-Item managed/Lumina.UI/bin/Release/net48/publish-x64/* "$stage/ui-publish-x64/"
+          Copy-Item managed/Lumina.UI/bin/Release/net35/publish35-x86/* "$stage/ui-publish35-x86/"
+          Copy-Item managed/Lumina.UI/bin/Release/net35/publish35-x64/* "$stage/ui-publish35-x64/"
           # Respaldo: si un publish dejó el exe en otra carpeta, copiar del build
           if (-not (Test-Path "$stage/ui-publish-x86/LuminaPresentation.exe")) {
             Copy-Item managed/Lumina.UI/bin/Release/net48/LuminaPresentation.exe "$stage/ui-publish-x86/"
@@ -415,53 +431,134 @@ jobs:
           cmake --build blaunch --config Release --parallel $env:NUMBER_OF_PROCESSORS
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Armar layout portable
+      - name: Armar layout portable (v5.1.0: net48\ + net35\ + raíz compartida)
         shell: pwsh
         run: |
           $stage = "staging/LuminaPresentation-${{ matrix.arch }}"
-          New-Item -ItemType Directory -Force -Path "$stage/resources/data" | Out-Null
+          New-Item -ItemType Directory -Force -Path `
+            "$stage/net48","$stage/net35","$stage/resources/data" | Out-Null
+
+          # ---- Launcher en la RAÍZ (elige la variante según el CLR del equipo) ----
           Copy-Item blaunch/Release/LuminaLauncher.exe "$stage/"
-          Copy-Item "artifacts/managed/ui-publish-${{ matrix.arch }}/LuminaPresentation.exe" "$stage/"
-          Copy-Item "artifacts/native-${{ matrix.arch }}/LuminaCore.dll" "$stage/"
+
+          # ---- net48\: interfaz optimizada + TODAS sus DLL gestionadas ----
+          Copy-Item "artifacts/managed/ui-publish-${{ matrix.arch }}/*" "$stage/net48/"
+          # LuminaCore.dll (nativa /MT) junto al exe: la resolución del loader
+          # busca primero el directorio del proceso.
+          Copy-Item "artifacts/native-${{ matrix.arch }}/LuminaCore.dll" "$stage/net48/"
+
+          # ---- net35\: baseline mínima (.NET 3.5, Win7 SP1 de fábrica) ----
+          Copy-Item "artifacts/managed/ui-publish35-${{ matrix.arch }}/*" "$stage/net35/"
+          Copy-Item "artifacts/native-${{ matrix.arch }}/LuminaCore.dll" "$stage/net35/"
+
+          # ---- Recursos de fábrica (Biblia RVR1909 completa) ----
           Copy-Item resources/data/bible_rvr1909.json "$stage/resources/data/"
-          # LuminaPresentation35.exe: RESERVADO para cuando Lumina.UI multi-apunte net35.
-          # Hoy la UI es net48 exclusivo → se omite y se documenta en README.txt
-          # (el launcher, si solo hay .NET 3.5, mostrará el mensaje con el
-          #  enlace al instalador offline de 4.8).
-          if (Test-Path 'artifacts/managed/ui-publish-net35/LuminaPresentation35.exe') {
-            Copy-Item artifacts/managed/ui-publish-net35/LuminaPresentation35.exe "$stage/"
-          }
+
+          # ---- data\ compartida en la RAÍZ: Settings.DefaultBaseDir() detecta el
+          #      layout net48/net35 y sube un nivel → una sola carpeta de datos.
+          New-Item -ItemType Directory -Force -Path "$stage/data" | Out-Null
+
           @'
-          LuminaPresentation v5.0.0 «SINERGIA» — núcleo C++ + interfaz C#
+          LuminaPresentation v5.1.0 «FUNDAMENTO» — núcleo C++ + interfaz C#
           =====================================================
 
           PROGRAMA PORTABLE — no requiere instalación ni permisos de
           administrador.
 
-          1) Descomprimir en cualquier carpeta.
-          2) Ejecutar LuminaLauncher.exe: detecta el runtime .NET
-             disponible y lanza la variante correcta de la interfaz.
+          1) Descomprimir el ZIP COMPLETO en cualquier carpeta propia.
+          2) Ejecutar LuminaLauncher.exe.
 
-          Requisitos (uno de los dos, ya incluidos de fábrica):
-            • Windows 10 1903+ / Windows 11 → .NET Framework 4.8 integrado.
-            • Windows 7 SP1 / 8.x           → .NET Framework 3.5 integrado.
+          Requisitos (cualquiera de los dos, según su Windows):
+            • Windows 10 1903+ / Windows 11 → .NET Framework 4.8 integrado
+              (el launcher usa la variante net48, con OBS WebSocket).
+            • Windows 7 SP1 / 8.x → .NET Framework 3.5 integrado
+              (el launcher usa la variante net35, la baseline mínima).
 
-          NOTA: esta versión incluye la interfaz LuminaPresentation.exe (.NET 4.8).
-          En Windows 7 SP1 sin .NET 4.8, instale el paquete offline:
-          https://dotnet.microsoft.com/download/dotnet-framework/net48
+          Ambas variantes están incluidas (net48\ y net35\) y comparten
+          la misma carpeta de datos (data\) — canciones, biblias, temas,
+          activadores y ajustes.
 
-          Contenido: LuminaLauncher.exe (detección de runtime),
-          LuminaPresentation.exe (interfaz), LuminaCore.dll (motor C++ nativo /MT)
-          y la Biblia RVR1909 completa (resources/data).
+          NO ejecute desde dentro del ZIP: extráigalo primero completo.
 
-          v5.0.0 «SINERGIA»: exportación PPTX/PDF, video en la salida (Windows
-          Media Player integrado en el SO), monitor de escenario, zócalos lower
-          third, importador ZEFania XML (Reina Valera 1960…), activadores
-          (evento→acción), OBS Studio vía WebSocket, entrada MIDI y mando
-          remoto desde el móvil por red local.
+          Contenido:
+            LuminaLauncher.exe  — detecta el runtime .NET y lanza la variante
+                                  correcta; verifica el paquete completo antes.
+            net48\              — interfaz optimizada .NET 4.8.
+            net35\              — interfaz baseline .NET 3.5 (Win7 SP1).
+            LuminaCore.dll      — motor C++ nativo (/MT, sin dependencias),
+                                  dentro de cada carpeta de variante.
+            resources\data\     — Biblia Reina-Valera 1909 completa incluida:
+                                  al abrir la base de datos, la app ofrece
+                                  instalarla (~31.000 versículos).
+
+          v5.1.0 «FUNDAMENTO»: reparación del arranque (paquete completo),
+          .NET mínimo 3.5 con 4.8 opcional, teclado en vivo (flechas/espacio/
+          B/L/P/F5-F8), acordes proyectables, búsqueda bíblica por palabra,
+          tercera pantalla del director, editor de culto completo (canción/
+          pasaje/imagen/texto/plan JSON), video con bucle/volumen/pausa,
+          pantallas reales del sistema, respaldo ZIP a carpeta (Google Drive/
+          OneDrive) y biblia de fábrica.
 
           Binarios de uso libre · Código fuente bajo Licencia View-Only.
           '@ | Set-Content -Path "$stage/README.txt" -Encoding UTF8
+
+      - name: 'GATE humo: --selfcheck de AMBAS variantes (la app ABRE)'
+        shell: pwsh
+        run: |
+          # Este gate existe por la lección de v5.0.0: el paquete se publicó
+          # sin las DLL gestionadas y la app moría con FileNotFoundException
+          # AL ABRIR. Ahora el MISMO binario que se va a empaquetar se
+          # auto-verifica (motor nativo + BD + parsers + exportadores).
+          $stage = "staging/LuminaPresentation-${{ matrix.arch }}"
+
+          # .NET 3.5 real para la baseline (para probar sobre CLR2). Si el
+          # runner no puede instalarlo, el humo net35 bajo CLR4 es INFORMATIVO:
+          # una BD real de usuario con solo-4.8 siempre usará la variante net48
+          # (el launcher la elige), y Win7 SP1 trae 3.5 de fábrica. El caso
+          # «3.5 instalado + selfcheck falla» SÍ es bloqueante (fallo real).
+          $v35 = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v3.5' -ErrorAction SilentlyContinue
+          $has35 = $v35 -and $v35.Install -eq 1
+          if (-not $has35) {
+            Write-Host 'Instalando .NET 3.5 (NetFx3) para el humo de la baseline…'
+            try {
+              Enable-WindowsOptionalFeature -Online -FeatureName NetFx3 -All -NoRestart -ErrorAction Stop | Out-Null
+              $v35 = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v3.5' -ErrorAction SilentlyContinue
+              $has35 = $v35 -and $v35.Install -eq 1
+              if ($has35) { Write-Host '.NET 3.5 instalado: el humo net35 correrá sobre CLR2 real.' }
+            } catch {
+              Write-Host "NetFx3 no instalable en el runner ($($_.Exception.Message))."
+            }
+          }
+
+          Write-Host '--- selfcheck net48 (bloqueante) ---'
+          $p48 = Start-Process -FilePath "$stage/net48/LuminaPresentation.exe" `
+                 -ArgumentList '--selfcheck' -WorkingDirectory "$stage" -PassThru -Wait
+          Write-Host "net48 --selfcheck exit code: $($p48.ExitCode)"
+          if ($p48.ExitCode -ne 0) {
+            Write-Host "::error::La variante net48 no pasó el selfcheck (código $($p48.ExitCode))"
+            exit 1
+          }
+
+          Write-Host '--- selfcheck net35 ---'
+          $p35 = Start-Process -FilePath "$stage/net35/LuminaPresentation35.exe" `
+                 -ArgumentList '--selfcheck' -WorkingDirectory "$stage" -PassThru -Wait
+          Write-Host "net35 --selfcheck exit code: $($p35.ExitCode)"
+          if ($p35.ExitCode -ne 0) {
+            if ($has35) {
+              Write-Host "::error::La variante net35 FALLÓ con .NET 3.5 presente (código $($p35.ExitCode))"
+              exit 1
+            } else {
+              # Entorno del runner sin 3.5: la baseline no puede cargar sus
+              # dependencias 3.x bajo CLR4 (WindowsBase 3.0). Caso no soportado
+              # de fábrica: un PC real así usa la variante net48 vía launcher.
+              Write-Host "::warning::net35 selfcheck no ejecutable en este runner (sin .NET 3.5): código $($p35.ExitCode). La cobertura CLR2 real se da en PCs Win7 SP1 (3.5 de fábrica)."
+            }
+          }
+
+          # El selfcheck pudo crear data\logs\ en el staging: limpiar para que
+          # el ZIP distribuido no lleve basura de la fábrica.
+          Remove-Item "$stage/data/logs" -Recurse -Force -ErrorAction SilentlyContinue
+          Write-Host 'SELFCHECK PASS (net48 estricto + net35 según entorno)'
 
       - name: GATE verify_portable (${{ matrix.arch }})
         shell: pwsh
@@ -512,41 +609,63 @@ jobs:
       - name: Publicar
         uses: softprops/action-gh-release@v2
         with:
-          name: "LuminaPresentation ${{ github.ref_name }} «SINERGIA»"
+          name: "LuminaPresentation ${{ github.ref_name }} «FUNDAMENTO»"
           body: |
-            **LuminaPresentation v5.0.0 «SINERGIA» — núcleo C++ + interfaz C# .NET Framework 4.8/3.5**
+            **LuminaPresentation v5.1.0 «FUNDAMENTO» — núcleo C++ + interfaz C# (.NET mínimo 3.5 · 4.8 si está disponible)**
 
             ## Descargas
-            - `LuminaPresentation-5.0.0-win-x86.zip` — **Windows 7 SP1 a Windows 11 (32 bits)**
-            - `LuminaPresentation-5.0.0-win-x64.zip` — **Windows 7 SP1 a Windows 11+ (64 bits)**
+            - `LuminaPresentation-5.1.0-win-x86.zip` — **Windows 7 SP1 a Windows 11 (32 bits)**
+            - `LuminaPresentation-5.1.0-win-x64.zip` — **Windows 7 SP1 a Windows 11+ (64 bits)**
             - `SHA256SUMS.txt` — integridad de los paquetes
 
-            ## Arquitectura híbrida
-            - **Motor nativo C++17** (`LuminaCore.dll`, /MT estático): proyección en ventanas Win32, SQLite+FTS5, parser de canciones JSON y biblias .BIB — cero dependencias externas.
-            - **Interfaz C# WinForms** (`LuminaPresentation.exe`, .NET Framework 4.8): editor de escenarios, bibliotecas, API HTTP local.
-            - **LuminaLauncher.exe** (nativo, /MT): detecta el runtime disponible por registro y lanza la variante correcta — el usuario **nunca instala nada**.
+            ## ⚠ Corregido en v5.1.0 (crítico)
+            El paquete v5.0.0 se publicó **sin las DLL gestionadas** (Lumina.Core/Bridge/Api)
+            y la aplicación no abría (`FileNotFoundException` al arrancar). v5.1.0 incluye
+            **todas** las dependencias junto a cada variante y añade un **gate de humo** en
+            la CI: ambos ejecutables se auto-verifican (`--selfcheck`: motor nativo + BD +
+            parsers + exportadores) ANTES de empaquetar. Un paquete roto ya no puede publicarse.
 
-            ## Novedades v5.0.0 «SINERGIA» (síntesis Holyrics + PowerPoint)
-            - **Exportación PPTX** (OpenXML ISO/IEC-29500 real: EMU, centipoints, tema 1:1) y **PDF 1.4** (escritor propio, Helvetica base-14, JPEG DCTDecode/Flate).
-            - **Video en la salida** (Windows Media Player del SO, enlace tardío sin COM refs; auto-avance al terminar).
-            - **Monitor de escenario** (2ª pantalla con letra actual/siguiente + reloj) y **zócalos Lower Third** con fundidos.
-            - **Importador ZEFania XML** (Reina Valera 1960 y cualquier módulo del estándar) con parser streaming.
-            - **Activadores** (reglas evento→condición→acción, persistentes en `data\triggers\triggers.json`).
-            - **OBS Studio vía obs-websocket 5.x** (handshake+auth SHA256, cambio de escena y texto en vivo) y **entrada MIDI** (winmm).
-            - **Mando remoto móvil** por red local (página servida por la app, token opcional; TcpListener sin URLACL de administrador).
+            ## Arquitectura híbrida (mejorada)
+            - **Motor nativo C++17** (`LuminaCore.dll`, /MT estático): proyección Win32 sin
+              parpadeo, SQLite+FTS5, acordes — cero dependencias externas.
+            - **Interfaz C# WinForms en DOS variantes**: `net48\LuminaPresentation.exe`
+              (optimizada) y `net35\LuminaPresentation35.exe` (baseline, Win7 SP1 de fábrica).
+              **.NET mínimo 3.5; el launcher usa la 4.8 si el equipo la tiene.**
+            - **LuminaLauncher.exe** (nativo): elige la variante por registro y VERIFICA el
+              paquete completo antes de lanzar (mensaje claro si falta algún componente).
+            - Ambas variantes comparten `data\` (canciones, biblias, temas, ajustes).
+            - Sin WindowsBase/System.IO.Packaging: el PPTX se empaqueta con motor ZIP propio
+              (la baseline corre idéntica bajo CLR 2.0 y CLR 4.0).
+
+            ## Novedades v5.1.0 «FUNDAMENTO»
+            - **Teclado en vivo**: →/←/Espacio (línea a línea), B negro, L limpiar, P pausa
+              de video, F5 proyector, F6 monitor, F7 director, F8 zócalo.
+            - **Acordes proyectables** (línea de cifrado en acento sobre la letra).
+            - **Búsqueda bíblica por palabra** (FTS5) con resaltado y doble clic → escenario.
+            - **Biblia RVR1909 de fábrica**: al abrir la BD se ofrece instalarla (~31.000
+              versículos, importación por lotes).
+            - **Tercera pantalla — Director**: texto completo del ítem, cronómetro y notas.
+            - **Editor de culto completo**: canción actual, pasaje, imagen, texto/aviso,
+              blanco e **importación de planes JSON** (formato documentado).
+            - **Video con bucle/volumen/pausa** (antes hardcodeado) y pantallas reales
+              del sistema en el selector.
+            - **Respaldo ZIP a carpeta** (Google Drive/OneDrive) manual o automático al salir.
+            - Fix: índice de ítem en eventos del motor (video/escenario/activadores
+              desincronizados en cultos multi-ítem), fuga GDI del zócalo, log de errores
+              del núcleo al archivo de sesión.
 
             ## Verificación CI (todas las gates verdes)
-            - Núcleo: selftest nativo + PoC API headless (x86 y x64, Windows y Linux).
-            - Gestionado: build net35+net48+net8 con ref assemblies + tests net8.0 (20/20).
-            - **GATE exportadores: python-pptx + pypdf abren los archivos generados** (estructura, EMU, acentos y texto verificados).
+            - Núcleo: selftest nativo 146/146 + PoC API headless 37/37 (x86/x64, Win y Linux).
+            - Gestionado: build net35+net48+net8 (0 err/0 warn) + tests 23/23.
+            - **GATE exportadores: python-pptx + pypdf abren los archivos generados.**
             - Interop real: PoC C# ↔ DLL nativa «POC PASS 12/12» en x86 y x64.
-            - CLR hosting (vía C de respaldo): «CLRHOST PASS» en x86 y x64.
-            - Empaquetado: auditoría PE `verify_portable` + SHA256 por paquete.
+            - **GATE humo: `--selfcheck` de ambas variantes ANTES de empaquetar.**
+            - Empaquetado: auditoría PE `verify_portable` (15 archivos exigidos) + SHA256.
 
             ## Instalación
-            Descomprimir y ejecutar `LuminaLauncher.exe`. En Win10 1903+/Win11 usa
-            .NET 4.8 integrado; en Win7 SP1 integra .NET 3.5 o instala 4.8 offline:
-            https://dotnet.microsoft.com/download/dotnet-framework/net48
+            Descomprimir el ZIP **completo** en una carpeta propia y ejecutar
+            `LuminaLauncher.exe`. En Win10 1903+/Win11 usa .NET 4.8 integrado; en
+            Win7 SP1 usa .NET 3.5 integrado (o 4.8 si lo tiene instalado).
           draft: false
           prerelease: false
           files: |

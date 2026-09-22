@@ -24,11 +24,14 @@ namespace lumina.ui
     {
         private const int WsExNoActivate = 0x08000000;
 
-        [DllImport("user32.dll", SetLastError = true)]
-        private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+        // v5.1.0: SetWindowLongPtr para GWL_EXSTYLE en procesos x64 (la variante
+        // de 32 bits SetWindowLong trunca punteros de estilo en 64 bits; en
+        // WOW64 user32 la redirige, pero la forma documentada y segura es esta).
+        [DllImport("user32.dll", EntryPoint = "GetWindowLongW", SetLastError = true)]
+        private static extern int GetWindowLongSafe(IntPtr hWnd, int nIndex);
 
-        [DllImport("user32.dll", SetLastError = true)]
-        private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+        [DllImport("user32.dll", EntryPoint = "SetWindowLongW", SetLastError = true)]
+        private static extern int SetWindowLongSafe(IntPtr hWnd, int nIndex, int dwNewLong);
 
         private readonly System.Windows.Forms.Timer _life;
         private readonly System.Windows.Forms.Timer _fade;
@@ -37,6 +40,11 @@ namespace lumina.ui
         private Color _accent = Color.FromArgb(240, 169, 59);
         private double _opacity = 0.0;          // fundido de entrada
         private int _fadeDir = 1;
+
+        // v5.1.0: fuentes CACHEADAS (antes se creaban en CADA repintado del
+        // fundido a 40 ms — decenas de Font sin Dispose por aviso = fuga GDI).
+        private readonly Font _fontTitle = new Font("Segoe UI", 15F, FontStyle.Bold, GraphicsUnit.Point);
+        private readonly Font _fontSub = new Font("Segoe UI", 11.5F, FontStyle.Regular, GraphicsUnit.Point);
 
         public LowerThirdsOverlay()
         {
@@ -76,8 +84,8 @@ namespace lumina.ui
             {
                 try
                 {
-                    int ex = GetWindowLong(Handle, -20);
-                    SetWindowLong(Handle, -20, ex | WsExNoActivate);
+                    int ex = GetWindowLongSafe(Handle, -20);
+                    SetWindowLongSafe(Handle, -20, ex | WsExNoActivate);
                 }
                 catch (Exception) { }
             };
@@ -150,16 +158,16 @@ namespace lumina.ui
 
             if (_line2.Length > 0)
             {
-                TextRenderer.DrawText(g, _line1, new Font("Segoe UI", 15F, FontStyle.Bold, GraphicsUnit.Point),
+                TextRenderer.DrawText(g, _line1, _fontTitle,
                     new Rectangle(bandX + 34, bandY + 10, bandW - 48, bandH / 2 - 12), fg,
                     TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis);
-                TextRenderer.DrawText(g, _line2, new Font("Segoe UI", 11.5F, FontStyle.Regular, GraphicsUnit.Point),
+                TextRenderer.DrawText(g, _line2, _fontSub,
                     new Rectangle(bandX + 34, bandY + bandH / 2, bandW - 48, bandH / 2 - 12), fg2,
                     TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis);
             }
             else
             {
-                TextRenderer.DrawText(g, _line1, new Font("Segoe UI", 15F, FontStyle.Bold, GraphicsUnit.Point),
+                TextRenderer.DrawText(g, _line1, _fontTitle,
                     new Rectangle(bandX + 34, bandY, bandW - 48, bandH), fg,
                     TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis);
             }
@@ -181,6 +189,8 @@ namespace lumina.ui
         {
             _life.Stop();
             _fade.Stop();
+            _fontTitle.Dispose();
+            _fontSub.Dispose();
             base.OnFormClosing(e);
         }
     }

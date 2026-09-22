@@ -197,6 +197,10 @@ namespace lumina.core
         /// para reproducirlo sobre la pantalla del proyector (VideoPlayerForm).
         /// </summary>
         public string VideoPath = string.Empty;
+        /// <summary>v5.1.0: repetir el video en bucle (kind=video, UI-side).</summary>
+        public bool VideoLoop = false;
+        /// <summary>v5.1.0: volumen inicial del video 0..100 (kind=video, UI-side).</summary>
+        public int VideoVolume = 100;
         // Reservado (el núcleo hoy fija 1 verso por slide en escritura vía
         // Scripture::BuildSlides; se emite para compatibilidad futura).
         public int VersesPerSlide = 1;
