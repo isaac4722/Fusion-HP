@@ -82,9 +82,9 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path "dist/${{ matrix.arch }}" | Out-Null
-          Copy-Item build/Release/FusionCore.dll        "dist/${{ matrix.arch }}/"
-          Copy-Item build/Release/fusion_selftest.exe   "dist/${{ matrix.arch }}/"
-          Copy-Item build/Release/fusion_poc_native.exe "dist/${{ matrix.arch }}/"
+          Copy-Item build/native/Release/FusionCore.dll        "dist/${{ matrix.arch }}/"
+          Copy-Item build/native/Release/fusion_selftest.exe   "dist/${{ matrix.arch }}/"
+          Copy-Item build/native/Release/fusion_poc_native.exe "dist/${{ matrix.arch }}/"
 
       - name: GATE fusion_selftest (exit 0)
         shell: pwsh

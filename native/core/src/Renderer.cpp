@@ -302,7 +302,7 @@ void Renderer::DrawSlide(HDC hdc, int w, int h,
         HFONT fC = MakeFont(theme, std::max(14, fontPx / 3), false);
         HGDIOBJ o = SelectObject(hdc, fC);
         wchar_t buf[32];
-        _snwprintf(buf, 31, L"%d", counter);
+        swprintf_s(buf, 32, L"%d", counter);
         buf[31] = 0;
         SetBkMode(hdc, TRANSPARENT);
         SetTextColor(hdc, ToColorRef(ac));

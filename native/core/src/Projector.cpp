@@ -308,9 +308,13 @@ bool Projector::RenderSlidePng(const Slide& s, const Theme& t,
     DeleteObject(bmp);
     DeleteDC(mem);
     ReleaseDC(nullptr, screen);
-    if (ok && pngOut->size() > 8 &&
-        (*pngOut)[0] == (char)0x89 && (*pngOut)[1] == 'P' && (*pngOut)[2] == 'N' && (*pngOut)[3] == 'G')
-        return true;
+    if (ok && pngOut->size() > 8) {
+        // Firma PNG: 89 50 4E 47 (comparar sin cast que truncue — C4310)
+        static const unsigned char kPngSig[4] = { 0x89, 0x50, 0x4E, 0x47 };
+        const unsigned char* b = reinterpret_cast<const unsigned char*>(pngOut->data());
+        if (b[0] == kPngSig[0] && b[1] == kPngSig[1] && b[2] == kPngSig[2] && b[3] == kPngSig[3])
+            return true;
+    }
     return false;
 }
 
