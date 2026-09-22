@@ -635,3 +635,35 @@ v5.1.1 — este ciclo fue de corrección de raíz + blindaje, sin superficie nue
 - Siguiente: commit → push main → CI verde (selfcheck+uicheck+flowcheck+Win7-imports) → tag v5.2.0 →
   release → verificación post-publicación (descarga del ZIP x86 + verify_win7_imports sobre lo
   publicado + gates del run del tag auditados línea a línea).
+
+## 2026-09-23 — CIERRE v5.2.0 «MOTOR»: CI verde, tag, release publicada y verificada
+- 3 iteraciones de CI hasta el verde (todas con diagnóstico accionable, ninguna a ciegas):
+  * [1] 35786046865 — C2373 en Win7Compat.cpp: el delayimp.h del MSVC 14.51 (VS18) del runner
+    declara __pfnDliNotifyHook2 como «extern "C" const PfnDliHook» (patrón canónico confirmado
+    en la doc oficial de MSVC). Fix: añadir const a la definición.
+  * [2] 35787056854 — x64 verde, x86 rojo por DOS causas nuevas: (a) /DELAYLOAD:<nombre-de-función>
+    NO es sintaxis válida de link.exe (lo trata como módulo → LNK4199 «ignored» → el import
+    estático x86 QUEDÓ); (b) el gate crasheó imprimiendo «←» en consola cp1252
+    (UnicodeEncodeError) ocultando el nombre de la API culpable.
+  * [3] 35788510999 — VERDE con la solución definitiva: shim por DEFINICIÓN de objeto —
+    Win7CompatX86.asm (MASM) define __imp__GetSystemTimePreciseAsFileTime@4 como dato
+    apuntando al shim (API real en Win8+, fallback GetSystemTimeAsFileTime en Win7);
+    Win7Compat.cpp define la variante sin decorar (x64). Objeto > lib: el import estático
+    de kernel32 JAMÁS se genera. Gate con salida ASCII-segura.
+- Además (higiene): 2 warnings C4189 preexistentes en Renderer.cpp silenciados.
+- Run del tag v5.2.0 (35789323311) SUCCESS → **Release PUBLICADA** (x64 3.4 MB · x86 3.0 MB ·
+  SHA256SUMS).
+- Verificación independiente post-publicación (descarga real del ZIP x86 — la arquitectura del
+  usuario): SHA256 idéntico (30d5b224…) · contenido 15/15 (launcher + net48\ + net35\ +
+  RVR1909 + README v5.2.0) · **verify_win7_imports PASS sobre lo PUBLICADO**: el DLL ya NO
+  importa GetSystemTimePreciseAsFileTime (v5.1.1 sí: 126 imports KERNEL32 con la API Win8+;
+  v5.2.0: 128 sin ella) → LoadLibrary funciona en Win7 SP1 → el núcleo ACTIVA → la app
+  completa funciona.
+- Gates del run del tag (job de empaquetado x86, auditados línea a línea): selfcheck 0/0 ×2 ·
+  uicheck 0/0 ×2 · **flowcheck 0/0 ×2** (modo limitado simulado + flujo feliz Biblia→Escenario) ·
+  verify_portable OK · WIN7-IMPORTS PASS (build y paquete).
+- Bloqueos: ninguno. Los 2 jobs «CLR hosting» siguen en failure-informativo (pre-existing,
+  continue-on-error, no bloquean paquete ni release — vía de respaldo en evaluación).
+- **v5.2.0 «MOTOR» cerrada**: el bug «solo carga la GUI pero más nada» quedó corregido de raíz
+  en las DOS capas (import estático eliminado + flujos blindados) y con tres gates de CI que
+  impiden su regreso (verify_win7_imports en nativo y paquete, --flowcheck en ambas variantes).
