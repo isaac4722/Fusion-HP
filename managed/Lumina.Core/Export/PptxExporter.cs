@@ -212,7 +212,9 @@ namespace lumina.core
                 else if (k.EndsWith(".jpeg", StringComparison.Ordinal)) hasJpeg = true;
                 else if (k.EndsWith(".xml", StringComparison.Ordinal)) hasXml = true;
             }
-            types.Append("<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>");
+            // Default «rels» solo si hay partes .rels (siempre las hay en un
+            // PPTX válido: _rels/.rels — y así ninguna variable queda sin uso).
+            if (hasRels) types.Append("<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>");
             if (hasPng) types.Append("<Default Extension=\"png\" ContentType=\"image/png\"/>");
             if (hasJpeg) types.Append("<Default Extension=\"jpeg\" ContentType=\"image/jpeg\"/>");
             if (hasXml) types.Append("<Default Extension=\"xml\" ContentType=\"application/xml\"/>");

@@ -220,8 +220,14 @@ namespace lumina.ui
 
         public Chip(string text, Color dot, bool boxed)
         {
+            // FIX v5.1.1 — «Control does not support transparent background colors»:
+            // ControlStyles.SupportsTransparentBackColor debe activarse ANTES de
+            // asignar BackColor = Color.Transparent. Sin ese estilo, el setter
+            // lanza ArgumentException y la ventana principal nunca llega a
+            // construirse (crash en Win7 SP1 x86, tanto bajo CLR 2.0 como 4.0).
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer |
-                     ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
+                     ControlStyles.UserPaint | ControlStyles.ResizeRedraw |
+                     ControlStyles.SupportsTransparentBackColor, true);
             _text = text;
             _dot = dot;
             _boxed = boxed;
@@ -255,6 +261,15 @@ namespace lumina.ui
             {
                 using (SolidBrush bg = new SolidBrush(UiTheme.CardBg)) g.FillRectangle(bg, r);
                 using (Pen pen = new Pen(UiTheme.CardBorder)) g.DrawRectangle(pen, r);
+            }
+            else
+            {
+                // Defensa en profundidad: nunca depender de la simulación de
+                // transparencia de WinForms para verse bien — se pinta el fondo
+                // sólido real del contenedor padre (o PageBg si no hay padre).
+                Color bg = (Parent != null && Parent.BackColor.A == 255)
+                           ? Parent.BackColor : UiTheme.PageBg;
+                using (SolidBrush fill = new SolidBrush(bg)) g.FillRectangle(fill, r);
             }
             int cy = Height / 2;
             using (SolidBrush dot = new SolidBrush(_dot))
@@ -453,7 +468,7 @@ namespace lumina.ui
     public sealed class MainForm : Form
     {
         private const string AppName = "LuminaPresentation Suite";
-        private const string AppVersion = "5.1.0";
+        private const string AppVersion = "5.1.1";
         private const string AppTitle = AppName + " — v" + AppVersion;
 
         /* ------------------------------------------------------------ servicios */

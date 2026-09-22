@@ -58,7 +58,7 @@ static const wchar_t* kRequiredSidecarDlls[] = {
     L"Lumina.Api.dll"      // API HTTP local + mando remoto
 };
 
-static const wchar_t* kWindowTitle = L"LuminaPresentation v5.1.0 «FUNDAMENTO»";
+static const wchar_t* kWindowTitle = L"LuminaPresentation v5.1.1 «APERTURA»";
 
 // ---------------------------------------------------------------------------
 // Registro: lectura de DWORD con vista de 64 bits garantizada

@@ -50,7 +50,7 @@ concurrency:
 
 env:
   DOTNET_VERSION: '8.0.x'
-  APP_VERSION: '5.1.0'
+  APP_VERSION: '5.1.1'
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -480,7 +480,7 @@ jobs:
           cmake --build blaunch --config Release --parallel $env:NUMBER_OF_PROCESSORS
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: 'Armar layout portable v5.1.0 (net48 + net35 + raíz compartida)'
+      - name: 'Armar layout portable v5.1.1 (net48 + net35 + raíz compartida)'
         shell: pwsh
         run: |
           $stage = "staging/LuminaPresentation-${{ matrix.arch }}"
@@ -508,7 +508,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path "$stage/data" | Out-Null
 
           @'
-          LuminaPresentation v5.1.0 «FUNDAMENTO» — núcleo C++ + interfaz C#
+          LuminaPresentation v5.1.1 «APERTURA» — núcleo C++ + interfaz C#
           =====================================================
 
           PROGRAMA PORTABLE — no requiere instalación ni permisos de
@@ -540,6 +540,12 @@ jobs:
                                   al abrir la base de datos, la app ofrece
                                   instalarla (~31.000 versículos).
 
+          v5.1.1 «APERTURA»: corregido el error que impedía ABRIR la app en
+          algunos equipos («Control does not support transparent background
+          colors»: el control Chip de la cabecera usaba fondo transparente sin
+          activar el estilo WinForms que lo permite). La CI ahora construye la
+          ventana completa de ambas variantes antes de publicar el paquete.
+
           v5.1.0 «FUNDAMENTO»: reparación del arranque (paquete completo),
           .NET mínimo 3.5 con 4.8 opcional, teclado en vivo (flechas/espacio/
           B/L/P/F5-F8), acordes proyectables, búsqueda bíblica por palabra,
@@ -551,13 +557,19 @@ jobs:
           Binarios de uso libre · Código fuente bajo Licencia View-Only.
           '@ | Set-Content -Path "$stage/README.txt" -Encoding UTF8
 
-      - name: 'GATE humo: --selfcheck de AMBAS variantes (la app ABRE)'
+      - name: 'GATE humo: --selfcheck + --uicheck de AMBAS variantes (la app ABRE y la ventana SE CONSTRUYE)'
         shell: pwsh
         run: |
-          # Este gate existe por la lección de v5.0.0: el paquete se publicó
-          # sin las DLL gestionadas y la app moría con FileNotFoundException
-          # AL ABRIR. Ahora el MISMO binario que se va a empaquetar se
-          # auto-verifica (motor nativo + BD + parsers + exportadores).
+          # Este gate existe por dos lecciones de campo:
+          #   v5.0.0 — el paquete se publicó sin las DLL gestionadas y la app
+          #            moría con FileNotFoundException AL ABRIR → --selfcheck.
+          #   v5.1.0 — el control Chip asignaba BackColor=Transparent sin
+          #            SupportsTransparentBackColor: ArgumentException en
+          #            MainForm..ctor, la app NO ABRÍA… y el --selfcheck (sin
+          #            UI) pasaba en verde → --uicheck (v5.1.1).
+          # Ahora el MISMO binario que se va a empaquetar se auto-verifica:
+          # motor nativo + BD + parsers + exportadores (selfcheck) Y la
+          # construcción completa de la ventana principal (uicheck).
           $stage = "staging/LuminaPresentation-${{ matrix.arch }}"
 
           # Función de diagnóstico: vuelca el log de sesión del selfcheck al
@@ -623,10 +635,37 @@ jobs:
             }
           }
 
-          # El selfcheck pudo crear data\logs\ en el staging: limpiar para que
+          # ---- v5.1.1: gate de UI — la ventana principal SE CONSTRUYE -------
+          # Reproduce la traza exacta del crash de v5.1.0 (MainForm..ctor →
+          # BuildHeader → Chip..ctor). Headless: construye, no muestra.
+          Write-Host '--- uicheck net48 (bloqueante): la ventana SE CONSTRUYE ---'
+          $p48ui = Start-Process -FilePath "$stage/net48/LuminaPresentation.exe" `
+                   -ArgumentList '--uicheck' -WorkingDirectory "$stage" -PassThru -Wait
+          Write-Host "net48 --uicheck exit code: $($p48ui.ExitCode)"
+          if ($p48ui.ExitCode -ne 0) {
+            DumpSelfcheckLog $stage 'net48 uicheck'
+            Write-Host "::error::La variante net48 no pasó el uicheck (código $($p48ui.ExitCode)) — la ventana principal no se puede construir; la app no abriría"
+            exit 1
+          }
+
+          Write-Host '--- uicheck net35 ---'
+          $p35ui = Start-Process -FilePath "$stage/net35/LuminaPresentation35.exe" `
+                   -ArgumentList '--uicheck' -WorkingDirectory "$stage" -PassThru -Wait
+          Write-Host "net35 --uicheck exit code: $($p35ui.ExitCode)"
+          if ($p35ui.ExitCode -ne 0) {
+            DumpSelfcheckLog $stage 'net35 uicheck'
+            if ($has35) {
+              Write-Host "::error::La variante net35 FALLÓ el uicheck con .NET 3.5 presente (código $($p35ui.ExitCode))"
+              exit 1
+            } else {
+              Write-Host "::warning::net35 uicheck no ejecutable en este runner (sin .NET 3.5): código $($p35ui.ExitCode)."
+            }
+          }
+
+          # Los checks pudieron crear data\logs\ en el staging: limpiar para que
           # el ZIP distribuido no lleve basura de la fábrica.
           Remove-Item "$stage/data/logs" -Recurse -Force -ErrorAction SilentlyContinue
-          Write-Host 'SELFCHECK PASS (net48 estricto + net35 según entorno)'
+          Write-Host 'SELFCHECK+UICHECK PASS (net48 estricto + net35 según entorno)'
 
       - name: GATE verify_portable (${{ matrix.arch }})
         shell: pwsh
@@ -677,14 +716,27 @@ jobs:
       - name: Publicar
         uses: softprops/action-gh-release@v2
         with:
-          name: "LuminaPresentation ${{ github.ref_name }} «FUNDAMENTO»"
+          name: "LuminaPresentation ${{ github.ref_name }} «APERTURA»"
           body: |
-            **LuminaPresentation v5.1.0 «FUNDAMENTO» — núcleo C++ + interfaz C# (.NET mínimo 3.5 · 4.8 si está disponible)**
+            **LuminaPresentation v5.1.1 «APERTURA» — núcleo C++ + interfaz C# (.NET mínimo 3.5 · 4.8 si está disponible)**
 
             ## Descargas
-            - `LuminaPresentation-5.1.0-win-x86.zip` — **Windows 7 SP1 a Windows 11 (32 bits)**
-            - `LuminaPresentation-5.1.0-win-x64.zip` — **Windows 7 SP1 a Windows 11+ (64 bits)**
+            - `LuminaPresentation-5.1.1-win-x86.zip` — **Windows 7 SP1 a Windows 11 (32 bits)**
+            - `LuminaPresentation-5.1.1-win-x64.zip` — **Windows 7 SP1 a Windows 11+ (64 bits)**
             - `SHA256SUMS.txt` — integridad de los paquetes
+
+            ## ⚠ Corregido en v5.1.1 (crítico — la app no abría)
+            En v5.1.0, al construir la ventana principal el control `Chip` de la
+            cabecera asignaba un fondo transparente **sin activar antes el estilo
+            WinForms que lo permite** (`ControlStyles.SupportsTransparentBackColor`):
+            `ArgumentException: Control does not support transparent background colors`
+            → la ventana moría en `MainForm.BuildHeader` y **la aplicación no abría**
+            (reportado en Windows 7 SP1 x86, bajo .NET 4.8 y bajo 3.5 por igual).
+            v5.1.1 activa el estilo correctamente, pinta el fondo sin depender de la
+            transparencia simulada y añade un **gate `--uicheck` en la CI**: antes de
+            empaquetar, ambas variantes construyen la ventana principal completa de
+            forma headless. Un paquete cuya ventana no se pueda construir ya no puede
+            publicarse.
 
             ## ⚠ Corregido en v5.1.0 (crítico)
             El paquete v5.0.0 se publicó **sin las DLL gestionadas** (Lumina.Core/Bridge/Api)
@@ -728,6 +780,8 @@ jobs:
             - **GATE exportadores: python-pptx + pypdf abren los archivos generados.**
             - Interop real: PoC C# ↔ DLL nativa «POC PASS 12/12» en x86 y x64.
             - **GATE humo: `--selfcheck` de ambas variantes ANTES de empaquetar.**
+            - **GATE UI (v5.1.1): `--uicheck` — ambas variantes construyen la ventana
+              principal completa (headless) ANTES de empaquetar.**
             - Empaquetado: auditoría PE `verify_portable` (15 archivos exigidos) + SHA256.
 
             ## Instalación

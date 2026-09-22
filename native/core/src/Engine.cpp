@@ -19,7 +19,7 @@
 
 namespace lumina {
 
-static const char* kVersion = "5.1.0";
+static const char* kVersion = "5.1.1";
 
 /* ------------------------------------------------------------- helpers -- */
 // (H-a: SlideToJson no usado fue retirado — warning -Wunused-function;

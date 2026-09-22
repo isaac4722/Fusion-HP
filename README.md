@@ -1,4 +1,4 @@
-# LuminaPresentation Suite v5.1.0 «FUNDAMENTO»
+# LuminaPresentation Suite v5.1.1 «APERTURA»
 
 **Proyección para iglesias con arquitectura híbrida: núcleo C++17 nativo + interfaz C# (.NET mínimo 3.5 — usa 4.8 si está disponible)**
 — motor de proyección en tiempo real con la agilidad de desarrollo de .NET,
@@ -13,8 +13,8 @@
 
 1. Ir a **[Releases](https://github.com/isaac4722/Fusion-HP/releases)**.
 2. Descargar el paquete para tu arquitectura:
-   - `LuminaPresentation-5.1.0-win-x86.zip` — **Windows 7 SP1 … Windows 11 (32 bits)**
-   - `LuminaPresentation-5.1.0-win-x64.zip` — **Windows 7 SP1 … Windows 11+ (64 bits)**
+   - `LuminaPresentation-5.1.1-win-x86.zip` — **Windows 7 SP1 … Windows 11 (32 bits)**
+   - `LuminaPresentation-5.1.1-win-x64.zip` — **Windows 7 SP1 … Windows 11+ (64 bits)**
 3. Descomprimir el ZIP **completo** y ejecutar **`LuminaLauncher.exe`**.
    **El usuario nunca instala nada**:
    - Windows 10 1903+ / Windows 11 → **.NET Framework 4.8** integrado en el SO
@@ -26,6 +26,20 @@
      + las 3 DLL gestionadas en la carpeta de la variante elegida) y explica con
      claridad qué hacer si falta algo.
    - Ambas variantes comparten la misma carpeta de datos `data\`.
+
+## 🌟 Novedades v5.1.1 «APERTURA»
+
+> **Corrección crítica**: en v5.1.0, el control `Chip` de la cabecera asignaba
+> `BackColor = Color.Transparent` **sin activar antes**
+> `ControlStyles.SupportsTransparentBackColor` → `ArgumentException: Control
+> does not support transparent background colors` en `MainForm.BuildHeader` →
+> **la app no abría** (reportado en Win7 SP1 x86, bajo .NET 4.8 y 3.5 por
+> igual). v5.1.1 activa el estilo ANTES de asignar el color, pinta el fondo
+> con el color sólido real del padre (defensa en profundidad — nunca depende
+> de la transparencia simulada) y añade el **gate `--uicheck` en la CI**: ambas
+> variantes construyen la ventana principal completa de forma headless ANTES
+> de empaquetar. Un paquete cuya ventana no se pueda construir ya no puede
+> publicarse.
 
 ## 🌟 Novedades v5.1.0 «FUNDAMENTO»
 

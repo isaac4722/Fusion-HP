@@ -1,5 +1,5 @@
 // ============================================================================
-//  LuminaPresentation Suite v5.1.0 «FUNDAMENTO» — managed/Lumina.UI/Program.cs
+//  LuminaPresentation Suite v5.1.1 «APERTURA» — managed/Lumina.UI/Program.cs
 //  Copyright (c) 2026 Isaac. Licencia View-Only.
 // ============================================================================
 //  Program.cs : punto de entrada WinForms con blindaje anti-crash.
@@ -26,12 +26,23 @@
 //   * LogLine(string) público: MainForm lleva los errores del núcleo al
 //     archivo de sesión (antes solo iban a Trace).
 //
+//  v5.1.1 «APERTURA» (lección del bug de v5.1.0 en campo):
+//   * Modo  --uicheck : verificación headless de la CONSTRUCCIÓN de la UI.
+//     v5.1.0 se publicó con un Chip que asignaba BackColor=Transparent sin
+//     ControlStyles.SupportsTransparentBackColor → ArgumentException en
+//     MainForm..ctor → la app NO ABRÍA… y el --selfcheck (sin UI) pasaba en
+//     verde. Este gate construye la MainForm COMPLETA (misma traza del
+//     arranque: ctor → BuildHeader → Chip..ctor) y sale 0/3. La CI lo corre
+//     en ambas variantes ANTES de empaquetar: un paquete cuya ventana no se
+//     pueda construir NO puede volver a publicarse.
+//
 //  Todo queda registrado en  data/logs/lumina-AAAA-MM-DD_HHMMSS.log  con el
 //  entorno completo (SO, bits, .NET, presencia de LuminaCore.dll, rutas y
 //  permisos) para soporte remoto sin herramientas del usuario.
 // ============================================================================
 using System;
 using System.Diagnostics;
+using System.Drawing;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -45,7 +56,7 @@ namespace lumina.ui
     internal static class Program
     {
         private const string AppName = "LuminaPresentation Suite";
-        private const string AppVersion = "5.1.0";
+        private const string AppVersion = "5.1.1";
 
         /// <summary>Ruta del log de la sesión en curso (null si aún no hay).</summary>
         private static string _logPath;
@@ -53,15 +64,25 @@ namespace lumina.ui
         [STAThread]
         private static void Main()
         {
-            // ---- 0) Modo de verificación automática (CI / soporte técnico) ----
+            // ---- 0) Modos de verificación automática (CI / soporte técnico) ----
             string[] args = Environment.GetCommandLineArgs();
             bool selfcheck = false;
+            bool uicheck = false;
             foreach (string a in args)
+            {
                 if (string.Equals(a, "--selfcheck", StringComparison.OrdinalIgnoreCase))
                     selfcheck = true;
+                else if (string.Equals(a, "--uicheck", StringComparison.OrdinalIgnoreCase))
+                    uicheck = true;
+            }
             if (selfcheck)
             {
                 Environment.ExitCode = RunSelfCheck();
+                return;
+            }
+            if (uicheck)
+            {
+                RunUiCheck();   // sale por sí mismo (Environment.Exit) con 0/3
                 return;
             }
 
@@ -247,6 +268,72 @@ namespace lumina.ui
                 : "SELFCHECK FAIL (" + failures + " fallo/s)");
             LogLine(failures == 0 ? "SELFCHECK PASS" : "SELFCHECK FAIL(" + failures + ")");
             return failures == 0 ? 0 : 2;
+        }
+
+        /* ------------------------------------------------------------- uicheck */
+
+        /// <summary>
+        /// v5.1.1: verificación headless de la CONSTRUCCIÓN de la interfaz
+        /// (crea los controles pero NO muestra ventanas). Motivo: el bug de
+        /// v5.1.0 en campo — «Control does not support transparent background
+        /// colors» en Chip..ctor mataba MainForm..ctor y la app no abría, PERO
+        /// el --selfcheck (sin UI) pasaba en verde y el paquete se publicó.
+        /// Este gate reproduce la traza EXACTA del arranque (MainForm..ctor →
+        /// BuildHeader → Chip..ctor) sobre el MISMO binario que se va a
+        /// empaquetar. Sale con Environment.Exit para cortar cualquier hilo de
+        /// integración iniciado por el constructor (API remota, MIDI, OBS):
+        /// 0 = PASS · 3 = FAIL.
+        /// </summary>
+        private static void RunUiCheck()
+        {
+            AttachParentConsole();   // mejor esfuerzo: ver la salida en la CI
+            WriteSessionLog();
+            int failures = 0;
+            try
+            {
+                Application.EnableVisualStyles();
+                Application.SetCompatibleTextRenderingDefault(false);
+
+                // 1) Primitiva de riesgo aislada: el control Chip (fondo
+                //    transparente + SupportsTransparentBackColor) en sus dos
+                //    variantes, ANTES de construir la ventana completa.
+                using (Chip boxed = new Chip("uicheck", Color.Firebrick, true))
+                using (Chip flat = new Chip("uicheck", Color.Firebrick, false))
+                {
+                    if (boxed.Width <= 0 || flat.Width <= 0)
+                        throw new InvalidOperationException(
+                            "Chip con ancho no positivo tras UpdateWidth()");
+                }
+                Console.WriteLine("uicheck: Chip (boxed y flat) OK — sin excepción de transparencia");
+                LogLine("uicheck: Chip (boxed y flat) OK");
+
+                // 2) Construcción COMPLETA de la ventana principal, sin
+                //    mostrarla: ejercita cabecera/chips, sidebar, barra de
+                //    estado, las 9 páginas, motor e integraciones.
+                using (MainForm form = new MainForm())
+                {
+                    if (form.Controls.Count == 0)
+                        throw new InvalidOperationException(
+                            "MainForm construida sin controles raíz");
+                    Console.WriteLine("uicheck: MainForm construida ("
+                                      + form.Controls.Count + " controles raíz) OK");
+                    LogLine("uicheck: MainForm construida OK");
+                }
+                Console.WriteLine("uicheck: MainForm liberada OK");
+                LogLine("uicheck: MainForm liberada OK");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("uicheck FALLO: " + ex);
+                LogLine("uicheck FALLO: " + ex);
+                failures++;
+            }
+
+            Console.WriteLine(failures == 0
+                ? "UICHECK PASS (" + AppVersion + ")"
+                : "UICHECK FAIL (" + failures + " fallo/s)");
+            LogLine(failures == 0 ? "UICHECK PASS" : "UICHECK FAIL(" + failures + ")");
+            Environment.Exit(failures == 0 ? 0 : 3);
         }
 
         /* ----------------------------------------------------------- handlers */

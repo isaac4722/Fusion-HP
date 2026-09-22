@@ -509,3 +509,47 @@
 - Siguiente: ninguna — v5.1.0 «FUNDAMENTO» cerrada: la app ABRE con .NET mínimo 3.5 (usa 4.8 si está),
   el paquete viaja completo y auto-verificado, y los 20 requisitos del spec quedan cubiertos o documentados
   con plan técnico en docs/roadmap.md (los 2 pendientes requieren credenciales del propietario).
+
+## 2026-09-23 — v5.1.1 «APERTURA»: corrección del error de transparencia que impedía abrir la app
+- Petición del usuario: «Nada es incorrecto, quiero que soluciones todo lo que se mencionan» + logs de campo
+  (lumina-2026-09-22_154925.log / 155553.log): Win7 SP1 x86, CLR 4.0.30319.42000, .NET 4.8+ = True,
+  LuminaCore presente, data escribible — y `FATAL en Main (construcción de la ventana):
+  System.ArgumentException: Control does not support transparent background colors
+  at System.Windows.Forms.Control.set_BackColor → lumina.ui.Chip..ctor → MainForm.BuildHeader → MainForm..ctor`.
+- CAUSA RAÍZ: el constructor de `Chip` (MainForm.cs) activaba `UserPaint | OptimizedDoubleBuffer |
+  AllPaintingInWmPaint | ResizeRedraw`… pero NO `ControlStyles.SupportsTransparentBackColor`, y luego
+  asignaba `BackColor = Color.Transparent` → el setter de Control lanza ArgumentException SIEMPRE (CLR2 y
+  CLR4 por igual) → MainForm..ctor muere → la app no abre. La CI no lo detectó porque `--selfcheck`
+  (v5.1.0) valida motor/BD/parsers/exportadores pero NO construye ningún control WinForms.
+- FIX Chip (doble capa, tal como pidió el usuario):
+  1) `ControlStyles.SupportsTransparentBackColor` añadido al SetStyle ANTES de tocar BackColor (la corrección canónica);
+  2) defensa en profundidad: OnPaint de la variante no-boxed pinta el fondo con el color SÓLIDO real del
+     padre (`Parent.BackColor` si alpha=255, si no PageBg) — la app jamás depende de la simulación de
+     transparencia para verse bien. La variante boxed ya pintaba CardBg sólido propio.
+- AUDITORÍA de transparencia en TODA la capa UI: solo 2 usos de `Color.Transparent` — el Label estándar de
+  `UiTheme.MkLabel` (los Label de WinForms soportan transparencia de fábrica: seguro) y el Chip (corregido).
+  `Chip` es el ÚNICO control personalizado derivado de Control; ContentPanel/NavPanel derivan de Panel
+  (fondos sólidos) y el resto son Forms (LowerThirdsOverlay usa TransparencyKey de formulario: otra vía, válida).
+- NUEVO GATE `--uicheck` (Program.RunUiCheck, sale 0/3): reproduce la traza EXACTA del crash — construye
+  1) el control Chip aislado (boxed y flat) y 2) la MainForm COMPLETA (BuildHeader→Chip, sidebar, status,
+  9 páginas, CreateEngine, ApplySettings, integraciones) de forma HEADLESS (sin mostrar), con
+  Environment.Exit para cortar hilos residuales. Verificado: ningún MessageBox en el camino de construcción
+  (los 30+ existentes están en manejadores de eventos de usuario).
+- CI: el GATE humo del job package ahora ejecuta `--selfcheck` + `--uicheck` en AMBAS variantes (net48
+  bloqueante; net35 bloqueante con .NET 3.5 presente, warning sin él — misma política que selfcheck).
+  Comentario del gate documenta ambas lecciones de campo (v5.0.0 DLLs ausentes → selfcheck; v5.1.0
+  transparencia → uicheck).
+- Version bump 5.1.0 → 5.1.1 en: APP_VERSION (ci.yml), Directory.Build.props (<Version> — versión de
+  ensamblado de TODA la capa gestionada), MainForm.cs/Program.cs (AppVersion), Engine.cpp (kVersion),
+  lumina_api.cpp (lumina_version), LuminaLauncher.cpp (kWindowTitle «APERTURA»). README/README.txt del
+  paquete/relase-body actualizados con la corrección documentada.
+- Fix menor de higiene (cero-warnings): CS0219 `hasRels` en PptxExporter — el Default «rels» de
+  [Content_Types].xml ahora se emite condicionado a `if (hasRels)` (siempre cierto en un PPTX válido).
+- Gates locales (SDK 8.0.425 en Linux, ref-assemblies): `dotnet build Lumina.sln -c Release` →
+  **0 errores / 0 warnings** (net35+net48+net8) · `Lumina.Tests` → **23/23** (incluye exportadores,
+  TriggerEngine, ObsProtocol, BooksTable 66 libros, BibleJson, ZipBackup, FTS5 nativo).
+- Cobertura vs MDs re-verificada (17/17 módulos presentes): PPTX/PDF, video en vivo, Lower Thirds,
+  Stage View, Director, OBS WebSocket, MIDI, activadores, ZEFania XML, control remoto móvil, API HTTP,
+  respaldo ZIP Drive/OneDrive, acordes/transposición, Biblia .BIB, proyección GDI sin parpadeo, launcher.
+  Atajos en vivo (→/←/Espacio/B/L/P/F5-F8 en ProcessCmdKey) e importación de planes JSON confirmados.
+- Siguiente: commit → push main → CI verde (con uicheck) → tag v5.1.1 → release → verificación de assets.
