@@ -3,7 +3,7 @@
   <PropertyGroup>
     <TargetFrameworks>net35;net48</TargetFrameworks>
     <RootNamespace>fusion.poc</RootNamespace>
-    <AssemblyName>PocFacade</AssemblyName>
+    <AssemblyName>FusionHP.PocFacade</AssemblyName>
     <Summary>Fachada COM-visible (sin registro) consumida por el PoC nativo CLR-Hosting.</Summary>
   </PropertyGroup>
 

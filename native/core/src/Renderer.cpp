@@ -15,8 +15,9 @@
 #include "Utf8.h"
 
 #include <windows.h>
-#include <gdiplus.h>
+#include <objbase.h>   // macro `interface` (objbase) — requerida por GdiplusImaging.h
 #include <objidl.h>
+#include <gdiplus.h>
 
 #include <algorithm>
 #include <wchar.h>
