@@ -26,6 +26,7 @@ namespace lumina.core
         public string ApiToken = string.Empty;       // token opcional ("" = sin token)
         public string Theme = "Predeterminado";      // tema activo (nombre)
         public string LastBibleVersion = string.Empty; // última versión bíblica usada
+        public string ThemeJson = string.Empty;      // tema completo serializado (v4.1.0; "" = default)
 
         public Settings() : this(null) {}
 
@@ -66,6 +67,7 @@ namespace lumina.core
             if (ApiToken == null) ApiToken = string.Empty;
             if (Theme == null) Theme = "Predeterminado";
             if (LastBibleVersion == null) LastBibleVersion = string.Empty;
+            if (ThemeJson == null) ThemeJson = string.Empty;
         }
 
         /// <summary>Carga desde el directorio dado (o default). Tolerante a errores: devuelve defaults.</summary>
@@ -85,6 +87,7 @@ namespace lumina.core
                 s.ApiToken = MiniJson.GetString(o, "apiToken", string.Empty);
                 s.Theme = MiniJson.GetString(o, "theme", "Predeterminado");
                 s.LastBibleVersion = MiniJson.GetString(o, "lastBibleVersion", string.Empty);
+                s.ThemeJson = MiniJson.GetString(o, "themeJson", string.Empty);
                 s.Normalize();
             }
             catch (Exception)
@@ -104,6 +107,7 @@ namespace lumina.core
             o["apiToken"] = ApiToken;
             o["theme"] = Theme;
             o["lastBibleVersion"] = LastBibleVersion;
+            if (ThemeJson.Length > 0) o["themeJson"] = ThemeJson;   // v4.1.0: tema completo
             string dir = _dataDir;
             if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
             File.WriteAllText(FilePath, MiniJson.Serialize(o) + "\n", new UTF8Encoding(false));

@@ -1,5 +1,5 @@
 # ============================================================================
-#  LuminaPresentation / LuminaPresentation Suite — CI/CD híbrido v4.0.0 «LUMINA»
+#  LuminaPresentation / LuminaPresentation Suite — CI/CD híbrido v4.1.0 «LUMINA»
 #  Copyright (c) 2026 Isaac. Licencia View-Only.
 # ----------------------------------------------------------------------------
 #  Pipeline de la arquitectura híbrida (docs/architecture-hybrid.md §6):
@@ -46,7 +46,7 @@ concurrency:
 
 env:
   DOTNET_VERSION: '8.0.x'
-  APP_VERSION: '4.0.0'
+  APP_VERSION: '4.1.0'
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -419,7 +419,7 @@ jobs:
             Copy-Item artifacts/managed/ui-publish-net35/LuminaPresentation35.exe "$stage/"
           }
           @'
-          LuminaPresentation v4.0.0 «LUMINA» — núcleo C++ + interfaz C#
+          LuminaPresentation v4.1.0 «LUMINA» — núcleo C++ + interfaz C#
           =====================================================
 
           PROGRAMA PORTABLE — no requiere instalación ni permisos de
@@ -495,7 +495,7 @@ jobs:
         with:
           name: "LuminaPresentation ${{ github.ref_name }} «LUMINA»"
           body: |
-            **LuminaPresentation v4.0.0 «LUMINA» — núcleo C++ + interfaz C# .NET Framework 4.8/3.5**
+            **LuminaPresentation v4.1.0 «LUMINA» — núcleo C++ + interfaz C# .NET Framework 4.8/3.5**
 
             ## Descargas
             - `LuminaPresentation-4.0.0-win-x86.zip` — **Windows 7 SP1 a Windows 11 (32 bits)**

@@ -1,4 +1,4 @@
-# LuminaPresentation Suite v4.0.0 «LUMINA»
+# LuminaPresentation Suite v4.1.0 «LUMINA»
 
 **Proyección para iglesias con arquitectura híbrida: núcleo C++17 nativo + interfaz C# (.NET Framework 4.8/3.5)**
 — motor de proyección en tiempo real con la agilidad de desarrollo de .NET,
@@ -21,8 +21,14 @@
    - Windows 7 SP1 / 8.x → **.NET Framework 3.5 SP1** integrado (variante de línea base).
    - El motor C++ (`LuminaCore.dll`) va enlazado estáticamente (/MT): **cero redistributables**.
 
-## 🌟 Novedades v4.0.0 «LUMINA»
+## 🌟 Novedades v4.1.0 «LUMINA»
 
+- **Editor de Temas visual** (nuevo): colores (fondo/texto/acento con selector nativo),
+  tipografía (fuente, tamaño, negrita, MAYÚSCULAS, interlineado), efectos (contorno por
+  silueta y sombra con alpha) e imagen de fondo opcional (contener/cubrir) — con **vista
+  previa en vivo** en GDI+ y botón «Aplicar al escenario» que reconstruye el escenario
+  activo con el nuevo tema (proyección + vista previa del núcleo se refrescan solas).
+  El tema se persiste en `data/settings.json` (themeJson) y se recarga al arrancar.
 - **Nuevo nombre**: el producto es **LuminaPresentation Suite** (antes Fusion-HP).
   Binarios renombrados: `LuminaLauncher.exe`, `LuminaPresentation.exe` (interfaz) y
   `LuminaCore.dll` (núcleo nativo).
@@ -102,6 +108,8 @@ En Windows, `native/` compila con MSVC (`-A Win32` o `-A x64`) y produce `Lumina
   `apps/native-wx-src` con su historial).
 - **v3.0.0 «HÍBRIDA»** — núcleo C++ puro + capa .NET, PoC de interop validado (12/12),
   CI de 7 jobs con gates, empaquetado portable x86/x64 y releases automáticos.
-- **v4.0.0 «LUMINA»** — la presente: producto renombrado a LuminaPresentation Suite,
+- **v4.0.0 «LUMINA»** — producto renombrado a LuminaPresentation Suite,
   interfaz rediseñada (tema oscuro, navegación lateral, chips de estado) y blindaje
   completo anti-crash (modos degradados, pre-chequeos del launcher y logs de diagnóstico).
+- **v4.1.0 «LUMINA»** — la presente: **editor de Temas visual** con vista previa en vivo
+  (colores, tipografía, contorno/sombra, imagen de fondo) y persistencia del tema en ajustes.

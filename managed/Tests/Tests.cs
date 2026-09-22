@@ -299,7 +299,7 @@ namespace lumina.tests
         private static void TestNativeVersion()
         {
             string v = LuminaEngine.Version();
-            AssertTrue(v.StartsWith("LuminaCore", StringComparison.Ordinal) && v.Contains("4.0"),
+            AssertTrue(v.StartsWith("LuminaCore", StringComparison.Ordinal) && v.Contains("4.1"),
                 "version=\"" + v + "\"");
         }
 

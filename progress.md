@@ -400,3 +400,23 @@
   (net35+net48); native Linux → lumina_selftest **138/138** y lumina_poc_native **37/37 PASS**;
   Tests net8 con LUMINA_SKIP_NATIVE=1 → PASS (5 skips esperados).
 - Pendiente al cierre: push → CI verde → tag v4.0.0 → release → verificación de assets.
+
+## 2026-09-22 — v4.1.0 «LUMINA»: Editor de Temas visual (mockup → WinForms) + persistencia
+- Mockup: página «Temas» con vista previa EN VIVO reactiva (state) — navegación 5→6 ítems,
+  versiones a 4.1.0, clamp numérico (replica NumericUpDown), verificado con agent-browser
+  (cambio de fuente/tamaño re-dibuja la muestra al instante).
+- WinForms (Lumina.UI/MainForm.cs): NavPanel 6 ítems (icono ◑ mitad-rellena), página Temas
+  con: nombre, 3 swatches (ColorDialog nativo + hex #AARRGGBB), fuente combo (6 fuentes
+  Win7-safe), tamaño 12-140, negrita/MAYÚSCULAS, interlineado 0.8-2, contorno 0-10, sombra
+  0-255, imagen de fondo (ruta + Examinar + modo contener/cubrir); vista previa GDI+
+  (bg + texto con sombra offset + contorno GraphicsPath + ref en acento, escala 4× legible);
+  botones Restaurar / Guardar en ajustes / Aplicar al escenario.
+- Lógica: BuildThemeFromControls ↔ ApplyThemeToControls; LoadScenarioFromItems ahora guarda
+  _lastScenarioItems/_lastScenarioName → «Aplicar al escenario» reconstruye el escenario
+  activo con el tema nuevo (proyección+preview se refrescan por eventos del motor); el tema
+  se persiste en settings.json (ThemeJson vía MiniJson.Serialize(Theme.ToDict())) y se
+  recarga al arrancar (JSON corrupto → default, sin crash).
+- Versión 4.1.0 (kVersion, lumina_version, APP_VERSION, launcher, gates de PoC actualizados
+  a "4.1" — punto conocido, revisado en los 3 arneses).
+- Validación local: managed 0 err/0 warn (net35+net48); selftest 138/138; PoC nativo 37/37;
+  Tests net8 PASS.

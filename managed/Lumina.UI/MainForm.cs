@@ -281,9 +281,11 @@ namespace lumina.ui
     internal sealed class NavPanel : ContentPanel
     {
         private static readonly string[] Captions =
-            { "En Vivo", "Canciones", "Biblia", "Culto", "Ajustes" };
+            { "En Vivo", "Canciones", "Biblia", "Temas", "Culto", "Ajustes" };
 
-        private readonly Rectangle[] _itemRects = new Rectangle[5];
+        private const int ItemCount = 6;
+
+        private readonly Rectangle[] _itemRects = new Rectangle[ItemCount];
         private int _hover = -1;
         private int _active;
 
@@ -297,7 +299,7 @@ namespace lumina.ui
         {
             BackColor = UiTheme.BarBg;
             Width = 210;
-            for (int i = 0; i < 5; i++)
+            for (int i = 0; i < ItemCount; i++)
                 _itemRects[i] = new Rectangle(0, 44 + i * 46, Width, 46);
         }
 
@@ -309,7 +311,7 @@ namespace lumina.ui
 
         private int HitTest(Point p)
         {
-            for (int i = 0; i < 5; i++)
+            for (int i = 0; i < ItemCount; i++)
                 if (_itemRects[i].Contains(p)) return i;
             return -1;
         }
@@ -351,7 +353,7 @@ namespace lumina.ui
                 new Rectangle(20, 14, Width - 20, 18), UiTheme.TextDisabled,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
 
-            for (int i = 0; i < 5; i++)
+            for (int i = 0; i < ItemCount; i++)
             {
                 Rectangle r = _itemRects[i];
                 bool isActive = i == _active;
@@ -401,14 +403,18 @@ namespace lumina.ui
                         g.FillRectangle(b, x + 6, y + 1, 4, 14);
                         g.FillRectangle(b, x + 2, y + 5, 12, 4);
                         break;
-                    case 3: // Culto: lista
+                    case 3: // Temas: círculo de muestra (mitad rellena)
+                        g.DrawEllipse(p, x + 2, y + 2, 12, 12);
+                        g.FillPie(b, x + 2, y + 2, 12, 12, -90, 180);
+                        break;
+                    case 4: // Culto: lista
                         for (int i = 0; i < 3; i++)
                         {
                             g.FillEllipse(b, x + 1, y + 2 + i * 5, 3, 3);
                             g.DrawLine(p, x + 7, y + 3 + i * 5, x + 14, y + 3 + i * 5);
                         }
                         break;
-                    case 4: // Ajustes: engranaje simplificado
+                    case 5: // Ajustes: engranaje simplificado
                         g.DrawEllipse(p, x + 4, y + 4, 8, 8);
                         g.FillRectangle(b, x + 7, y, 2, 4);
                         g.FillRectangle(b, x + 7, y + 12, 2, 4);
@@ -441,15 +447,30 @@ namespace lumina.ui
         private int _currentIndex = -1;
         private bool _black;
         private bool _dbOpen;
-        private readonly Theme _theme = new Theme();
+        private Theme _theme = new Theme();   // no-readonly: el editor de Temas lo reemplaza
+
+        // Temas (editor v4.1.0)
+        private TextBox _txtThemeName;
+        private Button _swBg, _swFg, _swAccent;
+        private Label _hexBg, _hexFg, _hexAccent;
+        private ComboBox _cmbThemeFont;
+        private NumericUpDown _numThemeSize, _numThemeLine, _numThemeOutline, _numThemeShadow;
+        private CheckBox _chkThemeBold, _chkThemeUpper;
+        private TextBox _txtThemeImagePath;
+        private ComboBox _cmbThemeImageMode;
+        private ContentPanel _themePreview;
 
         /* --------------------------------------------------------------- culto */
         private readonly List<ScenarioItem> _serviceItems = new List<ScenarioItem>();
 
+        // Último escenario cargado (para re-aplicar el tema sin reconstruirlo).
+        private IList<ScenarioItem> _lastScenarioItems;
+        private string _lastScenarioName = string.Empty;
+
         /* ------------------------------------------------------------ estructura */
         private NavPanel _nav;
         private Panel _content;
-        private readonly Panel[] _pages = new Panel[5];
+        private readonly Panel[] _pages = new Panel[6];
         private Chip _chipCore, _chipDb, _chipApi;
 
         // En Vivo
@@ -666,9 +687,10 @@ namespace lumina.ui
             _pages[0] = BuildLivePage();
             _pages[1] = BuildSongsPage();
             _pages[2] = BuildBiblePage();
-            _pages[3] = BuildCultoPage();
-            _pages[4] = BuildSettingsPage();
-            for (int i = 0; i < 5; i++) _content.Controls.Add(_pages[i]);
+            _pages[3] = BuildTemasPage();
+            _pages[4] = BuildCultoPage();
+            _pages[5] = BuildSettingsPage();
+            for (int i = 0; i < 6; i++) _content.Controls.Add(_pages[i]);
 
             Controls.Add(_content);
             _content.BringToFront();
@@ -685,9 +707,9 @@ namespace lumina.ui
 
         private void NavigateToIndex(int index)
         {
-            if (index < 0 || index >= 5) index = 0;
+            if (index < 0 || index >= 6) index = 0;
             _activeNavItem = index;
-            for (int i = 0; i < 5; i++) _pages[i].Visible = i == index;
+            for (int i = 0; i < 6; i++) _pages[i].Visible = i == index;
             if (_nav != null) _nav.SetActive(index);
             if (index == 0) RefreshPreview();
         }
@@ -1035,7 +1057,485 @@ namespace lumina.ui
         }
 
         /* ======================================================================
-         *  PÁGINA 4 — CULTO
+         *  PÁGINA 4 — TEMAS (editor visual v4.1.0)
+         * ==================================================================== */
+
+        private static readonly string[] ThemeFonts =
+            { "Segoe UI", "Arial", "Georgia", "Verdana", "Trebuchet MS", "Tahoma" };
+
+        private Panel BuildTemasPage()
+        {
+            Panel page = NewPage("Temas", "Apariencia de la proyección: colores, tipografía y efectos", null);
+            ContentPanel body = (ContentPanel)page.Tag;
+
+            TableLayoutPanel grid = NewGrid(2,
+                new ColumnStyle(SizeType.Percent, 55),
+                new ColumnStyle(SizeType.Percent, 45));
+
+            // ---------------- tarjeta izquierda: propiedades ----------------
+            ContentPanel props;
+            Panel propsCard = UiTheme.MkCard("Propiedades del tema", out props);
+            propsCard.Dock = DockStyle.Fill;
+            propsCard.Margin = new Padding(0, 0, 16, 0);
+
+            TableLayoutPanel form = new TableLayoutPanel();
+            form.Dock = DockStyle.Fill;
+            form.AutoScroll = true;
+            form.ColumnCount = 1;
+            form.Padding = new Padding(0);
+            form.BackColor = UiTheme.CardBg;
+
+            // --- Nombre
+            form.Controls.Add(ThemeSection("Nombre"));
+            _txtThemeName = UiTheme.MkInput(false);
+            _txtThemeName.Width = 260;
+            _txtThemeName.TextChanged += delegate { _themePreview.Invalidate(); };
+            form.Controls.Add(WrapTop(_txtThemeName, 30));
+
+            // --- Colores
+            form.Controls.Add(ThemeSection("Colores"));
+            FlowLayoutPanel colors = new FlowLayoutPanel();
+            colors.WrapContents = false;
+            colors.Height = 56;
+            colors.Margin = new Padding(0);
+            _swBg = MkSwatch(colors, "Fondo", out _hexBg);
+            _swFg = MkSwatch(colors, "Texto", out _hexFg);
+            _swAccent = MkSwatch(colors, "Acento", out _hexAccent);
+            _swBg.Click += delegate { PickThemeColor("Fondo del tema", _swBg, _hexBg); };
+            _swFg.Click += delegate { PickThemeColor("Color del texto", _swFg, _hexFg); };
+            _swAccent.Click += delegate { PickThemeColor("Color de acento", _swAccent, _hexAccent); };
+            form.Controls.Add(colors);
+
+            // --- Tipografía
+            form.Controls.Add(ThemeSection("Tipografía"));
+            FlowLayoutPanel typo = new FlowLayoutPanel();
+            typo.WrapContents = false;
+            typo.Height = 40;
+            typo.Margin = new Padding(0);
+            Label lf = UiTheme.MkLabel("Fuente:", UiTheme.TextSecondary, UiTheme.Small, true);
+            lf.Margin = new Padding(0, 12, 8, 0);
+            _cmbThemeFont = NewDarkCombo();
+            foreach (string f in ThemeFonts) _cmbThemeFont.Items.Add(f);
+            _cmbThemeFont.Width = 170;
+            _cmbThemeFont.SelectedIndexChanged += delegate { _themePreview.Invalidate(); };
+            Label ls = UiTheme.MkLabel("Tamaño:", UiTheme.TextSecondary, UiTheme.Small, true);
+            ls.Margin = new Padding(12, 12, 8, 0);
+            _numThemeSize = UiTheme.MkNumeric(12, 140, 54);
+            _numThemeSize.Width = 70;
+            _numThemeSize.ValueChanged += delegate { _themePreview.Invalidate(); };
+            typo.Controls.Add(lf);
+            typo.Controls.Add(_cmbThemeFont);
+            typo.Controls.Add(ls);
+            typo.Controls.Add(_numThemeSize);
+            form.Controls.Add(typo);
+
+            FlowLayoutPanel flags = new FlowLayoutPanel();
+            flags.WrapContents = false;
+            flags.Height = 36;
+            flags.Margin = new Padding(0);
+            _chkThemeBold = MkDarkCheck("Negrita");
+            _chkThemeBold.CheckedChanged += delegate { _themePreview.Invalidate(); };
+            _chkThemeUpper = MkDarkCheck("MAYÚSCULAS");
+            _chkThemeUpper.CheckedChanged += delegate { _themePreview.Invalidate(); };
+            Label ll = UiTheme.MkLabel("Interlineado:", UiTheme.TextSecondary, UiTheme.Small, true);
+            ll.Margin = new Padding(12, 9, 8, 0);
+            _numThemeLine = new NumericUpDown();
+            _numThemeLine.Minimum = 0.8M; _numThemeLine.Maximum = 2M;
+            _numThemeLine.DecimalPlaces = 2; _numThemeLine.Increment = 0.02M;
+            _numThemeLine.Value = 1.18M;
+            _numThemeLine.Width = 64;
+            StyleNumeric(_numThemeLine);
+            _numThemeLine.ValueChanged += delegate { _themePreview.Invalidate(); };
+            flags.Controls.Add(_chkThemeBold);
+            flags.Controls.Add(_chkThemeUpper);
+            flags.Controls.Add(ll);
+            flags.Controls.Add(_numThemeLine);
+            form.Controls.Add(flags);
+
+            // --- Efectos
+            form.Controls.Add(ThemeSection("Efectos"));
+            FlowLayoutPanel fx = new FlowLayoutPanel();
+            fx.WrapContents = false;
+            fx.Height = 40;
+            fx.Margin = new Padding(0);
+            Label lo = UiTheme.MkLabel("Contorno:", UiTheme.TextSecondary, UiTheme.Small, true);
+            lo.Margin = new Padding(0, 12, 8, 0);
+            _numThemeOutline = new NumericUpDown();
+            _numThemeOutline.Minimum = 0; _numThemeOutline.Maximum = 10;
+            _numThemeOutline.DecimalPlaces = 1; _numThemeOutline.Increment = 0.5M;
+            _numThemeOutline.Value = 2M;
+            _numThemeOutline.Width = 64;
+            StyleNumeric(_numThemeOutline);
+            _numThemeOutline.ValueChanged += delegate { _themePreview.Invalidate(); };
+            Label lsh = UiTheme.MkLabel("Sombra (0-255):", UiTheme.TextSecondary, UiTheme.Small, true);
+            lsh.Margin = new Padding(12, 12, 8, 0);
+            _numThemeShadow = UiTheme.MkNumeric(0, 255, 140);
+            _numThemeShadow.Width = 64;
+            _numThemeShadow.ValueChanged += delegate { _themePreview.Invalidate(); };
+            fx.Controls.Add(lo);
+            fx.Controls.Add(_numThemeOutline);
+            fx.Controls.Add(lsh);
+            fx.Controls.Add(_numThemeShadow);
+            form.Controls.Add(fx);
+            Label fxNote = UiTheme.MkLabel(
+                "Contorno por silueta (técnica del núcleo) y sombra suave bajo el texto.",
+                UiTheme.TextDisabled, UiTheme.Small, false);
+            fxNote.Height = 18;
+            form.Controls.Add(WrapTop(fxNote, 18));
+
+            // --- Imagen de fondo
+            form.Controls.Add(ThemeSection("Imagen de fondo (opcional)"));
+            FlowLayoutPanel img = new FlowLayoutPanel();
+            img.WrapContents = false;
+            img.Height = 36;
+            img.Margin = new Padding(0);
+            _txtThemeImagePath = UiTheme.MkInput(false);
+            _txtThemeImagePath.Width = 250;
+            _cmbThemeImageMode = NewDarkCombo();
+            _cmbThemeImageMode.Items.Add("Contener");
+            _cmbThemeImageMode.Items.Add("Cubrir");
+            _cmbThemeImageMode.SelectedIndex = 1;
+            _cmbThemeImageMode.Width = 90;
+            Button btnImg = UiTheme.MkButton("Examinar…", "secondary", delegate
+            {
+                using (OpenFileDialog dlg = new OpenFileDialog())
+                {
+                    dlg.Title = "Imagen de fondo del tema";
+                    dlg.Filter = "Imágenes (*.jpg;*.jpeg;*.png;*.bmp)|*.jpg;*.jpeg;*.png;*.bmp|Todos los archivos (*.*)|*.*";
+                    if (dlg.ShowDialog(this) == DialogResult.OK)
+                        _txtThemeImagePath.Text = dlg.FileName;
+                }
+            });
+            img.Controls.Add(_txtThemeImagePath);
+            img.Controls.Add(_cmbThemeImageMode);
+            img.Controls.Add(btnImg);
+            form.Controls.Add(img);
+
+            props.Controls.Add(form);
+
+            // ---------------- tarjeta derecha: vista previa ----------------
+            ContentPanel prev;
+            Panel prevCard = UiTheme.MkCard("Vista previa en vivo", out prev);
+
+            _themePreview = new ContentPanel();
+            _themePreview.BackColor = UiTheme.PreviewBg;
+            _themePreview.Dock = DockStyle.Top;
+            _themePreview.Height = 200;
+            _themePreview.Paint += PaintThemePreview;
+            _themePreview.Resize += delegate
+            {
+                _themePreview.Height = Math.Max(120, (_themePreview.Width * 9) / 16);
+            };
+
+            Label prevNote = UiTheme.MkLabel(
+                "Se re-dibuja con cada cambio. «Aplicar al escenario» reconstruye el " +
+                "escenario activo con este tema y refresca la proyección y la vista " +
+                "previa del núcleo (PNG).",
+                UiTheme.TextSecondary, UiTheme.Small, false);
+            prevNote.Dock = DockStyle.Top;
+            prevNote.Height = 58;
+            prevNote.Padding = new Padding(0, 4, 0, 0);
+
+            FlowLayoutPanel btns = new FlowLayoutPanel();
+            btns.Dock = DockStyle.Bottom;
+            btns.Height = 40;
+            btns.WrapContents = false;
+            btns.Padding = new Padding(0, 4, 0, 0);
+            btns.Controls.Add(UiTheme.MkButton("Restaurar", "secondary", delegate
+            {
+                _theme = new Theme();
+                ApplyThemeToControls();
+                Status("Tema restaurado al predeterminado (usa «Guardar en ajustes» para conservarlo).");
+            }));
+            btns.Controls.Add(UiTheme.MkButton("Guardar en ajustes", "secondary", delegate
+            {
+                _theme = BuildThemeFromControls();
+                SaveSettings();
+                Status("Tema guardado en data/settings.json.");
+            }));
+            btns.Controls.Add(UiTheme.MkButton("Aplicar al escenario", "primary", delegate
+            {
+                ApplyThemeToStage();
+            }));
+
+            prev.Controls.Add(_themePreview);
+            prev.Controls.Add(prevNote);
+            prev.Controls.Add(btns);
+
+            grid.Controls.Add(propsCard, 0, 0);
+            grid.Controls.Add(prevCard, 1, 0);
+            body.Controls.Add(grid);
+            return page;
+        }
+
+        /* ---------------------------------------------------- helpers de Temas */
+
+        private static Label ThemeSection(string text)
+        {
+            Label l = UiTheme.MkLabel(text, Color.White, UiTheme.H2, true);
+            l.Height = 30;
+            l.Padding = new Padding(0, 6, 0, 0);
+            return l;
+        }
+
+        private static Panel WrapTop(Control c, int height)
+        {
+            Panel p = new ContentPanel();
+            p.Height = height + 6;
+            p.BackColor = UiTheme.CardBg;
+            c.Dock = DockStyle.Top;
+            p.Controls.Add(c);
+            return p;
+        }
+
+        /// <summary>Muestra de color (botón plano del color + hex) dentro del panel.</summary>
+        private Button MkSwatch(FlowLayoutPanel parent, string caption, out Label hexLabel)
+        {
+            FlowLayoutPanel wrap = new FlowLayoutPanel();
+            wrap.FlowDirection = FlowDirection.TopDown;
+            wrap.WrapContents = false;
+            wrap.Width = 96;
+            wrap.Height = 56;
+            wrap.Margin = new Padding(0, 0, 12, 0);
+
+            Label title = UiTheme.MkLabel(caption, UiTheme.TextSecondary, UiTheme.Small, false);
+            title.Height = 16;
+            Button sw = new Button();
+            sw.Width = 90;
+            sw.Height = 26;
+            sw.FlatStyle = FlatStyle.Flat;
+            sw.FlatAppearance.BorderSize = 1;
+            sw.FlatAppearance.BorderColor = UiTheme.CardBorder;
+            sw.Cursor = Cursors.Hand;
+            sw.Margin = new Padding(0);
+            hexLabel = new Label();
+            hexLabel.AutoSize = false;
+            hexLabel.Width = 90;
+            hexLabel.Height = 14;
+            hexLabel.Font = UiTheme.Small;
+            hexLabel.ForeColor = UiTheme.TextSecondary;
+            hexLabel.TextAlign = ContentAlignment.MiddleLeft;
+            hexLabel.Margin = new Padding(0, 2, 0, 0);
+
+            wrap.Controls.Add(title);
+            wrap.Controls.Add(sw);
+            wrap.Controls.Add(hexLabel);
+            parent.Controls.Add(wrap);
+            return sw;
+        }
+
+        private static CheckBox MkDarkCheck(string text)
+        {
+            CheckBox c = new CheckBox();
+            c.Text = text;
+            c.AutoSize = true;
+            c.ForeColor = UiTheme.TextPrimary;
+            c.Font = UiTheme.Small;
+            c.Margin = new Padding(0, 7, 14, 0);
+            return c;
+        }
+
+        private static void StyleNumeric(NumericUpDown n)
+        {
+            n.BorderStyle = BorderStyle.FixedSingle;
+            n.BackColor = UiTheme.InputBg;
+            n.ForeColor = UiTheme.TextPrimary;
+            n.Font = UiTheme.Body;
+            n.Margin = new Padding(0);
+        }
+
+        /// <summary>ColorDialog nativo → actualiza swatch + hex. Formato del tema: #AARRGGBB.</summary>
+        private void PickThemeColor(string title, Button swatch, Label hexLabel)
+        {
+            using (ColorDialog dlg = new ColorDialog())
+            {
+                dlg.FullOpen = true;
+                dlg.Color = swatch.BackColor;
+                if (dlg.ShowDialog(this) != DialogResult.OK) return;
+                swatch.BackColor = dlg.Color;
+                hexLabel.Text = "#" + dlg.Color.ToArgb().ToString("X8", CultureInfo.InvariantCulture);
+                _themePreview.Invalidate();
+            }
+        }
+
+        /// <summary>Parsea "#RRGGBB" o "#AARRGGBB" (tolerante; negro si es inválido).</summary>
+        private static Color ParseHexColor(string hex)
+        {
+            try
+            {
+                string s = (hex ?? string.Empty).Trim().TrimStart('#');
+                if (s.Length == 6) s = "FF" + s;
+                if (s.Length != 8) return Color.Black;
+                return Color.FromArgb(
+                    Convert.ToInt32(s.Substring(0, 2), 16),
+                    Convert.ToInt32(s.Substring(2, 2), 16),
+                    Convert.ToInt32(s.Substring(4, 2), 16),
+                    Convert.ToInt32(s.Substring(6, 2), 16));
+            }
+            catch (Exception) { return Color.Black; }
+        }
+
+        private static string ToHexArgb(Color c)
+        {
+            return "#" + c.ToArgb().ToString("X8", CultureInfo.InvariantCulture);
+        }
+
+        private void ApplyThemeToControls()
+        {
+            _txtThemeName.Text = _theme.Name;
+            _swBg.BackColor = ParseHexColor(_theme.BgColor);
+            _hexBg.Text = _theme.BgColor.ToUpper(CultureInfo.InvariantCulture);
+            _swFg.BackColor = ParseHexColor(_theme.FgColor);
+            _hexFg.Text = _theme.FgColor.ToUpper(CultureInfo.InvariantCulture);
+            _swAccent.BackColor = ParseHexColor(_theme.AccentColor);
+            _hexAccent.Text = _theme.AccentColor.ToUpper(CultureInfo.InvariantCulture);
+            int fi = Array.IndexOf(ThemeFonts, _theme.FontFace);
+            _cmbThemeFont.SelectedIndex = fi >= 0 ? fi : 0;
+            _numThemeSize.Value = Math.Max(12, Math.Min(140, _theme.FontSize));
+            _chkThemeBold.Checked = _theme.Bold;
+            _chkThemeUpper.Checked = _theme.Uppercase;
+            _numThemeLine.Value = (decimal)Math.Max(0.8, Math.Min(2.0, _theme.LineSpacing));
+            _numThemeOutline.Value = (decimal)Math.Max(0, Math.Min(10, (double)_theme.OutlineWidth));
+            _numThemeShadow.Value = Math.Max(0, Math.Min(255, _theme.ShadowAlpha));
+            _txtThemeImagePath.Text = _theme.ImagePath;
+            _cmbThemeImageMode.SelectedIndex = _theme.ImageMode == 0 ? 0 : 1;
+            _themePreview.Invalidate();
+        }
+
+        private Theme BuildThemeFromControls()
+        {
+            Theme t = new Theme();
+            t.Name = (_txtThemeName.Text ?? string.Empty).Trim().Length == 0
+                ? "Predeterminado" : _txtThemeName.Text.Trim();
+            t.BgColor = ToHexArgb(_swBg.BackColor);
+            t.FgColor = ToHexArgb(_swFg.BackColor);
+            t.AccentColor = ToHexArgb(_swAccent.BackColor);
+            t.FontFace = _cmbThemeFont.SelectedItem != null
+                ? Convert.ToString(_cmbThemeFont.SelectedItem, CultureInfo.InvariantCulture)
+                : "Segoe UI";
+            t.FontSize = (int)_numThemeSize.Value;
+            t.Bold = _chkThemeBold.Checked;
+            t.Uppercase = _chkThemeUpper.Checked;
+            t.LineSpacing = (double)_numThemeLine.Value;
+            t.OutlineWidth = (double)_numThemeOutline.Value;
+            t.ShadowAlpha = (int)_numThemeShadow.Value;
+            t.ImagePath = _txtThemeImagePath.Text.Trim();
+            t.ImageMode = _cmbThemeImageMode.SelectedIndex == 0 ? 0 : 1;
+            return t;
+        }
+
+        /// <summary>Reconstruye el escenario activo con el tema editado y refresca todo.</summary>
+        private void ApplyThemeToStage()
+        {
+            if (!RequireEngine()) return;
+            _theme = BuildThemeFromControls();
+            if (_lastScenarioItems == null || _lastScenarioItems.Count == 0)
+            {
+                Status("Tema listo. Carga una canción o pasaje para verlo con el nuevo tema.");
+                SaveSettings();
+                return;
+            }
+            LoadScenarioFromItems(_lastScenarioItems, _lastScenarioName);
+            SaveSettings();
+            Status("Tema «" + _theme.Name + "» aplicado al escenario activo.");
+        }
+
+        /// <summary>
+        /// Vista previa aproximada del tema (el render REAL es el del núcleo vía
+        /// render_preview_png: mismo esquema de colores, contorno por silueta y sombra).
+        /// </summary>
+        private void PaintThemePreview(object sender, PaintEventArgs e)
+        {
+            ContentPanel p = (ContentPanel)sender;
+            Graphics g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+
+            Color bg = _swBg != null ? _swBg.BackColor : UiTheme.PreviewBg;
+            Color fg = _swFg != null ? _swFg.BackColor : Color.White;
+            Color ac = _swAccent != null ? _swAccent.BackColor : UiTheme.Accent;
+            int shadow = _numThemeShadow != null ? (int)_numThemeShadow.Value : 140;
+            double outline = _numThemeOutline != null ? (double)_numThemeOutline.Value : 2.0;
+            bool bold = _chkThemeBold != null && _chkThemeBold.Checked;
+            bool upper = _chkThemeUpper != null && _chkThemeUpper.Checked;
+            string face = _cmbThemeFont != null && _cmbThemeFont.SelectedItem != null
+                ? Convert.ToString(_cmbThemeFont.SelectedItem, CultureInfo.InvariantCulture)
+                : "Segoe UI";
+            float sizePx = _numThemeSize != null ? (float)_numThemeSize.Value : 54f;
+
+            Rectangle r = new Rectangle(0, 0, p.Width, p.Height);
+            using (SolidBrush b = new SolidBrush(bg)) g.FillRectangle(b, r);
+            using (Pen pen = new Pen(UiTheme.CardBorder))
+                g.DrawRectangle(pen, 0, 0, p.Width - 1, p.Height - 1);
+
+            // El motor dibuja a 1080p lógico: escalar al alto de la vista previa.
+            float scale = p.Height / 1080f * 4f;   // 4× para que sea legible (es una MUESTRA)
+            string verse = upper
+                ? "PORQUE DE TAL MANERA AMÓ DIOS AL MUNDO, QUE HA DADO A SU HIJO UNIGÉNITO…"
+                : "Porque de tal manera amó Dios al mundo, que ha dado a su Hijo unigénito…";
+            Font sample = null;
+            try { sample = new Font(face, Math.Max(9f, sizePx * scale), bold ? FontStyle.Bold : FontStyle.Regular); }
+            catch (Exception) { sample = new Font("Segoe UI", 14f); }
+
+            try
+            {
+                StringFormat sf = new StringFormat();
+                sf.Alignment = StringAlignment.Center;
+                sf.LineAlignment = StringAlignment.Center;
+                Rectangle textRect = new Rectangle((int)(r.Width * 0.08), 0,
+                    (int)(r.Width * 0.84), r.Height);
+
+                // Referencia arriba-izquierda en el color de acento.
+                using (Font refFont = new Font(sample.FontFamily, Math.Max(8f, sizePx * scale * 0.45f), FontStyle.Bold))
+                using (SolidBrush ab = new SolidBrush(ac))
+                    g.DrawString("Jn 3:16", refFont, ab, 14, 10);
+
+                using (GraphicsPath path = new GraphicsPath())
+                {
+                    path.AddString(verse, sample.FontFamily, (int)sample.Style,
+                        sample.Size * 96f / 72f, textRect, sf);
+
+                    // Sombra (offset proporcional + alpha del tema).
+                    if (shadow > 0)
+                    {
+                        int dx = Math.Max(2, (int)(p.Height * 0.012));
+                        using (GraphicsPath sh = (GraphicsPath)path.Clone())
+                        {
+                            var m = new System.Drawing.Drawing2D.Matrix();
+                            m.Translate(dx, dx);
+                            sh.Transform(m);
+                            using (SolidBrush sb = new SolidBrush(Color.FromArgb(shadow, 0, 0, 0)))
+                                g.FillPath(sb, sh);
+                        }
+                    }
+
+                    // Contorno por silueta (el núcleo usa 8 direcciones; aquí Pen con join redondo).
+                    if (outline > 0)
+                    {
+                        using (Pen op = new Pen(Color.FromArgb(200, 0, 0, 0),
+                            Math.Max(1.5f, (float)outline * scale * 1.5f)))
+                        {
+                            op.LineJoin = System.Drawing.Drawing2D.LineJoin.Round;
+                            g.DrawPath(op, path);
+                        }
+                    }
+
+                    using (SolidBrush tb = new SolidBrush(fg))
+                        g.FillPath(tb, path);
+                }
+            }
+            finally
+            {
+                sample.Dispose();
+            }
+
+            // Marca "PREVIEW" abajo-derecha en acento.
+            TextRenderer.DrawText(g, "● PREVIEW", UiTheme.SmallBold,
+                new Rectangle(r.Right - 110, r.Bottom - 26, 100, 20), ac,
+                TextFormatFlags.Right | TextFormatFlags.VerticalCenter);
+        }
+
+        /* ======================================================================
+         *  PÁGINA 5 — CULTO
          * ==================================================================== */
 
         private Panel BuildCultoPage()
@@ -1654,6 +2154,9 @@ namespace lumina.ui
             _slides.AddRange(ScenarioBuilder.FlattenScenario(json,
                 delegate(string songJson) { return LuminaEngine.SongParse(songJson); }));
             if (_api != null) _api.SetSlideCatalog(_slides);
+            // Recordar el escenario activo: «Aplicar tema» lo reconstruye tal cual.
+            _lastScenarioItems = new List<ScenarioItem>(items);
+            _lastScenarioName = name;
             RefreshLiveList();
             NavigateToIndex(0);
             Status("Escenario «" + name + "» cargado: " + _slides.Count + " slide(s).");
@@ -2064,6 +2567,19 @@ namespace lumina.ui
             _txtToken.Text = _settings.ApiToken;
             _txtVersion.Text = _settings.LastBibleVersion;
             _txtDbPath.Text = Path.Combine(_settings.DataDir, "lumina.db");
+            // Tema persistido (v4.1.0): JSON completo en settings.json.
+            if (_settings.ThemeJson.Length > 0)
+            {
+                try
+                {
+                    _theme = Theme.FromDict(MiniJson.Parse(_settings.ThemeJson));
+                }
+                catch (Exception)
+                {
+                    _theme = new Theme();   // JSON corrupto → tema por defecto
+                }
+            }
+            ApplyThemeToControls();
         }
 
         private void SaveSettings()
@@ -2072,6 +2588,7 @@ namespace lumina.ui
             _settings.ApiToken = _txtToken.Text;
             _settings.Theme = _theme.Name;
             _settings.LastBibleVersion = _txtVersion.Text.Trim();
+            _settings.ThemeJson = MiniJson.Serialize(_theme.ToDict());
             _settings.Save();
         }
 
