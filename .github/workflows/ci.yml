@@ -180,27 +180,69 @@ jobs:
       - name: Publicar UI net48 + net35 POR ARQUITECTURA (x86 y x64)
         shell: pwsh
         run: |
-          # PlatformTarget no invalida los outputs de CoreCompile: sin una
-          # limpieza, el segundo publish reusaría el PE32 (AnyCPU/x86) previo.
-          # v5.1.0: TAMBIÉN se publica la baseline net35 (LuminaPresentation35.exe)
-          # — el paquete lleva AMBAS variantes y el launcher elige por CLR.
-          dotnet publish managed/Lumina.UI -f net48 -c Release --self-contained false -p:PlatformTarget=x86
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Move-Item managed/Lumina.UI/bin/Release/net48/publish managed/Lumina.UI/bin/Release/net48/publish-x86
-          dotnet clean managed/Lumina.UI -f net48 -c Release
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          dotnet publish managed/Lumina.UI -f net48 -c Release --self-contained false -p:PlatformTarget=x64
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Move-Item managed/Lumina.UI/bin/Release/net48/publish managed/Lumina.UI/bin/Release/net48/publish-x64
+          # LECCIÓN v5.1.0 (hallada por el gate de humo): el PRIMER publish
+          # tras `dotnet build Lumina.sln` reusa el PE AnyCPU de la solución
+          # (el checkpoint no trackea PlatformTarget) → el exe «x86» corría
+          # como 64 bits y moría con BadImageFormatException contra
+          # LuminaCore.dll x86. Fix: `dotnet clean` ANTES DE CADA publish +
+          # aserción dura del bitness del PE (32BITREQUIRED para x86;
+          # PE32+ 0x8664 para x64).
+          function Assert-PeBitness([string]$exe, [string]$arch) {
+            $b = [System.IO.File]::ReadAllBytes($exe)
+            $peOff = [BitConverter]::ToInt32($b, 0x3C)
+            if ($b[$peOff] -ne 0x50 -or $b[$peOff+1] -ne 0x45) {
+              throw "sin cabecera PE en $exe"
+            }
+            $machine = [BitConverter]::ToUInt16($b, $peOff + 4)
+            if ($arch -eq 'x64') {
+              if ($machine -ne 0x8664) { throw ("PE no es x64 (machine=0x{0:X4}): {1}" -f $machine, $exe) }
+              Write-Host "  [pe] $exe → x64 (PE32+) OK"
+            } else {
+              if ($machine -ne 0x014C) { throw ("PE no es x86 (machine=0x{0:X4}): {1}" -f $machine, $exe) }
+              # PE32: distinguir x86 REAL de AnyCPU por el flag 32BITREQUIRED
+              # del header COR20 (directorio 14): machine igual (0x14C).
+              $optOff = $peOff + 24
+              $magic = [BitConverter]::ToUInt16($b, $optOff)
+              $ddOff = if ($magic -eq 0x10B) { $optOff + 96 } else { $optOff + 112 }
+              $corRva = [BitConverter]::ToInt32($b, $ddOff + 14*8)
+              $corOff = 0
+              if ($corRva -gt 0) {
+                $nsec = [BitConverter]::ToUInt16($b, $peOff + 6)
+                $optSize = [BitConverter]::ToUInt16($b, $peOff + 20)
+                $secOff = $optOff + $optSize
+                for ($i = 0; $i -lt $nsec; $i++) {
+                  $s = $secOff + 40*$i
+                  $vaddr = [BitConverter]::ToUInt32($b, $s + 12)
+                  $vsize = [BitConverter]::ToUInt32($b, $s + 8)
+                  if ($corRva -ge $vaddr -and $corRva -lt ($vaddr + [Math]::Max($vsize, 0x1000))) {
+                    $corOff = [BitConverter]::ToUInt32($b, $s + 20) + ($corRva - $vaddr); break
+                  }
+                }
+              }
+              if ($corOff -eq 0) { throw "sin header COR20 en $exe (¿nativo?)" }
+              $flags = [BitConverter]::ToUInt32($b, $corOff + 16)
+              if (($flags -band 0x2) -eq 0) {
+                throw ("AnyCPU detectado (sin 32BITREQUIRED, flags=0x{0:X8}): {1}" -f $flags, $exe)
+              }
+              Write-Host "  [pe] $exe → x86 (32BITREQUIRED) OK"
+            }
+          }
 
-          dotnet publish managed/Lumina.UI -f net35 -c Release --self-contained false -p:PlatformTarget=x86
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Move-Item managed/Lumina.UI/bin/Release/net35/publish managed/Lumina.UI/bin/Release/net35/publish35-x86
-          dotnet clean managed/Lumina.UI -f net35 -c Release
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          dotnet publish managed/Lumina.UI -f net35 -c Release --self-contained false -p:PlatformTarget=x64
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Move-Item managed/Lumina.UI/bin/Release/net35/publish managed/Lumina.UI/bin/Release/net35/publish35-x64
+          function Publish-Ui([string]$tfm, [string]$platform, [string]$destName) {
+            dotnet clean managed/Lumina.UI -f $tfm -c Release
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            dotnet publish managed/Lumina.UI -f $tfm -c Release --self-contained false -p:PlatformTarget=$platform
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $src = "managed/Lumina.UI/bin/Release/$tfm/publish"
+            $exe = Get-ChildItem "$src/*.exe" | Select-Object -First 1
+            Assert-PeBitness $exe.FullName $platform
+            Move-Item $src "managed/Lumina.UI/bin/Release/$tfm/$destName"
+          }
+
+          Publish-Ui 'net48' 'x86' 'publish-x86'
+          Publish-Ui 'net48' 'x64' 'publish-x64'
+          Publish-Ui 'net35' 'x86' 'publish35-x86'
+          Publish-Ui 'net35' 'x64' 'publish35-x64'
 
       - name: Preparar artefacto «managed»
         shell: pwsh

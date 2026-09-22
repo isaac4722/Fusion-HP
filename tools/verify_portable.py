@@ -110,11 +110,12 @@ VS_FIXEDFILEINFO_SIG = 0xFEEF04BD
 # ---------------------------------------------------------------------------
 class PeInfo:
     """Resultado del parseo mínimo de un fichero PE."""
-    __slots__ = ('valid', 'machine', 'imports', 'exports', 'data')
+    __slots__ = ('valid', 'machine', 'imports', 'exports', 'data', 'bitness')
 
     def __init__(self):
         self.valid = False    # MZ + 'PE\0\0' + cabeceras legibles
         self.machine = None   # 'x86' | 'x64' | 'ARM64' | None
+        self.bitness = None   # 'x86' | 'x64' | 'anycpu' | 'native' | None
         self.imports = []     # nombres de DLL de la tabla de imports
         self.exports = []     # nombres de la tabla de exports
         self.data = None      # bytes crudos (para buscar FIXEDFILEINFO)
@@ -181,6 +182,25 @@ def parse_pe(path):
             if end < 0:
                 return None
             return data[off:end].decode('ascii', 'replace')
+
+        # Bitness REAL (v5.1.0): un exe PE32 con machine 0x14C puede ser
+        # x86 puro (COR20 32BITREQUIRED) o AnyCPU (corre como 64 bits en
+        # Windows x64 y revienta contra LuminaCore.dll x86 — lección del
+        # gate de humo). Los DLL gestionados AnyCPU son legítimos: solo se
+        # exige bitness en los EXE.
+        cor_rva = data_dirs[14][0] if len(data_dirs) > 14 else 0
+        cor_off = rva_to_offset(cor_rva) if cor_rva else None
+        if cor_off is not None and cor_off + 18 <= len(data):
+            flags = struct.unpack_from('<I', data, cor_off + 16)[0]
+            if info.machine == 'x64':
+                info.bitness = 'x64'
+            elif flags & 0x2:          # COMIMAGE_FLAGS_32BITREQUIRED
+                info.bitness = 'x86'
+            else:
+                info.bitness = 'anycpu'
+        else:
+            # Binario NATIVO (launcher, LuminaCore.dll): la machine manda.
+            info.bitness = 'native'
 
         # --- Imports (data directory 1) --------------------------------------
         imp_rva, _ = data_dirs[1]
@@ -292,7 +312,7 @@ def main():
     present = {os.path.basename(b).lower() for b in binaries}
 
     missing = {}        # dll -> [binarios que la requieren]
-    arch_mismatch = []  # (binario, máquina)
+    arch_mismatch = []  # (binario, máquina/bitness)
     invalid_pe = []     # binarios con cabecera PE ilegible
     checked = 0
     parsed = {}
@@ -303,8 +323,18 @@ def main():
             invalid_pe.append(os.path.relpath(b, root))
             continue
         checked += 1
-        if expected_arch and pe.machine and pe.machine != expected_arch:
-            arch_mismatch.append((os.path.relpath(b, root), pe.machine))
+        if expected_arch:
+            # EXE gestionado: bitness REAL (x86 32BITREQUIRED / x64 PE32+);
+            # AnyCPU en un exe correría 64 bits en Windows x64 y reventaría
+            # contra LuminaCore.dll x86 (lección v5.1.0). DLL gestionadas
+            # AnyCPU: legítimas en ambos paquetes. Binarios nativos: machine.
+            is_exe = b.lower().endswith('.exe')
+            if pe.bitness == 'anycpu':
+                if is_exe:
+                    arch_mismatch.append((os.path.relpath(b, root),
+                                           'AnyCPU (debe fijarse ' + expected_arch + ')'))
+            elif pe.machine and pe.machine != expected_arch:
+                arch_mismatch.append((os.path.relpath(b, root), pe.machine))
         for imp in pe.imports:
             base = os.path.basename(imp)
             if base in WINDOWS_SYSTEM_DLLS or base in present:
