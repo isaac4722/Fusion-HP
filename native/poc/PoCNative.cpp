@@ -18,6 +18,8 @@
 
 #if !defined(_WIN32)
 #include <unistd.h>
+#else
+#include <windows.h>      // GetCurrentProcessId (nombre único de BD temporal)
 #endif
 
 namespace {

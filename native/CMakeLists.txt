@@ -42,14 +42,22 @@ else()
 endif()
 set_target_properties(FusionCore PROPERTIES OUTPUT_NAME "FusionCore")
 
+# Variante ESTÁTICA para los consumidores C++ del propio repo (selftest y
+# PoC nativo): en MSVC las funciones C++ internas NO se exportan del DLL,
+# así que enlazarían igual que el lado gestionado lo hace con la API C.
+add_library(FusionCoreStatic STATIC ${FUSION_CORE_SOURCES})
+target_compile_definitions(FusionCoreStatic PRIVATE FUSION_CORE_STATIC=1)
+if(NOT MSVC)
+    target_link_libraries(FusionCoreStatic PRIVATE pthread dl)
+else()
+    target_link_libraries(FusionCoreStatic PRIVATE user32 gdi32 gdiplus ole32)
+endif()
+set_target_properties(FusionCoreStatic PROPERTIES OUTPUT_NAME "FusionCoreStatic")
+
 # Arnés de pruebas nativo (lógica del núcleo, sin GUI)
 add_executable(fusion_selftest core/tests/native_tests.cpp)
-target_link_libraries(fusion_selftest PRIVATE FusionCore)
+target_link_libraries(fusion_selftest PRIVATE FusionCoreStatic)
 
 # PoC nativo: ejercicio del API C en modo headless (equivalente C++ del PoC C#)
-# NOTA (H-a): PoCNative.cpp aún no existe en el repo; el target se declara
-# condicional para no romper la configuración de CMake hasta que se incorpore.
-if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/poc/PoCNative.cpp)
-    add_executable(fusion_poc_native poc/PoCNative.cpp)
-    target_link_libraries(fusion_poc_native PRIVATE FusionCore)
-endif()
+add_executable(fusion_poc_native poc/PoCNative.cpp)
+target_link_libraries(fusion_poc_native PRIVATE FusionCoreStatic)

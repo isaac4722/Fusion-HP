@@ -18,7 +18,10 @@
 #include <stdint.h>
 
 #if defined(_WIN32)
-  #ifdef FUSION_CORE_BUILD
+  #if defined(FUSION_CORE_STATIC)
+    /* Consumidores internos que enlazan el núcleo estáticamente (tests/PoC) */
+    #define FUSION_EXPORT
+  #elif defined(FUSION_CORE_BUILD)
     #define FUSION_EXPORT __declspec(dllexport)
   #else
     #define FUSION_EXPORT __declspec(dllimport)
