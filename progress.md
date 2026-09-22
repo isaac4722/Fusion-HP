@@ -553,3 +553,23 @@
   respaldo ZIP Drive/OneDrive, acordes/transposición, Biblia .BIB, proyección GDI sin parpadeo, launcher.
   Atajos en vivo (→/←/Espacio/B/L/P/F5-F8 en ProcessCmdKey) e importación de planes JSON confirmados.
 - Siguiente: commit → push main → CI verde (con uicheck) → tag v5.1.1 → release → verificación de assets.
+
+## 2026-09-23 — CIERRE v5.1.1 «APERTURA»: CI verde (selfcheck+uicheck), tag, release verificada
+- Run de main 35779016771 SUCCESS al primer intento (commit aca6614) — el NUEVO gate --uicheck corrió
+  y pasó de entrada en ambas variantes: net48 exit 0 · net35 exit 0 (CLR2 real; el runner instaló NetFx3).
+  Los 2 jobs «CLR hosting» siguen en failure-informativo (pre-existente también en el run del tag v5.1.0:
+  vía de respaldo en evaluación, continue-on-error, no bloquean paquete ni release).
+- Run del tag v5.1.1 (35779680999) SUCCESS — en AMBOS paquetes (x86 y x64):
+  selfcheck net48=0 · selfcheck net35=0 · uicheck net48=0 · uicheck net35=0 → SELFCHECK+UICHECK PASS.
+- **Release v5.1.1 PUBLICADA** (draft=false): x64 3.4 MB · x86 3.0 MB · SHA256SUMS.
+- Verificación independiente post-publicación (descarga real del ZIP x86 — la arquitectura del usuario):
+  * Contenido COMPLETO 15/15 (launcher + net48\ completa + net35\ completa + biblia RVR1909 + README.txt).
+  * Versión 5.1.1 presente en ambos exes; app.config correctos (net35: v2.0.50727+v4.0 — abre con
+    cualquier .NET ≥ 3.5; net48: v4.0).
+- Gates finales: CI main=success · CI tag=success + release publicada · selfcheck 0/0 ×2 variantes ×2
+  arquitecturas · uicheck 0/0 ×2 variantes ×2 arquitecturas · contenido 15/15 · build local 0 err/0 warn ·
+  tests locales 23/23.
+- Bloqueos: ninguno.
+- Siguiente: ninguna — v5.1.1 «APERTURA» cerrada. El error de transparencia que impedía abrir la app
+  quedó corregido con doble capa de defensa y el gate --uicheck garantiza que NINGÚN error de
+  construcción de la ventana principal pueda volver a publicarse sin que la CI lo detecte primero.
