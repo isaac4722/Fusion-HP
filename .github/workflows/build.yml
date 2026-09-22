@@ -87,7 +87,7 @@ jobs:
             -DwxBUILD_TESTS=OFF `
             -DwxBUILD_DEMOS=OFF `
             -DwxBUILD_MSVC_RUNTIME_DLL=OFF `
-            -DwxUSE_STC=0 -DwxUSE_XRC=0 -DwxUSE_HTML=0 -DwxUSE_HELP=0 `
+            -DwxUSE_STC=0 -DwxUSE_XRC=0 -DwxUSE_HTML=0 -DwxUSE_HELP=0 -DwxUSE_WXHTML_HELP=0 `
             -DwxUSE_WEBVIEW=0 -DwxUSE_RIBBON=0 -DwxUSE_PROPGRID=0 `
             -DwxUSE_RICHTEXT=0 -DwxUSE_OPENGL=0 -DwxUSE_DEBUGREPORT=0 `
             -DwxUSE_PRINTF_POS_PARAMS=1
