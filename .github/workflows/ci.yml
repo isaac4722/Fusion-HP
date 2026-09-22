@@ -228,20 +228,22 @@ jobs:
             }
           }
 
-          # Compilar PRIMERO con el PlatformTarget (el build nunca deriva RID)
-          # y publicar con --no-build (solo copia): así el PE del exe es
-          # siempre del bitness pedido, sin reusos incrementales ni derivación
-          # de RuntimeIdentifier del publish (NETSDK1047 en SDK 10).
+          # Compilar con el PlatformTarget pedido y COPIAR el bin directamente:
+          # el publish de un exe .NET Framework solo copia archivos, y el SDK 10
+          # del runner deriva RuntimeIdentifier del PlatformTarget (NETSDK1047).
+          # El bin del build YA trae exe + .exe.config + DLLs dependientes.
           function Publish-Ui([string]$tfm, [string]$platform, [string]$destName) {
             dotnet clean managed/Lumina.UI -f $tfm -c Release | Out-Null
             dotnet build managed/Lumina.UI -f $tfm -c Release -p:PlatformTarget=$platform
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            dotnet publish managed/Lumina.UI -f $tfm -c Release --no-build --self-contained false
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            $src = "managed/Lumina.UI/bin/Release/$tfm/publish"
-            $exe = Get-ChildItem "$src/*.exe" | Select-Object -First 1
+            $bin = "managed/Lumina.UI/bin/Release/$tfm"
+            $exe = Get-ChildItem "$bin/*.exe" | Select-Object -First 1
             Assert-PeBitness $exe.FullName $platform
-            Move-Item $src "managed/Lumina.UI/bin/Release/$tfm/$destName"
+            New-Item -ItemType Directory -Force -Path "$bin/$destName" | Out-Null
+            Copy-Item "$bin/*.exe" "$bin/$destName/" -ErrorAction Stop
+            Copy-Item "$bin/*.dll" "$bin/$destName/" -ErrorAction Stop
+            Copy-Item "$bin/*.exe.config" "$bin/$destName/" -ErrorAction Stop
+            Write-Host "  [publish] $destName listo con $((Get-ChildItem "$bin/$destName").Count) archivos"
           }
 
           Publish-Ui 'net48' 'x86' 'publish-x86'
