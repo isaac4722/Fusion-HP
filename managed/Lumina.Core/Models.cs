@@ -191,6 +191,12 @@ namespace lumina.core
         public string Text = string.Empty;    // kind=text/scripture crudo (versos \n)
         public string ImagePath = string.Empty; // kind=image
         public int MaxLinesPerSlide = 4;        // kind=text
+        /// <summary>
+        /// v5.0.0: ruta del video (kind=video). Campo C#-side: el NÚCLEO lo
+        /// ignora (kind desconocido → slide en blanco) y la UI lo intercepta
+        /// para reproducirlo sobre la pantalla del proyector (VideoPlayerForm).
+        /// </summary>
+        public string VideoPath = string.Empty;
         // Reservado (el núcleo hoy fija 1 verso por slide en escritura vía
         // Scripture::BuildSlides; se emite para compatibilidad futura).
         public int VersesPerSlide = 1;

@@ -43,7 +43,7 @@ static const DWORD kMinReleaseNet48 = 528040u;
 static const wchar_t* kTargetNet48 = L"LuminaPresentation.exe";
 static const wchar_t* kTargetNet35 = L"LuminaPresentation35.exe";
 
-static const wchar_t* kWindowTitle = L"LuminaPresentation v4.2.0 «ACORDES»";
+static const wchar_t* kWindowTitle = L"LuminaPresentation v5.0.0 «SINERGIA»";
 
 // ---------------------------------------------------------------------------
 // Registro: lectura de DWORD con vista de 64 bits garantizada

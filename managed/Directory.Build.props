@@ -13,6 +13,9 @@
     <!-- C# 7.3: máxima sintaxis moderna compatible con el runtime de net35
          (sin async/await en runtime 2.0: el código de estos proyectos no lo usa). -->
     <LangVersion>7.3</LangVersion>
+    <!-- LUMINA_NET35: guardas de compilación para API exclusiva de net48/net8
+         (p. ej. ClientWebSocket en ObsClient de la UI). -->
+    <DefineConstants Condition="'$(TargetFramework)' == 'net35'">$(DefineConstants);LUMINA_NET35</DefineConstants>
     <!-- Nullable desactivado: net35 no tiene atributos de nulabilidad y el
          código multi-target se escribe con contratos explícitos. -->
     <Nullable>disable</Nullable>

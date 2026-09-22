@@ -1,12 +1,12 @@
 # ============================================================================
-#  LuminaPresentation / LuminaPresentation Suite — CI/CD híbrido v4.1.0 «LUMINA»
+#  LuminaPresentation / LuminaPresentation Suite — CI/CD híbrido v5.0.0 «SINERGIA»
 #  Copyright (c) 2026 Isaac. Licencia View-Only.
 # ----------------------------------------------------------------------------
 #  Pipeline de la arquitectura híbrida (docs/architecture-hybrid.md §6):
 #
 #    native-windows : núcleo C++ (LuminaCore.dll /MT) x86+x64 + selftest + PoC nativo
 #    native-linux   : port del núcleo (GCC) — regresa rápido el estado del port
-#    managed        : capa C# (net35+net48 con ref assemblies) + tests net8.0
+#    managed        : capa C# (net35+net48+net8 en Core) + tests + GATE exportadores
 #    interop        : PoC real C# ↔ DLL nativa (x86/x64, net48; net35 informativo)
 #    clrhost-poc    : vía C — CLR hosting C++ puro contra PocFacade (INFORMATIVO)
 #                     (evaluación de la vía de respaldo; NO bloquea paquete/release)
@@ -15,12 +15,16 @@
 #
 #  CONTRATOS de rutas entre jobs (respetar al mover proyectos):
 #    managed/Lumina.sln                          (solución gestionada)
-#    managed/Lumina.UI                           (WinExe net48)
+#    managed/Lumina.Core                         (net35;net48;net8.0)
+#    managed/Lumina.UI                           (WinExe net35;net48)
 #    managed/PoC/PoC.Managed                       (net35;net48)
 #    managed/PoC/PocFacade                         (net48;net35) — COM-visible
 #    managed/Tests                                 (net8.0;net48)
 #    Salidas: <proj>/bin/Release/<tfm>/... (SDK-style estándar de dotnet build)
 #    PoC.Managed debe imprimir "POC PASS 12/12" y salir 0 cuando todo pasa.
+#    Tests debe imprimir "TESTS PASS n/n" y (v5.0.0) con LUMINA_EXPORT_SAMPLES
+#    escribe muestra.pptx/muestra.pdf para el gate tools/validate_pptx.py
+#    (python-pptx + pypdf: validación EXTERNA de los exportadores).
 #    PocFacade: tipo por defecto "Lumina.PocFacade.PocFacade" (COMVisible,
 #    MarshalByRefObject/Serializable para cruzar dominios) con métodos
 #    Add(int,int), Echo(string), Version() -> prefijo "LUMINA-FACADE-OK".
@@ -46,7 +50,7 @@ concurrency:
 
 env:
   DOTNET_VERSION: '8.0.x'
-  APP_VERSION: '4.2.0'
+  APP_VERSION: '5.0.0'
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -156,13 +160,22 @@ jobs:
           dotnet build managed/Lumina.sln -c Release
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Tests net8.0 (arnés propio; LUMINA_SKIP_NATIVE=1)
+      - name: Tests net8.0 (arnés propio; LUMINA_SKIP_NATIVE=1 + muestras)
         shell: pwsh
         env:
           LUMINA_SKIP_NATIVE: '1'
+          LUMINA_EXPORT_SAMPLES: 'export-samples'
         run: |
           dotnet run --project managed/Tests --configuration Release --framework net8.0
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: 'GATE exportadores: python-pptx + pypdf (PPTX/PDF válidos)'
+        shell: pwsh
+        run: |
+          pip install --quiet python-pptx pypdf
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/validate_pptx.py export-samples/muestra.pptx export-samples/muestra.pdf
+          if ($LASTEXITCODE -ne 0) { Write-Host 'Los exportadores no produjeron archivos válidos'; exit 1 }
 
       - name: Publicar UI net48 POR ARQUITECTURA (x86 y x64)
         shell: pwsh
@@ -419,7 +432,7 @@ jobs:
             Copy-Item artifacts/managed/ui-publish-net35/LuminaPresentation35.exe "$stage/"
           }
           @'
-          LuminaPresentation v4.2.0 «ACORDES» — núcleo C++ + interfaz C#
+          LuminaPresentation v5.0.0 «SINERGIA» — núcleo C++ + interfaz C#
           =====================================================
 
           PROGRAMA PORTABLE — no requiere instalación ni permisos de
@@ -440,6 +453,12 @@ jobs:
           Contenido: LuminaLauncher.exe (detección de runtime),
           LuminaPresentation.exe (interfaz), LuminaCore.dll (motor C++ nativo /MT)
           y la Biblia RVR1909 completa (resources/data).
+
+          v5.0.0 «SINERGIA»: exportación PPTX/PDF, video en la salida (Windows
+          Media Player integrado en el SO), monitor de escenario, zócalos lower
+          third, importador ZEFania XML (Reina Valera 1960…), activadores
+          (evento→acción), OBS Studio vía WebSocket, entrada MIDI y mando
+          remoto desde el móvil por red local.
 
           Binarios de uso libre · Código fuente bajo Licencia View-Only.
           '@ | Set-Content -Path "$stage/README.txt" -Encoding UTF8
@@ -493,13 +512,13 @@ jobs:
       - name: Publicar
         uses: softprops/action-gh-release@v2
         with:
-          name: "LuminaPresentation ${{ github.ref_name }} «ACORDES»"
+          name: "LuminaPresentation ${{ github.ref_name }} «SINERGIA»"
           body: |
-            **LuminaPresentation v4.2.0 «ACORDES» — núcleo C++ + interfaz C# .NET Framework 4.8/3.5**
+            **LuminaPresentation v5.0.0 «SINERGIA» — núcleo C++ + interfaz C# .NET Framework 4.8/3.5**
 
             ## Descargas
-            - `LuminaPresentation-4.2.0-win-x86.zip` — **Windows 7 SP1 a Windows 11 (32 bits)**
-            - `LuminaPresentation-4.2.0-win-x64.zip` — **Windows 7 SP1 a Windows 11+ (64 bits)**
+            - `LuminaPresentation-5.0.0-win-x86.zip` — **Windows 7 SP1 a Windows 11 (32 bits)**
+            - `LuminaPresentation-5.0.0-win-x64.zip` — **Windows 7 SP1 a Windows 11+ (64 bits)**
             - `SHA256SUMS.txt` — integridad de los paquetes
 
             ## Arquitectura híbrida
@@ -507,9 +526,19 @@ jobs:
             - **Interfaz C# WinForms** (`LuminaPresentation.exe`, .NET Framework 4.8): editor de escenarios, bibliotecas, API HTTP local.
             - **LuminaLauncher.exe** (nativo, /MT): detecta el runtime disponible por registro y lanza la variante correcta — el usuario **nunca instala nada**.
 
+            ## Novedades v5.0.0 «SINERGIA» (síntesis Holyrics + PowerPoint)
+            - **Exportación PPTX** (OpenXML ISO/IEC-29500 real: EMU, centipoints, tema 1:1) y **PDF 1.4** (escritor propio, Helvetica base-14, JPEG DCTDecode/Flate).
+            - **Video en la salida** (Windows Media Player del SO, enlace tardío sin COM refs; auto-avance al terminar).
+            - **Monitor de escenario** (2ª pantalla con letra actual/siguiente + reloj) y **zócalos Lower Third** con fundidos.
+            - **Importador ZEFania XML** (Reina Valera 1960 y cualquier módulo del estándar) con parser streaming.
+            - **Activadores** (reglas evento→condición→acción, persistentes en `data\triggers\triggers.json`).
+            - **OBS Studio vía obs-websocket 5.x** (handshake+auth SHA256, cambio de escena y texto en vivo) y **entrada MIDI** (winmm).
+            - **Mando remoto móvil** por red local (página servida por la app, token opcional; TcpListener sin URLACL de administrador).
+
             ## Verificación CI (todas las gates verdes)
             - Núcleo: selftest nativo + PoC API headless (x86 y x64, Windows y Linux).
-            - Gestionado: build net35+net48 con ref assemblies + tests net8.0.
+            - Gestionado: build net35+net48+net8 con ref assemblies + tests net8.0 (20/20).
+            - **GATE exportadores: python-pptx + pypdf abren los archivos generados** (estructura, EMU, acentos y texto verificados).
             - Interop real: PoC C# ↔ DLL nativa «POC PASS 12/12» en x86 y x64.
             - CLR hosting (vía C de respaldo): «CLRHOST PASS» en x86 y x64.
             - Empaquetado: auditoría PE `verify_portable` + SHA256 por paquete.

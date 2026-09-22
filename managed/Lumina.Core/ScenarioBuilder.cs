@@ -25,6 +25,10 @@ namespace lumina.core
         public string RefLabel = string.Empty;  // etiqueta ("Verso 1", "Juan 3:16"…)
         public string FirstLine = string.Empty; // primera línea visible (o vacía)
         public List<string> Lines = new List<string>();
+        /// <summary>v5.0.0: ruta del video si la slide lo representa ("video").</summary>
+        public string VideoPath = string.Empty;
+        /// <summary>v5.0.0: true si esta vista es un ítem de video.</summary>
+        public bool IsVideo;
     }
 
     public static class ScenarioBuilder
@@ -163,6 +167,12 @@ namespace lumina.core
                 o["imagePath"] = it.ImagePath;
                 if (!string.IsNullOrEmpty(it.Text)) o["text"] = it.Text;
             }
+            if (it.Kind == "video")
+            {
+                // v5.0.0: el núcleo ignora "videoPath" (kind desconocido → blank);
+                // la UI lo usa para reproducir el video sobre la salida.
+                o["videoPath"] = it.VideoPath;
+            }
             // "blank": solo kind+title
             return o;
         }
@@ -219,6 +229,16 @@ namespace lumina.core
             it.Title = title ?? string.Empty;
             it.ImagePath = imagePath ?? string.Empty;
             it.Text = caption ?? string.Empty;
+            return it;
+        }
+
+        /// <summary>v5.0.0: ítem de video (reproducción en la salida desde la UI).</summary>
+        public static ScenarioItem VideoItem(string title, string videoPath)
+        {
+            ScenarioItem it = new ScenarioItem();
+            it.Kind = "video";
+            it.Title = title ?? string.Empty;
+            it.VideoPath = videoPath ?? string.Empty;
             return it;
         }
 
@@ -326,6 +346,17 @@ namespace lumina.core
                     string text = MiniJson.GetString(item, "text", string.Empty);
                     if (text.Length > 0) lines.AddRange(text.Replace("\r\n", "\n").Split('\n'));
                     views.Add(MakeView(views.Count, title, "imagen", lines));
+                    continue;
+                }
+
+                if (kind == "video")
+                {
+                    // v5.0.0: slide única representando el video (el núcleo la
+                    // proyecta en blanco; la UI reproduce el archivo encima).
+                    SlideView v = MakeView(views.Count, title, "video", lines);
+                    v.VideoPath = MiniJson.GetString(item, "videoPath", string.Empty);
+                    v.IsVideo = true;
+                    views.Add(v);
                     continue;
                 }
 

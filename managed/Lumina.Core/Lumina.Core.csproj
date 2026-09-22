@@ -1,10 +1,31 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net35;net48</TargetFrameworks>
+    <!-- net8.0 añadido en v5.0.0: los exportadores (PPTX/PDF) y los módulos
+         puros (Zefania/Triggers/ObsProtocol) se validan en el arnés net8.0
+         del CI — System.IO.Packaging/Deflate/Xml son BCL integradas allí. -->
+    <TargetFrameworks>net35;net48;net8.0</TargetFrameworks>
     <RootNamespace>lumina.core</RootNamespace>
     <AssemblyName>Lumina.Core</AssemblyName>
-    <Summary>Núcleo de datos gestionado de LuminaPresentation: MiniJson, modelos, builder de escenarios y ajustes portables.</Summary>
+    <Summary>Núcleo de datos gestionado de LuminaPresentation: MiniJson, modelos, builder de escenarios, ajustes portables, exportación PPTX/PDF, Zefania XML, activadores y protocolo OBS.</Summary>
   </PropertyGroup>
+
+  <ItemGroup Condition="'$(TargetFrameworkIdentifier)' == '.NETFramework'">
+    <!-- System.IO.Packaging (OPC/PPTX): WindowsBase.dll en .NET Framework
+         (3.0+, integrado en el SO — cero despliegue para el usuario final). -->
+    <Reference Include="WindowsBase" />
+    <Reference Include="System.Xml" />
+    <Reference Include="System" />
+    <!-- DeflateStream: System.dll en net35 (2.0+); System.IO.Compression.dll en net48. -->
+    <Reference Include="System.IO.Compression" Condition="'$(TargetFramework)' != 'net35'" />
+  </ItemGroup>
+
+  <!-- Solo para el arnés de tests net8.0 (NUNCA se empaqueta: los binarios
+       que se distribuyen son net35/net48 y usan WindowsBase del SO).
+       SIN PrivateAssets: el ensamblado debe fluir al output de Tests
+       (runtime del arnés) — con "all" el runner no lo encuentra. -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">
+    <PackageReference Include="System.IO.Packaging" Version="8.0.1" />
+  </ItemGroup>
 
 </Project>

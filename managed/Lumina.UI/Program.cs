@@ -35,7 +35,7 @@ namespace lumina.ui
     internal static class Program
     {
         private const string AppName = "LuminaPresentation Suite";
-        private const string AppVersion = "4.2.0";
+        private const string AppVersion = "5.0.0";
 
         /// <summary>Ruta del log de la sesión en curso (null si aún no hay).</summary>
         private static string _logPath;

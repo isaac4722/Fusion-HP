@@ -1,4 +1,4 @@
-# LuminaPresentation Suite v4.2.0 «ACORDES»
+# LuminaPresentation Suite v5.0.0 «SINERGIA»
 
 **Proyección para iglesias con arquitectura híbrida: núcleo C++17 nativo + interfaz C# (.NET Framework 4.8/3.5)**
 — motor de proyección en tiempo real con la agilidad de desarrollo de .NET,
@@ -13,13 +13,57 @@
 
 1. Ir a **[Releases](https://github.com/isaac4722/Fusion-HP/releases)**.
 2. Descargar el paquete para tu arquitectura:
-   - `LuminaPresentation-4.2.0-win-x86.zip` — **Windows 7 SP1 … Windows 11 (32 bits)**
-   - `LuminaPresentation-4.2.0-win-x64.zip` — **Windows 7 SP1 … Windows 11+ (64 bits)**
+   - `LuminaPresentation-5.0.0-win-x86.zip` — **Windows 7 SP1 … Windows 11 (32 bits)**
+   - `LuminaPresentation-5.0.0-win-x64.zip` — **Windows 7 SP1 … Windows 11+ (64 bits)**
 3. Descomprimir y ejecutar **`LuminaLauncher.exe`**: detecta el runtime .NET disponible
    y lanza la interfaz correcta. **El usuario nunca instala nada**:
    - Windows 10 1903+ / Windows 11 → **.NET Framework 4.8** integrado en el SO.
    - Windows 7 SP1 / 8.x → **.NET Framework 3.5 SP1** integrado (variante de línea base).
    - El motor C++ (`LuminaCore.dll`) va enlazado estáticamente (/MT): **cero redistributables**.
+
+## 🌟 Novedades v5.0.0 «SINERGIA»
+
+> La síntesis de las dos filosofías del spec: el **presentador en vivo** de
+> Holyrics + el **creador de contenidos** de PowerPoint, sin las debilidades
+> de ninguno (cero Java, cero instalaciones, Win7 x32 → Win11 x64).
+
+- **Exportación PPTX real** (página «Exportar»): PresentationML ISO/IEC-29500
+  con unidades EMU exactas (12192000×6858000), tipografía en centipuntos y
+  el tema de LuminaPresentation aplicado 1:1 (fondo, fuente, acentos). Se
+  abre en PowerPoint 2007+, WPS y LibreOffice — **validado en CI con
+  python-pptx** (el gate abre el archivo real y comprueba slides/texto).
+- **Exportación PDF 1.4 con escritor propio** (cero dependencias): fuentes
+  base-14 Helvetica con WinAnsi (acentos perfectos), métricas AFM para
+  centrado real, JPEG por DCTDecode y RGB por FlateDecode, xref verificada
+  — **validado en CI con pypdf**.
+- **Video en la salida**: ítems de video en el culto que se reproducen a
+  pantalla completa sobre el proyector con **Windows Media Player del SO**
+  (enlace tardío COM: compilla en cualquier entorno, cero instalaciones;
+  en ediciones N se avisa del Media Feature Pack). Auto-avance configurable
+  al terminar y evento `video_ended` para activadores.
+- **Monitor de escenario** (Stage View): 2ª pantalla para el equipo de
+  músicos con letra actual grande, siguiente, rótulo, próximo ítem y reloj.
+- **Zócalos Lower Third**: avisos semitransparentes con barra de acento y
+  fundidos (botón «Aviso», acción `show_text`, y avisos desde el mando móvil).
+- **Importador ZEFania XML** (página Biblia): el estándar de Holyrics/OpenLP
+  — Reina Valera 1960 y cualquier módulo. Parser **streaming** (memoria
+  constante con 31.084+ versículos), `<BR/>` respetado, filas inválidas
+  reportadas sin abortar.
+- **Activadores** (página «Activadores»): reglas **evento → condición →
+  acción** persistentes (`data\triggers\triggers.json`). Eventos: ítem,
+  slide, canción iniciada, fin de video, MIDI (nota/CC/programa) y webhook.
+  Condiciones con `contains:`/`gte:`/`lte:`/`*`. Acciones: escena OBS,
+  texto a fuente OBS, audio, aviso en pantalla, tema, comando del motor y
+  MIDI OUT.
+- **OBS Studio vía obs-websocket 5.x**: handshake completo Hello → Identify
+  → Identified con **autenticación SHA256** del protocolo, cambio de escena
+  y envío de letra/versículos en tiempo real a una fuente de texto.
+- **Entrada MIDI** (winmm.dll, presente en Win7→Win11): notas/CC/programa
+  alimentan los activadores; **salida MIDI** como acción.
+- **Mando remoto móvil por red local**: la app sirve una página táctil en
+  español (lista de diapositivas, transporte, negro/limpiar, avisos) en
+  `http://TU-IP:8070/remote` con token. **TcpListener propio — sin URLACL
+  de administrador** (el firewall solo pregunta una vez «Permitir acceso»).
 
 ## 🌟 Novedades v4.2.0 «ACORDES»
 
@@ -68,9 +112,12 @@
 | Capa | Tecnología | Contenido |
 |---|---|---|
 | **Motor / Núcleo** | **C++17** (`LuminaCore.dll`, /MT) | Proyección nativa Win32+GDI (doble búfer, contorno+sombra, ajuste tipográfico), modelo de escenario, acordes (latina/anglosajona + transposición), letras con Modo Hinario, referencias bíblicas (66 libros), **parser JSON de canciones** (esquema propio + subconjunto OpenLP) y **parser .BIB de biblias** (detección automática), **SQLite+FTS5** embebido, eventos por callbacks, API C plana estable (`lumina.h`) |
-| **Interfaz** | **C# WinForms** (`LuminaPresentation.exe`, net48; línea base net35) | Editor de escenarios, bibliotecas (canciones/biblia), control En Vivo, vista previa renderizada por el motor, temas, importadores JSON/.BIB, ajustes |
+| **Interfaz** | **C# WinForms** (`LuminaPresentation.exe`, net48; línea base net35) | Editor de escenarios, bibliotecas (canciones/biblia), control En Vivo, vista previa renderizada por el motor, temas, importadores JSON/.BIB/**ZEFania XML**, exportadores **PPTX/PDF**, activadores, ajustes |
+| **Exportación** | **C# propio** | **PPTX** (System.IO.Packaging/OPC: WindowsBase del SO) y **PDF 1.4** (escritor íntegro: AFM+base-14+zlib) — ambos sin NuGet en los binarios distribuidos |
 | **Datos** | **C#** (orquestación) + SQLite nativo | CRUD siempre con **parámetros enlazados**; canciones con FTS5, biblia con índice UNIQUE + dedupe idempotente |
 | **API local** | **C# HttpListener** | `/api/state`, `/api/cmd`, `/api/live.txt` y webhook OBS — solo localhost, token opcional |
+| **Remoto LAN** | **C# TcpListener** | Página del mando móvil + `/remote`, `/api/catalog`, token en LAN — sin permisos de administrador |
+| **Integraciones** | **C#** | obs-websocket 5.x (ClientWebSocket, net48), MIDI IN/OUT (winmm P/Invoke), activadores (reglas evento→acción) |
 | **Puente** | **P/Invoke** (vía A elegida) | ABI C plana: UTF-8, sin excepciones cruzando la frontera, búfer uniforme `out/cap/needed`, eventos en hilo dedicado |
 
 **Decisiones documentadas** (matriz completa en [docs/architecture-hybrid.md](docs/architecture-hybrid.md)):
@@ -91,7 +138,12 @@ ejecutable y forma parte del CI:
 - **`lumina_poc_native`** (C++): 37 verificaciones del API C en modo headless.
 - **`lumina_selftest`** (C++): 138 checks de lógica (acordes, hinario, .BIB, SQLite…).
 - **`lumina_poc_clrhost`** (C++): hospedaje del CLR desde C++ puro + facade COM-visible.
-- **`Lumina.Tests`** (C#, net8/net48): MiniJson, builder de escenarios, settings.
+- **`Lumina.Tests`** (C#, net8/net48): MiniJson, builder de escenarios, settings,
+  **exportadores PPTX/PDF (estructura ZIP/xref + contenido), Zefania XML,
+  activadores y protocolo OBS** → **20/20**.
+- **GATE externo `tools/validate_pptx.py`**: python-pptx + pypdf abren los
+  archivos exportados por el propio arnés y verifican slides, EMU, páginas y
+  acentos — la prueba de que PowerPoint/lectores reales los aceptan.
 
 ## 📖 Formatos
 
@@ -101,6 +153,11 @@ ejecutable y forma parte del CI:
   filas `libro<sep>cap<sep>vers<sep>texto` (TAB / `|` / `;;`), variante `Libro 1:1 texto`,
   UTF-8/CP1252 automático. Muestra completa incluida: `resources/data/sample/rvr1909.bib`
   (generada con `tools/make_sample_bib.py` desde la RVR1909 de 31.084 versículos).
+- **Biblias ZEFania XML** (v5.0.0): `<XMLBIBLE><BIBLEBOOK bnumber…><CHAPTER cnumber…>`
+  `<VERSE vnumber…>` — el estándar de Holyrics/OpenLP (RVR1960 y miles de módulos).
+  Importación desde la página Biblia (parser streaming).
+- **Exportación**: [docs/export.md](docs/export.md) — PPTX (OpenXML/EMU/centipoints)
+  y PDF 1.4 (base-14/AFM/WinAnsi/DCT/Flate).
 
 ## 🛠 Compilar
 
@@ -109,9 +166,13 @@ ejecutable y forma parte del CI:
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build --config Release
 ./build/native/lumina_selftest && ./build/native/lumina_poc_native
 
-# Capa gestionada (net35+net48 con ref assemblies; funciona también en Linux)
+# Capa gestionada (net35+net48+net8 en Core; funciona también en Linux)
 dotnet build managed/Lumina.sln -c Release
 dotnet run --project managed/Tests --framework net8.0   # con libLuminaCore.so junto al exe: tests completos
+# Muestras + validación externa de exportadores:
+LUMINA_EXPORT_SAMPLES=/tmp/samples LUMINA_SKIP_NATIVE=1 \
+  dotnet run --project managed/Tests --framework net8.0
+python tools/validate_pptx.py /tmp/samples/muestra.pptx /tmp/samples/muestra.pdf
 ```
 
 En Windows, `native/` compila con MSVC (`-A Win32` o `-A x64`) y produce `LuminaCore.dll` /MT.
@@ -129,6 +190,10 @@ En Windows, `native/` compila con MSVC (`-A Win32` o `-A x64`) y produce `Lumina
   completo anti-crash (modos degradados, pre-chequeos del launcher y logs de diagnóstico).
 - **v4.1.0 «LUMINA»** — editor de Temas visual con vista previa en vivo
   (colores, tipografía, contorno/sombra, imagen de fondo) y persistencia del tema en ajustes.
-- **v4.2.0 «ACORDES»** — la presente: **biblioteca de temas múltiples**
+- **v4.2.0 «ACORDES»** — **biblioteca de temas múltiples**
   (guardar/cargar/renombrar/eliminar en `data\themes`) y **transposición de acordes
   en vivo** en el editor con detección de tonalidad (criterio compartido núcleo/UI).
+- **v5.0.0 «SINERGIA»** — síntesis Holyrics+PowerPoint del spec: **exportación
+  PPTX/PDF**, **video en la salida**, **monitor de escenario**, **lower thirds**,
+  **ZEFania XML**, **activadores**, **OBS WebSocket 5**, **MIDI** y **mando
+  remoto móvil** — ver [docs/roadmap.md](docs/roadmap.md) para lo diferido.

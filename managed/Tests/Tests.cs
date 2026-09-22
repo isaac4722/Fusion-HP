@@ -44,6 +44,15 @@ namespace lumina.tests
             Run("ChordUtil: DetectKey y tonalidad latina", TestChordUtilDetectKey);
             Run("Settings: roundtrip portable", TestSettingsRoundtrip);
 
+            // --- v5.0.0 «SINERGIA» (siempre corren) -----------------------------
+            Run("PptxExporter: estructura OPC mínima válida", TestPptxStructure);
+            Run("PptxExporter: texto y tema en slide1.xml", TestPptxSlideContent);
+            Run("PdfExporter: estructura PDF 1.4 y xref coherente", TestPdfStructure);
+            Run("PdfExporter: páginas, acentos WinAnsi e imagen DCTDecode", TestPdfContent);
+            Run("ZefaniaBible: parseo streaming y tolerancia", TestZefania);
+            Run("TriggerEngine: reglas, condiciones y persistencia", TestTriggerEngine);
+            Run("ObsProtocol: handshake V5 y mensajes", TestObsProtocol);
+
             // --- Núcleo nativo (condicionales) -----------------------------------
             bool skipNative = string.Equals(
                 Environment.GetEnvironmentVariable("LUMINA_SKIP_NATIVE"), "1", StringComparison.Ordinal);
@@ -63,6 +72,29 @@ namespace lumina.tests
             if (failed == 0)
             {
                 Console.WriteLine("TESTS PASS " + _pass + "/" + total + " (" + _skip + " skips)");
+
+                // Muestras para el gate de validación externa del CI (python-pptx / pypdf):
+                // LUMINA_EXPORT_SAMPLES=<dir> → exporta muestra.pptx y muestra.pdf.
+                string sampleDir = Environment.GetEnvironmentVariable("LUMINA_EXPORT_SAMPLES");
+                if (!string.IsNullOrEmpty(sampleDir))
+                {
+                    try
+                    {
+                        Directory.CreateDirectory(sampleDir);
+                        Theme t = new Theme();
+                        List<ExportSlide> slides = SampleExportSlides();
+                        File.WriteAllBytes(Path.Combine(sampleDir, "muestra.pptx"),
+                            PptxExporter.ExportToBytes("Muestra CI", slides, t));
+                        File.WriteAllBytes(Path.Combine(sampleDir, "muestra.pdf"),
+                            PdfExporter.ExportToBytes("Muestra CI", slides, t));
+                        Console.WriteLine("  muestras escritas en " + sampleDir +
+                            " (muestra.pptx / muestra.pdf)");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine("  aviso: no se pudieron escribir las muestras: " + ex.Message);
+                    }
+                }
                 return 0;
             }
             Console.WriteLine("TESTS FAIL " + failed + "/" + total + " (" + _skip + " skips) detalle:");
@@ -302,7 +334,7 @@ namespace lumina.tests
         private static void TestNativeVersion()
         {
             string v = LuminaEngine.Version();
-            AssertTrue(v.StartsWith("LuminaCore", StringComparison.Ordinal) && v.Contains("4.2"),
+            AssertTrue(v.StartsWith("LuminaCore", StringComparison.Ordinal) && v.Contains("5.0"),
                 "version=\"" + v + "\"");
         }
 
@@ -402,6 +434,437 @@ namespace lumina.tests
             }
             try { File.Delete(dbPath); } catch (Exception) { }
             try { File.Delete(dbPath + "-journal"); } catch (Exception) { }
+        }
+
+        /* ============================================== v5.0.0 «SINERGIA» == */
+
+        /// <summary>Slides de prueba reutilizadas por exportadores.</summary>
+        private static List<ExportSlide> SampleExportSlides()
+        {
+            List<ExportSlide> slides = new List<ExportSlide>();
+            ExportSlide title = new ExportSlide();
+            title.Kind = SlideKind.Title;
+            title.Title = "Culto de prueba";
+            title.Subtitle = "Iglesia — Sala Mayor";
+            slides.Add(title);
+
+            ExportSlide verse = new ExportSlide();
+            verse.Kind = SlideKind.Scripture;
+            verse.RefLabel = "Juan 3:16";
+            verse.Lines.Add("Porque de tal manera amó Dios al mundo");
+            verse.Lines.Add("que ha dado a su Hijo unigénito…");
+            slides.Add(verse);
+
+            ExportSlide blank = new ExportSlide();
+            blank.Kind = SlideKind.Blank;
+            slides.Add(blank);
+            return slides;
+        }
+
+        // ---- lector ZIP mínimo (EOCD → directorio central): cero dependencias
+
+        private static List<string> ZipEntries(byte[] zip)
+        {
+            List<string> names = new List<string>();
+            int eocd = FindEocd(zip);
+            int count = zip[eocd + 10] | (zip[eocd + 11] << 8);
+            int cdOff = BitConverter.ToInt32(zip, eocd + 16);
+            int p = cdOff;
+            for (int i = 0; i < count; i++)
+            {
+                AssertTrue(zip[p] == 0x50 && zip[p + 1] == 0x4B && zip[p + 2] == 0x01 && zip[p + 3] == 0x02,
+                    "firma de entrada " + i + " del directorio central");
+                int nameLen = zip[p + 28] | (zip[p + 29] << 8);
+                int extraLen = zip[p + 30] | (zip[p + 31] << 8);
+                int commLen = zip[p + 32] | (zip[p + 33] << 8);
+                names.Add(Encoding.ASCII.GetString(zip, p + 46, nameLen));
+                p += 46 + nameLen + extraLen + commLen;
+            }
+            return names;
+        }
+
+        private static int FindEocd(byte[] zip)
+        {
+            for (int i = zip.Length - 22; i >= 0 && i >= zip.Length - 22 - 65535; i--)
+            {
+                if (zip[i] == 0x50 && zip[i + 1] == 0x4B && zip[i + 2] == 0x05 && zip[i + 3] == 0x06) return i;
+            }
+            return -1;
+        }
+
+        /// <summary>Latin-1 para inspección de bytes WinAnsi (net8: Latin1; Framework: ISO-8859-1).</summary>
+        private static Encoding Latin1
+        {
+            get
+            {
+#if NET8_0
+                return Encoding.Latin1;
+#else
+                return Encoding.GetEncoding("ISO-8859-1");
+#endif
+            }
+        }
+
+        /// <summary>
+        /// Extrae el contenido de una entrada del ZIP (STORED o DEFLATE crudo —
+        /// el deflate de ZIP es RFC1951, justo lo que Desinfla DeflateStream).
+        /// </summary>
+        private static string ExtractEntry(byte[] zip, string entryName)
+        {
+            int eocd = FindEocd(zip);
+            AssertTrue(eocd >= 0, "EOCD encontrado");
+            int count = zip[eocd + 10] | (zip[eocd + 11] << 8);
+            int p = BitConverter.ToInt32(zip, eocd + 16);
+            for (int i = 0; i < count; i++)
+            {
+                int nameLen = zip[p + 28] | (zip[p + 29] << 8);
+                int extraLen = zip[p + 30] | (zip[p + 31] << 8);
+                int commLen = zip[p + 32] | (zip[p + 33] << 8);
+                string name = Encoding.ASCII.GetString(zip, p + 46, nameLen);
+                int method = zip[p + 10] | (zip[p + 11] << 8);
+                int localOff = BitConverter.ToInt32(zip, p + 42);
+                int csize = BitConverter.ToInt32(zip, p + 20);
+                int usize = BitConverter.ToInt32(zip, p + 24);
+                if (name == entryName)
+                {
+                    int lnl = zip[localOff + 26] | (zip[localOff + 27] << 8);
+                    int lel = zip[localOff + 28] | (zip[localOff + 29] << 8);
+                    int data = localOff + 30 + lnl + lel;
+                    if (method == 0)
+                        return Encoding.UTF8.GetString(zip, data, csize);
+                    if (method == 8)
+                    {
+                        using (MemoryStream src = new MemoryStream(zip, data, csize))
+                        using (System.IO.Compression.DeflateStream ds =
+                            new System.IO.Compression.DeflateStream(src,
+                                System.IO.Compression.CompressionMode.Decompress))
+                        using (MemoryStream outMs = new MemoryStream())
+                        {
+                            byte[] buf = new byte[8192];
+                            int n;
+                            while ((n = ds.Read(buf, 0, buf.Length)) > 0) outMs.Write(buf, 0, n);
+                            AssertTrue(outMs.Length == usize, "tamaño tras inflar coincide (" +
+                                outMs.Length + " vs " + usize + ")");
+                            return Encoding.UTF8.GetString(outMs.ToArray());
+                        }
+                    }
+                    throw new Exception("método ZIP no soportado: " + method);
+                }
+                p += 46 + nameLen + extraLen + commLen;
+            }
+            throw new Exception("entrada no encontrada: " + entryName);
+        }
+
+        private static void TestPptxStructure()
+        {
+            Theme t = new Theme();
+            byte[] zip = PptxExporter.ExportToBytes("Escenario ñ", SampleExportSlides(), t);
+            AssertTrue(zip.Length > 2000, "tamaño razonable: " + zip.Length);
+            AssertTrue(zip[0] == 0x50 && zip[1] == 0x4B, "firma PK");
+
+            List<string> names = ZipEntries(zip);
+            string[] required = new string[]
+            {
+                "[Content_Types].xml", "_rels/.rels", "docProps/core.xml", "docProps/app.xml",
+                "ppt/presentation.xml", "ppt/_rels/presentation.xml.rels",
+                "ppt/theme/theme1.xml",
+                "ppt/slideMasters/slideMaster1.xml", "ppt/slideMasters/_rels/slideMaster1.xml.rels",
+                "ppt/slideLayouts/slideLayout1.xml", "ppt/slideLayouts/_rels/slideLayout1.xml.rels",
+                "ppt/slides/slide1.xml", "ppt/slides/_rels/slide1.xml.rels",
+                "ppt/slides/slide2.xml", "ppt/slides/_rels/slide2.xml.rels",
+                "ppt/slides/slide3.xml", "ppt/slides/_rels/slide3.xml.rels"
+            };
+            foreach (string req in required)
+            {
+                AssertTrue(names.Contains(req), "parte presente: " + req);
+            }
+            AssertTrue(names.Count == required.Length, "sin partes extra: " + names.Count +
+                " → [" + string.Join(", ", names.ToArray()) + "]");
+        }
+
+        private static void TestPptxSlideContent()
+        {
+            Theme t = new Theme();
+            t.BgColor = "#FF112233";
+            t.AccentColor = "#FFAABBCC";
+            t.FontSize = 54;
+            byte[] zip = PptxExporter.ExportToBytes("Título", SampleExportSlides(), t);
+
+            // La slide1 (TÍTULO) debe llevar el texto, la tipografía y el acento
+            string slide1 = ExtractEntry(zip, "ppt/slides/slide1.xml");
+            AssertTrue(slide1.Contains("Culto de prueba"), "título en slide1");
+            AssertTrue(slide1.Contains("sz=\"2700\""), "tipografía 27 pt (54 px/2, centipuntos)");
+            AssertTrue(slide1.Contains("typeface=\"" + t.FontFace + "\""), "fuente del tema");
+            // slide2 (ESCRITURA): referencia acentuada al pie
+            string slide2 = ExtractEntry(zip, "ppt/slides/slide2.xml");
+            AssertTrue(slide2.Contains("Juan 3:16"), "referencia en slide2");
+            AssertTrue(slide2.Contains("AABBCC"), "color de acento del tema en slide2");
+            // tema aplicado al fondo del master
+            string master = ExtractEntry(zip, "ppt/slideMasters/slideMaster1.xml");
+            AssertTrue(master.Contains("112233"), "bg del tema en el master");
+            // presentation.xml: tamaño 16:9 en EMU + 3 slides
+            string pres = ExtractEntry(zip, "ppt/presentation.xml");
+            AssertTrue(pres.Contains("cx=\"12192000\""), "ancho 16:9 en EMU");
+            AssertTrue(pres.Contains("cy=\"6858000\""), "alto 16:9 en EMU");
+            string ct = ExtractEntry(zip, "[Content_Types].xml");
+            AssertTrue(ct.Contains("slides/slide3.xml"), "override slide3 en Content_Types");
+        }
+
+        private static void TestPdfStructure()
+        {
+            Theme t = new Theme();
+            byte[] pdf = PdfExporter.ExportToBytes("Escenario ñ", SampleExportSlides(), t);
+            string head = Encoding.ASCII.GetString(pdf, 0, 9);
+            AssertTrue(head == "%PDF-1.4\n", "cabecera %PDF-1.4");
+
+            // EOF + startxref presente y el offset apunta a 'xref'
+            string tail = Encoding.ASCII.GetString(pdf, pdf.Length - 64, 64);
+            AssertTrue(tail.Contains("%%EOF"), "%%EOF al final");
+            int sx = tail.LastIndexOf("startxref");
+            string num = tail.Substring(sx + 9).TrimStart('\n', '\r', ' ');
+            int end = num.IndexOfAny(new char[] { '\n', '\r', ' ' });
+            int xrefPos = int.Parse(num.Substring(0, end), CultureInfo.InvariantCulture);
+            AssertTrue(Encoding.ASCII.GetString(pdf, xrefPos, 4) == "xref", "startxref → tabla xref");
+
+            // Cabecera "0 N" + TODOS los offsets del xref apuntan a "N 0 obj"
+            // (la primera línea es "xref", la segunda "0 N", luego las entradas)
+            int nl1 = Array.IndexOf(pdf, (byte)'\n', xrefPos);
+            int nl2 = Array.IndexOf(pdf, (byte)'\n', nl1 + 1);
+            string hdr = Encoding.ASCII.GetString(pdf, nl1 + 1, nl2 - nl1 - 1);
+            AssertTrue(hdr.StartsWith("0 ", StringComparison.Ordinal), "subtabla desde 0: " + hdr);
+            int entries = int.Parse(hdr.Substring(2), CultureInfo.InvariantCulture);
+            AssertTrue(entries >= 6, "al menos 6 entradas (hay " + entries + ")");
+            for (int id = 1; id < entries; id++)
+            {
+                // entry 0 (libre) ocupa 20 bytes; la entrada de «id» empieza en id*20
+                string o = Encoding.ASCII.GetString(pdf, nl2 + 1 + id * 20, 10);
+                int pos = int.Parse(o, CultureInfo.InvariantCulture);
+                string marker = Encoding.ASCII.GetString(pdf, pos, 8);
+                AssertTrue(marker == (id + " 0 obj ") ||
+                           marker.StartsWith(id + " 0 obj", StringComparison.Ordinal),
+                    "offset del objeto " + id + " exacto");
+            }
+        }
+
+        private static void TestPdfContent()
+        {
+            Theme t = new Theme();
+            List<ExportSlide> slides = SampleExportSlides();
+
+            // Slide de IMAGEN: JPEG 1×1 (DCTDecode directo, bytes reales en tmp)
+            // — valida la rama de imágenes SIN depender de GDI+ (multiplataforma).
+            string jpg = Path.Combine(Path.GetTempPath(), "lumina_1x1_" +
+                Guid.NewGuid().ToString("N") + ".jpg");
+            // JPEG 1×1 REAL (generado con PIL, determinista): DCTDecode directo
+            File.WriteAllBytes(jpg, Convert.FromBase64String(
+                "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAABAAEDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD9U6KKKAP/2Q=="));
+            try
+            {
+                ExportSlide img = new ExportSlide();
+                img.Kind = SlideKind.Image;
+                img.Title = "Prueba de imagen";
+                img.ImagePath = jpg;
+                slides.Add(img);
+
+                byte[] pdf = PdfExporter.ExportToBytes("Título ñ", slides, t);
+                string all = Latin1.GetString(pdf);
+
+                AssertTrue(ContainsByte(pdf, (byte)'ó'), "acento 'ó' presente (WinAnsi 0xF3)");
+                int pages = CountOccurrences(all, "/Type /Page");
+                AssertTrue(pages == 4, "páginas == 4 (hay " + pages + ")");
+                AssertTrue(all.Contains("/BaseFont /Helvetica"), "fuente base-14 Helvetica");
+                AssertTrue(all.Contains("/Producer (LuminaPresentation Suite)"), "metadatos Producer");
+                AssertTrue(all.Contains("/WinAnsiEncoding"), "WinAnsiEncoding");
+                AssertTrue(all.Contains("/MediaBox [0 0 960 540]"), "MediaBox 16:9");
+                AssertTrue(all.Contains("/DCTDecode"), "imagen JPEG embebida (DCTDecode)");
+                AssertTrue(all.Contains("/Width 1 ") || all.Contains("/Width 1/"), "ancho leído del SOF");
+            }
+            finally
+            {
+                try { File.Delete(jpg); } catch (Exception) { }
+            }
+        }
+
+        private static bool ContainsByte(byte[] data, byte b)
+        {
+            foreach (byte x in data) if (x == b) return true;
+            return false;
+        }
+
+        private static int CountOccurrences(string s, string sub)
+        {
+            // "/Type /Page" sin contar "/Pages": se busca con espacio final
+            int n = 0, i = 0;
+            string needle = sub.EndsWith("/Page", StringComparison.Ordinal) ? sub + " " : sub;
+            while ((i = s.IndexOf(needle, i, StringComparison.Ordinal)) >= 0) { n++; i += needle.Length; }
+            return n;
+        }
+
+        private static void TestZefania()
+        {
+            string xml =
+"<?xml version=\"1.0\" encoding=\"UTF-8\"?>" +
+"<XMLBIBLE biblename=\"Reina Valera 1960\" type=\"x-bible\">" +
+"<PROLOG>prefacio ignorado</PROLOG>" +
+"<BIBLEBOOK bnumber=\"43\" bname=\"Juan\" bsname=\"Jn\">" +
+"<CHAPTER cnumber=\"3\">" +
+"<VERSE vnumber=\"16\">Porque de tal manera amó Dios<BR/>al mundo, que ha dado…</VERSE>" +
+"<VERSE vnumber=\"17\">Porque no envió Dios a su Hijo</VERSE>" +
+"</CHAPTER></BIBLEBOOK>" +
+"<BIBLEBOOK bnumber=\"99\" bname=\"Inválido\"><CHAPTER cnumber=\"1\">" +
+"<VERSE vnumber=\"1\">fila que debe descartarse</VERSE>" +
+"</CHAPTER></BIBLEBOOK></XMLBIBLE>";
+
+            ZefaniaResult res;
+            using (MemoryStream ms = new MemoryStream(new UTF8Encoding(false).GetBytes(xml)))
+            {
+                res = ZefaniaBible.Parse(ms, null, "fallback");
+            }
+            AssertTrue(res.VersionName == "Reina Valera 1960", "biblename leído: " + res.VersionName);
+            AssertTrue(res.Verses.Count == 2, "2 versículos (hay " + res.Verses.Count + ")");
+            AssertTrue(res.SkippedRows == 1, "1 fila descartada (bnumber 99)");
+            ZefaniaVerse v0 = res.Verses[0];
+            AssertTrue(v0.Book == 43 && v0.Chapter == 3 && v0.Verse == 16, "coords 43/3/16");
+            AssertTrue(v0.Text.Contains("\n"), "BR → salto de línea");
+            AssertTrue(v0.Text.Contains("amó"), "texto con acento intacto");
+            AssertTrue(res.BookCount == 1, "1 libro válido");
+        }
+
+        private sealed class CountingSink : ITriggerSink
+        {
+            public int Executed;
+            public readonly List<TriggerAction> Seen = new List<TriggerAction>();
+            public string ExecuteTriggerAction(TriggerRule rule, TriggerAction action)
+            {
+                Executed++;
+                Seen.Add(action);
+                return "ok";
+            }
+        }
+
+        private static void TestTriggerEngine()
+        {
+            TriggerEngine e = new TriggerEngine();
+
+            TriggerRule r1 = new TriggerRule();
+            r1.Id = "r1"; r1.Name = "Ofrenda"; r1.Event = "item_changed";
+            r1.Match["title"] = "Ofrenda";
+            TriggerAction a1 = new TriggerAction();
+            a1.Type = "obs_scene";
+            a1.Params["scene"] = "Culto";
+            r1.Actions.Add(a1);
+
+            TriggerRule r2 = new TriggerRule();
+            r2.Id = "r2"; r2.Name = "Nota 60"; r2.Event = "midi_note";
+            r2.Match["note"] = 60;
+            TriggerAction a2 = new TriggerAction();
+            a2.Type = "api_cmd";
+            a2.Params["action"] = "next";
+            r2.Actions.Add(a2);
+
+            TriggerRule r3 = new TriggerRule();
+            r3.Id = "r3"; r3.Name = "Deshabilitada"; r3.Enabled = false;
+            r3.Event = "item_changed";
+            r3.Actions.Add(a1);
+
+            e.SetRules(new TriggerRule[] { r1, r2, r3 });
+            CountingSink sink = new CountingSink();
+            e.SetSink(sink);
+
+            Dictionary<string, object> ctx = new Dictionary<string, object>();
+            ctx["item"] = 2;
+            ctx["title"] = "ofrenda";          // case-insensitive
+            int fired = e.Fire("item_changed", ctx);
+            AssertTrue(fired == 1, "solo r1 dispara (r3 deshabilitada)");
+            AssertTrue(sink.Executed == 1, "1 acción ejecutada");
+            AssertTrue(sink.Seen[0].Type == "obs_scene", "acción correcta");
+
+            Dictionary<string, object> midi = new Dictionary<string, object>();
+            midi["note"] = 60;
+            fired = e.Fire("midi_note", midi);
+            AssertTrue(fired == 1 && sink.Executed == 2, "r2 dispara por nota 60");
+
+            Dictionary<string, object> midiOther = new Dictionary<string, object>();
+            midiOther["note"] = 61;
+            fired = e.Fire("midi_note", midiOther);
+            AssertTrue(fired == 0 && sink.Executed == 2, "nota 61 no dispara");
+
+            // Condiciones con prefijos
+            Dictionary<string, object> any = new Dictionary<string, object>();
+            any["title"] = "Alabanza al Señor";
+            TriggerRule r4 = new TriggerRule();
+            r4.Id = "r4"; r4.Event = "item_changed";
+            r4.Match["title"] = "contains:alabanza";
+            r4.Actions.Add(a1);
+            e.SetRules(new TriggerRule[] { r4 });
+            fired = e.Fire("item_changed", any);
+            AssertTrue(fired == 1, "contains: insensible a mayúsculas");
+            AssertTrue(TriggerEngine.ValueMatches("gte:5", 7), "gte numérico");
+            AssertTrue(!TriggerEngine.ValueMatches("lte:5", 7), "lte numérico");
+            AssertTrue(TriggerEngine.ValueMatches("*", "lo que sea"), "comodín");
+
+            // Persistencia roundtrip
+            e.SetRules(new TriggerRule[] { r1, r2 });
+            string tmp = Path.Combine(Path.GetTempPath(), "lumina_trig_" + Guid.NewGuid().ToString("N") + ".json");
+            e.Save(tmp);
+            TriggerEngine loaded = TriggerEngine.Load(tmp);
+            List<TriggerRule> rules = loaded.RulesSnapshot();
+            AssertTrue(rules.Count == 2, "2 reglas tras roundtrip");
+            AssertTrue(rules[0].Id == "r1" && rules[0].Event == "item_changed", "r1 intacta");
+            AssertTrue(rules[0].Match["title"] is string && (string)rules[0].Match["title"] == "Ofrenda", "match intacto");
+            AssertTrue(rules[1].Actions.Count == 1 && rules[1].Actions[0].Type == "api_cmd", "acciones intactas");
+            try { File.Delete(tmp); } catch (Exception) { }
+        }
+
+        private static void TestObsProtocol()
+        {
+            // Handshake: Hello con auth → Identify con la cadena V5 correcta
+            string pw = "s3cr3t", salt = "MTIzNDU2Nzg5", challenge = "MTIzNDU2Nzg5MDEyMzQ1Njc4";
+            string expected = Convert.ToBase64String(System.Security.Cryptography.SHA256.Create()
+                .ComputeHash(Encoding.UTF8.GetBytes(Convert.ToBase64String(
+                    System.Security.Cryptography.SHA256.Create().ComputeHash(
+                        Encoding.UTF8.GetBytes(pw + salt))) + challenge)));
+            string hello = "{\"op\":0,\"d\":{\"obsWebSocketVersion\":\"5.4.2\",\"rpcVersion\":1," +
+                "\"authentication\":{\"challenge\":\"" + challenge + "\",\"salt\":\"" + salt + "\"}}}";
+            AssertTrue(ObsProtocol.IsHello(hello), "IsHello");
+            string identify = ObsProtocol.BuildIdentify(hello, pw, 1, 0);
+            Dictionary<string, object> id = MiniJson.Parse(identify);
+            AssertTrue(MiniJson.GetInt(id, "op", -1) == 1, "op=1 (Identify)");
+            Dictionary<string, object> d = MiniJson.GetObject(id, "d");
+            string auth = MiniJson.GetString(d, "authentication", null);
+            AssertTrue(auth == expected, "auth V5 = base64(sha256(base64(sha256(pw+salt))+challenge))");
+
+            // Hello SIN auth → Identify sin authentication
+            string hello2 = "{\"op\":0,\"d\":{\"obsWebSocketVersion\":\"5.4.2\",\"rpcVersion\":1}}";
+            string identify2 = ObsProtocol.BuildIdentify(hello2, pw, 1, 0);
+            AssertTrue(!identify2.Contains("authentication"), "sin auth cuando no se exige");
+
+            // Request + respuesta
+            string setScene = ObsProtocol.BuildSetScene("req-1", "Culto");
+            Dictionary<string, object> sr = MiniJson.Parse(setScene);
+            Dictionary<string, object> srd = MiniJson.GetObject(sr, "d");
+            AssertTrue(MiniJson.GetInt(sr, "op", -1) == 6, "op=6 (Request)");
+            AssertTrue(MiniJson.GetString(srd, "requestType", "") == "SetCurrentProgramScene", "requestType");
+            AssertTrue(MiniJson.GetString(MiniJson.GetObject(srd, "requestData"), "sceneName", "") == "Culto",
+                "sceneName");
+
+            string setInput = ObsProtocol.BuildSetInputText("req-2", "Titulo", "Aleluya");
+            AssertTrue(setInput.Contains("SetInputSettings") && setInput.Contains("Titulo") &&
+                       setInput.Contains("Aleluya"), "SetInputSettings");
+
+            string resp = "{\"op\":7,\"d\":{\"requestType\":\"SetCurrentProgramScene\"," +
+                "\"requestId\":\"req-1\",\"requestStatus\":{\"result\":true,\"code\":100}," +
+                "\"responseData\":{\"sceneName\":\"Culto\"}}}";
+            ObsProtocol.ObsResponse r = ObsProtocol.ParseResponse(resp);
+            AssertTrue(r != null && r.Result && r.RequestId == "req-1", "respuesta parseada");
+
+            string evt = "{\"op\":5,\"d\":{\"eventType\":\"CurrentProgramSceneChanged\"," +
+                "\"eventIntent\":64,\"eventData\":{\"sceneName\":\"Cámara 1\"}}}";
+            string evType;
+            Dictionary<string, object> evData;
+            AssertTrue(ObsProtocol.ParseEvent(evt, out evType, out evData) &&
+                       evType == "CurrentProgramSceneChanged", "evento parseado");
+            AssertTrue(ObsProtocol.IsIdentified("{\"op\":2,\"d\":{\"negotiatedRpcVersion\":1}}"), "IsIdentified");
         }
     }
 }

@@ -66,6 +66,7 @@ namespace lumina.ui
         public static readonly Color RowHover    = FromHex(0x262B36);
         public static readonly Color HoverLayer  = FromHex(0x1F242E);
         public static readonly Color PreviewBg   = Color.Black;
+        public static readonly Color Warning     = FromHex(0xE0B052);
 
         // ---- tipografía (96 dpi lógico) ----
         public static readonly Font H1        = new Font("Segoe UI", 14.5F, FontStyle.Bold);
@@ -281,9 +282,10 @@ namespace lumina.ui
     internal sealed class NavPanel : ContentPanel
     {
         private static readonly string[] Captions =
-            { "En Vivo", "Canciones", "Biblia", "Temas", "Culto", "Ajustes" };
+            { "En Vivo", "Canciones", "Biblia", "Temas", "Culto", "Exportar",
+              "Integraciones", "Activadores", "Ajustes" };
 
-        private const int ItemCount = 6;
+        private const int ItemCount = 9;
 
         private readonly Rectangle[] _itemRects = new Rectangle[ItemCount];
         private int _hover = -1;
@@ -414,7 +416,25 @@ namespace lumina.ui
                             g.DrawLine(p, x + 7, y + 3 + i * 5, x + 14, y + 3 + i * 5);
                         }
                         break;
-                    case 5: // Ajustes: engranaje simplificado
+                    case 5: // Exportar: hoja con flecha (documento saliente)
+                        g.DrawRectangle(p, x + 1, y + 2, 9, 12);
+                        g.DrawLine(p, x + 3, y + 5, x + 7, y + 5);
+                        g.DrawLine(p, x + 3, y + 8, x + 7, y + 8);
+                        g.FillPolygon(b, new[] {
+                            new Point(x + 10, y + 4), new Point(x + 15, y + 8), new Point(x + 10, y + 12) });
+                        break;
+                    case 6: // Integraciones: nodos conectados
+                        g.FillEllipse(b, x + 1, y + 1, 5, 5);
+                        g.FillEllipse(b, x + 10, y + 10, 5, 5);
+                        g.DrawLine(p, x + 6, y + 4, x + 10, y + 11);
+                        g.DrawEllipse(p, x + 10, y + 1, 5, 5);
+                        break;
+                    case 7: // Activadores: rayo
+                        g.FillPolygon(b, new[] {
+                            new Point(x + 9, y), new Point(x + 3, y + 8), new Point(x + 7, y + 8),
+                            new Point(x + 6, y + 15), new Point(x + 13, y + 6), new Point(x + 8, y + 6) });
+                        break;
+                    case 8: // Ajustes: engranaje simplificado
                         g.DrawEllipse(p, x + 4, y + 4, 8, 8);
                         g.FillRectangle(b, x + 7, y, 2, 4);
                         g.FillRectangle(b, x + 7, y + 12, 2, 4);
@@ -433,13 +453,16 @@ namespace lumina.ui
     public sealed class MainForm : Form
     {
         private const string AppName = "LuminaPresentation Suite";
-        private const string AppVersion = "4.2.0";
+        private const string AppVersion = "5.0.0";
         private const string AppTitle = AppName + " — v" + AppVersion;
 
         /* ------------------------------------------------------------ servicios */
         private readonly Settings _settings;
         private LuminaEngine _engine;                 // null = modo limitado (sin núcleo)
         private ApiServer _api;
+        private RemoteServer _remote;                 // v5.0.0: mando móvil LAN
+        private TriggerEngine _triggers;              // v5.0.0: activadores
+        private MidiInput _midi;                      // v5.0.0: entrada MIDI
         private readonly SynchronizationContext _uiCtx;
 
         /* --------------------------------------------------------- estado vivo */
@@ -478,7 +501,7 @@ namespace lumina.ui
         /* ------------------------------------------------------------ estructura */
         private NavPanel _nav;
         private Panel _content;
-        private readonly Panel[] _pages = new Panel[6];
+        private readonly Panel[] _pages = new Panel[9];
         private Chip _chipCore, _chipDb, _chipApi;
 
         // En Vivo
@@ -516,6 +539,32 @@ namespace lumina.ui
         private TextBox _txtDbPath;
         private Label _lblAboutCore, _lblAboutUi;
 
+        // v5.0.0 «SINERGIA» — salidas y multimedia
+        private VideoPlayerForm _videoForm;           // video en la salida
+        private StageViewForm _stageForm;             // monitor de escenario
+        private LowerThirdsOverlay _lowerThird;       // zócalo inferior
+        private int _videoSlideIndex = -1;            // slide de video activa (-1 = ninguna)
+
+        // v5.0.0 — Exportar
+        private Label _lblExportInfo;
+
+        // v5.0.0 — Integraciones (OBS + MIDI + remoto)
+        private TextBox _txtObsUrl, _txtObsPassword, _txtObsTextSource;
+        private CheckBox _chkObsAutoConnect, _chkMidiEnabled, _chkRemoteEnabled, _chkAutoAdvanceVideo;
+        private NumericUpDown _numRemotePort;
+        private TextBox _txtRemoteToken;
+        private ComboBox _cmbMidiDevice;
+        private Button _btnObsConnect, _btnMidiRefresh, _btnRemoteToggle;
+        private Label _lblObsState, _lblMidiState, _lblRemoteState, _lblRemoteUrl;
+#if !LUMINA_NET35
+        private ObsClient _obs;                       // cliente obs-websocket 5.x (net48)
+#endif
+
+        // v5.0.0 — Activadores
+        private ListView _lvTriggers;
+        private Label _lblTriggersInfo;
+        private Button _btnTrigAdd, _btnTrigDel, _btnTrigToggle, _btnTrigEdit;
+
         // Barra inferior
         private Label _tsslMsg;
         private Label _tsslDb, _tsslApi, _tsslCore;
@@ -550,6 +599,7 @@ namespace lumina.ui
 
             CreateEngine();
             ApplySettingsToControls();
+            StartIntegrationsFromSettings();   // v5.0.0: activadores/remoto/MIDI/OBS
             UpdateStatusBar();
         }
 
@@ -697,8 +747,11 @@ namespace lumina.ui
             _pages[2] = BuildBiblePage();
             _pages[3] = BuildTemasPage();
             _pages[4] = BuildCultoPage();
-            _pages[5] = BuildSettingsPage();
-            for (int i = 0; i < 6; i++) _content.Controls.Add(_pages[i]);
+            _pages[5] = BuildExportPage();       // v5.0.0
+            _pages[6] = BuildIntegrationsPage(); // v5.0.0
+            _pages[7] = BuildTriggersPage();     // v5.0.0
+            _pages[8] = BuildSettingsPage();
+            for (int i = 0; i < 9; i++) _content.Controls.Add(_pages[i]);
 
             Controls.Add(_content);
             _content.BringToFront();
@@ -715,9 +768,9 @@ namespace lumina.ui
 
         private void NavigateToIndex(int index)
         {
-            if (index < 0 || index >= 6) index = 0;
+            if (index < 0 || index >= 9) index = 0;
             _activeNavItem = index;
-            for (int i = 0; i < 6; i++) _pages[i].Visible = i == index;
+            for (int i = 0; i < 9; i++) _pages[i].Visible = i == index;
             if (_nav != null) _nav.SetActive(index);
             if (index == 0) RefreshPreview();
         }
@@ -760,10 +813,14 @@ namespace lumina.ui
             _btnLive.Width = 132;
             _btnNext = UiTheme.MkButton("Siguiente ▶", "secondary", delegate { if (RequireEngine()) _engine.Next(); });
             _btnBlack = UiTheme.MkButton("■ Negro", "danger", delegate { if (RequireEngine()) ToggleBlack(); });
+            Button btnStage = UiTheme.MkButton("⛭ Escenario", "secondary", delegate { OpenStageView(); });
+            Button btnThird = UiTheme.MkButton("▬ Aviso", "secondary", delegate { ShowLowerThirdDialog(); });
             transport.Controls.Add(_btnPrev);
             transport.Controls.Add(_btnLive);
             transport.Controls.Add(_btnNext);
             transport.Controls.Add(_btnBlack);
+            transport.Controls.Add(btnStage);
+            transport.Controls.Add(btnThird);
 
             FlowLayoutPanel outputRow = new FlowLayoutPanel();
             outputRow.Dock = DockStyle.Bottom;
@@ -1061,22 +1118,27 @@ namespace lumina.ui
             ContentPanel import;
             Panel importCard = UiTheme.MkCard("Importar biblias", out import);
             importCard.Dock = DockStyle.Top;
-            importCard.Height = 132;
+            importCard.Height = 164;
             importCard.Margin = new Padding(0, 16, 0, 0);
 
             Label info = UiTheme.MkLabel(
-                "Formatos admitidos: .BIB (directivas #BIB/#VERSION/#BOOKS) y archivos JSON.\n" +
+                "Formatos admitidos: .BIB (directivas #BIB/#VERSION/#BOOKS), ZEFania XML " +
+                "(Reina Valera 1960, etc.) y archivos JSON.\n" +
                 "La importación valida el archivo con el núcleo y luego inserta los versículos en la base de datos.",
                 UiTheme.TextSecondary, UiTheme.Small, false);
             info.Dock = DockStyle.Fill;
             info.Padding = new Padding(0, 2, 0, 6);
 
             Button btnImport = UiTheme.MkButton("Importar Biblia .BIB…", "secondary", delegate { ImportBibFile(); });
+            Button btnImportXml = UiTheme.MkButton("Importar ZEFania XML…", "secondary", delegate { ImportZefaniaXml(); });
             btnImport.Dock = DockStyle.Bottom;
             btnImport.Height = 30;
+            btnImportXml.Dock = DockStyle.Bottom;
+            btnImportXml.Height = 30;
 
             import.Controls.Add(info);
             import.Controls.Add(btnImport);
+            import.Controls.Add(btnImportXml);
 
             // El ORDEN de anexado importa (docking = z-order inverso): los
             // Dock.Top se procesan del último al primero → anexar en orden
@@ -1867,6 +1929,7 @@ namespace lumina.ui
             itemBtns.Controls.Add(UiTheme.MkButton("↑ Subir", "secondary", delegate { MoveItem(-1); }));
             itemBtns.Controls.Add(UiTheme.MkButton("↓ Bajar", "secondary", delegate { MoveItem(1); }));
             itemBtns.Controls.Add(UiTheme.MkButton("× Eliminar", "secondary", delegate { RemoveItem(); }));
+            itemBtns.Controls.Add(UiTheme.MkButton("► Video…", "secondary", delegate { AddVideoItemToService(); }));
 
             list.Controls.Add(_lstItems);
             list.Controls.Add(nameRow);
@@ -2270,15 +2333,20 @@ namespace lumina.ui
                     if (o != null)
                     {
                         _currentIndex = (int)MiniJson.GetInt(o, "index", _currentIndex);
+                        int itemIdx = (int)MiniJson.GetInt(o, "item", -1);
                         HighlightCurrentSlide();
                         RefreshPreview();
+                        SyncLiveExtras(itemIdx);   // v5.0.0: video/escenario/OBS/activadores
                     }
+                    break;
+                case LuminaEvents.ItemChanged:
+                    // El estado llega justo después: se aprovecha en SyncLiveExtras.
                     break;
                 case LuminaEvents.Error:
                     Status("Error del núcleo: " + e.Text);
                     break;
                 default:
-                    break; // LOG/ITEM_CHANGED/PONG: ruido para la UI principal
+                    break; // LOG/PONG: ruido para la UI principal
             }
         }
 
@@ -2301,6 +2369,1257 @@ namespace lumina.ui
         private static void TraceLine(string msg)
         {
             System.Diagnostics.Trace.WriteLine("Lumina.UI: " + msg);
+        }
+
+        /* ======================================================================
+         *  v5.0.0 «SINERGIA» — EXPORTAR · INTEGRACIONES · ACTIVADORES · SALIDAS
+         * ==================================================================== */
+
+        // ------------------------------------------------------------- Exportar
+
+        private Panel BuildExportPage()
+        {
+            Panel page = NewPage("Exportar", "Escenario → PPTX (OpenXML) / PDF (escritor propio)",
+                /* headerButton */ null);
+            ContentPanel body = (ContentPanel)page.Tag;
+
+            ContentPanel cardBody;
+            Panel card = UiTheme.MkCard("Exportación del escenario activo", out cardBody);
+            card.Dock = DockStyle.Top;
+            card.Height = 216;
+
+            _lblExportInfo = UiTheme.MkLabel("Carga un escenario (En Vivo) y expórtalo con el tema actual.\n" +
+                "PPTX: PresentationML ISO/IEC-29500 (abre en PowerPoint 2007+, WPS, LibreOffice).\n" +
+                "PDF: 1.4 propio con fuentes Helvetica (cero dependencias).",
+                UiTheme.TextSecondary, UiTheme.Small, false);
+            _lblExportInfo.Dock = DockStyle.Top;
+            _lblExportInfo.Height = 64;
+            _lblExportInfo.Padding = new Padding(0, 2, 0, 8);
+
+            FlowLayoutPanel btns = new FlowLayoutPanel();
+            btns.Dock = DockStyle.Fill;
+            btns.WrapContents = false;
+            btns.Padding = new Padding(0, 10, 0, 0);
+            Button btnPptx = UiTheme.MkButton("Exportar PPTX…", "primary", delegate { ExportScenarioPptx(); });
+            btnPptx.Width = 150;
+            Button btnPdf = UiTheme.MkButton("Exportar PDF…", "secondary", delegate { ExportScenarioPdf(); });
+            btnPdf.Width = 150;
+            btns.Controls.Add(btnPptx);
+            btns.Controls.Add(btnPdf);
+
+            cardBody.Controls.Add(btns);
+            cardBody.Controls.Add(_lblExportInfo);
+            body.Controls.Add(card);
+            return page;
+        }
+
+        /// <summary>Slides del escenario activo en formato de exportación.</summary>
+        private List<ExportSlide> BuildExportSlides()
+        {
+            List<ExportSlide> result = new List<ExportSlide>();
+            foreach (SlideView v in _slides)
+            {
+                ExportSlide es = new ExportSlide(v);
+                if (v.RefLabel == "video" || v.RefLabel == "en blanco")
+                {
+                    es.Kind = SlideKind.Title;
+                    es.Subtitle = v.RefLabel == "video" ? "Video (reproducir en vivo)" : string.Empty;
+                }
+                result.Add(es);
+            }
+            return result;
+        }
+
+        private void ExportScenarioPptx()
+        {
+            if (_slides.Count == 0)
+            {
+                Status("No hay escenario cargado que exportar.");
+                MessageBox.Show(this, "Carga primero un escenario (canción, pasaje o culto) en «En Vivo».",
+                    AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            using (SaveFileDialog dlg = new SaveFileDialog())
+            {
+                dlg.Title = "Exportar escenario a PPTX";
+                dlg.Filter = "Presentación PowerPoint (*.pptx)|*.pptx";
+                dlg.FileName = SafeFileName(_lastScenarioName.Length > 0 ? _lastScenarioName : "Escenario") + ".pptx";
+                if (dlg.ShowDialog(this) != DialogResult.OK) return;
+                string err = PptxExporter.ExportToFile(dlg.FileName, _lastScenarioName,
+                    BuildExportSlides(), _theme);
+                if (err == null)
+                {
+                    Status("PPTX exportado: " + dlg.FileName);
+                    MessageBox.Show(this, "Exportado correctamente:\n" + dlg.FileName,
+                        AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                else
+                {
+                    Status("Fallo al exportar PPTX.");
+                    MessageBox.Show(this, err, AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
+            }
+        }
+
+        private void ExportScenarioPdf()
+        {
+            if (_slides.Count == 0)
+            {
+                Status("No hay escenario cargado que exportar.");
+                MessageBox.Show(this, "Carga primero un escenario (canción, pasaje o culto) en «En Vivo».",
+                    AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            using (SaveFileDialog dlg = new SaveFileDialog())
+            {
+                dlg.Title = "Exportar escenario a PDF";
+                dlg.Filter = "Documento PDF (*.pdf)|*.pdf";
+                dlg.FileName = SafeFileName(_lastScenarioName.Length > 0 ? _lastScenarioName : "Escenario") + ".pdf";
+                if (dlg.ShowDialog(this) != DialogResult.OK) return;
+                // Decodificador de imágenes con GDI+ (solo Windows en ejecución real)
+                PdfImageDecoder.Install();
+                string err = PdfExporter.ExportToFile(dlg.FileName, _lastScenarioName,
+                    BuildExportSlides(), _theme);
+                if (err == null)
+                {
+                    Status("PDF exportado: " + dlg.FileName);
+                    MessageBox.Show(this, "Exportado correctamente:\n" + dlg.FileName,
+                        AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                else
+                {
+                    Status("Fallo al exportar PDF.");
+                    MessageBox.Show(this, err, AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
+            }
+        }
+
+        /// <summary>Nombre de archivo seguro (sin caracteres problemáticos).</summary>
+        private static string SafeFileName(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return "Escenario";
+            foreach (char c in System.IO.Path.GetInvalidFileNameChars())
+                name = name.Replace(c, '_');
+            return name.Length > 60 ? name.Substring(0, 60) : name;
+        }
+
+        // ------------------------------------------------------- Integraciones
+
+        private Panel BuildIntegrationsPage()
+        {
+            Panel page = NewPage("Integraciones", "OBS Studio · MIDI · Control remoto móvil (LAN)",
+                /* headerButton */ null);
+            ContentPanel body = (ContentPanel)page.Tag;
+
+            // ---- OBS Studio ----
+            ContentPanel obsBody;
+            Panel obsCard = UiTheme.MkCard("OBS Studio (obs-websocket 5.x)", out obsBody);
+            obsCard.Dock = DockStyle.Top;
+            obsCard.Height = 300;
+
+            TableLayoutPanel obsForm = NewGrid(2,
+                new ColumnStyle(SizeType.Absolute, 150),
+                new ColumnStyle(SizeType.Percent, 100));
+            for (int i = 0; i < 4; i++) obsForm.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
+            obsForm.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+            obsForm.Controls.Add(FieldLabel("Servidor WebSocket"), 0, 0);
+            _txtObsUrl = UiTheme.MkInput(false);
+            _txtObsUrl.Dock = DockStyle.Fill;
+            obsForm.Controls.Add(_txtObsUrl, 1, 0);
+
+            obsForm.Controls.Add(FieldLabel("Contraseña (opcional)"), 0, 1);
+            _txtObsPassword = UiTheme.MkInput(false);
+            _txtObsPassword.Dock = DockStyle.Fill;
+            _txtObsPassword.UseSystemPasswordChar = true;
+            obsForm.Controls.Add(_txtObsPassword, 1, 1);
+
+            obsForm.Controls.Add(FieldLabel("Fuente de texto en vivo"), 0, 2);
+            _txtObsTextSource = UiTheme.MkInput(false);
+            _txtObsTextSource.Dock = DockStyle.Fill;
+            obsForm.Controls.Add(_txtObsTextSource, 1, 2);
+
+            _chkObsAutoConnect = new CheckBox();
+            _chkObsAutoConnect.Text = "Conectar automáticamente al abrir la aplicación";
+            _chkObsAutoConnect.AutoSize = true;
+            _chkObsAutoConnect.ForeColor = UiTheme.TextSecondary;
+            obsForm.Controls.Add(_chkObsAutoConnect, 1, 3);
+
+            FlowLayoutPanel obsBtns = new FlowLayoutPanel();
+            obsBtns.Dock = DockStyle.Fill;
+            obsBtns.WrapContents = false;
+            obsBtns.Padding = new Padding(0, 8, 0, 0);
+            _btnObsConnect = UiTheme.MkButton("Conectar con OBS", "primary", delegate { ObsConnectClick(); });
+            _btnObsConnect.Width = 160;
+            obsBtns.Controls.Add(_btnObsConnect);
+            obsForm.Controls.Add(obsBtns, 1, 4);
+
+            _lblObsState = UiTheme.MkLabel("● SIN CONECTAR", UiTheme.TextDisabled, UiTheme.Small, true);
+            _lblObsState.Dock = DockStyle.Bottom;
+            _lblObsState.Height = 22;
+
+            obsBody.Controls.Add(obsForm);
+            obsBody.Controls.Add(_lblObsState);
+            body.Controls.Add(obsCard);
+
+            // ---- MIDI ----
+            ContentPanel midiBody;
+            Panel midiCard = UiTheme.MkCard("Entrada MIDI (activadores)", out midiBody);
+            midiCard.Dock = DockStyle.Top;
+            midiCard.Height = 176;
+            midiCard.Margin = new Padding(0, 14, 0, 0);
+
+            TableLayoutPanel midiForm = NewGrid(2,
+                new ColumnStyle(SizeType.Absolute, 150),
+                new ColumnStyle(SizeType.Percent, 100));
+            for (int i = 0; i < 2; i++) midiForm.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
+            midiForm.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+            _chkMidiEnabled = new CheckBox();
+            _chkMidiEnabled.Text = "Activar entrada MIDI";
+            _chkMidiEnabled.AutoSize = true;
+            _chkMidiEnabled.ForeColor = UiTheme.TextSecondary;
+            _chkMidiEnabled.CheckedChanged += delegate { MidiAutoApply(); };
+            midiForm.Controls.Add(_chkMidiEnabled, 0, 0);
+            midiForm.Controls.Add(FieldLabel(""), 0, 1);
+
+            _cmbMidiDevice = new ComboBox();
+            _cmbMidiDevice.DropDownStyle = ComboBoxStyle.DropDownList;
+            _cmbMidiDevice.Dock = DockStyle.Fill;
+            _cmbMidiDevice.FlatStyle = FlatStyle.Flat;
+            _cmbMidiDevice.BackColor = UiTheme.InputBg;
+            _cmbMidiDevice.ForeColor = UiTheme.TextPrimary;
+            midiForm.Controls.Add(_cmbMidiDevice, 1, 0);
+
+            FlowLayoutPanel midiBtns = new FlowLayoutPanel();
+            midiBtns.Dock = DockStyle.Fill;
+            midiBtns.WrapContents = false;
+            midiBtns.Padding = new Padding(0, 8, 0, 0);
+            _btnMidiRefresh = UiTheme.MkButton("Buscar dispositivos", "secondary", delegate { MidiRefreshDevices(); });
+            _btnMidiRefresh.Width = 150;
+            midiBtns.Controls.Add(_btnMidiRefresh);
+            midiForm.Controls.Add(midiBtns, 1, 1);
+
+            _lblMidiState = UiTheme.MkLabel("● ENTRADA DETENIDA", UiTheme.TextDisabled, UiTheme.Small, true);
+            _lblMidiState.Dock = DockStyle.Bottom;
+            _lblMidiState.Height = 22;
+
+            midiBody.Controls.Add(midiForm);
+            midiBody.Controls.Add(_lblMidiState);
+            body.Controls.Add(midiCard);
+
+            // ---- Control remoto móvil ----
+            ContentPanel remBody;
+            Panel remCard = UiTheme.MkCard("Control remoto móvil (red local)", out remBody);
+            remCard.Dock = DockStyle.Top;
+            remCard.Height = 240;
+            remCard.Margin = new Padding(0, 14, 0, 0);
+
+            TableLayoutPanel remForm = NewGrid(2,
+                new ColumnStyle(SizeType.Absolute, 150),
+                new ColumnStyle(SizeType.Percent, 100));
+            for (int i = 0; i < 2; i++) remForm.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
+            remForm.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
+            remForm.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+            _chkRemoteEnabled = new CheckBox();
+            _chkRemoteEnabled.Text = "Abrir el mando a los dispositivos de la red";
+            _chkRemoteEnabled.AutoSize = true;
+            _chkRemoteEnabled.ForeColor = UiTheme.TextSecondary;
+            remForm.Controls.Add(_chkRemoteEnabled, 0, 0);
+            remForm.Controls.Add(FieldLabel("Puerto"), 0, 1);
+
+            _numRemotePort = UiTheme.MkNumeric(1024, 65535, 8070);
+            _numRemotePort.Width = 90;
+            remForm.Controls.Add(_numRemotePort, 1, 1);
+
+            remForm.Controls.Add(FieldLabel("Token de acceso"), 0, 2);
+            _txtRemoteToken = UiTheme.MkInput(false);
+            _txtRemoteToken.Dock = DockStyle.Fill;
+            remForm.Controls.Add(_txtRemoteToken, 1, 2);
+
+            FlowLayoutPanel remBtns = new FlowLayoutPanel();
+            remBtns.Dock = DockStyle.Fill;
+            remBtns.WrapContents = false;
+            remBtns.Padding = new Padding(0, 8, 0, 0);
+            _btnRemoteToggle = UiTheme.MkButton("Aplicar y abrir mando", "primary", delegate { RemoteApplyClick(); });
+            _btnRemoteToggle.Width = 180;
+            remBtns.Controls.Add(_btnRemoteToggle);
+            remForm.Controls.Add(remBtns, 1, 3);
+
+            _lblRemoteUrl = UiTheme.MkLabel("", UiTheme.TextSecondary, UiTheme.Small, true);
+            _lblRemoteUrl.Dock = DockStyle.Bottom;
+            _lblRemoteUrl.Height = 24;
+            _lblRemoteState = UiTheme.MkLabel("● MANDO DETENIDO", UiTheme.TextDisabled, UiTheme.Small, true);
+            _lblRemoteState.Dock = DockStyle.Bottom;
+            _lblRemoteState.Height = 22;
+
+            remBody.Controls.Add(remForm);
+            remBody.Controls.Add(_lblRemoteUrl);
+            remBody.Controls.Add(_lblRemoteState);
+            body.Controls.Add(remCard);
+
+            // ---- extras en vivo ----
+            ContentPanel exBody;
+            Panel exCard = UiTheme.MkCard("Opciones de proyección", out exBody);
+            exCard.Dock = DockStyle.Top;
+            exCard.Height = 92;
+            exCard.Margin = new Padding(0, 14, 0, 0);
+            _chkAutoAdvanceVideo = new CheckBox();
+            _chkAutoAdvanceVideo.Text = "Al terminar un video, avanzar automáticamente a la siguiente diapositiva";
+            _chkAutoAdvanceVideo.AutoSize = true;
+            _chkAutoAdvanceVideo.ForeColor = UiTheme.TextSecondary;
+            _chkAutoAdvanceVideo.Dock = DockStyle.Fill;
+            exBody.Controls.Add(_chkAutoAdvanceVideo);
+            body.Controls.Add(exCard);
+
+            return page;
+        }
+
+        // ------------------------------------------------------------ OBS ----
+
+        private bool ObsAvailable()
+        {
+#if LUMINA_NET35
+            return false;
+#else
+            return true;
+#endif
+        }
+
+        private void ObsConnectClick()
+        {
+#if LUMINA_NET35
+            MessageBox.Show(this, "La integración con OBS requiere .NET Framework 4.8 " +
+                "(Windows 10/11 lo traen integrado; en Windows 7 SP1 instale el paquete offline de .NET 4.8).",
+                AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+#else
+            SaveIntegrationsFromControls();
+            if (!ObsAvailable()) return;
+            if (_obs != null && _obs.IsReady)
+            {
+                _obs.Disconnect();
+                UpdateObsState();
+                return;
+            }
+            if (_obs == null) _obs = new ObsClient();
+            Status("Conectando con OBS…");
+            UpdateObsState();
+            // El handshake bloquea unos ms: fuera del hilo de UI
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                bool ok = _obs.Connect(_settings.ObsUrl, _settings.ObsPassword, 5000);
+                try
+                {
+                    BeginInvoke(new SendOrPostCallback(delegate
+                    {
+                        Status(ok ? "OBS conectado (" + _settings.ObsUrl + ")."
+                                  : "OBS no conectado: " + _obs.LastError);
+                        UpdateObsState();
+                    }), null);
+                }
+                catch (Exception) { }
+            });
+#endif
+        }
+
+        private void UpdateObsState()
+        {
+#if !LUMINA_NET35
+            bool ready = _obs != null && _obs.IsReady;
+            _lblObsState.Text = ready ? "● CONECTADO Y AUTENTICADO" : "● SIN CONECTAR";
+            _lblObsState.ForeColor = ready ? UiTheme.Ok : UiTheme.TextDisabled;
+            _btnObsConnect.Text = ready ? "Desconectar de OBS" : "Conectar con OBS";
+#endif
+        }
+
+        /// <summary>Envía el texto en vivo a la fuente OBS configurada (hilo de fondo).</summary>
+        private void ObsSendLiveText(string text)
+        {
+#if !LUMINA_NET35
+            if (_obs == null || !_obs.IsReady) return;
+            if (_settings.ObsTextSource.Length == 0 || text == null) return;
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                try { _obs.SetInputText(_settings.ObsTextSource, text); }
+                catch (Exception) { }
+            });
+#endif
+        }
+
+        // ------------------------------------------------------------ MIDI ----
+
+        private void MidiAutoApply()
+        {
+            SaveIntegrationsFromControls();
+            if (_settings.MidiEnabled)
+            {
+                StartMidi();
+            }
+            else
+            {
+                StopMidi();
+            }
+        }
+
+        private void StartMidi()
+        {
+            StopMidi();
+            if (_midi == null) _midi = new MidiInput();
+            _midi.MessageReceived += OnMidiMessage;
+            int dev = _cmbMidiDevice != null && _cmbMidiDevice.SelectedIndex >= 0
+                ? _cmbMidiDevice.SelectedIndex : _settings.MidiDevice;
+            bool ok = _midi.Open(dev);
+            _lblMidiState.Text = ok
+                ? "● ENTRADA ACTIVA (" + dev + ": " + ((_cmbMidiDevice != null && _cmbMidiDevice.SelectedIndex >= 0 && _cmbMidiDevice.Text.Length > 0) ? _cmbMidiDevice.Text : "dispositivo " + dev) + ")"
+                : "● ERROR: " + _midi.LastError;
+            _lblMidiState.ForeColor = ok ? UiTheme.Ok : UiTheme.Err;
+        }
+
+        private void StopMidi()
+        {
+            if (_midi != null)
+            {
+                _midi.MessageReceived -= OnMidiMessage;
+                try { _midi.Dispose(); } catch (Exception) { }
+                _midi = null;
+            }
+            if (_lblMidiState != null)
+            {
+                _lblMidiState.Text = "● ENTRADA DETENIDA";
+                _lblMidiState.ForeColor = UiTheme.TextDisabled;
+            }
+        }
+
+        private void MidiRefreshDevices()
+        {
+            string[] names = MidiInput.DeviceNames();
+            _cmbMidiDevice.Items.Clear();
+            foreach (string n in names) _cmbMidiDevice.Items.Add(n);
+            if (_cmbMidiDevice.Items.Count > 0)
+            {
+                int idx = Math.Max(0, Math.Min(_settings.MidiDevice, _cmbMidiDevice.Items.Count - 1));
+                _cmbMidiDevice.SelectedIndex = idx;
+            }
+            Status(names.Length > 0
+                ? names.Length + " dispositivo(s) MIDI detectados."
+                : "No hay dispositivos MIDI de entrada conectados.");
+        }
+
+        // Hilo del driver winmm: se llega a los activadores por el hilo de UI.
+        private void OnMidiMessage(object sender, MidiEventArgs e)
+        {
+            try
+            {
+                BeginInvoke(new SendOrPostCallback(delegate
+                {
+                    FireMidiTriggers(e);
+                }), null);
+            }
+            catch (Exception) { }
+        }
+
+        private void FireMidiTriggers(MidiEventArgs e)
+        {
+            if (_triggers == null || !_settings.TriggersEnabled) return;
+            Dictionary<string, object> ctx = new Dictionary<string, object>();
+            ctx["channel"] = e.Channel;
+            if (e.Command == MidiInput.CmdNote)
+            {
+                ctx["note"] = e.Data1;
+                ctx["velocity"] = e.Data2;
+                _triggers.Fire("midi_note", ctx);
+            }
+            else if (e.Command == MidiInput.CmdCc)
+            {
+                ctx["controller"] = e.Data1;
+                ctx["value"] = e.Data2;
+                _triggers.Fire("midi_cc", ctx);
+            }
+            else if (e.Command == MidiInput.CmdProgram)
+            {
+                ctx["program"] = e.Data1;
+                _triggers.Fire("midi_program", ctx);
+            }
+        }
+
+        // -------------------------------------------------------- Remoto ----
+
+        private void RemoteApplyClick()
+        {
+            SaveIntegrationsFromControls();
+            if (_settings.RemoteEnabled)
+            {
+                StartRemote();
+            }
+            else
+            {
+                StopRemote();
+            }
+        }
+
+        private void StartRemote()
+        {
+            StopRemote();
+            if (!RequireEngine()) return;
+            try
+            {
+                _remote = new RemoteServer(_engine, _settings.RemotePort, _settings.RemoteToken);
+                _remote.SetSlideCatalog(_slides);
+                _remote.LiveTextProvider = BuildLiveText;
+                _remote.NoticeReceived += OnRemoteNotice;
+                _remote.Start();
+                Status("Mando remoto: http://" + (_remote.RemoteUrl()) + " — puerto " + _settings.RemotePort);
+            }
+            catch (Exception ex)
+            {
+                Status("No se pudo abrir el mando remoto: " + ex.Message);
+            }
+            UpdateRemoteInfo();
+        }
+
+        private void StopRemote()
+        {
+            if (_remote != null)
+            {
+                _remote.NoticeReceived -= OnRemoteNotice;
+                try { _remote.Dispose(); } catch (Exception) { }
+                _remote = null;
+            }
+            UpdateRemoteInfo();
+        }
+
+        private void UpdateRemoteInfo()
+        {
+            bool running = _remote != null && _remote.IsRunning;
+            _lblRemoteState.Text = running ? "● MANDO ACTIVO (puerto " + _settings.RemotePort + ")" : "● MANDO DETENIDO";
+            _lblRemoteState.ForeColor = running ? UiTheme.Ok : UiTheme.TextDisabled;
+            _lblRemoteUrl.Text = running
+                ? "Abre en el móvil: " + _remote.RemoteUrl() +
+                  (_settings.RemoteToken.Length == 0 ? "  ⚠ sin token: cualquier equipo de la red puede controlar" : string.Empty)
+                : "El mando se abre con el botón o al activarlo en ajustes.";
+            if (running && _settings.RemoteToken.Length == 0)
+                _lblRemoteUrl.ForeColor = UiTheme.Warning;
+            else
+                _lblRemoteUrl.ForeColor = UiTheme.TextSecondary;
+        }
+
+        // Hilo del servidor remoto → zócalo en pantalla (hilo de UI).
+        private void OnRemoteNotice(object sender, string text)
+        {
+            try
+            {
+                BeginInvoke(new SendOrPostCallback(delegate
+                {
+                    ShowLowerThird(text, string.Empty, 8);
+                    Status("Aviso recibido del mando remoto.");
+                }), null);
+            }
+            catch (Exception) { }
+        }
+
+        /// <summary>Texto en vivo para /api/live.txt (API y mando remoto).</summary>
+        private string BuildLiveText()
+        {
+            if (_currentIndex >= 0 && _currentIndex < _slides.Count)
+            {
+                SlideView v = _slides[_currentIndex];
+                StringBuilder sb = new StringBuilder();
+                if (v.RefLabel.Length > 0) sb.Append(v.RefLabel).Append('\n');
+                foreach (string l in v.Lines) sb.Append(l).Append('\n');
+                return sb.ToString().TrimEnd('\n');
+            }
+            return string.Empty;
+        }
+
+        private void SaveIntegrationsFromControls()
+        {
+            if (_txtObsUrl != null) _settings.ObsUrl = _txtObsUrl.Text.Trim();
+            if (_txtObsPassword != null) _settings.ObsPassword = _txtObsPassword.Text;
+            if (_txtObsTextSource != null) _settings.ObsTextSource = _txtObsTextSource.Text.Trim();
+            if (_chkObsAutoConnect != null) _settings.ObsAutoConnect = _chkObsAutoConnect.Checked;
+            if (_chkRemoteEnabled != null) _settings.RemoteEnabled = _chkRemoteEnabled.Checked;
+            if (_numRemotePort != null) _settings.RemotePort = (int)_numRemotePort.Value;
+            if (_txtRemoteToken != null) _settings.RemoteToken = _txtRemoteToken.Text.Trim();
+            if (_chkMidiEnabled != null) _settings.MidiEnabled = _chkMidiEnabled.Checked;
+            if (_cmbMidiDevice != null && _cmbMidiDevice.SelectedIndex >= 0)
+                _settings.MidiDevice = _cmbMidiDevice.SelectedIndex;
+            if (_chkAutoAdvanceVideo != null) _settings.AutoAdvanceVideo = _chkAutoAdvanceVideo.Checked;
+            SaveSettings();
+        }
+
+        /// <summary>Arranque de integraciones según ajustes (llamar tras ApplySettingsToControls).</summary>
+        private void StartIntegrationsFromSettings()
+        {
+            // Activadores
+            _triggers = TriggerEngine.Load(_settings.TriggersFile);
+            _triggers.SetSink(new TriggerSink(this));
+            RefreshTriggersList();
+
+            if (_settings.RemoteEnabled) StartRemote();
+            if (_settings.MidiEnabled)
+            {
+                MidiRefreshDevices();
+                StartMidi();
+            }
+            UpdateRemoteInfo();
+            UpdateObsState();
+#if !LUMINA_NET35
+            if (_settings.ObsAutoConnect && _settings.ObsUrl.Length > 0)
+            {
+                if (_obs == null) _obs = new ObsClient();
+                ThreadPool.QueueUserWorkItem(delegate
+                {
+                    try { _obs.Connect(_settings.ObsUrl, _settings.ObsPassword, 5000); }
+                    catch (Exception) { }
+                    try
+                    {
+                        BeginInvoke(new SendOrPostCallback(delegate { UpdateObsState(); }), null);
+                    }
+                    catch (Exception) { }
+                });
+            }
+#endif
+        }
+
+        // ------------------------------------------------------ Activadores ----
+
+        private Panel BuildTriggersPage()
+        {
+            Panel page = NewPage("Activadores", "Reglas automáticas: evento → condición → acción",
+                /* headerButton */ null);
+            ContentPanel body = (ContentPanel)page.Tag;
+
+            ContentPanel listBody;
+            Panel listCard = UiTheme.MkCard("Reglas (data\\triggers\\triggers.json)", out listBody);
+            listCard.Dock = DockStyle.Fill;
+
+            _lvTriggers = NewDarkList();
+            _lvTriggers.Columns.Add("Regla", 240, HorizontalAlignment.Left);
+            _lvTriggers.Columns.Add("Evento", 130, HorizontalAlignment.Left);
+            _lvTriggers.Columns.Add("Condición", 220, HorizontalAlignment.Left);
+            _lvTriggers.Columns.Add("Acciones", 300, HorizontalAlignment.Left);
+            _lvTriggers.Columns.Add("Activa", 60, HorizontalAlignment.Center);
+            _lvTriggers.Dock = DockStyle.Fill;
+            _lvTriggers.DoubleClick += delegate { TriggerEdit(); };
+
+            FlowLayoutPanel btns = new FlowLayoutPanel();
+            btns.Dock = DockStyle.Bottom;
+            btns.Height = 44;
+            btns.WrapContents = false;
+            btns.Padding = new Padding(0, 6, 0, 0);
+            _btnTrigAdd = UiTheme.MkButton("＋ Nueva regla", "primary", delegate { TriggerAdd(); });
+            _btnTrigEdit = UiTheme.MkButton("Editar", "secondary", delegate { TriggerEdit(); });
+            _btnTrigToggle = UiTheme.MkButton("Activar/Desactivar", "secondary", delegate { TriggerToggleEnable(); });
+            _btnTrigDel = UiTheme.MkButton("Eliminar", "danger", delegate { TriggerDelete(); });
+            _btnTrigAdd.Width = 130; _btnTrigEdit.Width = 90; _btnTrigToggle.Width = 150; _btnTrigDel.Width = 100;
+            btns.Controls.Add(_btnTrigAdd);
+            btns.Controls.Add(_btnTrigEdit);
+            btns.Controls.Add(_btnTrigToggle);
+            btns.Controls.Add(_btnTrigDel);
+
+            _lblTriggersInfo = UiTheme.MkLabel(
+                "Eventos: item_changed · slide_changed · song_started · video_ended · " +
+                "midi_note · midi_cc · midi_program · api_webhook",
+                UiTheme.TextSecondary, UiTheme.Small, true);
+            _lblTriggersInfo.Dock = DockStyle.Bottom;
+            _lblTriggersInfo.Height = 22;
+
+            listBody.Controls.Add(_lvTriggers);
+            listBody.Controls.Add(_lblTriggersInfo);
+            listBody.Controls.Add(btns);
+            body.Controls.Add(listCard);
+            return page;
+        }
+
+        private void RefreshTriggersList()
+        {
+            if (_lvTriggers == null || _triggers == null) return;
+            _lvTriggers.BeginUpdate();
+            try
+            {
+                _lvTriggers.Items.Clear();
+                foreach (TriggerRule r in _triggers.RulesSnapshot())
+                {
+                    ListViewItem it = new ListViewItem(r.Name.Length > 0 ? r.Name : r.Id);
+                    it.SubItems.Add(r.Event);
+                    it.SubItems.Add(TriggerMatchText(r));
+                    it.SubItems.Add(TriggerActionsText(r));
+                    it.SubItems.Add(r.Enabled ? "Sí" : "No");
+                    it.Tag = r.Id;
+                    _lvTriggers.Items.Add(it);
+                }
+            }
+            finally
+            {
+                _lvTriggers.EndUpdate();
+            }
+        }
+
+        private static string TriggerMatchText(TriggerRule r)
+        {
+            if (r.Match.Count == 0) return "(siempre)";
+            StringBuilder sb = new StringBuilder();
+            foreach (KeyValuePair<string, object> kv in r.Match)
+            {
+                if (sb.Length > 0) sb.Append(" · ");
+                sb.Append(kv.Key).Append('=').Append(kv.Value);
+            }
+            return sb.ToString();
+        }
+
+        private static string TriggerActionsText(TriggerRule r)
+        {
+            if (r.Actions.Count == 0) return "(ninguna)";
+            StringBuilder sb = new StringBuilder();
+            foreach (TriggerAction a in r.Actions)
+            {
+                if (sb.Length > 0) sb.Append(" · ");
+                sb.Append(a.Type);
+                if (a.Params.Count > 0)
+                {
+                    sb.Append('(');
+                    int n = 0;
+                    foreach (KeyValuePair<string, object> kv in a.Params)
+                    {
+                        if (n++ > 0) sb.Append(", ");
+                        sb.Append(kv.Key).Append(':').Append(kv.Value);
+                    }
+                    sb.Append(')');
+                }
+            }
+            return sb.ToString();
+        }
+
+        private void TriggerAdd() { TriggerDialog(null); }
+
+        private void TriggerEdit()
+        {
+            if (_lvTriggers.SelectedIndices.Count == 0)
+            {
+                Status("Selecciona una regla para editarla.");
+                return;
+            }
+            string id = (string)_lvTriggers.SelectedItems[0].Tag;
+            foreach (TriggerRule r in _triggers.RulesSnapshot())
+            {
+                if (r.Id == id) { TriggerDialog(r); return; }
+            }
+        }
+
+        /// <summary>Diálogo de creación/edición de reglas (funcional y directo).</summary>
+        private void TriggerDialog(TriggerRule edit)
+        {
+            bool isNew = edit == null;
+            TriggerRule r = isNew ? new TriggerRule() : edit;
+
+            Form dlg = new Form();
+            dlg.Text = isNew ? "Nueva regla de activación" : "Editar regla";
+            dlg.StartPosition = FormStartPosition.CenterParent;
+            dlg.FormBorderStyle = FormBorderStyle.FixedDialog;
+            dlg.MinimizeBox = dlg.MaximizeBox = false;
+            dlg.ClientSize = new Size(560, 420);
+            dlg.Font = UiTheme.Body;
+            dlg.BackColor = UiTheme.PageBg;
+            dlg.ForeColor = UiTheme.TextPrimary;
+
+            Label lblName = UiTheme.MkLabel("Nombre de la regla:", UiTheme.TextSecondary, UiTheme.Small, true);
+            lblName.Dock = DockStyle.Top; lblName.Height = 20;
+            TextBox txtName = UiTheme.MkInput(false);
+            txtName.Dock = DockStyle.Top; txtName.Text = r.Name;
+
+            Label lblEvent = UiTheme.MkLabel("Evento que la dispara:", UiTheme.TextSecondary, UiTheme.Small, true);
+            lblEvent.Dock = DockStyle.Top; lblEvent.Height = 20;
+            ComboBox cmbEvent = new ComboBox();
+            cmbEvent.DropDownStyle = ComboBoxStyle.DropDownList;
+            cmbEvent.Dock = DockStyle.Top;
+            cmbEvent.Items.AddRange(new object[] {
+                "item_changed", "slide_changed", "song_started", "video_ended",
+                "midi_note", "midi_cc", "midi_program", "api_webhook" });
+            cmbEvent.SelectedItem = r.Event.Length > 0 ? (object)r.Event : "item_changed";
+
+            Label lblMatch = UiTheme.MkLabel(
+                "Condición (clave=valor, separada por «;». Vacío = siempre. " +
+                "Ej.: title=Ofrenda · note=60 · contains:Alabanza)",
+                UiTheme.TextSecondary, UiTheme.Small, false);
+            lblMatch.Dock = DockStyle.Top; lblMatch.Height = 34;
+            TextBox txtMatch = UiTheme.MkInput(false);
+            txtMatch.Dock = DockStyle.Top;
+            txtMatch.Text = MatchToText(r.Match);
+
+            Label lblAction = UiTheme.MkLabel("Acción:", UiTheme.TextSecondary, UiTheme.Small, true);
+            lblAction.Dock = DockStyle.Top; lblAction.Height = 20;
+            ComboBox cmbAction = new ComboBox();
+            cmbAction.DropDownStyle = ComboBoxStyle.DropDownList;
+            cmbAction.Dock = DockStyle.Top;
+            cmbAction.Items.AddRange(new object[] {
+                "obs_scene", "obs_source_text", "play_audio", "show_text", "set_theme", "api_cmd", "midi_out" });
+            if (r.Actions.Count > 0) cmbAction.SelectedItem = r.Actions[0].Type;
+
+            Label lblParams = UiTheme.MkLabel(
+                "Parámetros de la acción (clave=valor, «;»). Ej.: scene=Culto · text=¡Bienvenido! · " +
+                "source=Titulo · path=C:\\audio\\clipe.mp3 · theme=Soleado · action=next · status=192 · data1=7",
+                UiTheme.TextSecondary, UiTheme.Small, false);
+            lblParams.Dock = DockStyle.Top; lblParams.Height = 44;
+            TextBox txtParams = UiTheme.MkInput(false);
+            txtParams.Dock = DockStyle.Top;
+            if (r.Actions.Count > 0 && r.Actions[0].Params.Count > 0)
+                txtParams.Text = MatchToText(r.Actions[0].Params);
+
+            FlowLayoutPanel btns = new FlowLayoutPanel();
+            btns.Dock = DockStyle.Bottom;
+            btns.Height = 46;
+            btns.Padding = new Padding(0, 10, 0, 0);
+            Button ok = UiTheme.MkButton("Guardar regla", "primary", null);
+            ok.Width = 140;
+            Button cancel = UiTheme.MkButton("Cancelar", "secondary", null);
+            cancel.Width = 100;
+            btns.Controls.Add(ok);
+            btns.Controls.Add(cancel);
+
+            ok.Click += delegate
+            {
+                r.Name = txtName.Text.Trim();
+                r.Event = cmbEvent.Text;
+                r.Match = TextToMatch(txtMatch.Text);
+                TriggerAction a = new TriggerAction();
+                a.Type = cmbAction.Text;
+                a.Params = TextToMatch(txtParams.Text);
+                r.Actions = new List<TriggerAction>(new TriggerAction[] { a });
+                if (isNew)
+                {
+                    r.Id = "r" + DateTime.UtcNow.ToString("yyyyMMddHHmmssff",
+                        CultureInfo.InvariantCulture);
+                    r.Enabled = true;
+                    List<TriggerRule> rules = _triggers.RulesSnapshot();
+                    rules.Add(r);
+                    _triggers.SetRules(rules);
+                }
+                _triggers.Save(_settings.TriggersFile);
+                RefreshTriggersList();
+                dlg.Close();
+                Status("Regla guardada (" + r.Name + ").");
+            };
+            cancel.Click += delegate { dlg.Close(); };
+
+            dlg.Controls.Add(txtParams);
+            dlg.Controls.Add(lblParams);
+            dlg.Controls.Add(cmbAction);
+            dlg.Controls.Add(lblAction);
+            dlg.Controls.Add(txtMatch);
+            dlg.Controls.Add(lblMatch);
+            dlg.Controls.Add(cmbEvent);
+            dlg.Controls.Add(lblEvent);
+            dlg.Controls.Add(txtName);
+            dlg.Controls.Add(lblName);
+            dlg.Controls.Add(btns);
+            dlg.ShowDialog(this);
+        }
+
+        /// <summary>dict → "k=v; k2=v2"</summary>
+        private static string MatchToText(Dictionary<string, object> d)
+        {
+            StringBuilder sb = new StringBuilder();
+            foreach (KeyValuePair<string, object> kv in d)
+            {
+                if (sb.Length > 0) sb.Append("; ");
+                sb.Append(kv.Key).Append('=').Append(kv.Value);
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>"k=v; k2=v2" → dict (tolerante: sin valor → "")</summary>
+        private static Dictionary<string, object> TextToMatch(string text)
+        {
+            Dictionary<string, object> d = new Dictionary<string, object>();
+            if (string.IsNullOrEmpty(text)) return d;
+            foreach (string part in text.Split(';', ';'))
+            {
+                string p = part.Trim();
+                if (p.Length == 0) continue;
+                int eq = p.IndexOf('=');
+                if (eq <= 0) continue;
+                d[p.Substring(0, eq).Trim()] = p.Substring(eq + 1).Trim();
+            }
+            return d;
+        }
+
+        private void TriggerToggleEnable()
+        {
+            if (_lvTriggers.SelectedIndices.Count == 0) { Status("Selecciona una regla."); return; }
+            string id = (string)_lvTriggers.SelectedItems[0].Tag;
+            List<TriggerRule> rules = _triggers.RulesSnapshot();
+            foreach (TriggerRule r in rules)
+            {
+                if (r.Id == id) { r.Enabled = !r.Enabled; break; }
+            }
+            _triggers.SetRules(rules);
+            _triggers.Save(_settings.TriggersFile);
+            RefreshTriggersList();
+        }
+
+        private void TriggerDelete()
+        {
+            if (_lvTriggers.SelectedIndices.Count == 0) { Status("Selecciona una regla."); return; }
+            string id = (string)_lvTriggers.SelectedItems[0].Tag;
+            List<TriggerRule> rules = _triggers.RulesSnapshot();
+            for (int i = 0; i < rules.Count; i++)
+            {
+                if (rules[i].Id == id) { rules.RemoveAt(i); break; }
+            }
+            _triggers.SetRules(rules);
+            _triggers.Save(_settings.TriggersFile);
+            RefreshTriggersList();
+            Status("Regla eliminada.");
+        }
+
+        // -------------------------------------------------- sink (ejecución) ----
+
+        /// <summary>Sink de activadores: ejecuta las acciones en el hilo de UI.</summary>
+        private sealed class TriggerSink : ITriggerSink
+        {
+            private readonly MainForm _owner;
+            public TriggerSink(MainForm owner) { _owner = owner; }
+
+            public string ExecuteTriggerAction(TriggerRule rule, TriggerAction action)
+            {
+                try
+                {
+                    return _owner.ExecuteTriggerActionCore(action);
+                }
+                catch (Exception ex)
+                {
+                    return "Error ejecutando acción " + action.Type + ": " + ex.Message;
+                }
+            }
+        }
+
+        /// <summary>Ejecuta UNA acción (hilo de UI). Devuelve mensaje de estado.</summary>
+        private string ExecuteTriggerActionCore(TriggerAction a)
+        {
+            switch (a.Type)
+            {
+                case "obs_scene":
+#if LUMINA_NET35
+                    return "OBS requiere .NET 4.8";
+#else
+                    if (_obs == null || !_obs.IsReady) return "OBS no está conectado";
+                    string scene = a.GetString("scene", a.GetString("value", string.Empty));
+                    return _obs.SetScene(scene) ? "Escena OBS: " + scene : "Fallo enviando a OBS";
+#endif
+                case "obs_source_text":
+#if LUMINA_NET35
+                    return "OBS requiere .NET 4.8";
+#else
+                    if (_obs == null || !_obs.IsReady) return "OBS no está conectado";
+                    string src = a.GetString("source", _settings.ObsTextSource);
+                    if (src.Length == 0) return "Fuente OBS sin configurar";
+                    return _obs.SetInputText(src, a.GetString("text", string.Empty))
+                        ? "Texto OBS enviado" : "Fallo enviando texto a OBS";
+#endif
+                case "play_audio":
+                    {
+                        string path = a.GetString("path", string.Empty);
+                        if (path.Length == 0 || !System.IO.File.Exists(path))
+                            return "Audio no encontrado: " + path;
+                        PlayAudioHidden(path, a.GetInt("volume", 80));
+                        return "Audio: " + System.IO.Path.GetFileName(path);
+                    }
+                case "show_text":
+                    {
+                        string text = a.GetString("text", string.Empty);
+                        ShowLowerThird(text, a.GetString("subtitle", string.Empty), a.GetInt("seconds", 6));
+                        return "Aviso en pantalla";
+                    }
+                case "set_theme":
+                    {
+                        string themeName = a.GetString("theme", string.Empty);
+                        if (themeName.Length == 0) return "Theme sin nombre";
+                        ApplyThemeByName(themeName);
+                        return "Tema: " + themeName;
+                    }
+                case "api_cmd":
+                    {
+                        if (!RequireEngine()) return "Sin núcleo";
+                        string action = a.GetString("action", "next");
+                        int st;
+                        switch (action)
+                        {
+                            case "prev": st = _engine.Prev(); break;
+                            case "clear": st = _engine.Clear(); break;
+                            case "black": st = _engine.Black(a.GetInt("on", 1) != 0); break;
+                            case "show": st = _engine.ShowSlide(a.GetInt("index", 0)); break;
+                            default: st = _engine.Next(); break;
+                        }
+                        return st == LuminaStatus.Ok ? "Comando: " + action : "Comando falló";
+                    }
+                case "midi_out":
+                    {
+                        int status = a.GetInt("status", 192);       // 0xC0 program change
+                        int d1 = a.GetInt("data1", 0);
+                        int d2 = a.GetInt("data2", 0);
+                        return MidiOutSend(status, d1, d2) ? "MIDI OUT enviado" : "MIDI OUT falló";
+                    }
+                default:
+                    return "Acción desconocida: " + a.Type;
+            }
+        }
+
+        // ---- MIDI OUT mínimo (winmm) para la acción midi_out ----
+        [System.Runtime.InteropServices.DllImport("winmm.dll", EntryPoint = "midiOutOpen")]
+        private static extern int midiOutOpen(out IntPtr handle, uint device, IntPtr callback,
+                                              IntPtr instance, uint flags);
+        [System.Runtime.InteropServices.DllImport("winmm.dll", EntryPoint = "midiOutShortMsg")]
+        private static extern int midiOutShortMsg(IntPtr handle, int message);
+        [System.Runtime.InteropServices.DllImport("winmm.dll", EntryPoint = "midiOutClose")]
+        private static extern int midiOutClose(IntPtr handle);
+
+        private IntPtr _midiOut;
+        private readonly object _midiOutLock = new object();
+
+        private bool MidiOutSend(int status, int data1, int data2)
+        {
+            lock (_midiOutLock)
+            {
+                try
+                {
+                    if (_midiOut == IntPtr.Zero)
+                    {
+                        int mmr = midiOutOpen(out _midiOut, 0, IntPtr.Zero, IntPtr.Zero, 0);
+                        if (mmr != 0) return false;
+                    }
+                    int msg = (status & 0xFF) | ((data1 & 0x7F) << 8) | ((data2 & 0x7F) << 16);
+                    return midiOutShortMsg(_midiOut, msg) == 0;
+                }
+                catch (Exception)
+                {
+                    return false;
+                }
+            }
+        }
+
+        private void CloseMidiOut()
+        {
+            lock (_midiOutLock)
+            {
+                if (_midiOut != IntPtr.Zero)
+                {
+                    try { midiOutClose(_midiOut); } catch (Exception) { }
+                    _midiOut = IntPtr.Zero;
+                }
+            }
+        }
+
+        // ------------------------------------------------ salidas (video/…) ----
+
+        /// <summary>Pantalla del proyector (la del combo En Vivo).</summary>
+        private Rectangle ProjectorScreenBounds()
+        {
+            try
+            {
+                Screen[] screens = Screen.AllScreens;
+                int idx = _cmbScreen != null && _cmbScreen.SelectedIndex >= 0 ? _cmbScreen.SelectedIndex : 0;
+                if (screens.Length == 0) return Screen.PrimaryScreen.Bounds;
+                return screens[Math.Min(idx, screens.Length - 1)].Bounds;
+            }
+            catch (Exception)
+            {
+                return Screen.PrimaryScreen.Bounds;
+            }
+        }
+
+        /// <summary>
+        /// Sincroniza las salidas extra tras cada cambio de slide: video en vivo,
+        /// monitor de escenario, texto OBS y disparo de activadores.
+        /// </summary>
+        private void SyncLiveExtras(int itemIndex)
+        {
+            // ---- ítem actual ----
+            ScenarioItem curItem = null;
+            if (_lastScenarioItems != null && itemIndex >= 0 && itemIndex < _lastScenarioItems.Count)
+                curItem = _lastScenarioItems[itemIndex];
+
+            // ---- VIDEO: interceptar ítems de video ----
+            if (curItem != null && curItem.Kind == "video" && curItem.VideoPath.Length > 0 &&
+                _currentIndex >= 0 && !_black && IsWindows())
+            {
+                if (_videoForm == null)
+                {
+                    _videoForm = new VideoPlayerForm();
+                    _videoForm.MediaEnded += OnVideoEnded;
+                }
+                if (_videoSlideIndex != _currentIndex)
+                {
+                    _videoSlideIndex = _currentIndex;
+                    bool ok = _videoForm.Play(curItem.VideoPath, ProjectorScreenBounds(),
+                        loop: false, volume0to100: 100);
+                    Status(ok ? "Reproduciendo video: " + System.IO.Path.GetFileName(curItem.VideoPath)
+                              : "El video no pudo iniciarse (¿Windows Media Player?).");
+                }
+            }
+            else
+            {
+                StopVideo();
+            }
+
+            // ---- escenario (monitor) ----
+            UpdateStageView(curItem);
+
+            // ---- texto OBS en vivo ----
+            if (_settings.ObsTextSource.Length > 0)
+            {
+                ObsSendLiveText(BuildLiveText());
+            }
+
+            // ---- activadores ----
+            if (_triggers != null && _settings.TriggersEnabled)
+            {
+                Dictionary<string, object> ctx = new Dictionary<string, object>();
+                ctx["index"] = _currentIndex;
+                ctx["item"] = itemIndex;
+                if (curItem != null)
+                {
+                    ctx["kind"] = curItem.Kind;
+                    ctx["title"] = curItem.Title;
+                    ctx["path"] = curItem.Kind == "video" ? curItem.VideoPath : curItem.ImagePath;
+                }
+                _triggers.Fire("slide_changed", ctx);
+                if (curItem != null)
+                {
+                    _triggers.Fire("item_changed", ctx);
+                    if (curItem.Kind == "song" && _lastItemIndex != itemIndex)
+                        _triggers.Fire("song_started", ctx);
+                }
+            }
+            _lastItemIndex = itemIndex;
+        }
+
+        private int _lastItemIndex = -1;
+
+        private void StopVideo()
+        {
+            if (_videoForm != null && _videoSlideIndex >= 0)
+            {
+                _videoForm.StopAndHide();
+                _videoSlideIndex = -1;
+            }
+        }
+
+        private void OnVideoEnded(object sender, EventArgs e)
+        {
+            try
+            {
+                BeginInvoke(new SendOrPostCallback(delegate
+                {
+                    string path = _videoForm != null ? _videoForm.CurrentPath : string.Empty;
+                    // activador video_ended
+                    if (_triggers != null && _settings.TriggersEnabled)
+                    {
+                        Dictionary<string, object> ctx = new Dictionary<string, object>();
+                        ctx["item"] = _lastItemIndex;
+                        ctx["path"] = path;
+                        ctx["title"] = System.IO.Path.GetFileName(path);
+                        _triggers.Fire("video_ended", ctx);
+                    }
+                    if (_settings.AutoAdvanceVideo && _videoSlideIndex >= 0 && RequireEngine())
+                    {
+                        _videoSlideIndex = -1;
+                        _engine.Next();   // avance automático
+                    }
+                    else
+                    {
+                        StopVideo();
+                    }
+                }), null);
+            }
+            catch (Exception) { }
+        }
+
+        /// <summary>Monitor de escenario: abre en la pantalla configurada.</summary>
+        private void OpenStageView()
+        {
+            if (!IsWindows()) { Status("El monitor de escenario requiere Windows."); return; }
+            if (_stageForm == null || _stageForm.IsDisposed)
+                _stageForm = new StageViewForm();
+            Screen[] screens = Screen.AllScreens;
+            int idx = Math.Max(0, Math.Min(_settings.StageScreen, screens.Length - 1));
+            _stageForm.OpenOn(screens[idx]);
+            UpdateStageView(null);
+            Status("Monitor de escenario abierto (pantalla " + idx + "). Escape para cerrar.");
+        }
+
+        private void UpdateStageView(ScenarioItem curItem)
+        {
+            if (_stageForm == null || _stageForm.IsDisposed || !_stageForm.Visible) return;
+            List<string> cur = new List<string>();
+            if (_currentIndex >= 0 && _currentIndex < _slides.Count)
+                cur = _slides[_currentIndex].Lines;
+            List<string> next = new List<string>();
+            if (_currentIndex + 1 < _slides.Count)
+                next = _slides[_currentIndex + 1].Lines;
+            string refLabel = _currentIndex >= 0 && _currentIndex < _slides.Count
+                ? _slides[_currentIndex].RefLabel : string.Empty;
+            string nextItemTitle = string.Empty;
+            if (_lastScenarioItems != null && curItem != null)
+            {
+                int nextIdx = _lastItemIndex + 1;
+                if (nextIdx >= 0 && nextIdx < _lastScenarioItems.Count)
+                    nextItemTitle = _lastScenarioItems[nextIdx].Title;
+            }
+            _stageForm.SetState(curItem != null ? curItem.Title : string.Empty,
+                nextItemTitle, refLabel, cur, next);
+        }
+
+        /// <summary>Muestra el zócalo (avisos/acciones show_text).</summary>
+        private void ShowLowerThird(string line1, string line2, int seconds)
+        {
+            if (!IsWindows()) { Status("El zócalo requiere Windows."); return; }
+            if (_lowerThird == null || _lowerThird.IsDisposed)
+                _lowerThird = new LowerThirdsOverlay();
+            _lowerThird.Show(line1, line2, ProjectorScreenBounds(), seconds);
+            Status("Zócalo: " + line1);
+        }
+
+        /// <summary>Audio oculto (acción play_audio) vía el mismo WMP late-bound.</summary>
+        private void PlayAudioHidden(string path, int volume)
+        {
+            if (!IsWindows()) return;
+            if (_audioForm == null)
+            {
+                _audioForm = new VideoPlayerForm();
+                _audioForm.Visible = false;   // nunca se muestra
+            }
+            _audioForm.PlayAudio(path, volume);
+        }
+
+        private VideoPlayerForm _audioForm;
+
+        /// <summary>Aplica un tema por nombre desde data\themes (acción set_theme).</summary>
+        private void ApplyThemeByName(string name)
+        {
+            try
+            {
+                string dir = System.IO.Path.Combine(_settings.DataDir, "themes");
+                string file = System.IO.Path.Combine(dir, SafeThemeFileName(name) + ".json");
+                if (!System.IO.File.Exists(file))
+                {
+                    Status("Tema no encontrado: " + name);
+                    return;
+                }
+                Dictionary<string, object> o = MiniJson.Parse(
+                    System.IO.File.ReadAllText(file, new UTF8Encoding(false)));
+                _theme = Theme.FromDict(o);
+                if (_engine != null) _engine.SetTheme(MiniJson.Serialize(_theme.ToDict()));
+                _settings.ThemeJson = MiniJson.Serialize(_theme.ToDict());
+                _settings.Theme = _theme.Name;
+                SaveSettings();
+                ApplyThemeToControls();
+                Status("Tema aplicado: " + _theme.Name);
+            }
+            catch (Exception ex)
+            {
+                Status("No se pudo aplicar el tema: " + ex.Message);
+            }
         }
 
         /* ======================================================================
@@ -2437,11 +3756,18 @@ namespace lumina.ui
             _slides.AddRange(ScenarioBuilder.FlattenScenario(json,
                 delegate(string songJson) { return LuminaEngine.SongParse(songJson); }));
             if (_api != null) _api.SetSlideCatalog(_slides);
+            if (_remote != null) _remote.SetSlideCatalog(_slides);   // v5.0.0: mando remoto
+            StopVideo();                                            // escenario nuevo: sin video activo
             // Recordar el escenario activo: «Aplicar tema» lo reconstruye tal cual.
             _lastScenarioItems = new List<ScenarioItem>(items);
             _lastScenarioName = name;
             RefreshLiveList();
             NavigateToIndex(0);
+            if (_lblExportInfo != null)
+            {
+                _lblExportInfo.Text = "Escenario activo: «" + name + "» — " + _slides.Count +
+                    " diapositiva(s) listas para exportar (página Exportar).";
+            }
             Status("Escenario «" + name + "» cargado: " + _slides.Count + " slide(s).");
         }
 
@@ -2778,6 +4104,144 @@ namespace lumina.ui
             }
         }
 
+        /// <summary>
+        /// v5.0.0: importa una Biblia ZEFania XML (estándar Holyrics/OpenLP:
+        /// RVR1960…) vía parser streaming propio → filas → misma tabla bible.
+        /// </summary>
+        private void ImportZefaniaXml()
+        {
+            if (!RequireEngine()) return;
+            using (OpenFileDialog dlg = new OpenFileDialog())
+            {
+                dlg.Title = "Importar Biblia ZEFania XML";
+                dlg.Filter = "Biblia ZEFania (*.xml)|*.xml|Todos los archivos (*.*)|*.*";
+                if (dlg.ShowDialog(this) != DialogResult.OK) return;
+
+                ZefaniaResult res;
+                try
+                {
+                    res = ZefaniaBible.Parse(dlg.FileName, null);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(this, "El XML no se pudo leer: " + ex.Message, "Importar",
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                if (res.Verses.Count == 0)
+                {
+                    MessageBox.Show(this,
+                        "No se encontraron versículos.\n\n" +
+                        "El formato esperado es ZEFania XML:\n" +
+                        "  <XMLBIBLE biblename=\"…\">\n" +
+                        "    <BIBLEBOOK bnumber=\"1\" …><CHAPTER cnumber=\"1\">\n" +
+                        "      <VERSE vnumber=\"1\">texto…</VERSE>",
+                        "Importar ZEFania", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                string version = res.VersionName.Length > 0 ? res.VersionName : "Zefania";
+                MessageBox.Show(this,
+                    "Biblia ZEFania validada:\n" +
+                    "  Versión: " + version + "\n" +
+                    "  Libros: " + res.BookCount + "\n" +
+                    "  Versículos: " + res.Verses.Count + "\n" +
+                    "  Filas descartadas: " + res.SkippedRows,
+                    "Importar ZEFania", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+                if (MessageBox.Show(this, "¿Insertar esta biblia en la base de datos?",
+                        "Importar ZEFania", MessageBoxButtons.YesNo, MessageBoxIcon.Question)
+                    != DialogResult.Yes) return;
+                if (!RequireDb()) return;
+
+                // Filas en el mismo contrato que InsertBibleRows:
+                // [version, book, chapter, verse, text]
+                List<object> rows = new List<object>(res.Verses.Count);
+                foreach (ZefaniaVerse v in res.Verses)
+                {
+                    List<object> row = new List<object>(5);
+                    row.Add(version);
+                    row.Add(v.Book);
+                    row.Add(v.Chapter);
+                    row.Add(v.Verse);
+                    row.Add(v.Text);
+                    rows.Add(row);
+                }
+                InsertBibleRows(version, rows, res.Verses.Count);
+            }
+        }
+
+        /// <summary>Aviso manual (lower third) desde En Vivo.</summary>
+        private void ShowLowerThirdDialog()
+        {
+            using (Form dlg = new Form())
+            {
+                dlg.Text = "Aviso en pantalla (zócalo)";
+                dlg.StartPosition = FormStartPosition.CenterParent;
+                dlg.FormBorderStyle = FormBorderStyle.FixedDialog;
+                dlg.MinimizeBox = dlg.MaximizeBox = false;
+                dlg.ClientSize = new Size(460, 170);
+                dlg.Font = UiTheme.Body;
+                dlg.BackColor = UiTheme.PageBg;
+                dlg.ForeColor = UiTheme.TextPrimary;
+
+                Label l1 = UiTheme.MkLabel("Línea principal:", UiTheme.TextSecondary, UiTheme.Small, true);
+                l1.Dock = DockStyle.Top; l1.Height = 20;
+                TextBox t1 = UiTheme.MkInput(false);
+                t1.Dock = DockStyle.Top;
+                Label l2 = UiTheme.MkLabel("Línea secundaria (opcional):", UiTheme.TextSecondary, UiTheme.Small, true);
+                l2.Dock = DockStyle.Top; l2.Height = 20;
+                TextBox t2 = UiTheme.MkInput(false);
+                t2.Dock = DockStyle.Top;
+
+                FlowLayoutPanel btns = new FlowLayoutPanel();
+                btns.Dock = DockStyle.Bottom;
+                btns.Height = 46;
+                btns.Padding = new Padding(0, 10, 0, 0);
+                Button ok = UiTheme.MkButton("Mostrar", "primary", delegate
+                {
+                    if (t1.Text.Trim().Length == 0) { dlg.Close(); return; }
+                    ShowLowerThird(t1.Text.Trim(), t2.Text.Trim(), 8);
+                    dlg.Close();
+                });
+                ok.Width = 120;
+                Button hide = UiTheme.MkButton("Ocultar zócalo", "secondary", delegate
+                {
+                    if (_lowerThird != null) _lowerThird.HideNow();
+                    dlg.Close();
+                });
+                hide.Width = 130;
+                btns.Controls.Add(ok);
+                btns.Controls.Add(hide);
+
+                dlg.Controls.Add(t2);
+                dlg.Controls.Add(l2);
+                dlg.Controls.Add(t1);
+                dlg.Controls.Add(l1);
+                dlg.Controls.Add(btns);
+                dlg.ShowDialog(this);
+            }
+        }
+
+        /// <summary>v5.0.0: agrega un ítem de VIDEO al culto (reproducción en la salida).</summary>
+        private void AddVideoItemToService()
+        {
+            using (OpenFileDialog dlg = new OpenFileDialog())
+            {
+                dlg.Title = "Agregar video al culto";
+                dlg.Filter = "Video (*.mp4;*.wmv;*.avi;*.m4v)|*.mp4;*.wmv;*.avi;*.m4v|" +
+                             "Todos los archivos (*.*)|*.*";
+                if (dlg.ShowDialog(this) != DialogResult.OK) return;
+                ScenarioItem it = new ScenarioItem();
+                it.Kind = "video";
+                it.Title = "Video: " + Path.GetFileName(dlg.FileName);
+                it.VideoPath = dlg.FileName;
+                _serviceItems.Add(it);
+                RefreshServiceList();
+                Status("Video agregado al culto: " + it.Title);
+            }
+        }
+
         /// <summary>INSERT por lotes en transacción (BEGIN/COMMIT vía lumina_db_exec).</summary>
         private void InsertBibleRows(string version, List<object> rows, long expectedVerses)
         {
@@ -2850,6 +4314,16 @@ namespace lumina.ui
             _txtToken.Text = _settings.ApiToken;
             _txtVersion.Text = _settings.LastBibleVersion;
             _txtDbPath.Text = Path.Combine(_settings.DataDir, "lumina.db");
+            // v5.0.0: integraciones
+            _txtObsUrl.Text = _settings.ObsUrl;
+            _txtObsPassword.Text = _settings.ObsPassword;
+            _txtObsTextSource.Text = _settings.ObsTextSource;
+            _chkObsAutoConnect.Checked = _settings.ObsAutoConnect;
+            _chkRemoteEnabled.Checked = _settings.RemoteEnabled;
+            _numRemotePort.Value = _settings.RemotePort;
+            _txtRemoteToken.Text = _settings.RemoteToken;
+            _chkMidiEnabled.Checked = _settings.MidiEnabled;
+            _chkAutoAdvanceVideo.Checked = _settings.AutoAdvanceVideo;
             // Tema persistido (v4.1.0): JSON completo en settings.json.
             if (_settings.ThemeJson.Length > 0)
             {
@@ -2991,6 +4465,17 @@ namespace lumina.ui
             {
                 _closing = true;
                 try { SaveSettings(); } catch (Exception) { /* no bloquear el cierre */ }
+                StopVideo();
+                if (_videoForm != null) { try { _videoForm.Dispose(); } catch (Exception) { } _videoForm = null; }
+                if (_audioForm != null) { try { _audioForm.Dispose(); } catch (Exception) { } _audioForm = null; }
+                if (_stageForm != null) { try { _stageForm.Close(); } catch (Exception) { } _stageForm = null; }
+                if (_lowerThird != null) { try { _lowerThird.Dispose(); } catch (Exception) { } _lowerThird = null; }
+                StopMidi();
+                CloseMidiOut();
+                StopRemote();
+#if !LUMINA_NET35
+                if (_obs != null) { try { _obs.Dispose(); } catch (Exception) { } _obs = null; }
+#endif
                 if (_api != null) { try { _api.Dispose(); } catch (Exception) { } _api = null; }
                 if (_engine != null) { try { _engine.Dispose(); } catch (Exception) { } _engine = null; }
             }
