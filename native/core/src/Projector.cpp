@@ -168,7 +168,7 @@ void Projector::WindowLoop() {
         WNDCLASSW wc = {0};
         wc.lpfnWndProc = &Projector::WndProcThunk;
         wc.hInstance = GetModuleHandleW(nullptr);
-        wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+        wc.hCursor = LoadCursorW(nullptr, reinterpret_cast<LPCWSTR>(IDC_ARROW));
         wc.hbrBackground = nullptr;
         wc.lpszClassName = kProjClassName;
         return RegisterClassW(&wc);
