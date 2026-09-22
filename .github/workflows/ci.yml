@@ -431,7 +431,7 @@ jobs:
           cmake --build blaunch --config Release --parallel $env:NUMBER_OF_PROCESSORS
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Armar layout portable (v5.1.0: net48\ + net35\ + raíz compartida)
+      - name: 'Armar layout portable v5.1.0 (net48 + net35 + raíz compartida)'
         shell: pwsh
         run: |
           $stage = "staging/LuminaPresentation-${{ matrix.arch }}"
