@@ -31,6 +31,18 @@ import argparse
 import struct
 import sys
 
+# Salida ASCII-segura: las consolas Windows (cp1252) rompen con caracteres
+# fuera de la página de código — un gate de CI JAMÁS debe morir imprimiendo
+# su propio diagnóstico (lección del run 35787056854: UnicodeEncodeError al
+# imprimir «←» ocultó qué API era la culpable).
+try:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(errors="replace")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(errors="replace")
+except Exception:
+    pass
+
 # ---------------------------------------------------------------------------
 # APIs que NO existen en Windows 7 SP1 (aparecen en Win8 o Win10).
 # Mantener ALFABÉTICO. Antes de añadir una, verificar contra la doc del SDK
@@ -210,7 +222,7 @@ def check_file(path, expect_bits=None):
         # saca de la tabla estática), pero por si acaso lo toleramos arriba.
         if bad:
             for f in bad:
-                print("   !! %s ! %s  ← NO existe en Win7 SP1 (Win8+/Win10+)"
+                print("   !! %s ! %s  <- NO existe en Win7 SP1 (Win8+/Win10+)"
                       % (dll, f))
             failures += 1
         else:
