@@ -13,6 +13,8 @@
 #include "Utf8.h"
 
 #include <windows.h>
+#include <objbase.h>   // macro `interface` — requerida por GdiplusImaging.h
+#include <objidl.h>    // IStream
 #include <gdiplus.h>
 
 #include <algorithm>
