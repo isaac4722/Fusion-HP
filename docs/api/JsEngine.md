@@ -61,9 +61,23 @@ HTTP, temporizadores, acciones sobre la app y suscripción a eventos.
 | `Log` | `JsLogRing` | Registro visible (persiste entre recargas). |
 | `Dispose()` | — | Suelta conexiones/callbacks ANTES de cerrar el motor (orden seguro). |
 
-Orden canónico de arranque del motor COM:
+Orden de arranque del motor COM (LECCIÓN DEFINITIVA del ciclo — 9
+experimentos documentados en `progress.md`):
 `SetScriptSite → InitNew → AddNamedItem("jslib") → Started →
-ParseScriptText(preludio + módulos) → Connected → GetScriptDispatch`.
+ParseScriptText(preludio) → Connected → GetScriptDispatch(null) →
+inyección del global «jslib» → ParseScriptText(módulos)`.
+
+**Cómo entra el host al script**: el JScript real nunca resolvió el ítem
+por `GetItemInfo` en ninguna configuración (ISVISIBLE/GLOBALMEMBERS/
+contexto de ítem/antes-después de Started: quedaba como VT_UNKNOWN opaco
+→ «Function expected»), y su IDispatchEx rechaza `AddField`. La vía que
+funciona: `ParseScriptText("var jslib = null;")` crea el miembro y
+`InvokeMember("jslib", SetProperty)` sobre el dispatch global lo fija con
+el host como **VT_DISPATCH** (CCW `AutoDual` con IDispatch+TypeInfo) —
+JScript resuelve los miembros de los VT_DISPATCH por `GetIDsOfNames`
+(exactamente como `ActiveXObject("ADODB…")` en WSH). Los módulos se
+parsean CONECTADOS ya con «jslib» visible (inyección dinámica
+post-conexión, patrón legítimo de `IActiveScriptParse`).
 
 ## 4. Public API — JsLibHost (el objeto `jslib` de JS)
 

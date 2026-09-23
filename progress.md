@@ -964,3 +964,46 @@ modular §1.2, teclado + foco visible §1.3, WCAG 2.2 §2, animaciones ≤ 160ms
 - Siguiente: push → tag v6.1.0-beta.1 → CI verde (los gates Windows-validan
   el motor COM REAL: selfcheck paso 5, uicheck con la tarjeta nueva) →
   release BETA «GUION» con zips + SHA256SUMS.
+
+---
+## [v6.1.0-GUION-CIERRE] JSLib verde en CI + release «GUION» publicada · 2026-09-24 UTC
+- Agente: Super Z (principal, GLM)
+- Hecho:
+  - El gate --selfcheck del paquete (CI Windows) ejercitó el motor IActiveScript
+    REAL: auto.js cargó y llamó log/onEvent+jsonParse/cmd/showText/setTimeout
+    asíncrono/clearTimeout, roto.js reportó «archivo:línea» y el setTimeout
+    disparó bombeando el dispatcher. Runs 35912819143 (main) y 35912822061
+    (tag) 100% verdes: native x86/x64 + Linux, capa C# 0/0, tests 23/23,
+    interop 12/12, selfcheck+uicheck+flowcheck AMBAS variantes, Win7-imports,
+    verify_portable, contenido completo.
+  - **Release v6.1.0-beta.1 «GUION» PUBLICADA** (prerelease): zips win-x86
+    (3,1 MB) y win-x64 (3,5 MB) + SHA256SUMS.txt.
+  - 9 experimentos documentados (uno por run fallido, cada uno con diagnóstico
+    accionable del gate): (1) IID de IActiveScriptParse POR ARQUITECTURA
+    (DWORD_PTR → BB1A2AE2 en x86 / C7EF7658 en x64 — fuente activscp.idl);
+    (2) GetScriptDispatch con [MarshalAs(IDispatch)] («out object» a secas se
+    marshala como VARIANT* → InvalidOleVariantType); (3) host AutoDispatch sin
+    TypeInfo → JScript opaco; (4) interfaz dual explícita — aún opaco porque el
+    JScript real NUNCA llamó a GetItemInfo (traza vacía con ISVISIBLE,
+    GLOBALMEMBERS, contexto de ítem y antes/después de Started — GetScriptDispatch
+    sí encontraba el ítem: existía pero quedaba VT_UNKNOWN); (5) GLOBALMEMBERS
+    no publica miembros; (6) contexto de ítem: «this» es el objeto de script
+    del ítem, no el host; (7) API global vía GLOBALMEMBERS tampoco; (8)
+    IExpando.AddField rechazado («IDispatchEx does not support adding fields»);
+    (9) **LA VÍA**: crear el global con código («var jslib = null;») y fijarlo
+    con InvokeMember SetProperty sobre el dispatch global — el binder COM lo
+    traduce a DISPATCH_PROPERTYPUT con el host como VT_DISPATCH (CCW AutoDual
+    con IDispatch+TypeInfo) y JScript resuelve los miembros por GetIDsOfNames
+    (como ActiveXObject en WSH). VERDE.
+- Decisiones: JsEngine.md actualizado con el mecanismo real y las lecciones;
+  la API de script es «jslib.xxx(...)» (el prefijo documentado del diseño
+  original); sondas y traza GetItemInfo se conservan en el selfcheck como
+  diagnóstico permanente del interop.
+- Gates finales: build 0/0 (net35+net48+net8+WPF) · selftest 164/164 ·
+  poc 52/52 (6.1) · PoC.Managed 12/12 · tests 23/23 · CI: TODOS los jobs
+  (clrhost sigue informativo-fallo como en v6.0.0, no bloqueante).
+- Bloqueos: ninguno.
+- Siguiente: el spec §3.3 queda COMPLETO en código; quedan solo los ítems
+  bloqueados por credenciales del propietario (PCO/Drive OAuth, firma de
+  código) y los diferidos de diseño (codecs mkv/webm, verificación visual de
+  transiciones en GUI real).
