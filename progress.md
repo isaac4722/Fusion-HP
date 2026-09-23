@@ -781,3 +781,25 @@ modular §1.2, teclado + foco visible §1.3, WCAG 2.2 §2, animaciones ≤ 160ms
 - Siguiente: commit → push main → CI (8 jobs) → tag v5.4.0-beta.1 → BETA
   publicada como pre-release + conversión de las 10 releases históricas a
   BETAS vía API.
+
+## 2026-09-23 — CIERRE verificado de v5.4.0-beta.1 «ESTUDIO» (BETA)
+
+- Fixes del ciclo (3 iteraciones de CI, cada uno con lección registrada):
+  1. `Aux/` → `AuxForms/`: **AUX es un nombre de dispositivo reservado en
+     Windows** — el checkout de los runners fallaba con «error: invalid path».
+  2. Paso «Preparar artefacto managed»: rutas del net48 apuntando a Lumina.UI
+     → corregidas a Lumina.WPF (los Publish-Wpf ya daban PE x86/x64 OK).
+  3. Handler XAML `OnHeaderProjectorClick` inexistente en el code-behind:
+     los Click de WPF se resuelven en RUNTIME (el compilador NO los valida) —
+     lo atrapó el gate `--uicheck` del paquete, exactamente para lo que existe.
+     Añadida auditoría `scripts/audit_xaml_handlers.py` (0 faltantes) + gates
+     salen por `Environment.Exit` (corta hilos de integración y evita el AV de
+     teardown tras excepción — lección WinForms v5.1.1).
+- Gates del run del tag 35810380507 (paquete WPF, x86 y x64):
+  selfcheck 0/0 ×2 · uicheck 0/0 ×2 · flowcheck 0/0 ×2 · verify_portable OK
+  (11 binarios PE, exports contractuales) · WIN7-IMPORTS PASS · interop
+  «POC PASS 12/12» ×2 · CLR-host informativo (pre-existing, no bloquea).
+- **BETA publicada**: https://github.com/isaac4722/Fusion-HP/releases/tag/v5.4.0-beta.1
+  (prerelease=true, zips x86/x64 + SHA256SUMS).
+- Las 18 releases históricas convertidas a BETA vía API (prerelease=true +
+  «— BETA» en el título + nota de política de betas).
