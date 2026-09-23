@@ -6,7 +6,8 @@
 //  gates de humo del paquete portable (contrato heredado de la era WinForms):
 //
 //    --selfcheck : arranque SIN ventanas que valida el proceso completo
-//                  (núcleo + BD temporal + parsers + exportadores) → 0/2.
+//                  (núcleo + BD temporal + parsers + exportadores + motor
+//                  de scripts JSLib vía IActiveScript/JScript) → 0/2.
 //    --uicheck   : construcción headless de la ventana principal completa
 //                  (XAML incluido: un recurso roto NO puede publicarse) → 0/3.
 //    --flowcheck : flujos reales de usuario (modo limitado + flujo feliz
@@ -16,7 +17,9 @@
 //  con la causa y la ruta del log (data\logs\lumina-*.log).
 // ============================================================================
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -25,6 +28,7 @@ using System.Windows;
 using System.Windows.Threading;
 using lumina.bridge;
 using lumina.core;
+using lumina.wpf.scripting;
 
 namespace lumina.wpf
 {
@@ -211,6 +215,104 @@ namespace lumina.wpf
                 failures++;
             }
 
+            // 5) Motor de scripts JSLib (v6.1.0 «GUION»): gate REAL de
+            //    IActiveScript/JScript — crea el motor COM de Windows, evalúa
+            //    módulos (incluido uno roto), invoca funciones globales,
+            //    recibe eventos onEvent con payload JSON y dispara un
+            //    setTimeout asíncrono bombeando el dispatcher del hilo.
+            try
+            {
+                string jsDir = Path.Combine(Path.GetTempPath(),
+                    "lumina-selfcheck-js-" + Guid.NewGuid().ToString("N").Substring(0, 8));
+                Directory.CreateDirectory(jsDir);
+                try
+                {
+                    File.WriteAllText(Path.Combine(jsDir, "auto.js"),
+                        SelfcheckJsModule, new UTF8Encoding(false));
+                    File.WriteAllText(Path.Combine(jsDir, "roto.js"),
+                        "function roto( {", new UTF8Encoding(false));
+
+                    List<string> cmds = new List<string>();
+                    List<string> avisos = new List<string>();
+                    SelfcheckJsSink sink = new SelfcheckJsSink(cmds, avisos);
+                    using (JsEngine js = JsEngine.Create(
+                        System.Windows.Threading.Dispatcher.CurrentDispatcher, sink))
+                    {
+                        bool allOk = js.LoadModules(jsDir);
+                        if (allOk)
+                            throw new InvalidOperationException(
+                                "LoadModules debió fallar por roto.js");
+                        if (!js.LoadedModules().Contains("auto.js"))
+                            throw new InvalidOperationException(
+                                "auto.js no cargó: " + JoinLines(js.Errors()));
+                        List<string> errs = js.Errors();
+                        if (errs.Count == 0 ||
+                            errs[0].IndexOf("roto.js", StringComparison.Ordinal) < 0 ||
+                            errs[0].IndexOf("roto.js:", StringComparison.Ordinal) < 0)
+                            throw new InvalidOperationException(
+                                "el error de roto.js no llegó con archivo:línea: " +
+                                JoinLines(errs));
+
+                        object ping = js.CallGlobal("scPing", "eco");
+                        if (!string.Equals(Convert.ToString(ping, CultureInfo.InvariantCulture),
+                                            "eco-eco", StringComparison.Ordinal))
+                            throw new InvalidOperationException(
+                                "scPing devolvió: " + ping);
+
+                        js.FireEvent("sc_evento", "{\"saludo\":\"hola\"}");
+                        object count = js.CallGlobal("scCount");
+                        if (Convert.ToInt32(count, CultureInfo.InvariantCulture) != 1)
+                            throw new InvalidOperationException(
+                                "onEvent no llegó: scCount=" + count);
+                        object last = js.CallGlobal("scLastEvent");
+                        if (!string.Equals(Convert.ToString(last, CultureInfo.InvariantCulture),
+                                            "hola", StringComparison.Ordinal))
+                            throw new InvalidOperationException(
+                                "payload JSON no parseado: " + last);
+
+                        if (cmds.Count == 0 || cmds[0] != "next")
+                            throw new InvalidOperationException(
+                                "cmd('next') no llegó al sink: " + JoinLines(cmds));
+                        if (avisos.Count == 0)
+                            throw new InvalidOperationException(
+                                "showText no llegó al sink");
+
+                        bool sawLog = false;
+                        foreach (string l in js.Log.Snapshot())
+                        {
+                            if (l.IndexOf("módulo cargado", StringComparison.Ordinal) >= 0)
+                            {
+                                sawLog = true;
+                                break;
+                            }
+                        }
+                        if (!sawLog)
+                            throw new InvalidOperationException(
+                                "jslib.log no llegó al registro");
+
+                        // setTimeout asíncrono REAL ( ThreadPool → dispatcher )
+                        // + verificación de que el cancelado NO disparó.
+                        PumpDispatcherFrames(1200);
+                        count = js.CallGlobal("scCount");
+                        if (Convert.ToInt32(count, CultureInfo.InvariantCulture) != 2)
+                            throw new InvalidOperationException(
+                                "setTimeout asíncrono falló (o el cancelado disparó): "
+                                + count);
+                    }
+                    Console.WriteLine("selfcheck: JSLib IActiveScript OK");
+                }
+                finally
+                {
+                    try { Directory.Delete(jsDir, true); } catch (Exception) { }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("selfcheck FALLO JSLib: " + ex.Message);
+                LogLine("selfcheck FALLO JSLib: " + ex);
+                failures++;
+            }
+
             if (engine != null) { try { engine.Dispose(); } catch (Exception) { } }
 
             Console.WriteLine(failures == 0
@@ -218,6 +320,71 @@ namespace lumina.wpf
                 : "SELFCHECK FAIL (" + failures + " fallo/s)");
             LogLine(failures == 0 ? "SELFCHECK PASS" : "SELFCHECK FAIL(" + failures + ")");
             return failures == 0 ? 0 : 2;
+        }
+
+        private static string JoinLines(List<string> lines)
+        {
+            return lines == null || lines.Count == 0 ? "(vacío)" : string.Join(" | ", lines.ToArray());
+        }
+
+        /// <summary>Módulo de autoprueba del motor (evaluado de verdad por
+        /// IActiveScript en el runner de Windows — ve el jslib COMPLETO).</summary>
+        private const string SelfcheckJsModule =
+            "// auto.js del selfcheck — módulo de autoprueba del JSLib (v6.1.0)\r\n" +
+            "var scHits = 0;\r\n" +
+            "var scLast = '';\r\n" +
+            "function scPing(s) { return s + '-' + s; }\r\n" +
+            "function scCount() { return scHits; }\r\n" +
+            "function scLastEvent() { return scLast; }\r\n" +
+            "jslib.log('selfcheck: módulo cargado');\r\n" +
+            "jslib.onEvent('sc_evento', function (data) {\r\n" +
+            "    scHits = scHits + 1;\r\n" +
+            "    scLast = jsonParse(data).saludo;\r\n" +
+            "});\r\n" +
+            "jslib.cmd('next');\r\n" +
+            "jslib.showText('Aviso del selfcheck JSLib', 2);\r\n" +
+            "jslib.setTimeout(120, function () { scHits = scHits + 1; });\r\n" +
+            "var scCancelado = jslib.setTimeout(60000, function () { scHits = 100; });\r\n" +
+            "jslib.clearTimeout(scCancelado);\r\n";
+
+        /// <summary>Sink del selfcheck: registra cmd/showText para aserciones.</summary>
+        private sealed class SelfcheckJsSink : IJsLibSink
+        {
+            private readonly List<string> _cmds;
+            private readonly List<string> _avisos;
+            internal SelfcheckJsSink(List<string> cmds, List<string> avisos)
+            {
+                _cmds = cmds;
+                _avisos = avisos;
+            }
+            public string Command(string action, int index)
+            {
+                lock (_cmds) { _cmds.Add(action); }
+                return "cmd:" + action;
+            }
+            public void ShowText(string text, int seconds)
+            {
+                lock (_avisos) { _avisos.Add(text); }
+            }
+            public void Notify(string title, string text)
+            {
+                // El registro destacado ya queda en el ring del motor.
+            }
+        }
+
+        /// <summary>Bombea el dispatcher del hilo actual durante totalMs para
+        /// que los callbacks asíncronos (setTimeout/httpGet/tcp/ws) aterricen
+        /// en el hilo del motor — mismo mecanismo de producción (hilo de UI).</summary>
+        private static void PumpDispatcherFrames(int totalMs)
+        {
+            Dispatcher d = Dispatcher.CurrentDispatcher;
+            DispatcherFrame frame = new DispatcherFrame();
+            DispatcherTimer exit = new DispatcherTimer(
+                TimeSpan.FromMilliseconds(totalMs), DispatcherPriority.Background,
+                delegate(object s, EventArgs e) { frame.Continue = false; }, d);
+            exit.Start();
+            Dispatcher.PushFrame(frame);
+            exit.Stop();
         }
 
         /* ------------------------------------------------------------- uicheck */
