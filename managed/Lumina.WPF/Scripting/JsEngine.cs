@@ -157,32 +157,38 @@ namespace lumina.wpf.scripting
                 _com.GetScriptDispatch(null, out globals);
                 _globals = globals;
 
-                // INYECCIÓN del host como variable global «jslib» vía
-                // IExpando/IDispatchEx (LECCIÓN DEFINITIVA del ciclo — octavo
-                // experimento): el JScript real NUNCA llamó a GetItemInfo (ni
-                // con ISVISIBLE, ni GLOBALMEMBERS, ni contexto de ítem, ni
-                // antes/después de Started) — el ítem quedaba como VT_UNKNOWN
-                // opaco y «jslib.log» no era función. La vía canónica del
-                // interop .NET↔JScript: el global del motor es un objeto
-                // EXPANDO (IDispatchEx) — AddField crea el miembro «jslib» y
-                // SetValue lo fija con el host como VT_DISPATCH (CCW con
-                // IDispatch+TypeInfo AutoDual) — JScript envuelve los
-                // VT_DISPATCH y los miembros SE RESUELVEN por GetIDsOfNames
-                // (igual que ActiveXObject("ADODB…") funciona en WSH). La
-                // inyección ocurre ANTES de parsear los módulos para que estos
-                // ya vean «jslib».
-                System.Runtime.InteropServices.Expando.IExpando expando =
-                    _globals as System.Runtime.InteropServices.Expando.IExpando;
-                if (expando != null)
+                // INYECCIÓN del host como variable global «jslib» (LECCIÓN
+                // DEFINITIVA del ciclo — noveno experimento): el JScript real
+                // NUNCA llama a GetItemInfo (ítems VT_UNKNOWN opacos) y su
+                // IDispatchEx rechaza AddField («IDispatchEx does not support
+                // adding fields»). La vía que SÍ funciona: crear el miembro con
+                // código («var jslib = null;») y fijarlo desde .NET con
+                // InvokeMember SetProperty sobre el dispatch global — el binder
+                // COM lo traduce a DISPATCH_PROPERTYPUT con el host como
+                // VT_DISPATCH (CCW AutoDual con IDispatch+TypeInfo), y JScript
+                // resuelve los miembros de los VT_DISPATCH por GetIDsOfNames
+                // (como ActiveXObject("ADODB…") en WSH). Todo ANTES de parsear
+                // los módulos para que estos ya vean «jslib».
+                ParseText("var jslib = null;", "(setup)");
+                try
                 {
-                    System.Reflection.FieldInfo jsField = expando.AddField("jslib");
-                    jsField.SetValue(_globals, _host);
-                    _log.Add("host «jslib» inyectado como global (IExpando)");
+                    _globals.GetType().InvokeMember("jslib",
+                        BindingFlags.SetProperty, null, _globals, new object[] { _host });
+                    _log.Add("host «jslib» fijado como global (SetProperty)");
                 }
-                else
+                catch (Exception exSet)
                 {
-                    _log.Add("aviso: el global no es expando (sin IExpando) — "
-                        + "la inyección «jslib» no se hizo");
+                    try
+                    {
+                        _globals.GetType().InvokeMember("jslib",
+                            BindingFlags.SetField, null, _globals, new object[] { _host });
+                        _log.Add("host «jslib» fijado como global (SetField)");
+                    }
+                    catch (Exception exSet2)
+                    {
+                        _log.Add("aviso: no se pudo fijar «jslib»: " + exSet.Message
+                            + " / " + exSet2.Message);
+                    }
                 }
 
                 List<JsModuleFile> modules = JsModuleScanner.Scan(_modulesDir);
@@ -236,7 +242,8 @@ namespace lumina.wpf.scripting
                     _parse64.ParseScriptText(code, null, IntPtr.Zero, null,
                         UIntPtr.Zero, 1, 0, IntPtr.Zero, IntPtr.Zero);
                 }
-                if (file.IndexOf("(prelude)", StringComparison.Ordinal) < 0)
+                if (file.IndexOf("(prelude)", StringComparison.Ordinal) < 0
+                    && !file.StartsWith("(", StringComparison.Ordinal))
                 {
                     lock (_loaded) { _loaded.Add(file); }
                 }
