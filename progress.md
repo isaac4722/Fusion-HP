@@ -667,3 +667,54 @@ v5.1.1 — este ciclo fue de corrección de raíz + blindaje, sin superficie nue
 - **v5.2.0 «MOTOR» cerrada**: el bug «solo carga la GUI pero más nada» quedó corregido de raíz
   en las DOS capas (import estático eliminado + flujos blindados) y con tres gates de CI que
   impiden su regreso (verify_win7_imports en nativo y paquete, --flowcheck en ambas variantes).
+
+## 2026-09-23 — CICLO v5.3.0 «INTERFAZ»: rediseño completo de UI/UX («Lumina Studio»)
+
+Encargo: «Crea una mejor UI/UX para la app». Skill aplicada: winforms-gui-ux-clean
+(null-safety en cada handler, cero transparencia sin estilo, foco visible, la UI
+nunca se congela, consistencia Win7→Win11, estados vivos en la interfaz).
+
+- NUEVO `managed/Lumina.UI/UiKit.cs` (1.286 líneas): sistema de diseño centralizado.
+  * `IconPainter` + `IconKind`: 32 iconos vectoriales sobre retícula 16×16 escalables
+    (GDI+ puro — idénticos en Win7 SP1 y Win11, sin recursos incrustados).
+  * `BrandGlyph`: logotipo «faro» (cuadrado ámbar con degradado + destellos).
+  * `UiTheme` v2: paleta con gradación de profundidad (#0E1116 página → #161B23 tarjeta),
+    radios de tarjeta/botón/píldora, tipografía refinada y fábrica AMPLIADA con API v5.2.0
+    INTACTA (MkButton/MkCard/MkLabel/MkInput/MkNumeric/MkCheck/MkIconButton/MkButtonWithIcon/
+    SetCueBanner/RoundPath) → los ~5.000 líneas de MainForm compilan sin tocar las llamadas.
+  * `LuminaButton : Button` (owner-drawn): variantes primary/secondary/danger/ghost,
+    hover/pulsado/deshabilitado/foco-visible/estado-activo (toggle «Negro»), icono opcional,
+    ancho ajustado al contenido (adiós botones de 100 px por defecto).
+  * `LuminaCheck : Control`: casilla oscura con marca ámbar, navegable por Tab, Espacio,
+    foco visible — reemplaza las 10 casillas `new CheckBox()` dispersas.
+  * `Chip` v2 (píldora; MISMO ctor de 3 argumentos que verifica --uicheck), `NavPanel` v2
+    (grupos PRESENTACIÓN/BIBLIOTECA/EXTENSIÓN/SISTEMA, píldora activa + barra ámbar),
+    `LuminaCard` (esquinas redondeadas anti-alias pintando el fondo sólido del padre —
+    sin transparencia simulada, a prueba de Win7) y `CardHeader` (icono + título H2).
+- `MainForm.cs` (5.436 → ~5.330 líneas, -1.123/+1.721):
+  * Carcasa: header con marca + chips + botón «Proyector» de acceso rápido (F5 desde
+    cualquier página); sidebar agrupada con mapeo NavToPage {En Vivo, Culto | Canciones,
+    Biblia, Temas | Exportar, Integraciones, Activadores | Ajustes}; status bar con punto
+    de severidad (heurística fallo/aviso); footer del sidebar rediseñado (salida + núcleo).
+  * Página «En Vivo» rehecha: 3 filas compactas (transporte: prev/EN VIVO/next/Negro/ayuda
+    · herramientas: escenario/director/aviso/pausa/limpiar · salida: pantalla/check/proyector)
+    — ANTES los 8 botones del transporte desbordaban el ancho y quedaban recortados;
+    lista de diapositivas con filas de 34 px (truco StateImageList), hover con repintado,
+    insignia numérica en col. 0, barra ámbar en la diapositiva en curso, Enter proyecta,
+    y estado vacío explicativo; vista previa 16:9 redondeada con borde ámbar «en vivo»,
+    chip EN VIVO e info «Jn 3:16 · Diapositiva 2 de 5» (UpdatePreviewInfo).
+  * Cabeceras de página con badge de icono (tinte ámbar) + divisoria; botones de Culto y
+    Activadores migrados de glifos unicode (♪ ✝ 🖼 ✎) a iconos vectoriales del kit.
+  * Teclado: F1 → diálogo de atajos; Ctrl+1…9 → navegación; IsEditable() ahora incluye
+    LuminaCheck (Espacio marca la casilla, no avanza la slide).
+  * Tooltips en transporte/salida/búsquedas + marcas de agua (EM_SETCUEBANNER) en las
+    búsquedas de canciones y Biblia; ToolTip liberado en OnFormClosing.
+  * Listas: DrawDarkSubItem/ColumnHeader refinados (hover, barra ámbar, cabeceras null-safe);
+    HideSelection=false (la diapositiva en curso se ve aunque la lista no tenga foco).
+- Versiones: AppVersion 5.3.0 (Program.cs, MainForm.cs, Directory.Build.props), CI
+  (APP_VERSION, README.txt del paquete, cuerpo del release «INTERFAZ») y README.md.
+- Verificación local (SDK .NET 8 instalado en el sandbox): `dotnet build Lumina.sln -c
+  Release` → 0 errores/0 avisos; net35+x86 y net48+x64 → 0/0. La reflexión del --flowcheck
+  (campos _engine/_dbOpen/_slides/_txtRef + LoadScriptureToStage) quedó intacta a propósito.
+- Siguiente: commit → push main → CI (7 jobs; gates selfcheck/uicheck/flowcheck ×2 +
+  Win7-imports) → tag v5.3.0 → release «INTERFAZ».

@@ -1,4 +1,4 @@
-# LuminaPresentation Suite v5.2.0 «MOTOR»
+# LuminaPresentation Suite v5.3.0 «INTERFAZ»
 
 **Proyección para iglesias con arquitectura híbrida: núcleo C++17 nativo + interfaz C# (.NET mínimo 3.5 — usa 4.8 si está disponible)**
 — motor de proyección en tiempo real con la agilidad de desarrollo de .NET,
@@ -13,8 +13,8 @@
 
 1. Ir a **[Releases](https://github.com/isaac4722/Fusion-HP/releases)**.
 2. Descargar el paquete para tu arquitectura:
-   - `LuminaPresentation-5.2.0-win-x86.zip` — **Windows 7 SP1 … Windows 11 (32 bits)**
-   - `LuminaPresentation-5.2.0-win-x64.zip` — **Windows 7 SP1 … Windows 11+ (64 bits)**
+   - `LuminaPresentation-5.3.0-win-x86.zip` — **Windows 7 SP1 … Windows 11 (32 bits)**
+   - `LuminaPresentation-5.3.0-win-x64.zip` — **Windows 7 SP1 … Windows 11+ (64 bits)**
 3. Descomprimir el ZIP **completo** y ejecutar **`LuminaLauncher.exe`**.
    **El usuario nunca instala nada**:
    - Windows 10 1903+ / Windows 11 → **.NET Framework 4.8** integrado en el SO
@@ -26,6 +26,32 @@
      + las 3 DLL gestionadas en la carpeta de la variante elegida) y explica con
      claridad qué hacer si falta algo.
    - Ambas variantes comparten la misma carpeta de datos `data\`.
+
+## 🌟 Novedades v5.3.0 «INTERFAZ»
+
+> **Rediseño completo de la UI/UX** («Lumina Studio»), conservando el motor
+> probado de v5.2.0 y los mismos gates de CI (selfcheck + uicheck +
+> flowcheck + Win7-imports, ambas variantes y arquitecturas):
+> - **Sistema de diseño nuevo** (`managed/Lumina.UI/UiKit.cs`): paleta con
+>   gradación de profundidad, **tarjetas redondeadas** con brillo superior,
+>   botones owner-drawn con variantes (primario/secondary/danger/ghost) y
+>   estados (hover/pulsado/foco/deshabilitado/activo), **32 iconos
+>   vectoriales escalables** dibujados con GDI+ (idénticos en Win7 y Win11) y
+>   casillas oscuras coherentes con el tema.
+> - **Carcasa nueva**: cabecera con logotipo «faro» + chips de estado +
+>   acceso rápido al proyector desde cualquier página; navegación lateral
+>   **agrupada por secciones** (PRESENTACIÓN · BIBLIOTECA · EXTENSIÓN ·
+>   SISTEMA) con píldora activa ámbar; barra de estado con punto de severidad
+>   (rojo = fallo, ámbar = aviso).
+> - **Página «En Vivo» rehecha**: transporte compacto con iconos + tooltips
+>   que muestran los atajos, botón «Negro» que se enciende cuando la salida
+>   está oculta, lista de diapositivas alta (34 px) con insignias numéricas,
+>   hover y barra ámbar en la diapositiva en curso, vista previa 16:9 con
+>   borde «en vivo» e información «Jn 3:16 · Diapositiva 2 de 5», y estados
+>   vacíos que explican qué hacer.
+> - **UX transversal**: **F1** abre el mapa de atajos, **Ctrl+1…9** salta
+>   entre páginas, foco visible por teclado en todos los controles propios,
+>   marcas de agua en las búsquedas y tooltips en las acciones principales.
 
 ## 🌟 Novedades v5.2.0 «MOTOR»
 

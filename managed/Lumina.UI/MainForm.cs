@@ -1,11 +1,20 @@
 // ============================================================================
-//  LuminaPresentation Suite v5.2.0 «MOTOR» — managed/Lumina.UI/MainForm.cs
+//  LuminaPresentation Suite v5.3.0 «INTERFAZ» — managed/Lumina.UI/MainForm.cs
 //  Copyright (c) 2026 Isaac. Licencia View-Only.
 // ============================================================================
 //  MainForm.cs : ventana principal (WinForms, todo el layout en código — sin
-//  Designer). Rediseño v4.0.0: tema oscuro plano (flat), barra lateral de
-//  navegación con iconos vectoriales, cabecera con chips de estado y tarjetas
-//  — diseño aprobado en mockup (ver worklog Task G-1).
+//  Designer).
+//
+//  REDISEÑO v5.3.0 «Lumina Studio» (skill GUI/UX limpia):
+//    * Sistema de diseño en UiKit.cs (tarjetas redondeadas, botones con
+//      variantes/iconos/estados, casillas oscuras, navegación agrupada).
+//    * Carcasa nueva: cabecera con marca + chips + acceso rápido al proyector,
+//      sidebar por secciones (PRESENTACIÓN/BIBLIOTECA/EXTENSIÓN/SISTEMA),
+//      barra de estado con punto de severidad.
+//    * Página «En Vivo» rehecha: transporte compacto con iconos + tooltips +
+//      atajos, lista de diapositivas alta con hover/insignias/estado vacío,
+//      vista previa con borde «en vivo» e información de diapositiva.
+//    * Foco visible por teclado en todo control propio; Ctrl+1…9 navega.
 //
 //  REGLA DE ARQUITECTURA: la UI NO duplica lógica de negocio. Todo pasa por
 //  Lumina.Bridge (P/Invoke al núcleo) y Lumina.Core (builder/JSON local).
@@ -33,443 +42,13 @@ using lumina.core;
 namespace lumina.ui
 {
     /* ====================================================================== */
-    /*  UI — TEMA Y FÁBRICA DE CONTROLES                                      */
-    /* ====================================================================== */
-
-    /// <summary>Paleta y tipografía del tema oscuro «Lumina» (mockup G-1).</summary>
-    internal static class UiTheme
-    {
-        // ---- superficie ----
-        public static readonly Color PageBg      = FromHex(0x12141A);
-        public static readonly Color BarBg       = FromHex(0x171A21);
-        public static readonly Color BarBorder   = FromHex(0x262B36);
-        public static readonly Color CardBg      = FromHex(0x1B1F28);
-        public static readonly Color CardBorder  = FromHex(0x2A3040);
-        // ---- controles ----
-        public static readonly Color InputBg     = FromHex(0x10131A);
-        public static readonly Color InputFocus  = FromHex(0xF0A93B);
-        // ---- acentos ----
-        public static readonly Color Accent      = FromHex(0xF0A93B); // ámbar Lumina
-        public static readonly Color AccentHover = FromHex(0xFFC15E);
-        public static readonly Color OnAccent    = FromHex(0x1A1408);
-        public static readonly Color Danger      = FromHex(0xD05050);
-        public static readonly Color DangerHover = FromHex(0xE06A6A);
-        public static readonly Color Ok          = FromHex(0x58C08A);
-        public static readonly Color Err         = FromHex(0xE05252);
-        // ---- texto ----
-        public static readonly Color TextPrimary   = FromHex(0xECEEF2);
-        public static readonly Color TextSecondary = FromHex(0x9AA0A6);
-        public static readonly Color TextDisabled  = FromHex(0x566070);
-        // ---- filas ----
-        public static readonly Color RowOdd      = FromHex(0x161A22);
-        public static readonly Color RowEven     = FromHex(0x1B1F28);
-        public static readonly Color RowSelected = FromHex(0x2F3646);
-        public static readonly Color RowHover    = FromHex(0x262B36);
-        public static readonly Color HoverLayer  = FromHex(0x1F242E);
-        public static readonly Color PreviewBg   = Color.Black;
-        public static readonly Color Warning     = FromHex(0xE0B052);
-
-        // ---- tipografía (96 dpi lógico) ----
-        public static readonly Font H1        = new Font("Segoe UI", 14.5F, FontStyle.Bold);
-        public static readonly Font H2        = new Font("Segoe UI", 9.75F, FontStyle.Bold);
-        public static readonly Font Header    = new Font("Segoe UI", 13.5F, FontStyle.Bold);
-        public static readonly Font Body      = new Font("Segoe UI", 9.25F);
-        public static readonly Font Small     = new Font("Segoe UI", 8.25F);
-        public static readonly Font SmallBold = new Font("Segoe UI", 8.25F, FontStyle.Bold);
-        public static readonly Font Mono      = new Font("Consolas", 9.75F);
-
-        public static Color FromHex(int rgb)
-        {
-            return Color.FromArgb((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF);
-        }
-
-        /* --------------------------------------------------- fábrica rápida */
-
-        public static Label MkLabel(string text, Color color, Font font, bool auto)
-        {
-            Label l = new Label();
-            l.Text = text;
-            l.ForeColor = color;
-            l.Font = font;
-            l.BackColor = Color.Transparent;
-            l.AutoSize = auto;
-            l.TextAlign = ContentAlignment.MiddleLeft;
-            l.Margin = new Padding(0);
-            return l;
-        }
-
-        /// <summary>Botón plano del tema. variant: "primary"|"secondary"|"danger".</summary>
-        public static Button MkButton(string text, string variant, EventHandler onClick)
-        {
-            Button b = new Button();
-            b.Text = text;
-            b.Font = Body;
-            b.FlatStyle = FlatStyle.Flat;
-            b.FlatAppearance.BorderSize = 0;
-            b.Cursor = Cursors.Hand;
-            b.Height = 30;
-            b.Padding = new Padding(12, 0, 12, 0);
-            b.Margin = new Padding(0, 0, 8, 0);
-            b.TextAlign = ContentAlignment.MiddleCenter;
-            b.UseVisualStyleBackColor = false;
-
-            if (variant == "primary")
-            {
-                b.BackColor = Accent;
-                b.ForeColor = OnAccent;
-                b.FlatAppearance.MouseOverBackColor = AccentHover;
-                b.FlatAppearance.MouseDownBackColor = Accent;
-            }
-            else if (variant == "danger")
-            {
-                b.BackColor = Danger;
-                b.ForeColor = Color.White;
-                b.FlatAppearance.MouseOverBackColor = DangerHover;
-                b.FlatAppearance.MouseDownBackColor = Danger;
-            }
-            else // secondary
-            {
-                b.BackColor = RowHover;
-                b.ForeColor = TextPrimary;
-                b.FlatAppearance.MouseOverBackColor = RowSelected;
-                b.FlatAppearance.MouseDownBackColor = RowSelected;
-                b.FlatAppearance.BorderColor = CardBorder;
-                b.FlatAppearance.BorderSize = 1;
-            }
-            if (onClick != null) b.Click += onClick;
-            return b;
-        }
-
-        /// <summary>TextBox oscuro con foco ámbar.</summary>
-        public static TextBox MkInput(bool multiline)
-        {
-            TextBox t = new TextBox();
-            t.BorderStyle = BorderStyle.FixedSingle;
-            t.BackColor = InputBg;
-            t.ForeColor = TextPrimary;
-            t.Font = Body;
-            t.Margin = new Padding(0);
-            if (multiline)
-            {
-                t.Multiline = true;
-                t.ScrollBars = ScrollBars.Vertical;
-                t.AcceptsReturn = true;
-            }
-            t.GotFocus += delegate { t.BackColor = UiTheme.InputBg; };
-            return t;
-        }
-
-        public static NumericUpDown MkNumeric(decimal min, decimal max, decimal value)
-        {
-            NumericUpDown n = new NumericUpDown();
-            n.Minimum = min; n.Maximum = max; n.Value = value;
-            n.BorderStyle = BorderStyle.FixedSingle;
-            n.BackColor = InputBg;
-            n.ForeColor = TextPrimary;
-            n.Font = Body;
-            n.Margin = new Padding(0);
-            return n;
-        }
-
-        /// <summary>Tarjeta con título (mockup: bg #1B1F28, borde #2A3040).</summary>
-        public static Panel MkCard(string title, out ContentPanel body)
-        {
-            Panel card = new Panel();
-            card.BackColor = CardBg;
-            card.Padding = new Padding(14);
-            card.Margin = new Padding(0);
-            card.Paint += delegate(object s, PaintEventArgs e)
-            {
-                using (Pen p = new Pen(CardBorder))
-                    e.Graphics.DrawRectangle(p, 0, 0, card.Width - 1, card.Height - 1);
-            };
-
-            Label lblTitle = MkLabel(title, TextPrimary, H2, true);
-            lblTitle.Dock = DockStyle.Top;
-            lblTitle.Height = 24;
-
-            body = new ContentPanel();
-            body.BackColor = CardBg;
-            body.Dock = DockStyle.Fill;
-
-            card.Controls.Add(body);
-            card.Controls.Add(lblTitle);
-            return card;
-        }
-    }
-
-    /// <summary>Panel sin parpadeo (doble búfer) para interiores de tarjeta.</summary>
-    internal class ContentPanel : Panel
-    {
-        public ContentPanel()
-        {
-            DoubleBuffered = true;
-            ResizeRedraw = true;
-        }
-    }
-
-    /* ====================================================================== */
-    /*  UI — CHIPS DE ESTADO (cabecera / barra inferior)                      */
-    /* ====================================================================== */
-
-    /// <summary>Chip plano: punto de color + texto (estado del sistema).</summary>
-    internal sealed class Chip : Control
-    {
-        private Color _dot;
-        private string _text;
-        private readonly bool _boxed;
-
-        public Chip(string text, Color dot, bool boxed)
-        {
-            // FIX v5.1.1 — «Control does not support transparent background colors»:
-            // ControlStyles.SupportsTransparentBackColor debe activarse ANTES de
-            // asignar BackColor = Color.Transparent. Sin ese estilo, el setter
-            // lanza ArgumentException y la ventana principal nunca llega a
-            // construirse (crash en Win7 SP1 x86, tanto bajo CLR 2.0 como 4.0).
-            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer |
-                     ControlStyles.UserPaint | ControlStyles.ResizeRedraw |
-                     ControlStyles.SupportsTransparentBackColor, true);
-            _text = text;
-            _dot = dot;
-            _boxed = boxed;
-            BackColor = Color.Transparent;
-            Font = UiTheme.Small;
-            Height = 22;
-            Cursor = Cursors.Default;
-            UpdateWidth();
-        }
-
-        public void SetState(string text, Color dot)
-        {
-            _text = text;
-            _dot = dot;
-            UpdateWidth();
-            Invalidate();
-        }
-
-        private void UpdateWidth()
-        {
-            int textW = TextRenderer.MeasureText(_text, UiTheme.Small).Width;
-            Width = 8 + 8 + 6 + textW + 12 + (_boxed ? 2 : 0); // pad + dot + gap + text + pad
-        }
-
-        protected override void OnPaint(PaintEventArgs e)
-        {
-            Graphics g = e.Graphics;
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-            Rectangle r = new Rectangle(0, 0, Width - 1, Height - 1);
-            if (_boxed)
-            {
-                using (SolidBrush bg = new SolidBrush(UiTheme.CardBg)) g.FillRectangle(bg, r);
-                using (Pen pen = new Pen(UiTheme.CardBorder)) g.DrawRectangle(pen, r);
-            }
-            else
-            {
-                // Defensa en profundidad: nunca depender de la simulación de
-                // transparencia de WinForms para verse bien — se pinta el fondo
-                // sólido real del contenedor padre (o PageBg si no hay padre).
-                Color bg = (Parent != null && Parent.BackColor.A == 255)
-                           ? Parent.BackColor : UiTheme.PageBg;
-                using (SolidBrush fill = new SolidBrush(bg)) g.FillRectangle(fill, r);
-            }
-            int cy = Height / 2;
-            using (SolidBrush dot = new SolidBrush(_dot))
-                g.FillEllipse(dot, 10, cy - 4, 8, 8);
-            TextRenderer.DrawText(g, _text, UiTheme.Small,
-                new Rectangle(24, 0, Width - 24, Height),
-                UiTheme.TextSecondary, TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
-        }
-
-        protected override void OnBackColorChanged(EventArgs e)
-        {
-            base.OnBackColorChanged(e);
-            Invalidate();
-        }
-    }
-
-    /* ====================================================================== */
-    /*  UI — BARRA LATERAL DE NAVEGACIÓN                                      */
-    /* ====================================================================== */
-
-    /// <summary>
-    /// Navegación lateral owner-drawn: iconos vectoriales simples + texto,
-    /// barra activa ámbar de 3 px (mockup G-1). Items fijos del producto.
-    /// </summary>
-    internal sealed class NavPanel : ContentPanel
-    {
-        private static readonly string[] Captions =
-            { "En Vivo", "Canciones", "Biblia", "Temas", "Culto", "Exportar",
-              "Integraciones", "Activadores", "Ajustes" };
-
-        private const int ItemCount = 9;
-
-        private readonly Rectangle[] _itemRects = new Rectangle[ItemCount];
-        private int _hover = -1;
-        private int _active;
-
-        /// <summary>Índice del ítem clicado (válido al dispararse NavActivated).</summary>
-        public int ClickedIndex { get; private set; }
-
-        /// <summary>Se dispara al elegir un ítem: leer ClickedIndex.</summary>
-        public event EventHandler NavActivated;
-
-        public NavPanel()
-        {
-            BackColor = UiTheme.BarBg;
-            Width = 210;
-            for (int i = 0; i < ItemCount; i++)
-                _itemRects[i] = new Rectangle(0, 44 + i * 46, Width, 46);
-        }
-
-        public void SetActive(int index)
-        {
-            _active = index;
-            Invalidate();
-        }
-
-        private int HitTest(Point p)
-        {
-            for (int i = 0; i < ItemCount; i++)
-                if (_itemRects[i].Contains(p)) return i;
-            return -1;
-        }
-
-        protected override void OnMouseMove(MouseEventArgs e)
-        {
-            base.OnMouseMove(e);
-            int h = HitTest(e.Location);
-            if (h != _hover) { _hover = h; Invalidate(); }
-        }
-
-        protected override void OnMouseLeave(EventArgs e)
-        {
-            base.OnMouseLeave(e);
-            if (_hover != -1) { _hover = -1; Invalidate(); }
-        }
-
-        protected override void OnMouseClick(MouseEventArgs e)
-        {
-            base.OnMouseClick(e);
-            int i = HitTest(e.Location);
-            if (i >= 0 && NavActivated != null)
-            {
-                ClickedIndex = i;
-                _active = i;
-                Invalidate();
-                NavActivated(this, EventArgs.Empty);
-            }
-        }
-
-        protected override void OnPaint(PaintEventArgs e)
-        {
-            base.OnPaint(e);
-            Graphics g = e.Graphics;
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-
-            // Caption de sección (mockup: "MONITOREO" 11px gris, espaciado).
-            TextRenderer.DrawText(g, "MONITOREO", UiTheme.SmallBold,
-                new Rectangle(20, 14, Width - 20, 18), UiTheme.TextDisabled,
-                TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
-
-            for (int i = 0; i < ItemCount; i++)
-            {
-                Rectangle r = _itemRects[i];
-                bool isActive = i == _active;
-                bool isHover = i == _hover && !isActive;
-
-                using (SolidBrush bg = new SolidBrush(
-                    isActive ? UiTheme.RowSelected : (isHover ? UiTheme.HoverLayer : BackColor)))
-                    g.FillRectangle(bg, r);
-
-                if (isActive)
-                    using (SolidBrush bar = new SolidBrush(UiTheme.Accent))
-                        g.FillRectangle(bar, r.X, r.Y, 3, r.Height);
-
-                DrawIcon(g, i, r.X + 20, r.Y + 15, isActive ? UiTheme.TextPrimary : UiTheme.TextSecondary);
-
-                TextRenderer.DrawText(g, Captions[i], UiTheme.Body,
-                    new Rectangle(r.X + 48, r.Y, r.Width - 48, r.Height),
-                    isActive ? Color.White : UiTheme.TextSecondary,
-                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
-            }
-
-            // Borde derecho de la barra.
-            using (Pen p = new Pen(UiTheme.BarBorder))
-                g.DrawLine(p, Width - 1, 0, Width - 1, Height);
-        }
-
-        /// <summary>Iconos 16×16 con formas simples (compatibles GDI+/Win7).</summary>
-        private void DrawIcon(Graphics g, int index, int x, int y, Color c)
-        {
-            using (SolidBrush b = new SolidBrush(c))
-            using (Pen p = new Pen(c, 1.6F))
-            {
-                switch (index)
-                {
-                    case 0: // En Vivo: triángulo de reproducción
-                        Point[] tri = {
-                            new Point(x + 3, y + 2), new Point(x + 13, y + 8), new Point(x + 3, y + 14) };
-                        g.FillPolygon(b, tri);
-                        break;
-                    case 1: // Canciones: nota musical
-                        g.FillEllipse(b, x + 2, y + 10, 5, 4);
-                        g.DrawLine(p, x + 7, y + 12, x + 7, y + 2);
-                        g.FillPolygon(b, new[] {
-                            new Point(x + 7, y + 2), new Point(x + 13, y + 4), new Point(x + 7, y + 7) });
-                        break;
-                    case 2: // Biblia: cruz
-                        g.FillRectangle(b, x + 6, y + 1, 4, 14);
-                        g.FillRectangle(b, x + 2, y + 5, 12, 4);
-                        break;
-                    case 3: // Temas: círculo de muestra (mitad rellena)
-                        g.DrawEllipse(p, x + 2, y + 2, 12, 12);
-                        g.FillPie(b, x + 2, y + 2, 12, 12, -90, 180);
-                        break;
-                    case 4: // Culto: lista
-                        for (int i = 0; i < 3; i++)
-                        {
-                            g.FillEllipse(b, x + 1, y + 2 + i * 5, 3, 3);
-                            g.DrawLine(p, x + 7, y + 3 + i * 5, x + 14, y + 3 + i * 5);
-                        }
-                        break;
-                    case 5: // Exportar: hoja con flecha (documento saliente)
-                        g.DrawRectangle(p, x + 1, y + 2, 9, 12);
-                        g.DrawLine(p, x + 3, y + 5, x + 7, y + 5);
-                        g.DrawLine(p, x + 3, y + 8, x + 7, y + 8);
-                        g.FillPolygon(b, new[] {
-                            new Point(x + 10, y + 4), new Point(x + 15, y + 8), new Point(x + 10, y + 12) });
-                        break;
-                    case 6: // Integraciones: nodos conectados
-                        g.FillEllipse(b, x + 1, y + 1, 5, 5);
-                        g.FillEllipse(b, x + 10, y + 10, 5, 5);
-                        g.DrawLine(p, x + 6, y + 4, x + 10, y + 11);
-                        g.DrawEllipse(p, x + 10, y + 1, 5, 5);
-                        break;
-                    case 7: // Activadores: rayo
-                        g.FillPolygon(b, new[] {
-                            new Point(x + 9, y), new Point(x + 3, y + 8), new Point(x + 7, y + 8),
-                            new Point(x + 6, y + 15), new Point(x + 13, y + 6), new Point(x + 8, y + 6) });
-                        break;
-                    case 8: // Ajustes: engranaje simplificado
-                        g.DrawEllipse(p, x + 4, y + 4, 8, 8);
-                        g.FillRectangle(b, x + 7, y, 2, 4);
-                        g.FillRectangle(b, x + 7, y + 12, 2, 4);
-                        g.FillRectangle(b, x, y + 7, 4, 2);
-                        g.FillRectangle(b, x + 12, y + 7, 4, 2);
-                        break;
-                }
-            }
-        }
-    }
-
-    /* ====================================================================== */
     /*  VENTANA PRINCIPAL                                                     */
     /* ====================================================================== */
 
     public sealed class MainForm : Form
     {
         private const string AppName = "LuminaPresentation Suite";
-        private const string AppVersion = "5.2.0";
+        private const string AppVersion = "5.3.0";
         private const string AppTitle = AppName + " — v" + AppVersion;
 
         /* ------------------------------------------------------------ servicios */
@@ -494,7 +73,7 @@ namespace lumina.ui
         private Label _hexBg, _hexFg, _hexAccent;
         private ComboBox _cmbThemeFont;
         private NumericUpDown _numThemeSize, _numThemeLine, _numThemeOutline, _numThemeShadow;
-        private CheckBox _chkThemeBold, _chkThemeUpper;
+        private LuminaCheck _chkThemeBold, _chkThemeUpper;
         private TextBox _txtThemeImagePath;
         private ComboBox _cmbThemeImageMode;
         private ContentPanel _themePreview;
@@ -520,20 +99,41 @@ namespace lumina.ui
         private readonly Panel[] _pages = new Panel[9];
         private Chip _chipCore, _chipDb, _chipApi;
 
+        // v5.3.0 — mapeo navegación ↔ páginas (el sidebar agrupa por secciones:
+        // PRESENTACIÓN(En Vivo, Culto) · BIBLIOTECA(Canciones, Biblia, Temas) ·
+        // EXTENSIÓN(Exportar, Integraciones, Activadores) · SISTEMA(Ajustes)).
+        private static readonly int[] NavToPage = { 0, 4, 1, 2, 3, 5, 6, 7, 8 };
+
+        private static int PageToNav(int page)
+        {
+            for (int i = 0; i < NavToPage.Length; i++)
+                if (NavToPage[i] == page) return i;
+            return 0;
+        }
+
+        // v5.3.0 — asistencia de la interfaz
+        private ToolTip _tips;                       // tooltips de la app
+        private Button _btnHeaderProjector;         // acceso rápido al proyector
+        private Panel _statusBar;                    // pinta el punto de severidad
+        private Color _statusColor = UiTheme.TextSecondary;
+        private Label _headerTitle;                  // para colocar el chip de versión
+
         // En Vivo
         private ListView _lvSlides;
         private Button _btnPrev, _btnLive, _btnNext, _btnBlack, _btnClear, _btnProjector;
         private ComboBox _cmbScreen;
-        private CheckBox _chkFullscreen;
+        private LuminaCheck _chkFullscreen;
         private Panel _previewArea;
         private PictureBox _pbPreview;
         private Label _lblNoPreview;
+        private Label _lblSlidesEmpty;               // v5.3.0: estado vacío de la lista
+        private Label _lblPreviewInfo;               // v5.3.0: «Jn 3:16 · 2 de 5»
         private Chip _chipLive;
         private Panel _navInfoCard;
 
         // Canciones
         private TextBox _txtSongTitle, _txtSongArtist, _txtSongLyrics, _txtSearch;
-        private CheckBox _chkHymnMode;
+        private LuminaCheck _chkHymnMode;
         private NumericUpDown _numTranspose;
         private ListView _lvResults;
         private Label _lblResultCount;
@@ -569,14 +169,14 @@ namespace lumina.ui
 
         // v5.1.0 — Respaldo (Drive/OneDrive-compatible)
         private TextBox _txtBackupFolder;
-        private CheckBox _chkAutoBackup;
+        private LuminaCheck _chkAutoBackup;
 
         // v5.0.0 — Exportar
         private Label _lblExportInfo;
 
         // v5.0.0 — Integraciones (OBS + MIDI + remoto)
         private TextBox _txtObsUrl, _txtObsPassword, _txtObsTextSource;
-        private CheckBox _chkObsAutoConnect, _chkMidiEnabled, _chkRemoteEnabled, _chkAutoAdvanceVideo;
+        private LuminaCheck _chkObsAutoConnect, _chkMidiEnabled, _chkRemoteEnabled, _chkAutoAdvanceVideo;
         private NumericUpDown _numRemotePort;
         private TextBox _txtRemoteToken;
         private ComboBox _cmbMidiDevice;
@@ -614,6 +214,14 @@ namespace lumina.ui
 
             _settings = Settings.Load();
 
+            // v5.3.0: tooltips de toda la aplicación (se configuran al construir
+            // cada página; componente único, se libera con el formulario).
+            _tips = new ToolTip();
+            _tips.AutoPopDelay = 9000;
+            _tips.InitialDelay = 500;
+            _tips.ReshowDelay = 150;
+            _tips.ShowAlways = false;
+
             BuildHeader();
             BuildSidebar();
             BuildStatusBar();
@@ -624,6 +232,7 @@ namespace lumina.ui
             _uiCtx = SynchronizationContext.Current ?? new SynchronizationContext();
 
             CreateEngine();
+            UpdateBlackButton();          // v5.3.0: estado inicial del botón «Negro»
             ApplySettingsToControls();
             StartIntegrationsFromSettings();   // v5.0.0: activadores/remoto/MIDI/OBS
             UpdateStatusBar();
@@ -633,34 +242,50 @@ namespace lumina.ui
          *  CONSTRUCCIÓN — esqueleto (cabecera, sidebar, contenido, estado)
          * ==================================================================== */
 
+        /// <summary>Registra el tooltip de un control (v5.3.0).</summary>
+        private void Tip(Control c, string text)
+        {
+            if (c == null || _tips == null) return;
+            try { _tips.SetToolTip(c, text ?? string.Empty); }
+            catch (Exception) { }
+        }
+
         private void BuildHeader()
         {
             Panel header = new ContentPanel();
             header.Dock = DockStyle.Top;
-            header.Height = 56;
+            header.Height = 54;
             header.BackColor = UiTheme.BarBg;
 
             Label title = UiTheme.MkLabel(AppName, Color.White, UiTheme.Header, true);
-            title.Location = new Point(24, 0);
-            title.Height = 56;
+            title.Location = new Point(60, 0);
+            title.Height = 54;
             title.TextAlign = ContentAlignment.MiddleLeft;
+            _headerTitle = title;
 
             Chip version = new Chip("v" + AppVersion + " · HÍBRIDA", UiTheme.Accent, true);
-            version.Location = new Point(24 + title.PreferredWidth + 12, 17);
 
             _chipCore = new Chip("Núcleo: iniciando", UiTheme.TextDisabled, true);
             _chipDb = new Chip("BD: —", UiTheme.TextDisabled, true);
             _chipApi = new Chip("API: detenida", UiTheme.Err, true);
+
+            // v5.3.0: acceso rápido al proyector desde CUALQUIER página (F5).
+            _btnHeaderProjector = UiTheme.MkButtonWithIcon("Proyector",
+                IconKind.Projector, "secondary", delegate { ShowProjector(); });
+            Tip(_btnHeaderProjector, "Mostrar la ventana de proyección (F5)");
 
             header.Controls.Add(title);
             header.Controls.Add(version);
             header.Controls.Add(_chipCore);
             header.Controls.Add(_chipDb);
             header.Controls.Add(_chipApi);
+            header.Controls.Add(_btnHeaderProjector);
 
             header.Resize += delegate { PlaceHeaderChips(header, version); };
             header.Paint += delegate(object s, PaintEventArgs e)
             {
+                // Marca de la app (faro ámbar) — pintada, sin control extra.
+                BrandGlyph.Draw(e.Graphics, 18, 12, 30);
                 using (Pen p = new Pen(UiTheme.BarBorder))
                     e.Graphics.DrawLine(p, 0, header.Height - 1, header.Width, header.Height - 1);
             };
@@ -671,11 +296,17 @@ namespace lumina.ui
         private void PlaceHeaderChips(Panel header, Chip version)
         {
             int x = header.ClientSize.Width - 16;
-            _chipApi.Location = new Point(x - _chipApi.Width, 17);
+            _btnHeaderProjector.Location = new Point(x - _btnHeaderProjector.Width, 12);
+            x = _btnHeaderProjector.Left - 10;
+            _chipApi.Location = new Point(x - _chipApi.Width, 16);
             x = _chipApi.Location.X - 8;
-            _chipDb.Location = new Point(x - _chipDb.Width, 17);
+            _chipDb.Location = new Point(x - _chipDb.Width, 16);
             x = _chipDb.Location.X - 8;
-            _chipCore.Location = new Point(x - _chipCore.Width, 17);
+            _chipCore.Location = new Point(x - _chipCore.Width, 16);
+            int tw = 236;
+            try { if (_headerTitle != null && _headerTitle.PreferredWidth > 0) tw = _headerTitle.PreferredWidth; }
+            catch (Exception) { }
+            version.Location = new Point(60 + tw + 10, 16);
         }
 
         private void BuildSidebar()
@@ -684,36 +315,41 @@ namespace lumina.ui
             _nav.Dock = DockStyle.Left;
             _nav.NavActivated += NavigateTo;
 
-            // Tarjeta informativa inferior (mockup): salida + identidad.
+            // Tarjeta informativa inferior (v5.3.0): salida de proyección +
+            // estado del núcleo, en tarjeta redondeada.
             _navInfoCard = new ContentPanel();
             _navInfoCard.Dock = DockStyle.Bottom;
-            _navInfoCard.Height = 92;
+            _navInfoCard.Height = 78;
             _navInfoCard.BackColor = UiTheme.BarBg;
             _navInfoCard.Paint += delegate(object s, PaintEventArgs e)
             {
                 Graphics g = e.Graphics;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
                 Panel info = (Panel)s;
-                Rectangle card = new Rectangle(16, 8, _nav.Width - 32, info.Height - 20);
-                using (SolidBrush bg = new SolidBrush(UiTheme.CardBg)) g.FillRectangle(bg, card);
-                using (Pen pen = new Pen(UiTheme.CardBorder)) g.DrawRectangle(pen, card);
+                Rectangle card = new Rectangle(14, 10, _nav.Width - 28, info.Height - 20);
+                using (GraphicsPath path = UiTheme.RoundPath(card, 8))
+                {
+                    using (SolidBrush bg = new SolidBrush(UiTheme.CardBg)) g.FillPath(bg, path);
+                    using (Pen pen = new Pen(UiTheme.CardBorder)) g.DrawPath(pen, path);
+                }
 
-                // Punto verde + "Salida: Pantalla N"
+                // Punto de estado + «Salida · Pantalla N»
                 using (SolidBrush dot = new SolidBrush(_engine != null ? UiTheme.Ok : UiTheme.TextDisabled))
-                    g.FillEllipse(dot, card.X + 12, card.Y + 14, 8, 8);
-                string screenTxt = "Salida: Pantalla " +
-                    (_cmbScreen != null && _cmbScreen.SelectedIndex > 0
+                    g.FillEllipse(dot, card.X + 12, card.Y + 15, 8, 8);
+                string screenTxt = "Salida · Pantalla " +
+                    ((_cmbScreen != null && _cmbScreen.SelectedIndex > 0)
                         ? _cmbScreen.SelectedIndex.ToString(CultureInfo.InvariantCulture)
-                        : "0");
+                        : "1");
                 TextRenderer.DrawText(g, screenTxt, UiTheme.SmallBold,
-                    new Rectangle(card.X + 26, card.Y + 6, card.Width - 26, 22),
+                    new Rectangle(card.X + 26, card.Y + 6, card.Width - 30, 22),
                     UiTheme.TextPrimary, TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
 
-                TextRenderer.DrawText(g, AppName + " v" + AppVersion, UiTheme.Small,
-                    new Rectangle(card.X + 12, card.Y + 30, card.Width - 24, 20),
-                    UiTheme.TextSecondary, TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
-                TextRenderer.DrawText(g, "Núcleo híbrido C++ · C#", UiTheme.Small,
-                    new Rectangle(card.X + 12, card.Y + 48, card.Width - 24, 20),
-                    UiTheme.TextDisabled, TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
+                TextRenderer.DrawText(g,
+                    _engine != null ? "Núcleo C++ · activo" : "Núcleo no disponible",
+                    UiTheme.Small,
+                    new Rectangle(card.X + 12, card.Y + 32, card.Width - 24, 20),
+                    _engine != null ? UiTheme.TextSecondary : UiTheme.Err,
+                    TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
             };
 
             _nav.Controls.Add(_navInfoCard);
@@ -722,19 +358,22 @@ namespace lumina.ui
 
         private void BuildStatusBar()
         {
-            Panel status = new ContentPanel();
-            status.Dock = DockStyle.Bottom;
-            status.Height = 30;
-            status.BackColor = UiTheme.BarBg;
-            status.Paint += delegate(object s, PaintEventArgs e)
+            _statusBar = new ContentPanel();
+            _statusBar.Dock = DockStyle.Bottom;
+            _statusBar.Height = 28;
+            _statusBar.BackColor = UiTheme.BarBg;
+            _statusBar.Paint += delegate(object s, PaintEventArgs e)
             {
                 using (Pen p = new Pen(UiTheme.BarBorder))
-                    e.Graphics.DrawLine(p, 0, 0, status.Width, 0);
+                    e.Graphics.DrawLine(p, 0, 0, _statusBar.Width, 0);
+                // Punto de severidad del último mensaje (v5.3.0).
+                using (SolidBrush b = new SolidBrush(_statusColor))
+                    e.Graphics.FillEllipse(b, 14, 10, 8, 8);
             };
 
             _tsslMsg = UiTheme.MkLabel("Listo.", UiTheme.TextSecondary, UiTheme.Small, false);
             _tsslMsg.Dock = DockStyle.Fill;
-            _tsslMsg.Padding = new Padding(16, 0, 0, 0);
+            _tsslMsg.Padding = new Padding(30, 0, 0, 0);
 
             _tsslDb = UiTheme.MkLabel("BD: —", UiTheme.TextDisabled, UiTheme.Small, true);
             _tsslDb.Margin = new Padding(0, 0, 16, 0);
@@ -745,7 +384,7 @@ namespace lumina.ui
 
             Panel right = new ContentPanel();
             right.Dock = DockStyle.Right;
-            right.Width = 380;
+            right.Width = 400;
             right.BackColor = UiTheme.BarBg;
             FlowLayoutPanel flow = new FlowLayoutPanel();
             flow.Dock = DockStyle.Fill;
@@ -756,9 +395,9 @@ namespace lumina.ui
             flow.Controls.Add(_tsslDb);
             right.Controls.Add(flow);
 
-            status.Controls.Add(_tsslMsg);
-            status.Controls.Add(right);
-            Controls.Add(status);
+            _statusBar.Controls.Add(_tsslMsg);
+            _statusBar.Controls.Add(right);
+            Controls.Add(_statusBar);
         }
 
         private void BuildContent()
@@ -787,7 +426,8 @@ namespace lumina.ui
         /// <summary>Evento del panel de navegación → cambia la página visible.</summary>
         private void NavigateTo(object sender, EventArgs e)
         {
-            NavigateToIndex(_nav.ClickedIndex);
+            int navIndex = _nav != null ? _nav.ClickedIndex : 0;
+            NavigateToIndex(navIndex >= 0 && navIndex < NavToPage.Length ? NavToPage[navIndex] : 0);
         }
 
         private int _activeNavItem;
@@ -797,7 +437,7 @@ namespace lumina.ui
             if (index < 0 || index >= 9) index = 0;
             _activeNavItem = index;
             for (int i = 0; i < 9; i++) _pages[i].Visible = i == index;
-            if (_nav != null) _nav.SetActive(index);
+            if (_nav != null) _nav.SetActive(PageToNav(index));
             if (index == 0) RefreshPreview();
         }
 
@@ -808,57 +448,124 @@ namespace lumina.ui
         private Panel BuildLivePage()
         {
             Panel page = NewPage("En Vivo", "Proyección en tiempo real del escenario",
-                /* headerButton */ null);
+                IconKind.Live);
 
             ContentPanel body = (ContentPanel)page.Tag;
 
             TableLayoutPanel grid = NewGrid(2,
                 new ColumnStyle(SizeType.Percent, 100),
-                new ColumnStyle(SizeType.Absolute, 420));
+                new ColumnStyle(SizeType.Absolute, 412));
 
-            // ---- tarjeta izquierda: lista de slides + transporte ----
+            // ---- tarjeta izquierda: escenario + transporte compacto ----
             ContentPanel slidesBody;
-            Panel slidesCard = UiTheme.MkCard("Escenario", out slidesBody);
+            Panel slidesCard = UiTheme.MkCard("Escenario", IconKind.Slides, out slidesBody);
             slidesCard.Dock = DockStyle.Fill;
-            slidesCard.Margin = new Padding(0, 0, 16, 0);
+            slidesCard.Margin = new Padding(0, 0, 14, 0);
 
             _lvSlides = NewDarkList();
-            _lvSlides.Columns.Add("#", 48, HorizontalAlignment.Right);
-            _lvSlides.Columns.Add("Referencia", 190, HorizontalAlignment.Left);
-            _lvSlides.Columns.Add("Primera línea", 420, HorizontalAlignment.Left);
+            _lvSlides.Columns.Add("#", 54, HorizontalAlignment.Center);
+            _lvSlides.Columns.Add("Referencia", 168, HorizontalAlignment.Left);
+            _lvSlides.Columns.Add("Primera línea", 400, HorizontalAlignment.Left);
             _lvSlides.Dock = DockStyle.Fill;
             _lvSlides.DoubleClick += delegate { ShowSelectedSlide(); };
+            _lvSlides.KeyDown += delegate(object s, KeyEventArgs e)
+            {
+                if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; ShowSelectedSlide(); }
+            };
 
+            // v5.3.0: estado vacío — la lista explica QUÉ hacer cuando no hay
+            // escenario cargado (antes parecía «rota»).
+            _lblSlidesEmpty = UiTheme.MkLabel(
+                "Sin escenario cargado\r\n" +
+                "Carga una canción, un pasaje bíblico o el culto desde las otras páginas",
+                UiTheme.TextDisabled, UiTheme.Small, false);
+            _lblSlidesEmpty.Dock = DockStyle.Fill;
+            _lblSlidesEmpty.TextAlign = ContentAlignment.MiddleCenter;
+            _lblSlidesEmpty.BackColor = UiTheme.RowEven;
+            _lblSlidesEmpty.Enabled = false;
+            _lvSlides.Controls.Add(_lblSlidesEmpty);
+
+            // --- fila 1: transporte (iconos compactos + EN VIVO + Negro) ---
             FlowLayoutPanel transport = new FlowLayoutPanel();
             transport.Dock = DockStyle.Bottom;
-            transport.Height = 44;
+            transport.Height = 40;
             transport.WrapContents = false;
-            transport.Padding = new Padding(0, 6, 0, 0);
-            _btnPrev = UiTheme.MkButton("◀ Anterior", "secondary", delegate { if (RequireEngine()) _engine.Prev(); });
-            _btnLive = UiTheme.MkButton("● EN VIVO", "primary", delegate { ShowSelectedSlide(); });
-            _btnLive.Width = 132;
-            _btnNext = UiTheme.MkButton("Siguiente ▶", "secondary", delegate { if (RequireEngine()) _engine.Next(); });
-            _btnBlack = UiTheme.MkButton("■ Negro", "danger", delegate { if (RequireEngine()) ToggleBlack(); });
-            Button btnStage = UiTheme.MkButton("⛭ Escenario", "secondary", delegate { OpenStageView(); });
-            Button btnDirector = UiTheme.MkButton("⚑ Director", "secondary", delegate { OpenDirectorView(); });
-            Button btnThird = UiTheme.MkButton("▬ Aviso", "secondary", delegate { ShowLowerThirdDialog(); });
-            Button btnVideoPause = UiTheme.MkButton("⏸ Pausa video", "secondary", delegate { ToggleVideoPause(); });
+            transport.Padding = new Padding(0, 5, 0, 0);
+
+            _btnPrev = UiTheme.MkIconButton(IconKind.Prev, "secondary",
+                delegate { if (RequireEngine()) _engine.Prev(); });
+            Tip(_btnPrev, "Diapositiva anterior (← / RePág)");
+            _btnPrev.Margin = new Padding(0, 0, 6, 0);
+
+            _btnLive = UiTheme.MkButtonWithIcon("EN VIVO", IconKind.Live, "primary",
+                delegate { ShowSelectedSlide(); });
+            _btnLive.Width = 118;
+            Tip(_btnLive, "Proyectar la diapositiva seleccionada (Enter o doble clic en la lista)");
+            _btnLive.Margin = new Padding(0, 0, 6, 0);
+
+            _btnNext = UiTheme.MkIconButton(IconKind.Next, "secondary",
+                delegate { if (RequireEngine()) _engine.Next(); });
+            Tip(_btnNext, "Diapositiva siguiente (→ / Espacio / AvPág)");
+            _btnNext.Margin = new Padding(0, 0, 6, 0);
+
+            _btnBlack = UiTheme.MkButtonWithIcon("Negro", IconKind.Black, "danger",
+                delegate { if (RequireEngine()) ToggleBlack(); });
+            _btnBlack.Width = 96;
+            Tip(_btnBlack, "Ocultar la salida en negro (B) — el botón se enciende en rojo");
+            _btnBlack.Margin = new Padding(0, 0, 6, 0);
+
+            Button btnShortcuts = UiTheme.MkIconButton(IconKind.Info, "ghost",
+                delegate { ShowShortcutsDialog(); });
+            Tip(btnShortcuts, "Atajos de teclado (F1)");
+            btnShortcuts.Margin = new Padding(0, 0, 0, 0);
+
             transport.Controls.Add(_btnPrev);
             transport.Controls.Add(_btnLive);
             transport.Controls.Add(_btnNext);
             transport.Controls.Add(_btnBlack);
-            transport.Controls.Add(btnStage);
-            transport.Controls.Add(btnDirector);
-            transport.Controls.Add(btnThird);
-            transport.Controls.Add(btnVideoPause);
+            transport.Controls.Add(btnShortcuts);
 
+            // --- fila 2: herramientas de salida (escenario, director, aviso…) ---
+            FlowLayoutPanel toolsRow = new FlowLayoutPanel();
+            toolsRow.Dock = DockStyle.Bottom;
+            toolsRow.Height = 38;
+            toolsRow.WrapContents = false;
+            toolsRow.Padding = new Padding(0, 4, 0, 0);
+
+            Button btnStage = UiTheme.MkIconButton(IconKind.Stage, "secondary",
+                delegate { OpenStageView(); });
+            Tip(btnStage, "Monitor de escenario (F6)");
+            Button btnDirector = UiTheme.MkIconButton(IconKind.Director, "secondary",
+                delegate { OpenDirectorView(); });
+            Tip(btnDirector, "Ventana de director (F7)");
+            Button btnThird = UiTheme.MkIconButton(IconKind.Third, "secondary",
+                delegate { ShowLowerThirdDialog(); });
+            Tip(btnThird, "Zócalo inferior / aviso (F8)");
+            Button btnVideoPause = UiTheme.MkIconButton(IconKind.Pause, "secondary",
+                delegate { ToggleVideoPause(); });
+            Tip(btnVideoPause, "Pausar el video en la salida (P)");
+            _btnClear = UiTheme.MkIconButton(IconKind.Close, "danger",
+                delegate { if (RequireEngine()) _engine.Clear(); });
+            Tip(_btnClear, "Limpiar la salida (L)");
+            btnStage.Margin = new Padding(0, 0, 6, 0);
+            btnDirector.Margin = new Padding(0, 0, 6, 0);
+            btnThird.Margin = new Padding(0, 0, 6, 0);
+            btnVideoPause.Margin = new Padding(0, 0, 6, 0);
+            _btnClear.Margin = new Padding(0, 0, 0, 0);
+
+            toolsRow.Controls.Add(btnStage);
+            toolsRow.Controls.Add(btnDirector);
+            toolsRow.Controls.Add(btnThird);
+            toolsRow.Controls.Add(btnVideoPause);
+            toolsRow.Controls.Add(_btnClear);
+
+            // --- fila 3: salida (pantalla + proyección) ---
             FlowLayoutPanel outputRow = new FlowLayoutPanel();
             outputRow.Dock = DockStyle.Bottom;
             outputRow.Height = 40;
             outputRow.WrapContents = false;
-            outputRow.Padding = new Padding(0, 2, 0, 0);
-            Label lblScreen = UiTheme.MkLabel("Pantalla:", UiTheme.TextSecondary, UiTheme.Small, true);
-            lblScreen.Margin = new Padding(0, 10, 8, 0);
+            outputRow.Padding = new Padding(0, 4, 0, 0);
+
             _cmbScreen = NewDarkCombo();
             // v5.1.0: pantallas REALES del sistema (antes 0/1/2 fijo — con 4+
             // monitores no se podía elegir la 4ª). Formato: "N · 1920×1080".
@@ -875,47 +582,63 @@ namespace lumina.ui
             catch (Exception) { _cmbScreen.Items.Add("1 · principal"); }
             if (_cmbScreen.Items.Count == 0) _cmbScreen.Items.Add("1 · principal");
             _cmbScreen.SelectedIndex = 0;
-            _cmbScreen.Width = 120;
+            _cmbScreen.Width = 128;
+            Tip(_cmbScreen, "Pantalla donde se abre la ventana de proyección");
+            _cmbScreen.Margin = new Padding(0, 6, 8, 0);
             _cmbScreen.SelectedIndexChanged += delegate
             {
                 _settings.ProjectionScreen = _cmbScreen.SelectedIndex;
-                _navInfoCard.Invalidate();
+                if (_navInfoCard != null) _navInfoCard.Invalidate();
             };
-            _chkFullscreen = new CheckBox();
-            _chkFullscreen.Text = "Pantalla completa";
-            _chkFullscreen.AutoSize = true;
-            _chkFullscreen.ForeColor = UiTheme.TextSecondary;
-            _chkFullscreen.Font = UiTheme.Small;
-            _chkFullscreen.Margin = new Padding(10, 8, 10, 0);
-            _btnProjector = UiTheme.MkButton("Mostrar proyector", "secondary", delegate { ShowProjector(); });
-            _btnClear = UiTheme.MkButton("× Limpiar", "secondary", delegate { if (RequireEngine()) _engine.Clear(); });
-            outputRow.Controls.Add(lblScreen);
+
+            _chkFullscreen = UiTheme.MkCheck("Pantalla completa");
+            _chkFullscreen.Margin = new Padding(2, 8, 10, 0);
+            Tip(_chkFullscreen, "Proyección sin bordes, a pantalla completa");
+
+            _btnProjector = UiTheme.MkButtonWithIcon("Proyector", IconKind.Projector,
+                "secondary", delegate { ShowProjector(); });
+            Tip(_btnProjector, "Mostrar la ventana de proyección (F5)");
+
             outputRow.Controls.Add(_cmbScreen);
             outputRow.Controls.Add(_chkFullscreen);
             outputRow.Controls.Add(_btnProjector);
-            outputRow.Controls.Add(_btnClear);
 
+            // Acoplado (z-order inverso): lista rellena, transporte encima de
+            // herramientas y herramientas encima de la fila de salida.
             slidesBody.Controls.Add(_lvSlides);
             slidesBody.Controls.Add(transport);
+            slidesBody.Controls.Add(toolsRow);
             slidesBody.Controls.Add(outputRow);
 
-            // ---- tarjeta derecha: vista previa ----
+            // ---- tarjeta derecha: vista previa (16:9 + info de diapositiva) ----
             ContentPanel previewBody;
-            Panel previewCard = UiTheme.MkCard("Vista previa", out previewBody);
+            Panel previewCard = UiTheme.MkCard("Vista previa", IconKind.Eye, out previewBody);
             previewCard.Dock = DockStyle.Fill;
 
             _previewArea = new ContentPanel();
             _previewArea.BackColor = UiTheme.PreviewBg;
             _previewArea.Dock = DockStyle.Top;
             _previewArea.Height = 200;
+            _previewArea.Padding = new Padding(4);   // respeta las esquinas redondeadas
             _previewArea.Paint += delegate(object s, PaintEventArgs e)
             {
-                using (Pen p = new Pen(UiTheme.CardBorder))
-                    e.Graphics.DrawRectangle(p, 0, 0, _previewArea.Width - 1, _previewArea.Height - 1);
+                Graphics g = e.Graphics;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                Rectangle r = new Rectangle(0, 0, _previewArea.Width - 1, _previewArea.Height - 1);
+                using (GraphicsPath path = UiTheme.RoundPath(r, 8))
+                {
+                    using (SolidBrush bg = new SolidBrush(UiTheme.PreviewBg)) g.FillPath(bg, path);
+                    // Borde «en vivo»: ámbar cuando hay imagen, neutro si no.
+                    using (Pen pen = new Pen(_pbPreview != null && _pbPreview.Image != null
+                        ? UiTheme.Accent : UiTheme.CardBorder))
+                        g.DrawPath(pen, path);
+                }
             };
             _previewArea.Resize += delegate
             {
                 _previewArea.Height = Math.Max(120, (_previewArea.Width * 9) / 16);
+                if (_chipLive != null)
+                    _chipLive.Location = new Point(_previewArea.Width - _chipLive.Width - 14, 10);
             };
 
             _pbPreview = new PictureBox();
@@ -931,28 +654,44 @@ namespace lumina.ui
 
             _chipLive = new Chip("EN VIVO", UiTheme.Ok, true);
             _chipLive.Visible = false;
-            _chipLive.Parent = _previewArea;   // chip superpuesto arriba-derecha
-            _previewArea.Controls.Add(_chipLive);
+            _previewArea.Controls.Add(_chipLive);    // chip superpuesto arriba-derecha
             _previewArea.Controls.Add(_pbPreview);
             _previewArea.Controls.Add(_lblNoPreview);
             _lblNoPreview.BringToFront();
-            _previewArea.Resize += delegate
-            {
-                _chipLive.Location = new Point(_previewArea.Width - _chipLive.Width - 12, 10);
-            };
 
-            Button btnRefresh = UiTheme.MkButton("Refrescar vista", "secondary", delegate { RefreshPreview(); });
-            btnRefresh.Dock = DockStyle.Top;
+            // v5.3.0: «Jn 3:16 · Diapositiva 2 de 5» bajo la vista previa.
+            _lblPreviewInfo = UiTheme.MkLabel("Sin diapositivas en el escenario",
+                UiTheme.TextSecondary, UiTheme.Small, false);
+            _lblPreviewInfo.Dock = DockStyle.Top;
+            _lblPreviewInfo.Height = 24;
+            _lblPreviewInfo.Padding = new Padding(2, 4, 0, 0);
+            _lblPreviewInfo.TextAlign = ContentAlignment.MiddleLeft;
+
+            // Pie: refrescar (baja prominencia) + nota de la fuente del PNG.
+            Panel previewFoot = new ContentPanel();
+            previewFoot.Dock = DockStyle.Top;
+            previewFoot.Height = 36;
+            previewFoot.BackColor = UiTheme.CardBg;
+
+            Button btnRefresh = UiTheme.MkButtonWithIcon("Refrescar", IconKind.Refresh,
+                "ghost", delegate { RefreshPreview(); });
+            btnRefresh.Dock = DockStyle.Left;
             btnRefresh.Height = 30;
+            Tip(btnRefresh, "Volver a pedir la vista previa al núcleo");
 
             Label lblRes = UiTheme.MkLabel("Vista previa del núcleo (PNG)", UiTheme.TextDisabled, UiTheme.Small, true);
-            lblRes.Dock = DockStyle.Bottom;
-            lblRes.Height = 20;
+            lblRes.Dock = DockStyle.Fill;
+            lblRes.Height = 36;
+            lblRes.Padding = new Padding(0, 8, 2, 0);
             lblRes.TextAlign = ContentAlignment.MiddleRight;
 
+            previewFoot.Controls.Add(lblRes);
+            previewFoot.Controls.Add(btnRefresh);
+
+            // Acoplado (z-order inverso): preview arriba, luego info, luego pie.
+            previewBody.Controls.Add(previewFoot);
+            previewBody.Controls.Add(_lblPreviewInfo);
             previewBody.Controls.Add(_previewArea);
-            previewBody.Controls.Add(btnRefresh);
-            previewBody.Controls.Add(lblRes);
 
             grid.Controls.Add(slidesCard, 0, 0);
             grid.Controls.Add(previewCard, 1, 0);
@@ -967,7 +706,7 @@ namespace lumina.ui
         private Panel BuildSongsPage()
         {
             Panel page = NewPage("Canciones", "Editor de canciones con acordes y búsqueda en la biblioteca",
-                null);
+                IconKind.Song);
             ContentPanel body = (ContentPanel)page.Tag;
 
             TableLayoutPanel grid = NewGrid(2,
@@ -1006,12 +745,8 @@ namespace lumina.ui
             FlowLayoutPanel row1 = new FlowLayoutPanel();
             row1.WrapContents = false;
             row1.Height = 30;
-            _chkHymnMode = new CheckBox();
-            _chkHymnMode.Text = "Modo Hinario (coro intercalado)";
-            _chkHymnMode.AutoSize = true;
-            _chkHymnMode.ForeColor = UiTheme.TextPrimary;
-            _chkHymnMode.Font = UiTheme.Small;
-            _chkHymnMode.Margin = new Padding(0, 4, 16, 0);
+            _chkHymnMode = UiTheme.MkCheck("Modo Hinario (coro intercalado)");
+            _chkHymnMode.Margin = new Padding(0, 1, 16, 0);
             Label lt = UiTheme.MkLabel("Transponer:", UiTheme.TextSecondary, UiTheme.Small, true);
             lt.Margin = new Padding(0, 9, 8, 0);
             _numTranspose = UiTheme.MkNumeric(-11, 11, 0);
@@ -1074,6 +809,8 @@ namespace lumina.ui
             _txtSearch = UiTheme.MkInput(false);
             _txtSearch.Width = 190;
             _txtSearch.Margin = new Padding(0, 0, 8, 0);
+            UiTheme.SetCueBanner(_txtSearch, "Buscar por título, autor o letra…");
+            Tip(_txtSearch, "Buscar en la biblioteca (FTS5) — Enter para ejecutar");
             _txtSearch.KeyDown += delegate(object s, KeyEventArgs e)
             {
                 if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; SearchSongs(); }
@@ -1110,7 +847,7 @@ namespace lumina.ui
 
         private Panel BuildBiblePage()
         {
-            Panel page = NewPage("Biblia", "Pasajes y versículos para proyectar", null);
+            Panel page = NewPage("Biblia", "Pasajes y versículos para proyectar", IconKind.Book);
             ContentPanel body = (ContentPanel)page.Tag;
 
             ContentPanel passage;
@@ -1197,6 +934,8 @@ namespace lumina.ui
             _txtBibleSearch = UiTheme.MkInput(false);
             _txtBibleSearch.Width = 240;
             _txtBibleSearch.Margin = new Padding(0, 0, 8, 0);
+            UiTheme.SetCueBanner(_txtBibleSearch, "Buscar palabra o frase…");
+            Tip(_txtBibleSearch, "Búsqueda por palabra en TODAS las versiones (índice FTS5) — Enter para ejecutar");
             _txtBibleSearch.KeyDown += delegate(object s, KeyEventArgs e)
             {
                 if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; SearchBibleWords(); }
@@ -1240,7 +979,7 @@ namespace lumina.ui
 
         private Panel BuildTemasPage()
         {
-            Panel page = NewPage("Temas", "Apariencia de la proyección: colores, tipografía y efectos", null);
+            Panel page = NewPage("Temas", "Apariencia de la proyección: colores, tipografía y efectos", IconKind.Palette);
             ContentPanel body = (ContentPanel)page.Tag;
 
             TableLayoutPanel grid = NewGrid(2,
@@ -1525,13 +1264,10 @@ namespace lumina.ui
             return sw;
         }
 
-        private static CheckBox MkDarkCheck(string text)
+        private static LuminaCheck MkDarkCheck(string text)
         {
-            CheckBox c = new CheckBox();
-            c.Text = text;
-            c.AutoSize = true;
-            c.ForeColor = UiTheme.TextPrimary;
-            c.Font = UiTheme.Small;
+            // v5.3.0: la casilla del tema es la MISMA del sistema de diseño.
+            LuminaCheck c = UiTheme.MkCheck(text);
             c.Margin = new Padding(0, 7, 14, 0);
             return c;
         }
@@ -1968,7 +1704,7 @@ namespace lumina.ui
 
         private Panel BuildCultoPage()
         {
-            Panel page = NewPage("Culto", "Orden del servicio: canciones, pasajes y proyección", null);
+            Panel page = NewPage("Culto", "Orden del servicio: canciones, pasajes y proyección", IconKind.ServiceList);
             ContentPanel body = (ContentPanel)page.Tag;
 
             TableLayoutPanel grid = NewGrid(2,
@@ -2006,21 +1742,21 @@ namespace lumina.ui
 
             FlowLayoutPanel itemBtns = new FlowLayoutPanel();
             itemBtns.Dock = DockStyle.Bottom;
-            itemBtns.Height = 78;                 // v5.1.0: dos filas de botones
+            itemBtns.Height = 118;                // v5.3.0: hasta 3 filas de botones con icono, sin recorte
             itemBtns.WrapContents = true;
             itemBtns.Padding = new Padding(0, 4, 0, 0);
-            itemBtns.Controls.Add(UiTheme.MkButton("↑ Subir", "secondary", delegate { MoveItem(-1); }));
-            itemBtns.Controls.Add(UiTheme.MkButton("↓ Bajar", "secondary", delegate { MoveItem(1); }));
-            itemBtns.Controls.Add(UiTheme.MkButton("× Eliminar", "secondary", delegate { RemoveItem(); }));
-            itemBtns.Controls.Add(UiTheme.MkButton("► Video…", "secondary", delegate { AddVideoItemToService(); }));
+            itemBtns.Controls.Add(UiTheme.MkButtonWithIcon("Subir", IconKind.ArrowUp, "secondary", delegate { MoveItem(-1); }));
+            itemBtns.Controls.Add(UiTheme.MkButtonWithIcon("Bajar", IconKind.ArrowDown, "secondary", delegate { MoveItem(1); }));
+            itemBtns.Controls.Add(UiTheme.MkButtonWithIcon("Eliminar", IconKind.Trash, "secondary", delegate { RemoveItem(); }));
+            itemBtns.Controls.Add(UiTheme.MkButtonWithIcon("Video…", IconKind.Play, "secondary", delegate { AddVideoItemToService(); }));
             // v5.1.0 «FUNDAMENTO»: el editor de culto COMPLETO del spec §3.2 —
             // canciones, pasajes, imágenes, textos/avisos y blancos, sin salir
             // de la página (antes solo video + JSON externo).
-            itemBtns.Controls.Add(UiTheme.MkButton("♪ Canción actual", "primary", delegate { AddCurrentSongToService(); }));
-            itemBtns.Controls.Add(UiTheme.MkButton("✝ Pasaje bíblico", "primary", delegate { AddCurrentScriptureToService(); }));
-            itemBtns.Controls.Add(UiTheme.MkButton("🖼 Imagen…", "secondary", delegate { AddImageItemToService(); }));
-            itemBtns.Controls.Add(UiTheme.MkButton("✎ Texto/aviso…", "secondary", delegate { AddTextItemToService(); }));
-            itemBtns.Controls.Add(UiTheme.MkButton("□ En blanco", "secondary", delegate { AddBlankItemToService(); }));
+            itemBtns.Controls.Add(UiTheme.MkButtonWithIcon("Canción actual", IconKind.Song, "primary", delegate { AddCurrentSongToService(); }));
+            itemBtns.Controls.Add(UiTheme.MkButtonWithIcon("Pasaje bíblico", IconKind.Book, "primary", delegate { AddCurrentScriptureToService(); }));
+            itemBtns.Controls.Add(UiTheme.MkButtonWithIcon("Imagen…", IconKind.Image, "secondary", delegate { AddImageItemToService(); }));
+            itemBtns.Controls.Add(UiTheme.MkButtonWithIcon("Texto/aviso…", IconKind.Third, "secondary", delegate { AddTextItemToService(); }));
+            itemBtns.Controls.Add(UiTheme.MkButtonWithIcon("En blanco", IconKind.Black, "secondary", delegate { AddBlankItemToService(); }));
 
             list.Controls.Add(_lstItems);
             list.Controls.Add(nameRow);
@@ -2030,18 +1766,18 @@ namespace lumina.ui
             ContentPanel actions;
             Panel actionCard = UiTheme.MkCard("Acciones", out actions);
 
-            Button btnImportSong = UiTheme.MkButton("Importar canción JSON…", "secondary", delegate { ImportSongJson(); });
+            Button btnImportSong = UiTheme.MkButtonWithIcon("Importar canción JSON…", IconKind.Song, "secondary", delegate { ImportSongJson(); });
             btnImportSong.Dock = DockStyle.Top;
             btnImportSong.Height = 32;
-            Button btnImportBib = UiTheme.MkButton("Importar Biblia .BIB…", "secondary", delegate { ImportBibFile(); });
+            Button btnImportBib = UiTheme.MkButtonWithIcon("Importar Biblia .BIB…", IconKind.Book, "secondary", delegate { ImportBibFile(); });
             btnImportBib.Dock = DockStyle.Top;
             btnImportBib.Height = 32;
             btnImportBib.Margin = new Padding(0, 8, 0, 0);
-            Button btnImportPlan = UiTheme.MkButton("Importar plan JSON…", "secondary", delegate { ImportPlanJson(); });
+            Button btnImportPlan = UiTheme.MkButtonWithIcon("Importar plan JSON…", IconKind.ServiceList, "secondary", delegate { ImportPlanJson(); });
             btnImportPlan.Dock = DockStyle.Top;
             btnImportPlan.Height = 32;
             btnImportPlan.Margin = new Padding(0, 8, 0, 0);
-            Button btnSend = UiTheme.MkButton("Enviar a proyección", "primary", delegate { SendServiceToStage(); });
+            Button btnSend = UiTheme.MkButtonWithIcon("Enviar a proyección", IconKind.Play, "primary", delegate { SendServiceToStage(); });
             btnSend.Dock = DockStyle.Bottom;
             btnSend.Height = 44;
             btnSend.Font = UiTheme.H2;
@@ -2065,7 +1801,7 @@ namespace lumina.ui
 
         private Panel BuildSettingsPage()
         {
-            Panel page = NewPage("Ajustes", "API local, base de datos e información del sistema", null);
+            Panel page = NewPage("Ajustes", "API local, base de datos e información del sistema", IconKind.Gear);
             ContentPanel body = (ContentPanel)page.Tag;
 
             // ---- API local ----
@@ -2165,11 +1901,8 @@ namespace lumina.ui
             bkRow.Controls.Add(btnBackupNow);
             bkForm.Controls.Add(bkRow, 1, 0);
 
-            _chkAutoBackup = new CheckBox();
-            _chkAutoBackup.Text = "Respaldar automáticamente al cerrar la aplicación " +
-                "(ZIP de la carpeta data\\ en la carpeta elegida)";
-            _chkAutoBackup.AutoSize = true;
-            _chkAutoBackup.ForeColor = UiTheme.TextSecondary;
+            _chkAutoBackup = UiTheme.MkCheck("Respaldar automáticamente al cerrar la aplicación " +
+                "(ZIP de la carpeta data\\ en la carpeta elegida)");
             bkForm.Controls.Add(_chkAutoBackup, 1, 1);
 
             Label bkNote = UiTheme.MkLabel(
@@ -2297,26 +2030,47 @@ namespace lumina.ui
 
         /* --------------------------------------------------- helpers visuales */
 
-        /// <summary>Crea la página con título/subtitle en la cabecera; Tag = cuerpo.</summary>
-        private static Panel NewPage(string title, string subtitle, EventHandler headerButton)
+        /// <summary>Crea la página con cabecera (badge de icono + título +
+        /// subtítulo + línea divisoria); Tag = cuerpo.</summary>
+        private static Panel NewPage(string title, string subtitle, IconKind icon)
         {
             Panel page = new ContentPanel();
             page.Dock = DockStyle.Fill;
             page.BackColor = UiTheme.PageBg;
-            page.Padding = new Padding(4, 0, 0, 0);
+            page.Padding = new Padding(6, 0, 0, 0);
 
             Panel header = new ContentPanel();
             header.Dock = DockStyle.Top;
-            header.Height = 56;
+            header.Height = 62;
             header.BackColor = UiTheme.PageBg;
+            header.Paint += delegate(object s, PaintEventArgs e)
+            {
+                Graphics g = e.Graphics;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                // Badge del icono: cuadrado redondeado con tinte ámbar.
+                Rectangle badge = new Rectangle(14, 13, 36, 36);
+                using (GraphicsPath p = UiTheme.RoundPath(badge, 9))
+                {
+                    using (SolidBrush bg = new SolidBrush(Color.FromArgb(24, 240, 169, 59)))
+                        g.FillPath(bg, p);
+                    using (Pen pen = new Pen(Color.FromArgb(56, 240, 169, 59)))
+                        g.DrawPath(pen, p);
+                }
+                if (icon != IconKind.None)
+                    IconPainter.Draw(g, icon, 22, 21, 20, UiTheme.Accent);
+                using (Pen p = new Pen(UiTheme.CardBorder))
+                    g.DrawLine(p, 14, header.Height - 2, header.Width - 14, header.Height - 2);
+            };
 
             Label t = UiTheme.MkLabel(title, Color.White, UiTheme.H1, true);
-            t.Dock = DockStyle.Top;
-            t.Height = 34;
+            t.Location = new Point(62, 5);
+            t.Height = 30;
+            t.TextAlign = ContentAlignment.MiddleLeft;
 
             Label st = UiTheme.MkLabel(subtitle, UiTheme.TextSecondary, UiTheme.Small, true);
-            st.Dock = DockStyle.Top;
-            st.Height = 20;
+            st.Location = new Point(62, 34);
+            st.Height = 18;
+            st.TextAlign = ContentAlignment.MiddleLeft;
 
             header.Controls.Add(st);
             header.Controls.Add(t);
@@ -2351,19 +2105,60 @@ namespace lumina.ui
             return l;
         }
 
-        /// <summary>ListView oscura (cabeceras y filas owner-drawn, mockup G-1).</summary>
+        /// <summary>Estado de «fila bajo el ratón» por lista (v5.3.0).</summary>
+        private sealed class ListHover
+        {
+            public int Index = -1;
+        }
+
+        /// <summary>
+        /// ListView oscura v2: cabeceras y filas owner-drawn, filas ALTAS
+        /// (34 px vía StateImageList), hover con repintado, selección con barra
+        /// ámbar e insignia numérica en la primera columna cuando es corta.
+        /// </summary>
         private static ListView NewDarkList()
         {
             ListView lv = new ListView();
             lv.View = View.Details;
             lv.FullRowSelect = true;
             lv.MultiSelect = false;
-            lv.HideSelection = true;
+            lv.HideSelection = false;   // la selección (slide en curso) se ve sin foco
             lv.BorderStyle = BorderStyle.None;
             lv.BackColor = UiTheme.RowEven;
             lv.ForeColor = UiTheme.TextPrimary;
             lv.Font = UiTheme.Body;
             lv.OwnerDraw = true;
+
+            // Filas de 34 px (truco clásico: la altura sigue al StateImageList).
+            try
+            {
+                ImageList sizing = new ImageList();
+                sizing.ImageSize = new Size(1, 34);
+                sizing.Images.Add(new Bitmap(1, 34, System.Drawing.Imaging.PixelFormat.Format32bppArgb));
+                lv.StateImageList = sizing;
+            }
+            catch (Exception) { /* altura por defecto: sin consecuencia */ }
+
+            ListHover hover = new ListHover();
+            lv.Tag = hover;
+            lv.MouseMove += delegate(object s, MouseEventArgs e)
+            {
+                ListView l = (ListView)s;
+                int idx = -1;
+                try
+                {
+                    ListViewHitTestInfo ht = l.HitTest(e.Location);
+                    if (ht != null && ht.Item != null) idx = ht.Item.Index;
+                }
+                catch (Exception) { }
+                if (idx != hover.Index) { hover.Index = idx; l.Invalidate(); }
+            };
+            lv.MouseLeave += delegate(object s, EventArgs e)
+            {
+                ListView l = (ListView)s;
+                if (hover.Index != -1) { hover.Index = -1; l.Invalidate(); }
+            };
+
             lv.DrawColumnHeader += DrawDarkColumnHeader;
             lv.DrawItem += delegate(object s, DrawListViewItemEventArgs e)
             {
@@ -2378,7 +2173,8 @@ namespace lumina.ui
         {
             Rectangle r = new Rectangle(e.Bounds.X, e.Bounds.Y, e.Bounds.Width, e.Bounds.Height);
             using (SolidBrush b = new SolidBrush(UiTheme.CardBg)) e.Graphics.FillRectangle(b, r);
-            TextRenderer.DrawText(e.Graphics, e.Header.Text.ToUpper(CultureInfo.InvariantCulture),
+            TextRenderer.DrawText(e.Graphics, e.Header != null && e.Header.Text != null
+                ? e.Header.Text.ToUpper(CultureInfo.InvariantCulture) : string.Empty,
                 UiTheme.SmallBold, new Rectangle(r.X + 10, r.Y, r.Width - 12, r.Height),
                 UiTheme.TextSecondary,
                 TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis |
@@ -2387,21 +2183,57 @@ namespace lumina.ui
                 e.Graphics.DrawLine(p, r.X, r.Bottom - 1, r.Right, r.Bottom - 1);
         }
 
+        /// <summary>¿La primera columna es un número corto (insignia)?</summary>
+        private static bool IsBadgeNumber(string text)
+        {
+            if (text == null || text.Length == 0 || text.Length > 3) return false;
+            foreach (char ch in text) if (ch < '0' || ch > '9') return false;
+            return true;
+        }
+
         private static void DrawDarkSubItem(object sender, DrawListViewSubItemEventArgs e)
         {
             ListView lv = (ListView)sender;
-            bool selected = e.Item.Selected;
+            bool selected = e.Item != null && e.Item.Selected;
+            ListHover hover = lv.Tag as ListHover;
+            bool hovered = hover != null && hover.Index == e.ItemIndex && !selected;
             Color bg = selected ? UiTheme.RowSelected
+                : hovered ? UiTheme.RowHover
                 : (e.ItemIndex % 2 == 0 ? UiTheme.RowOdd : UiTheme.RowEven);
             Rectangle r = new Rectangle(e.Bounds.X, e.Bounds.Y, e.Bounds.Width, e.Bounds.Height);
             using (SolidBrush b = new SolidBrush(bg)) e.Graphics.FillRectangle(b, r);
-            if (e.ColumnIndex == 0)
-                using (Pen p = new Pen(UiTheme.CardBorder))
-                    e.Graphics.DrawLine(p, r.X, r.Y, r.X, r.Bottom); // separador sutil
+
+            // Barra ámbar al inicio de la fila seleccionada (la «diapositiva en curso»).
+            if (selected && e.ColumnIndex == 0)
+                using (SolidBrush bar = new SolidBrush(UiTheme.Accent))
+                    e.Graphics.FillRectangle(bar, r.X, r.Y + 3, 3, r.Height - 6);
 
             string text = e.SubItem != null ? e.SubItem.Text : string.Empty;
-            Color fg = selected ? Color.White : UiTheme.TextPrimary;
-            if (e.ColumnIndex == 0) fg = UiTheme.TextSecondary;
+
+            if (e.ColumnIndex == 0 && IsBadgeNumber(text))
+            {
+                // Insignia: pastilla ámbar si la fila está seleccionada, neutra si no.
+                Size tsz = TextRenderer.MeasureText(text, UiTheme.SmallBold);
+                int bw = Math.Max(24, tsz.Width + 10);
+                Rectangle badge = new Rectangle(r.X + (r.Width - bw) / 2,
+                    r.Y + (r.Height - 20) / 2, bw, 20);
+                using (GraphicsPath p = UiTheme.RoundPath(badge, 6))
+                {
+                    using (SolidBrush fill = new SolidBrush(
+                        selected ? UiTheme.Accent : UiTheme.HoverLayer))
+                        e.Graphics.FillPath(fill, p);
+                }
+                TextRenderer.DrawText(e.Graphics, text, UiTheme.SmallBold,
+                    new Rectangle(badge.X - 2, badge.Y, badge.Width + 4, badge.Height),
+                    selected ? UiTheme.OnAccent : UiTheme.TextSecondary,
+                    TextFormatFlags.VerticalCenter | TextFormatFlags.HorizontalCenter |
+                    TextFormatFlags.NoPrefix);
+                return;
+            }
+
+            Color fg = selected ? Color.White
+                : hovered ? UiTheme.TextPrimary : UiTheme.TextPrimary;
+            if (e.ColumnIndex == 0) fg = selected ? Color.White : UiTheme.TextSecondary;
             TextRenderer.DrawText(e.Graphics, text, lv.Font,
                 new Rectangle(r.X + 10, r.Y, r.Width - 12, r.Height), fg,
                 TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis |
@@ -2641,6 +2473,7 @@ namespace lumina.ui
             if (st == null) return;
             _currentIndex = (int)MiniJson.GetInt(st, "current", _currentIndex);
             _black = MiniJson.GetBool(st, "black", _black);
+            UpdateBlackButton();          // v5.3.0: el botón «Negro» refleja el estado real
             HighlightCurrentSlide();
             RefreshPreview();
         }
@@ -2648,6 +2481,23 @@ namespace lumina.ui
         private void Status(string msg)
         {
             _tsslMsg.Text = msg;
+            // v5.3.0: punto de severidad — rojo para fallos, ámbar para avisos.
+            try
+            {
+                string m = msg ?? string.Empty;
+                bool err = m.IndexOf("fallo", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                           m.IndexOf("error", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                           m.IndexOf("no se pudo", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                           m.IndexOf("rechaz", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                           m.IndexOf("no disponible", StringComparison.OrdinalIgnoreCase) >= 0;
+                bool warn = !err &&
+                           (m.IndexOf("atención", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                            m.IndexOf("advertencia", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                            m.IndexOf("requiere", StringComparison.OrdinalIgnoreCase) >= 0);
+                _statusColor = err ? UiTheme.Err : warn ? UiTheme.Warning : UiTheme.TextSecondary;
+                if (_statusBar != null) _statusBar.Invalidate();
+            }
+            catch (Exception) { }
         }
 
         private static void TraceLine(string msg)
@@ -2664,7 +2514,7 @@ namespace lumina.ui
         private Panel BuildExportPage()
         {
             Panel page = NewPage("Exportar", "Escenario → PPTX (OpenXML) / PDF (escritor propio)",
-                /* headerButton */ null);
+                IconKind.Export);
             ContentPanel body = (ContentPanel)page.Tag;
 
             ContentPanel cardBody;
@@ -2792,7 +2642,7 @@ namespace lumina.ui
         private Panel BuildIntegrationsPage()
         {
             Panel page = NewPage("Integraciones", "OBS Studio · MIDI · Control remoto móvil (LAN)",
-                /* headerButton */ null);
+                IconKind.Nodes);
             ContentPanel body = (ContentPanel)page.Tag;
 
             // ---- OBS Studio ----
@@ -2823,10 +2673,7 @@ namespace lumina.ui
             _txtObsTextSource.Dock = DockStyle.Fill;
             obsForm.Controls.Add(_txtObsTextSource, 1, 2);
 
-            _chkObsAutoConnect = new CheckBox();
-            _chkObsAutoConnect.Text = "Conectar automáticamente al abrir la aplicación";
-            _chkObsAutoConnect.AutoSize = true;
-            _chkObsAutoConnect.ForeColor = UiTheme.TextSecondary;
+            _chkObsAutoConnect = UiTheme.MkCheck("Conectar automáticamente al abrir la aplicación");
             obsForm.Controls.Add(_chkObsAutoConnect, 1, 3);
 
             FlowLayoutPanel obsBtns = new FlowLayoutPanel();
@@ -2859,10 +2706,7 @@ namespace lumina.ui
             for (int i = 0; i < 2; i++) midiForm.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
             midiForm.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
-            _chkMidiEnabled = new CheckBox();
-            _chkMidiEnabled.Text = "Activar entrada MIDI";
-            _chkMidiEnabled.AutoSize = true;
-            _chkMidiEnabled.ForeColor = UiTheme.TextSecondary;
+            _chkMidiEnabled = UiTheme.MkCheck("Activar entrada MIDI");
             _chkMidiEnabled.CheckedChanged += delegate { MidiAutoApply(); };
             midiForm.Controls.Add(_chkMidiEnabled, 0, 0);
             midiForm.Controls.Add(FieldLabel(""), 0, 1);
@@ -2906,10 +2750,7 @@ namespace lumina.ui
             remForm.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
             remForm.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
-            _chkRemoteEnabled = new CheckBox();
-            _chkRemoteEnabled.Text = "Abrir el mando a los dispositivos de la red";
-            _chkRemoteEnabled.AutoSize = true;
-            _chkRemoteEnabled.ForeColor = UiTheme.TextSecondary;
+            _chkRemoteEnabled = UiTheme.MkCheck("Abrir el mando a los dispositivos de la red");
             remForm.Controls.Add(_chkRemoteEnabled, 0, 0);
             remForm.Controls.Add(FieldLabel("Puerto"), 0, 1);
 
@@ -2949,10 +2790,8 @@ namespace lumina.ui
             exCard.Dock = DockStyle.Top;
             exCard.Height = 92;
             exCard.Margin = new Padding(0, 14, 0, 0);
-            _chkAutoAdvanceVideo = new CheckBox();
-            _chkAutoAdvanceVideo.Text = "Al terminar un video, avanzar automáticamente a la siguiente diapositiva";
-            _chkAutoAdvanceVideo.AutoSize = true;
-            _chkAutoAdvanceVideo.ForeColor = UiTheme.TextSecondary;
+            _chkAutoAdvanceVideo = UiTheme.MkCheck(
+                "Al terminar un video, avanzar automáticamente a la siguiente diapositiva");
             _chkAutoAdvanceVideo.Dock = DockStyle.Fill;
             exBody.Controls.Add(_chkAutoAdvanceVideo);
             body.Controls.Add(exCard);
@@ -3271,7 +3110,7 @@ namespace lumina.ui
         private Panel BuildTriggersPage()
         {
             Panel page = NewPage("Activadores", "Reglas automáticas: evento → condición → acción",
-                /* headerButton */ null);
+                IconKind.Bolt);
             ContentPanel body = (ContentPanel)page.Tag;
 
             ContentPanel listBody;
@@ -3292,10 +3131,10 @@ namespace lumina.ui
             btns.Height = 44;
             btns.WrapContents = false;
             btns.Padding = new Padding(0, 6, 0, 0);
-            _btnTrigAdd = UiTheme.MkButton("＋ Nueva regla", "primary", delegate { TriggerAdd(); });
-            _btnTrigEdit = UiTheme.MkButton("Editar", "secondary", delegate { TriggerEdit(); });
-            _btnTrigToggle = UiTheme.MkButton("Activar/Desactivar", "secondary", delegate { TriggerToggleEnable(); });
-            _btnTrigDel = UiTheme.MkButton("Eliminar", "danger", delegate { TriggerDelete(); });
+            _btnTrigAdd = UiTheme.MkButtonWithIcon("Nueva regla", IconKind.Plus, "primary", delegate { TriggerAdd(); });
+            _btnTrigEdit = UiTheme.MkButtonWithIcon("Editar", IconKind.Info, "secondary", delegate { TriggerEdit(); });
+            _btnTrigToggle = UiTheme.MkButtonWithIcon("Activar/Desactivar", IconKind.Check, "secondary", delegate { TriggerToggleEnable(); });
+            _btnTrigDel = UiTheme.MkButtonWithIcon("Eliminar", IconKind.Trash, "danger", delegate { TriggerDelete(); });
             _btnTrigAdd.Width = 130; _btnTrigEdit.Width = 90; _btnTrigToggle.Width = 150; _btnTrigDel.Width = 100;
             btns.Controls.Add(_btnTrigAdd);
             btns.Controls.Add(_btnTrigEdit);
@@ -4044,16 +3883,36 @@ namespace lumina.ui
         private static bool IsEditable(Control c)
         {
             if (c == null) return false;
-            return c is TextBox || c is ComboBox || c is NumericUpDown || c is ListBox;
+            // v5.3.0: LuminaCheck también posee Espacio/flechas (casilla enfocada).
+            return c is TextBox || c is ComboBox || c is NumericUpDown || c is ListBox
+                || c is LuminaCheck;
         }
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
             // Las teclas de función SIEMPRE funcionan (no colisionan con edición).
+            if (keyData == Keys.F1) { ShowShortcutsDialog(); return true; }
             if (keyData == Keys.F5) { ShowProjector(); return true; }
             if (keyData == Keys.F6) { OpenStageView(); return true; }
             if (keyData == Keys.F7) { OpenDirectorView(); return true; }
             if (keyData == Keys.F8) { ShowLowerThirdDialog(); return true; }
+
+            // v5.3.0: Ctrl+1…9 salta a la página indicada (en cualquier foco:
+            // Ctrl+dígito no interfiere con la edición de texto).
+            if ((keyData & Keys.Control) == Keys.Control)
+            {
+                Keys pure = keyData & Keys.KeyCode;
+                if (pure >= Keys.D1 && pure <= Keys.D9)
+                {
+                    int navIndex = (int)(pure - Keys.D1);
+                    if (navIndex < NavToPage.Length)
+                    {
+                        NavigateToIndex(NavToPage[navIndex]);
+                        return true;
+                    }
+                }
+                return base.ProcessCmdKey(ref msg, keyData);
+            }
 
             // El resto respeta el foco editable.
             if (IsEditable(ActiveControl)) return base.ProcessCmdKey(ref msg, keyData);
@@ -4115,12 +3974,17 @@ namespace lumina.ui
             {
                 _lvSlides.EndUpdate();
             }
+            if (_lblSlidesEmpty != null) _lblSlidesEmpty.Visible = _slides.Count == 0;
             HighlightCurrentSlide();
         }
 
         private void HighlightCurrentSlide()
         {
-            if (_currentIndex < 0 || _currentIndex >= _lvSlides.Items.Count) return;
+            if (_currentIndex < 0 || _currentIndex >= _lvSlides.Items.Count)
+            {
+                UpdatePreviewInfo();
+                return;
+            }
             if (_lvSlides.SelectedIndices.Count == 0 ||
                 _lvSlides.SelectedIndices[0] != _currentIndex)
             {
@@ -4132,6 +3996,76 @@ namespace lumina.ui
                     _lvSlides.EnsureVisible(_currentIndex);
                 }
             }
+            UpdatePreviewInfo();
+        }
+
+        /// <summary>v5.3.0: «Jn 3:16 · Diapositiva 2 de 5» bajo la vista previa.</summary>
+        private void UpdatePreviewInfo()
+        {
+            if (_lblPreviewInfo == null) return;
+            try
+            {
+                int n = _slides != null ? _slides.Count : 0;
+                if (n == 0)
+                {
+                    _lblPreviewInfo.Text = "Sin diapositivas en el escenario";
+                    return;
+                }
+                if (_currentIndex < 0 || _currentIndex >= n)
+                {
+                    _lblPreviewInfo.Text = "Diapositiva — de " +
+                        n.ToString(CultureInfo.InvariantCulture);
+                    return;
+                }
+                SlideView v = _slides[_currentIndex];
+                string refLabel = v != null && v.RefLabel != null && v.RefLabel.Length > 0
+                    ? v.RefLabel : "Diapositiva";
+                _lblPreviewInfo.Text = refLabel + "  ·  Diapositiva " +
+                    (_currentIndex + 1).ToString(CultureInfo.InvariantCulture) + " de " +
+                    n.ToString(CultureInfo.InvariantCulture);
+            }
+            catch (Exception)
+            {
+                // informativo: jamás rompe por texto
+            }
+        }
+
+        /// <summary>v5.3.0: refleja el estado «negro» en el botón (se enciende).</summary>
+        private void UpdateBlackButton()
+        {
+            try
+            {
+                LuminaButton lb = _btnBlack as LuminaButton;
+                if (lb != null) lb.Active = _black;
+            }
+            catch (Exception) { }
+        }
+
+        /// <summary>v5.3.0: diálogo con el mapa completo de atajos (F1).</summary>
+        private void ShowShortcutsDialog()
+        {
+            try
+            {
+                string text =
+                    "Atajos de teclado\r\n\r\n" +
+                    "  F1      · esta ayuda\r\n" +
+                    "  F5      · mostrar proyector\r\n" +
+                    "  F6      · monitor de escenario\r\n" +
+                    "  F7      · ventana de director\r\n" +
+                    "  F8      · zócalo inferior / aviso\r\n" +
+                    "  → / Espacio / AvPág  · siguiente diapositiva\r\n" +
+                    "  ← / RePág             · diapositiva anterior\r\n" +
+                    "  B       · ocultar la salida en negro\r\n" +
+                    "  L       · limpiar la salida\r\n" +
+                    "  P       · pausar el video en la salida\r\n" +
+                    "  Enter   · proyectar la diapositiva seleccionada\r\n" +
+                    "  Ctrl+1…9 · ir a la página n de la navegación\r\n\r\n" +
+                    "(las letras solo actúan cuando NO se está editando texto)";
+                MessageBox.Show(this, text,
+                    AppName + " — atajos de teclado",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception) { }
         }
 
         /// <summary>Pide el PNG al motor y lo pinta (nueva Bitmap para desacoplar el stream).</summary>
@@ -4173,6 +4107,7 @@ namespace lumina.ui
                     : "Carga una canción o pasaje para ver la vista previa");
             _lblNoPreview.Visible = _pbPreview.Image == null;
             _chipLive.Visible = _pbPreview.Image != null;
+            if (_previewArea != null) _previewArea.Invalidate();   // borde «en vivo»
         }
 
         /* ======================================================================
@@ -4863,10 +4798,7 @@ namespace lumina.ui
                     opt.BackColor = UiTheme.PageBg;
                     opt.ForeColor = UiTheme.TextPrimary;
 
-                    CheckBox chkLoop = new CheckBox();
-                    chkLoop.Text = "Repetir en bucle";
-                    chkLoop.AutoSize = true;
-                    chkLoop.ForeColor = UiTheme.TextSecondary;
+                    LuminaCheck chkLoop = UiTheme.MkCheck("Repetir en bucle");
                     chkLoop.Dock = DockStyle.Top;
                     chkLoop.Height = 28;
 
@@ -5410,6 +5342,7 @@ namespace lumina.ui
             {
                 _closing = true;
                 try { SaveSettings(); } catch (Exception) { /* no bloquear el cierre */ }
+                if (_tips != null) { try { _tips.Dispose(); } catch (Exception) { } _tips = null; }
                 StopVideo();
                 if (_videoForm != null) { try { _videoForm.Dispose(); } catch (Exception) { } _videoForm = null; }
                 if (_audioForm != null) { try { _audioForm.Dispose(); } catch (Exception) { } _audioForm = null; }

@@ -50,7 +50,7 @@ concurrency:
 
 env:
   DOTNET_VERSION: '8.0.x'
-  APP_VERSION: '5.2.0'
+  APP_VERSION: '5.3.0'
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -492,7 +492,7 @@ jobs:
           cmake --build blaunch --config Release --parallel $env:NUMBER_OF_PROCESSORS
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: 'Armar layout portable v5.2.0 (net48 + net35 + raíz compartida)'
+      - name: 'Armar layout portable v5.3.0 (net48 + net35 + raíz compartida)'
         shell: pwsh
         run: |
           $stage = "staging/LuminaPresentation-${{ matrix.arch }}"
@@ -520,7 +520,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path "$stage/data" | Out-Null
 
           @'
-          LuminaPresentation v5.2.0 «MOTOR» — núcleo C++ + interfaz C#
+          LuminaPresentation v5.3.0 «INTERFAZ» — núcleo C++ + interfaz C#
           =====================================================
 
           PROGRAMA PORTABLE — no requiere instalación ni permisos de
@@ -551,6 +551,18 @@ jobs:
             resources\data\     — Biblia Reina-Valera 1909 completa incluida:
                                   al abrir la base de datos, la app ofrece
                                   instalarla (~31.000 versículos).
+
+          v5.3.0 «INTERFAZ»: rediseño completo de la interfaz (mismo motor
+          probado de v5.2.0): tema «Lumina Studio» con tarjetas redondeadas,
+          botones con iconos vectoriales y estados (hover/foco/deshabilitado),
+          navegación lateral agrupada por secciones, página «En Vivo» rehecha
+          (transporte compacto con tooltips y atajos, lista de diapositivas
+          con insignias y hover, vista previa con información de diapositiva y
+          estado vacío explicativo), casillas y listas coherentes con el tema,
+          foco visible por teclado en todos los controles y Ctrl+1…9 para
+          saltar entre páginas. Atajos: F1 ayuda · F5 proyector · F6/F7/F8
+          escenario/director/aviso · ←/→/Espacio diapositivas · B negro ·
+          L limpiar · P pausa de video.
 
           v5.2.0 «MOTOR»: corregido el fallo que dejaba la app «con la GUI
           pero más nada» en Windows 7 SP1 (reporte de campo): el CRT/STL
@@ -781,14 +793,38 @@ jobs:
       - name: Publicar
         uses: softprops/action-gh-release@v2
         with:
-          name: "LuminaPresentation ${{ github.ref_name }} «MOTOR»"
+          name: "LuminaPresentation ${{ github.ref_name }} «INTERFAZ»"
           body: |
-            **LuminaPresentation v5.2.0 «MOTOR» — núcleo C++ + interfaz C# (.NET mínimo 3.5 · 4.8 si está disponible)**
+            **LuminaPresentation v5.3.0 «INTERFAZ» — núcleo C++ + interfaz C# (.NET mínimo 3.5 · 4.8 si está disponible)**
 
             ## Descargas
-            - `LuminaPresentation-5.2.0-win-x86.zip` — **Windows 7 SP1 a Windows 11 (32 bits)**
-            - `LuminaPresentation-5.2.0-win-x64.zip` — **Windows 7 SP1 a Windows 11+ (64 bits)**
+            - `LuminaPresentation-5.3.0-win-x86.zip` — **Windows 7 SP1 a Windows 11 (32 bits)**
+            - `LuminaPresentation-5.3.0-win-x64.zip` — **Windows 7 SP1 a Windows 11+ (64 bits)**
             - `SHA256SUMS.txt` — integridad de los paquetes
+
+            ## ✨ v5.3.0 — Rediseño completo de la interfaz («Lumina Studio»)
+            Misma funcionalidad probada de v5.2.0, con una interfaz renovada
+            de extremo a extremo y verificada por los mismos gates (selfcheck
+            + uicheck + flowcheck + Win7-imports, en ambas variantes y
+            arquitecturas, ANTES de publicar):
+            - **Sistema de diseño nuevo** (`UiKit.cs`): paleta refinada con
+              gradación de profundidad, tarjetas redondeadas con brillo
+              superior, botones owner-drawn con variantes (primario/secondary/
+              danger/ghost), iconos vectoriales escalables (32 iconos GDI+,
+              idénticos en Win7 y Win11) y casillas oscuras coherentes.
+            - **Carcasa nueva**: cabecera con logotipo «faro» + chips de estado
+              + acceso rápido al proyector; navegación lateral agrupada por
+              secciones (PRESENTACIÓN · BIBLIOTECA · EXTENSIÓN · SISTEMA) con
+              píldora activa ámbar; barra de estado con punto de severidad.
+            - **Página «En Vivo» rehecha**: transporte compacto con iconos y
+              tooltips con atajos, botón «Negro» con estado encendido, lista
+              de diapositivas alta (34 px) con insignias numéricas, hover y
+              barra ámbar en la diapositiva en curso, vista previa 16:9 con
+              borde «en vivo» e información «Jn 3:16 · Diapositiva 2 de 5»,
+              y estados vacíos que explican qué hacer.
+            - **UX transversal**: F1 abre el mapa de atajos, Ctrl+1…9 navega
+              entre páginas, foco visible por teclado en todo control propio,
+              marcas de agua en las búsquedas y tooltips en las acciones.
 
             ## ⚠ Corregido en v5.2.0 (crítico — «carga la GUI pero más nada»)
             Reporte de campo en Windows 7 SP1 x86 con .NET 4.8: la app abría
@@ -807,7 +843,7 @@ jobs:
               blindados (aviso en la barra de estado, JAMÁS excepción) y el
               fallo del núcleo queda registrado con diagnóstico completo
               (`LoadLibrary` + `GetLastError`) en el log de sesión.
-            Nuevos gates de CI para que NUNCA vuelva a pasar:
+            Gates de CI para que NUNCA vuelva a pasar:
             - **`tools/verify_win7_imports.py`**: audita la tabla de
               importaciones de cada binario publicado — cero APIs Win8+
               estáticas, cero runtime dinámico (UCRT/VCRedist).

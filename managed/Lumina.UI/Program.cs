@@ -1,5 +1,5 @@
 // ============================================================================
-//  LuminaPresentation Suite v5.2.0 «MOTOR» — managed/Lumina.UI/Program.cs
+//  LuminaPresentation Suite v5.3.0 «INTERFAZ» — managed/Lumina.UI/Program.cs
 //  Copyright (c) 2026 Isaac. Licencia View-Only.
 // ============================================================================
 //  Program.cs : punto de entrada WinForms con blindaje anti-crash.
@@ -68,7 +68,7 @@ namespace lumina.ui
     internal static class Program
     {
         private const string AppName = "LuminaPresentation Suite";
-        private const string AppVersion = "5.2.0";
+        private const string AppVersion = "5.3.0";
 
         /// <summary>Ruta del log de la sesión en curso (null si aún no hay).</summary>
         private static string _logPath;
