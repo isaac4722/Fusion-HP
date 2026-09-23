@@ -59,6 +59,8 @@ namespace lumina.wpf
         internal string _lastBibleSearchTerm = string.Empty;
 
         /* -------- salidas auxiliares (WinForms heredado, HWND independiente) - */
+        // v6.0.0: índice del ítem cuyas notas están cargadas en el Director (-1 = ninguna).
+        internal int _directorNotesItemIndex = -1;
         private lumina.ui.VideoPlayerForm _videoForm;
         private lumina.ui.StageViewForm _stageForm;
         private lumina.ui.LowerThirdsOverlay _lowerThird;

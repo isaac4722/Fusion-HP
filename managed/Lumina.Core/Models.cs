@@ -199,6 +199,12 @@ namespace lumina.core
         /// </summary>
         public string Highlight = string.Empty;
         /// <summary>
+        /// v6.0.0 «HORIZONTE»: notas del DIRECTOR para este ítem (avisos internos
+        /// del servicio — no se proyectan). Persisten en el plan JSON del culto
+        /// («notes») y se muestran en la pantalla del director al llegar al ítem.
+        /// </summary>
+        public string Notes = string.Empty;
+        /// <summary>
         /// v5.0.0: ruta del video (kind=video). Campo C#-side: el NÚCLEO lo
         /// ignora (kind desconocido → slide en blanco) y la UI lo intercepta
         /// para reproducirlo sobre la pantalla del proyector (VideoPlayerForm).

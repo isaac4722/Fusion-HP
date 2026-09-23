@@ -150,6 +150,8 @@ namespace lumina.core
             o["title"] = it.Title;
             // v6.0.0: resaltado en proyección (el núcleo lo propaga a las slides).
             if (!string.IsNullOrEmpty(it.Highlight)) o["highlight"] = it.Highlight;
+            // v6.0.0: notas del director (UI-side; el núcleo las ignora).
+            if (!string.IsNullOrEmpty(it.Notes)) o["notes"] = it.Notes;
             if (it.Kind == "song" && it.Song != null)
                 o["song"] = SongToDict(it.Song);   // objeto anidado (LoadScenario lo lee)
             if (it.Kind == "scripture")

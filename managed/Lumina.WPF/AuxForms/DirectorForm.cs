@@ -37,8 +37,14 @@ namespace lumina.ui
         private TimeSpan _chronoElapsed = TimeSpan.Zero;
         private bool _chronoRunning;
 
-        // Panel de notas del director (volátil: no se proyecta ni persiste).
+        // Panel de notas del director (avisos internos del servicio — no se
+        // proyectan). v6.0.0: las notas PERSISTEN en el ítem del culto: al
+        // cambiar de ítem se cargan las suyas y cada edición se notifica a
+        // MainWindow (evento NotesEdited) para guardarlas en el ScenarioItem.
         private TextBox _notes;
+        private bool _loadingNotes;
+        /// <summary>v6.0.0: dispara en cada edición del panel (texto nuevo).</summary>
+        public event Action<string> NotesEdited;
 
         private readonly Font _clockFont;
         private readonly Font _titleFont;
@@ -84,6 +90,12 @@ namespace lumina.ui
             _notes.BackColor = Color.FromArgb(24, 27, 38);
             _notes.ForeColor = Color.FromArgb(210, 214, 226);
             _notes.Font = new Font("Segoe UI", 12F, FontStyle.Regular, GraphicsUnit.Point);
+            _notes.TextChanged += delegate(object sender, EventArgs e)
+            {
+                if (_loadingNotes) return;
+                Action<string> h = NotesEdited;
+                if (h != null) h(_notes.Text);
+            };
             _notes.KeyPress += delegate(object s, KeyPressEventArgs e)
             {
                 // Evita que Escape cierre la ventana mientras se escriben notas.
@@ -149,6 +161,17 @@ namespace lumina.ui
         {
             _chronoElapsed = TimeSpan.Zero;
             _chronoStart = DateTime.Now;
+        }
+
+        /// <summary>
+        /// v6.0.0: carga las notas del ítem ACTUAL (llamar solo al CAMBIAR de
+        /// ítem — no en cada slide, o pisaría lo que el director escribe).
+        /// </summary>
+        public void LoadNotes(string notes)
+        {
+            _loadingNotes = true;
+            try { _notes.Text = notes ?? string.Empty; }
+            finally { _loadingNotes = false; }
         }
 
         /// <summary>

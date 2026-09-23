@@ -63,6 +63,7 @@ namespace lumina.tests
             Run("ZefaniaBible: parseo streaming y tolerancia", TestZefania);
             Run("OsisBible: OSIS XML académico (v6.0.0)", TestOsis);
             Run("PptxImporter: round-trip exportar→importar (v6.0.0)", TestPptxImport);
+            Run("ScenarioBuilder: notas del director por ítem (v6.0.0)", TestScenarioNotes);
             Run("TriggerEngine: reglas, condiciones y persistencia", TestTriggerEngine);
             Run("ObsProtocol: handshake V5 y mensajes", TestObsProtocol);
 
@@ -1008,6 +1009,37 @@ namespace lumina.tests
             catch (InvalidDataException)
             {
                 AssertTrue(true, "InvalidDataException para ZIP basura");
+            }
+        }
+
+        private static void TestScenarioNotes()
+        {
+            // v6.0.0: notas del director por ítem — viajan en el plan JSON
+            // (contrato aditivo: ítems sin notas NO emiten el campo).
+            ScenarioItem it = ScenarioBuilder.TextItem("Bienvenida", "línea uno", 4);
+            it.Notes = "recordar bajar el volumen del teclado";
+            string json = ScenarioBuilder.BuildScenarioJson("Plan", new Theme(),
+                new ScenarioItem[] { it });
+            Dictionary<string, object> o = MiniJson.Parse(json);
+            Dictionary<string, object> item =
+                (Dictionary<string, object>)MiniJson.GetArray(o, "items")[0];
+            AssertTrue(MiniJson.GetString(item, "notes", "") ==
+                "recordar bajar el volumen del teclado", "notes emitido");
+
+            ScenarioItem plain = ScenarioBuilder.TextItem("Sin notas", "texto", 4);
+            string json2 = ScenarioBuilder.BuildScenarioJson("Plan2", new Theme(),
+                new ScenarioItem[] { plain });
+            AssertTrue(json2.IndexOf("\"notes\"", StringComparison.Ordinal) < 0,
+                "sin notes → campo ausente");
+
+            // El núcleo ignora el campo desconocido (ABI aditiva, sin error).
+            if (NativeAvailable())
+            {
+                using (LuminaEngine engine = LuminaEngine.Create(true, null))
+                {
+                    int st = engine.LoadScenario(json);
+                    AssertTrue(st == LuminaStatus.Ok, "LoadScenario con notes");
+                }
             }
         }
 

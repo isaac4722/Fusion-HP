@@ -643,6 +643,11 @@ namespace lumina.wpf
                     if (io == null) continue;
                     string type = MiniJson.GetString(io, "type", "blank").ToLowerInvariant();
                     string title = MiniJson.GetString(io, "title", string.Empty);
+                    // v6.0.0: notas del director (viajan en el plan por ítem).
+                    string notes = MiniJson.GetString(io, "notes", string.Empty);
+                    // v6.0.0: resaltado en proyección (término de búsqueda).
+                    string highlight = MiniJson.GetString(io, "highlight", string.Empty);
+                    ScenarioItem added2;
                     if (type == "song")
                     {
                         Song s = new Song();
@@ -651,26 +656,31 @@ namespace lumina.wpf
                         s.Lyrics = MiniJson.GetString(io, "lyrics", string.Empty);
                         List<SongBlock> blocks = ScenarioBuilder.ParseLyricsBlocks(s.Lyrics);
                         if (blocks.Count > 0) s.Blocks = blocks;
-                        _serviceItems.Add(ScenarioBuilder.FromSong(s));
+                        added2 = ScenarioBuilder.FromSong(s);
                     }
                     else if (type == "scripture")
                     {
                         string refr = MiniJson.GetString(io, "ref", string.Empty);
                         if (refr.Length == 0) refr = title;
-                        _serviceItems.Add(ScenarioBuilder.ScriptureItem(refr,
+                        int per = (int)MiniJson.GetInt(io, "versesPerSlide", 1);
+                        added2 = ScenarioBuilder.ScriptureItem(refr,
                             MiniJson.GetString(io, "version", _settings.LastBibleVersion),
-                            1, MiniJson.GetString(io, "text", string.Empty)));
+                            per < 1 ? 1 : per, MiniJson.GetString(io, "text", string.Empty));
                     }
                     else if (type == "text")
                     {
-                        _serviceItems.Add(ScenarioBuilder.TextItem(title,
-                            MiniJson.GetString(io, "text", title), 4));
+                        int mx = (int)MiniJson.GetInt(io, "maxLinesPerSlide", 4);
+                        added2 = ScenarioBuilder.TextItem(title,
+                            MiniJson.GetString(io, "text", title), mx < 1 ? 4 : mx);
                     }
                     else
                     {
-                        _serviceItems.Add(ScenarioBuilder.BlankItem(
-                            title.Length > 0 ? title : "En blanco"));
+                        added2 = ScenarioBuilder.BlankItem(
+                            title.Length > 0 ? title : "En blanco");
                     }
+                    added2.Notes = notes;
+                    added2.Highlight = highlight;
+                    _serviceItems.Add(added2);
                     added++;
                 }
                 string planName = MiniJson.GetString(plan, "name", string.Empty);
@@ -682,6 +692,44 @@ namespace lumina.wpf
             {
                 MessageBox.Show(this, "El plan no se pudo leer: " + ex.Message,
                     "Importar plan", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
+        /* --------------------------------------------- plan JSON v6.0.0 */
+        /// <summary>
+        /// Guarda el culto COMO PLAN JSON (mismo formato que «Importar plan»):
+        /// ítems completos CON notas del director y resaltado de proyección
+        /// (v6.0.0: las notas persisten de verdad en el archivo del plan).
+        /// </summary>
+        internal void SavePlanJson()
+        {
+            if (_serviceItems.Count == 0)
+            {
+                Status("El culto está vacío: no hay nada que guardar.");
+                return;
+            }
+            Microsoft.Win32.SaveFileDialog dlg = new Microsoft.Win32.SaveFileDialog();
+            dlg.Title = "Guardar plan de culto JSON";
+            dlg.Filter = "Plan JSON (*.json)|*.json|Todos los archivos (*.*)|*.*";
+            string name = pageService.txtServiceName.Text.Trim();
+            dlg.FileName = (name.Length > 0 ? name : "culto") + ".json";
+            if (dlg.ShowDialog(this) != true) return;
+            try
+            {
+                Dictionary<string, object> plan = new Dictionary<string, object>();
+                plan["name"] = name.Length > 0 ? name : "Culto";
+                List<object> arr = new List<object>(_serviceItems.Count);
+                foreach (ScenarioItem it in _serviceItems)
+                    arr.Add(ScenarioBuilder.ItemToDict(it));
+                plan["items"] = arr;
+                File.WriteAllText(dlg.FileName,
+                    MiniJson.Serialize(plan) + "\n", new UTF8Encoding(false));
+                Status("Plan guardado: " + dlg.FileName + " (" + _serviceItems.Count + " ítems).");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "El plan no se pudo guardar: " + ex.Message,
+                    "Guardar plan", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
 

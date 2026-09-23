@@ -94,6 +94,11 @@ namespace lumina.wpf
             if (Shell != null) Shell.ImportPptxToService();
         }
 
+        private void OnSavePlan(object sender, RoutedEventArgs e)
+        {
+            if (Shell != null) Shell.SavePlanJson();
+        }
+
         private void OnImportPlan(object sender, RoutedEventArgs e)
         {
             if (Shell != null) Shell.ImportPlanJson();

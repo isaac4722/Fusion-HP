@@ -362,7 +362,7 @@ namespace lumina.wpf
             }
 
             UpdateStageView(curItem);
-            UpdateDirectorView(curItem);
+            UpdateDirectorView(curItem, itemIndex);
 
             if (_settings.ObsTextSource.Length > 0)
             {
@@ -473,14 +473,25 @@ namespace lumina.wpf
             System.Windows.Forms.Screen[] screens = System.Windows.Forms.Screen.AllScreens;
             int idx = Math.Max(0, Math.Min(_settings.DirectorScreen, screens.Length - 1));
             _directorForm.OpenOn(screens[idx]);
-            UpdateDirectorView(null);
+            // v6.0.0: canal de persistencia de notas (índice -1 = sin ítem).
+            _directorNotesItemIndex = -1;
+            _directorForm.NotesEdited += OnDirectorNotesEdited;
+            UpdateDirectorView(null, -1);
             Status("Pantalla del director abierta (pantalla " + idx + "). Escape para cerrar; " +
                    "Espacio/R = cronómetro; notas abajo.");
         }
 
-        private void UpdateDirectorView(ScenarioItem curItem)
+        private void UpdateDirectorView(ScenarioItem curItem, int itemIndex)
         {
             if (_directorForm == null || _directorForm.IsDisposed || !_directorForm.Visible) return;
+
+            // v6.0.0: notas del director — se cargan SOLO al cambiar de ítem
+            // (en cada slide se conservaría lo que el director está escribiendo).
+            if (itemIndex != _directorNotesItemIndex)
+            {
+                _directorNotesItemIndex = itemIndex;
+                _directorForm.LoadNotes(curItem != null ? curItem.Notes : string.Empty);
+            }
             List<string> cur = new List<string>();
             if (curItem != null) cur.AddRange(DirectorItemLines(curItem));
             List<string> next = new List<string>();
@@ -496,6 +507,15 @@ namespace lumina.wpf
                 ? _slides[_currentIndex].RefLabel : string.Empty;
             _directorForm.SetState(curItem != null ? curItem.Title : string.Empty,
                 nextTitle, refLabel, cur, next);
+        }
+
+        /// <summary>v6.0.0: edición de notas del director → ítem actual del culto.</summary>
+        private void OnDirectorNotesEdited(string text)
+        {
+            if (_lastScenarioItems == null || _lastItemIndex < 0 ||
+                _lastItemIndex >= _lastScenarioItems.Count) return;
+            ScenarioItem it = _lastScenarioItems[_lastItemIndex];
+            if (it != null) it.Notes = text ?? string.Empty;
         }
 
         private static List<string> DirectorItemLines(ScenarioItem it)
