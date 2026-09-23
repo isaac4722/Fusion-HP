@@ -133,11 +133,13 @@ namespace lumina.wpf.scripting
                 _com.SetScriptSite(_site);
                 if (_parse32 != null) _parse32.InitNew(); else _parse64.InitNew();
                 _com.SetScriptState(ScriptState.Started);
-                // AddNamedItem EN STARTED + GLOBALMEMBERS (quinto experimento del
-                // ciclo, ver jscript.c de Wine): el motor vincula el ítem
-                // ANSIOOSAMENTE — GetItemInfo(IUNKNOWN)+QI(IDispatch) durante el
-                // PROPIO AddNamedItem — y los miembros quedan como globales del
-                // script además del nombre («jslib.xxx» / «xxx()»).
+                // AddNamedItem con GLOBALMEMBERS (sexto experimento del ciclo,
+                // verificado por la sonda del selfcheck): el JScript real
+                // resuelve el ítem con GetItemInfo SOLO cuando el script evalúa
+                // un identificador GLOBAL de la API (los miembros del host se
+                // publican como funciones globales — la forma «JSLib-like
+                // mínimo» del spec §3.3: tcp(host, puerto, onLine), ws(url,
+                // onMessage), httpGet(url), cmd(action), showText(text)).
                 _com.AddNamedItem("jslib",
                     ScriptItem.IsVisible | ScriptItem.GlobalMembers | ScriptItem.IsPersistent);
 
@@ -167,12 +169,11 @@ namespace lumina.wpf.scripting
                     ParseText(m.Code, m.Name);
                 }
 
-                // GetScriptDispatch con el NOMBRE DEL ÍTEM: el código se compila
-                // dentro del ítem (pstrItemName) — sus funciones y variables
-                // (incluida la «jslib» del preámbulo) viven en el espacio del
-                // ítem, no en el global anónimo.
+                // GetScriptDispatch(null): el espacio GLOBAL del motor — ahí
+                // viven las funciones/variables de los módulos (pstrItemName
+                // NULL) para CallGlobal (acción de activador «script»).
                 object globals;
-                _com.GetScriptDispatch("jslib", out globals);
+                _com.GetScriptDispatch(null, out globals);
                 _globals = globals;
 
                 _log.Add("módulos cargados: " + _loaded.Count
@@ -200,21 +201,19 @@ namespace lumina.wpf.scripting
             _pendingError = false;
             try
             {
-                // pstrItemName = "jslib": el código compila DENTRO del ítem — el
-                // motor resuelve el ítem al parsear (GetItemInfo+QI, ver
-                // ParseScriptText→lookup_named_item de jscript.c de Wine) y el
-                // «this» de nivel superior del código es el objeto host. El
-                // preámbulo fija «var jslib = this;» y los módulos llaman
-                // jslib.log(...) sobre ese valor.
+                // pstrItemName NULL: el código compila en el espacio GLOBAL del
+                // motor (funciones/variables de los módulos = globales, y la API
+                // del host entra por GLOBALMEMBERS — GetItemInfo se dispara al
+                // evaluar los identificadores globales de la API).
                 // flags 0: el texto se EJECUTA durante la llamada.
                 if (_parse32 != null)
                 {
-                    _parse32.ParseScriptText(code, "jslib", IntPtr.Zero, null,
+                    _parse32.ParseScriptText(code, null, IntPtr.Zero, null,
                         UIntPtr.Zero, 1, 0, IntPtr.Zero, IntPtr.Zero);
                 }
                 else
                 {
-                    _parse64.ParseScriptText(code, "jslib", IntPtr.Zero, null,
+                    _parse64.ParseScriptText(code, null, IntPtr.Zero, null,
                         UIntPtr.Zero, 1, 0, IntPtr.Zero, IntPtr.Zero);
                 }
                 if (file.IndexOf("(prelude)", StringComparison.Ordinal) < 0)

@@ -245,18 +245,19 @@ namespace lumina.wpf
                             throw new InvalidOperationException(
                                 "LoadModules debió fallar por roto.js");
 
-                        // SONDA de diagnóstico del ítem «jslib» (qué ve JScript) —
+                        // SONDA de diagnóstico de la API GLOBAL (GLOBALMEMBERS) —
                         // ANTES de las aserciones para que SIEMPRE quede en el log
-                        // del run: typeof(jslib) / typeof(jslib.log) / version().
+                        // del run: typeof(log)/typeof(cmd)/version() + traza de
+                        // las llamadas GetItemInfo del motor.
                         object s0 = js.CallGlobal("scT0");
-                        Console.WriteLine("selfcheck: JSLib sonda typeof(jslib)=" + s0);
-                        LogLine("selfcheck: JSLib sonda typeof(jslib)=" + s0);
+                        Console.WriteLine("selfcheck: JSLib sonda typeof(log)=" + s0);
+                        LogLine("selfcheck: JSLib sonda typeof(log)=" + s0);
                         object s1 = js.CallGlobal("scT1");
-                        Console.WriteLine("selfcheck: JSLib sonda typeof(jslib.log)=" + s1);
-                        LogLine("selfcheck: JSLib sonda typeof(jslib.log)=" + s1);
+                        Console.WriteLine("selfcheck: JSLib sonda typeof(cmd)=" + s1);
+                        LogLine("selfcheck: JSLib sonda typeof(cmd)=" + s1);
                         object s2 = js.CallGlobal("scT2");
-                        Console.WriteLine("selfcheck: JSLib sonda jslib.version()=" + s2);
-                        LogLine("selfcheck: JSLib sonda jslib.version()=" + s2);
+                        Console.WriteLine("selfcheck: JSLib sonda version()=" + s2);
+                        LogLine("selfcheck: JSLib sonda version()=" + s2);
                         foreach (string tr in js.GetItemInfoTrace())
                         {
                             Console.WriteLine("selfcheck: JSLib GetItemInfo " + tr);
@@ -349,18 +350,19 @@ namespace lumina.wpf
         }
 
         /// <summary>Módulo de SONDA del selfcheck (0probe.js ordena primero):
-        /// funciones que inspeccionan el ítem «jslib» SIN llamadas de nivel
-        /// superior (el parse nunca falla) — resultados al log del run.</summary>
+        /// funciones que inspeccionan la API GLOBAL del host (GLOBALMEMBERS)
+        /// SIN llamadas de nivel superior (el parse nunca falla).</summary>
         private const string SelfcheckJsProbe =
-            "// 0probe.js del selfcheck — sonda del ítem jslib (v6.1.0)\r\n" +
-            "function scT0() { return '' + typeof jslib; }\r\n" +
-            "function scT1() { return '' + typeof jslib.log; }\r\n" +
-            "function scT2() { return '' + jslib.version(); }\r\n";
+            "// 0probe.js del selfcheck — sonda de la API global (v6.1.0)\r\n" +
+            "function scT0() { return '' + typeof log; }\r\n" +
+            "function scT1() { return '' + typeof cmd; }\r\n" +
+            "function scT2() { return '' + version(); }\r\n";
 
         /// <summary>Módulo de autoprueba del motor (evaluado de verdad por
-        /// IActiveScript en el runner de Windows — ve el jslib COMPLETO). Una
-        /// llamada por línea: el «archivo:línea» del error de script identifica
-        /// SIN ambigüedad la API que falló (lección de los runs del tag).</summary>
+        /// IActiveScript en el runner de Windows — ve la API global COMPLETA,
+        /// la forma «JSLib-like mínimo» del spec §3.3). Una llamada por línea:
+        /// el «archivo:línea» del error de script identifica SIN ambigüedad la
+        /// API que falló (lección de los runs del tag).</summary>
         private const string SelfcheckJsModule =
             "// auto.js del selfcheck — módulo de autoprueba del JSLib (v6.1.0)\r\n" +
             "var scHits = 0;\r\n" +
@@ -368,13 +370,13 @@ namespace lumina.wpf
             "function scPing(s) { return s + '-' + s; }\r\n" +
             "function scCount() { return scHits; }\r\n" +
             "function scLastEvent() { return scLast; }\r\n" +
-            "jslib.log('selfcheck: módulo cargado');\r\n" +
-            "jslib.onEvent('sc_evento', function (data) { scHits = scHits + 1; scLast = jsonParse(data).saludo; });\r\n" +
-            "jslib.cmd('next');\r\n" +
-            "jslib.showText('Aviso del selfcheck JSLib', 2);\r\n" +
-            "jslib.setTimeout(120, function () { scHits = scHits + 1; });\r\n" +
-            "var scCancelado = jslib.setTimeout(60000, function () { scHits = 100; });\r\n" +
-            "jslib.clearTimeout(scCancelado);\r\n";
+            "log('selfcheck: módulo cargado');\r\n" +
+            "onEvent('sc_evento', function (data) { scHits = scHits + 1; scLast = jsonParse(data).saludo; });\r\n" +
+            "cmd('next');\r\n" +
+            "showText('Aviso del selfcheck JSLib', 2);\r\n" +
+            "setTimeout(120, function () { scHits = scHits + 1; });\r\n" +
+            "var scCancelado = setTimeout(60000, function () { scHits = 100; });\r\n" +
+            "clearTimeout(scCancelado);\r\n";
 
         /// <summary>Sink del selfcheck: registra cmd/showText para aserciones.</summary>
         private sealed class SelfcheckJsSink : IJsLibSink
