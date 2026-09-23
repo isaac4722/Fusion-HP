@@ -229,6 +229,8 @@ namespace lumina.wpf
                 {
                     File.WriteAllText(Path.Combine(jsDir, "auto.js"),
                         SelfcheckJsModule, new UTF8Encoding(false));
+                    File.WriteAllText(Path.Combine(jsDir, "0probe.js"),
+                        SelfcheckJsProbe, new UTF8Encoding(false));
                     File.WriteAllText(Path.Combine(jsDir, "roto.js"),
                         "function roto( {", new UTF8Encoding(false));
 
@@ -252,6 +254,23 @@ namespace lumina.wpf
                             throw new InvalidOperationException(
                                 "el error de roto.js no llegó con archivo:línea: " +
                                 JoinLines(errs));
+
+                        // SONDA de diagnóstico del item «jslib» (qué ve JScript):
+                        // typeof(jslib) / typeof(jslib.log) / version() — la salida
+                        // queda en el log del run para diagnosticar el interop.
+                        object s0 = js.CallGlobal("scT0");
+                        Console.WriteLine("selfcheck: JSLib sonda typeof(jslib)=" + s0);
+                        LogLine("selfcheck: JSLib sonda typeof(jslib)=" + s0);
+                        object s1 = js.CallGlobal("scT1");
+                        Console.WriteLine("selfcheck: JSLib sonda typeof(jslib.log)=" + s1);
+                        LogLine("selfcheck: JSLib sonda typeof(jslib.log)=" + s1);
+                        object s2 = js.CallGlobal("scT2");
+                        Console.WriteLine("selfcheck: JSLib sonda jslib.version()=" + s2);
+                        LogLine("selfcheck: JSLib sonda jslib.version()=" + s2);
+                        if (s2 == null || Convert.ToString(s2, CultureInfo.InvariantCulture).Length == 0)
+                            throw new InvalidOperationException(
+                                "la sonda jslib.version() no devolvió nada (typeof jslib=" + s0
+                                + ", typeof log=" + s1 + ")");
 
                         object ping = js.CallGlobal("scPing", "eco");
                         if (!string.Equals(Convert.ToString(ping, CultureInfo.InvariantCulture),
@@ -326,6 +345,15 @@ namespace lumina.wpf
         {
             return lines == null || lines.Count == 0 ? "(vacío)" : string.Join(" | ", lines.ToArray());
         }
+
+        /// <summary>Módulo de SONDA del selfcheck (0probe.js ordena primero):
+        /// funciones que inspeccionan el ítem «jslib» SIN llamadas de nivel
+        /// superior (el parse nunca falla) — resultados al log del run.</summary>
+        private const string SelfcheckJsProbe =
+            "// 0probe.js del selfcheck — sonda del ítem jslib (v6.1.0)\r\n" +
+            "function scT0() { return '' + typeof jslib; }\r\n" +
+            "function scT1() { return '' + typeof jslib.log; }\r\n" +
+            "function scT2() { return '' + jslib.version(); }\r\n";
 
         /// <summary>Módulo de autoprueba del motor (evaluado de verdad por
         /// IActiveScript en el runner de Windows — ve el jslib COMPLETO). Una

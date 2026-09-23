@@ -58,13 +58,46 @@ namespace lumina.wpf.scripting
     }
 
     /// <summary>
-    /// El objeto «jslib» de JScript. ComVisible AutoDispatch (default del CCW
-    /// para clases visibles): JScript resuelve «jslib.log» por GetIDsOfNames.
+    /// Contrato COM del objeto «jslib» — interfaz DUAL con DispIds EXPLÍCITOS
+    /// (lección del tercer run del tag: con ClassInterface AutoDispatch el CCW
+    /// no publica TypeInfo y el JScript clásico envuelve el objeto como opaco
+    /// — «jslib» existe pero «jslib.log» evalúa a no-función → «Function
+    /// expected»). Con una interfaz dual ComVisible el CCW expone IDispatch
+    /// CON TypeInfo real (generado de la definición): JScript resuelve los
+    /// miembros por nombre (GetIDsOfNames) o por enlace temprano, y los
+    /// parámetros object reciben VT_BSTR/VT_I4/VT_DISPATCH sin fricción.
+    /// DispIds fijos y bajos (1..17) para estabilidad entre versiones.
+    /// </summary>
+    [ComVisible(true)]
+    [InterfaceType(ComInterfaceType.InterfaceIsDual)]
+    public interface IJsLibApi
+    {
+        [DispId(1)] string version();
+        [DispId(2)] void log(object msg);
+        [DispId(3)] void notify(object title, object text);
+        [DispId(4)] void onEvent(string name, object callback);
+        [DispId(5)] void httpGet(string url, object callback);
+        [DispId(6)] bool tcp(string id, string host, int port, object onLine);
+        [DispId(7)] bool tcpSend(string id, string text);
+        [DispId(8)] void tcpClose(string id);
+        [DispId(9)] bool tcpConnected(string id);
+        [DispId(10)] bool ws(string id, string url, object onMessage);
+        [DispId(11)] bool wsSend(string id, string text);
+        [DispId(12)] void wsClose(string id);
+        [DispId(13)] bool wsConnected(string id);
+        [DispId(14)] int setTimeout(object ms, object callback);
+        [DispId(15)] void clearTimeout(object id);
+        [DispId(16)] string cmd(object action, [Optional][DefaultParameterValue(null)] object index);
+        [DispId(17)] void showText(object text, [Optional][DefaultParameterValue(null)] object seconds);
+    }
+
+    /// <summary>
+    /// El objeto «jslib» de JScript: implementa IJsLibApi (dual, con TypeInfo).
     /// Los métodos se llaman SIEMPRE desde el hilo de UI (el script corre allí).
     /// </summary>
     [ComVisible(true)]
-    [ClassInterface(ClassInterfaceType.AutoDispatch)]
-    public sealed class JsLibHost
+    [ClassInterface(ClassInterfaceType.None)]
+    public sealed class JsLibHost : IJsLibApi
     {
         private readonly JsEngine _engine;      // registro/compartido con el motor
         private readonly IJsLibSink _sink;      // cmd/showText/notify → la app
