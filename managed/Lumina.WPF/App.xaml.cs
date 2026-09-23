@@ -244,6 +244,20 @@ namespace lumina.wpf
                         if (allOk)
                             throw new InvalidOperationException(
                                 "LoadModules debió fallar por roto.js");
+
+                        // SONDA de diagnóstico del ítem «jslib» (qué ve JScript) —
+                        // ANTES de las aserciones para que SIEMPRE quede en el log
+                        // del run: typeof(jslib) / typeof(jslib.log) / version().
+                        object s0 = js.CallGlobal("scT0");
+                        Console.WriteLine("selfcheck: JSLib sonda typeof(jslib)=" + s0);
+                        LogLine("selfcheck: JSLib sonda typeof(jslib)=" + s0);
+                        object s1 = js.CallGlobal("scT1");
+                        Console.WriteLine("selfcheck: JSLib sonda typeof(jslib.log)=" + s1);
+                        LogLine("selfcheck: JSLib sonda typeof(jslib.log)=" + s1);
+                        object s2 = js.CallGlobal("scT2");
+                        Console.WriteLine("selfcheck: JSLib sonda jslib.version()=" + s2);
+                        LogLine("selfcheck: JSLib sonda jslib.version()=" + s2);
+
                         if (!js.LoadedModules().Contains("auto.js"))
                             throw new InvalidOperationException(
                                 "auto.js no cargó: " + JoinLines(js.Errors()));
@@ -254,23 +268,6 @@ namespace lumina.wpf
                             throw new InvalidOperationException(
                                 "el error de roto.js no llegó con archivo:línea: " +
                                 JoinLines(errs));
-
-                        // SONDA de diagnóstico del item «jslib» (qué ve JScript):
-                        // typeof(jslib) / typeof(jslib.log) / version() — la salida
-                        // queda en el log del run para diagnosticar el interop.
-                        object s0 = js.CallGlobal("scT0");
-                        Console.WriteLine("selfcheck: JSLib sonda typeof(jslib)=" + s0);
-                        LogLine("selfcheck: JSLib sonda typeof(jslib)=" + s0);
-                        object s1 = js.CallGlobal("scT1");
-                        Console.WriteLine("selfcheck: JSLib sonda typeof(jslib.log)=" + s1);
-                        LogLine("selfcheck: JSLib sonda typeof(jslib.log)=" + s1);
-                        object s2 = js.CallGlobal("scT2");
-                        Console.WriteLine("selfcheck: JSLib sonda jslib.version()=" + s2);
-                        LogLine("selfcheck: JSLib sonda jslib.version()=" + s2);
-                        if (s2 == null || Convert.ToString(s2, CultureInfo.InvariantCulture).Length == 0)
-                            throw new InvalidOperationException(
-                                "la sonda jslib.version() no devolvió nada (typeof jslib=" + s0
-                                + ", typeof log=" + s1 + ")");
 
                         object ping = js.CallGlobal("scPing", "eco");
                         if (!string.Equals(Convert.ToString(ping, CultureInfo.InvariantCulture),

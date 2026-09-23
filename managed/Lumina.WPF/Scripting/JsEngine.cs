@@ -127,8 +127,20 @@ namespace lumina.wpf.scripting
                 _com.AddNamedItem("jslib", ScriptItem.IsVisible | ScriptItem.IsPersistent);
                 _com.SetScriptState(ScriptState.Started);
 
-                // Prelude (jsonParse/lumina) — se ejecuta ANTES que los módulos.
+                // Prelude (jsonParse/lumina) — SIN referencias a ítems: se puede
+                // ejecutar ya (estado STARTED).
                 ParseText(JsPrelude.Text, "(prelude)");
+
+                // LECCIÓN DEL TERCER RUN DEL TAG: JScript vincula los ítems con
+                // nombre en la transición STARTED→CONNECTED (es cuando el motor
+                // materializa el envoltorio llamando a GetItemInfo). El código de
+                // nivel superior que referencia «jslib» ejecutado DURANTE el parse
+                // en STARTED ve un ítem aún sin envolver (miembros no-función →
+                // «Function expected»). Los módulos se parsean CONECTADOS — la
+                // inyección dinámica post-conexión es un patrón legítimo de
+                // IActiveScriptParse (igual que WSH ejecuta el código de nivel
+                // superior después de conectar el motor).
+                _com.SetScriptState(ScriptState.Connected);
 
                 List<JsModuleFile> modules = JsModuleScanner.Scan(_modulesDir);
                 foreach (JsModuleFile m in modules)
@@ -140,7 +152,6 @@ namespace lumina.wpf.scripting
                     }
                     ParseText(m.Code, m.Name);
                 }
-                _com.SetScriptState(ScriptState.Connected);
 
                 object globals;
                 _com.GetScriptDispatch(null, out globals);
