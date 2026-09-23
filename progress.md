@@ -803,3 +803,102 @@ modular §1.2, teclado + foco visible §1.3, WCAG 2.2 §2, animaciones ≤ 160ms
   (prerelease=true, zips x86/x64 + SHA256SUMS).
 - Las 18 releases históricas convertidas a BETA vía API (prerelease=true +
   «— BETA» en el título + nota de política de betas).
+---
+## 2026-09-24 — CICLO v6.0.0 «HORIZONTE»: las funciones diferidas del spec llegan al motor
+
+- Agente: Super Z (GLM) — ciclo completo (9 pasos de AGENT.md)
+- Encargo: «Crea esa app descrita… Publica en el repo de Fusion-HP que tiene
+  el prototipo. Usa actions de github para compilar.» — evolución del
+  prototipo v5.4.0 con los ítems factibles del roadmap (spec): resaltado en
+  proyección, transiciones, OSIS XML, importación PPTX y notas persistentes.
+- Hecho (5 piezas, 1 commit por pieza):
+  1. **Resaltado en PROYECCIÓN** (roadmap §«Resaltado en PROYECCIÓN»):
+     módulo portable nuevo `native/core/src/Highlight.{h,cpp}` —
+     `Highlight::Split(texto, palabra)` parte una línea en segmentos con
+     coincidencia INSENSIBLE a mayúsculas y acentos latinos (á→a, Ñ→n) y
+     FRONTERA DE PALABRA («Dios» no matchea «Diosas»); los offsets de corte
+     son del UTF-8 original (mapa de índice carácter-lógico → byte). El ítem
+     de escenario lleva `highlight` (parseado por LoadScenario, propagado a
+     las slides en Flatten), `SlideToJson` lo emite (contrato ADITIVO — solo
+     cuando hay valor), y el Renderer pinta los segmentos coincidentes con
+     relleno de ACENTO (mismo contorno/sombra, centrado por anchos medidos).
+     Wiring WPF: `SearchBibleWords` recuerda `_lastBibleSearchTerm`,
+     `LoadScriptureToStage`/`AddCurrentScriptureToService` lo propagan;
+     `ResolveReference` (acción manual) lo limpia.
+  2. **Transiciones** (roadmap §«Transiciones entre slides»): crossfade
+     `AlphaBlend` (msimg32) en `Projector.cpp` — al publicar contenido nuevo
+     se congela el ÚLTIMO fotograma pintado (cache `lastFrame` bajo mutex) y
+     el bucle de ventana invalida ~60 fps mientras dura el fundido (alpha
+     decreciente sobre el contenido nuevo). Cambio de pantalla/lienzo →
+     descarte seguro de búferes (tamaño distinto jamás se funde). API ABI
+     NUEVA `lumina_set_transition(h, mode, ms)` (0=corte, 1=fundido,
+     0..5000 ms; ERR_LIMIT fuera de rango; headless guarda y refleja en el
+     estado `"transition"`). Ajuste persistente `transitionFade/transitionMs`
+     en settings.json + tarjeta «Proyección» en Ajustes (checkbox + ms),
+     aplicada al núcleo desde CreateEngine y al guardar.
+  3. **OSIS XML** (roadmap §«OSIS XML»): `OsisBible.cs` (streaming
+     XmlReader, memoria constante) — tabla de códigos OSIS 1..66 (+ variantes
+     cortas Gn/Ex/Lv…), `osisID` compuesto «Libro.Cap.Vers» resuelve
+     contenedores faltantes, `<w>/<seg>/<transChange>/<divineName>` son texto
+     real, `<note>/<title>/<reference>/<q>/<milestone>/<hi>` descartados,
+     `<lb/>`→'\n', versión desde `<work><title>` (gana sobre osisIDWork).
+     LECCIÓN (bug encontrado por el test ANTES del commit): un versículo cuyo
+     código de libro es DESCONOCIDO se descarta — jamás hereda en silencio el
+     libro anterior. Semántica XmlReader tras ReadElementContentAsString/Skip
+     verificada con prueba empírica aislada: el reader queda POSICIONADO en
+     el nodo siguiente → los bucles REPROCESAN el nodo actual sin Read().
+     UI: «Importar OSIS XML…» en Biblia (reusa InsertBibleRows por lotes).
+  4. **Importación PPTX** (roadmap §«Importación PPTX»): `Import/ZipReader.cs`
+     (central directory walk; stored+deflate; CRC32 de integridad con la
+     tabla de ZipWriter; cifrado/ZIP64/entradas >64 MB/zip >512 MB
+     rechazados con error claro; cero dependencias del GAC — misma lección
+     v5.1.0 de System.IO.Packaging) + `Import/PptxImporter.cs` (orden REAL de
+     diapositivas por `sldIdLst`→`presentation.xml.rels` con fallback
+     numérico; `sp`/`txBody`/`a:p`/`a:t` con los saltos de propiedades
+     pPr/rPr/spPr/…; fidelidad 1:1: slide sin texto → ítem en blanco;
+     título desde `docProps/core.xml`). UI: «Importar PPTX…» en Culto
+     (1 diapositiva = 1 ítem de texto, maxLinesPerSlide = líneas de la
+     slide). TEST: round-trip contra el PROPIO PptxExporter.
+  5. **Notas persistentes del director** (roadmap §«Tercera salida,
+     pendiente menor»): `ScenarioItem.Notes` (viaja en el plan JSON como
+     «notes», contrato aditivo); el panel de notas del DirectorForm se carga
+     SOLO al cambiar de ítem (flag `_loadingNotes` evita el eco del evento)
+     y cada edición vuelve al ScenarioItem vía `NotesEdited`. Nuevo
+     «Guardar plan JSON…» (Culto) exporta ítems completos con
+     notas/highlight; `ImportPlanJson` ahora lee notes/highlight/
+     versesPerSlide/maxLinesPerSlide.
+- Decisiones:
+  - El resaltado se implementa como CAMPO del ítem (no de cada SlideLine):
+    una palabra por slide es el caso real (la búsqueda es por palabra) y
+    evita engordar el contrato línea a línea. ABI: evolución aditiva
+    documentada (roadmap: «campo nuevo en el JSON de slide»).
+  - El fundido cruza desde el ÚLTIMO FOTOGRAMA (no desde el buffer lógico):
+    continuidad visual exacta (lo que el proyector VIO es lo que se funde),
+    al costo de 2 DIB de pantalla extra (~16 MB en 1080p) — aceptable en el
+    motor de proyección; se liberan al cerrar/cambiar de pantalla.
+  - `lumina_set_transition` valida rango con ERR_LIMIT (modo/duración):
+    determinista y testeable headless; headless guarda y refleja en el
+    estado (la ventana la aplica cuando exista).
+  - ZipReader/OPC propio (no ZipArchive): resuelve idéntico bajo CLR2/CLR4
+    (lección v5.1.0); 512 MB/64 MB límites contra bombas de descompresión.
+  - La importación PPTX mapea a TEXT items (no imágenes/tablas): el roadmap
+    pedía «mapear sp de texto a ítems de texto»; imágenes embebidas quedan
+    para ciclo posterior si el spec las exige.
+  - OSIS: el div type≠book se IGNORA como contenedor (las secciones dentro
+    de un libro son normales en OSIS); la fila inválida se descarta en el
+    VERSÍCULO (defensa contra atribución silenciosa al libro previo).
+  - JSLib (IActiveScript) queda para ciclo posterior: el roadmap lo marca
+    «para usuarios avanzados» y los activadores cubren los flujos del spec
+    sin código de usuario.
+- Gates: build nativo Linux **0 err/0 warn** · lumina_selftest **164/164**
+  (+18 Highlight) · lumina_poc_native **52/52** (+3 transición ABI +3
+  highlight +12 set_transition) · build gestionado **0 err/0 warn**
+  (net35+net48+net8+WPF) · Lumina.Tests **27/27** (+1 highlight +1 OSIS +1
+  PPTX round-trip +1 notas; con libLuminaCore.so real).
+- Bloqueos: ninguno. (El doc técnico que originó el encargo no llegó al
+  servidor de archivos — el ciclo se ejecutó contra la spec documentada en
+  el repo: README + docs/ + roadmap, que describen la misma app.)
+- Siguiente: push → tag v6.0.0-beta.1 → CI verde (Windows x86+x64: la
+  compilación MSVC de Projector.cpp/AlphaBlend y el gate uicheck con los
+  controles nuevos se validan allí) → release BETA con zips + SHA256.
+

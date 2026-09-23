@@ -86,7 +86,7 @@ int32_t lumina_version(char* out, int32_t cap, int32_t* needed) {
     return Api([&]() -> LuminaStatus {
         Engine* e = nullptr;  // version no necesita handle
         (void)e;
-        return ReturnStr(out, cap, needed, std::string("LuminaCore ") + "5.2.0");
+        return ReturnStr(out, cap, needed, std::string("LuminaCore ") + "6.0.0");
     });
 }
 

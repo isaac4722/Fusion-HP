@@ -1,5 +1,11 @@
 # Hoja de ruta — diferido y evolución (post v5.1.0 «FUNDAMENTO»)
 
+> **v6.0.0 «HORIZONTE» (2026-09-24)**: los ítems factibles de esta hoja ya
+> están IMPLEMENTADOS y verificados — resaltado en PROYECCIÓN, transiciones
+> (fundido), OSIS XML, importación PPTX y notas persistentes del director.
+> Quedan pendientes solo los que requieren decisiones/credenciales de
+> terceros (OAuth de PCO/Drive, firma de código) y los marcados abajo.
+
 Criterio del proyecto: **cero errores y funciones completas antes que
 superficie**. Lo que sigue quedó fuera de v5.1.0 por requerir decisiones de
 terceros o infraestructura de despliegue que romperían «el usuario no instala
@@ -23,14 +29,17 @@ nada / no configura nada». Se documenta el plan técnico de cada punto.
 
 ## Extensiones de formato (candidatos a v5.x)
 
-* **OSIS XML** (biblias): segundo formato académico junto a ZEFania.
-* **Resaltado en PROYECCIÓN** (spec §3.2): el resaltado de la búsqueda ya está
-  en la lista de resultados (v5.1.0); llevarlo a pantalla requiere marcar
-  tokens en `SlideLine` y soportar énfasis en el Renderer nativo (run de texto
-  con color de acento). Cambio de ABI controlado (campo nuevo en el JSON de
-  slide, versión menor del contrato).
-* **Importación PPTX** (hoy solo exportación): leer PresentationML con el
-  mismo motor OPC/ZipWriter propio y mapear `sp` de texto a ítems de texto.
+* **OSIS XML** (biblias): ✅ **CUBIERTO en v6.0.0** — `managed/Lumina.Core/Bible/OsisBible.cs`
+  (streaming, tabla de códigos OSIS 1..66, `<w>` aplanado, `<note>` descartado).
+* **Resaltado en PROYECCIÓN** (spec §3.2): ✅ **CUBIERTO en v6.0.0** — el ítem
+  de escenario lleva `highlight` (término de la búsqueda), el motor lo
+  propaga a las slides y el Renderer pinta los matches en color de acento
+  (módulo portable `Highlight` con coincidencia case/acento-insensible y
+  frontera de palabra; contrato de slide evolucionado de forma aditiva).
+* **Importación PPTX** (hoy solo exportación): ✅ **CUBIERTO en v6.0.0** —
+  `managed/Lumina.Core/Import/` (ZipReader + PptxImporter): orden real por
+  `sldIdLst`→`rels`, `sp`/`txBody`/`a:p`/`a:t` mapeados a ítems de texto
+  (1 diapositiva = 1 ítem), lector ZIP/OPC sin dependencias del GAC.
 
 ## Motor de scripts (JSLib del spec §3.3)
 
@@ -47,16 +56,19 @@ nada / no configura nada». Se documenta el plan técnico de cada punto.
   mp4/wmv/avi con los codecs del SO. Si se exige mkv/webm → VLC headless
   (~60 MB por arquitectura) rompe el espíritu «ligero»; alternativa:
   documentar conversión o aceptar el coste en v6 con paquete «full» opcional.
-* **Transiciones entre slides** (fade): el Renderer nativo con doble búfer
-  ya garantiza «cero destello del escritorio» (requisito del spec cubierto);
-  el fundido animado entre slides es un cambio acotado en Projector.cpp
-  (alpha blend entre buffers) pendiente de pruebas en GUI real.
+* **Transiciones entre slides** (fade): ✅ **CUBIERTO en v6.0.0** — crossfade
+  `AlphaBlend` en `Projector.cpp` desde el último fotograma cacheado (cache
+  `lastFrame`), animación ~60 fps impulsada por el bucle de ventana, ajuste
+  persistente (Ajustes › Proyección) y API `lumina_set_transition`.
+  Pendiente: verificación visual en GUI real (los gates cubren ABI/estado).
 
 ## Tercera salida (spec §3.3 «hasta tres salidas»)
 
 **CUBIERTA en v5.1.0**: pantalla pública (nativa) + monitor de escenario
 (StageViewForm) + **pantalla del director** (`DirectorForm`, ver
-`docs/api/DirectorWindow.md`). Pendiente menor: notas persistentes por ítem.
+`docs/api/DirectorWindow.md`). ✅ **Notas persistentes por ítem CUBIERTAS en
+v6.0.0**: `ScenarioItem.Notes` viaja en el plan JSON («Guardar plan JSON…»
+en la página Culto) y el panel del director se carga/guarda por ítem.
 
 ## Infra
 

@@ -1,4 +1,4 @@
-# LuminaPresentation Suite v5.4.0 «ESTUDIO» — BETA
+# LuminaPresentation Suite v6.0.0 «HORIZONTE» — BETA
 
 **Proyección para iglesias con arquitectura híbrida: núcleo C++17 nativo + interfaz WPF (.NET 4.8) con baseline WinForms (.NET mínimo 3.5)**
 — motor de proyección en tiempo real con la agilidad de desarrollo de .NET,
@@ -14,8 +14,8 @@
 
 1. Ir a **[Betas](https://github.com/isaac4722/Fusion-HP/releases)** (pre-releases de evaluación).
 2. Descargar el paquete para tu arquitectura:
-   - `LuminaPresentation-5.4.0-beta.1-win-x86.zip` — **Windows 7 SP1 … Windows 11 (32 bits)**
-   - `LuminaPresentation-5.4.0-beta.1-win-x64.zip` — **Windows 7 SP1 … Windows 11+ (64 bits)**
+   - `LuminaPresentation-6.0.0-beta.1-win-x86.zip` — **Windows 7 SP1 … Windows 11 (32 bits)**
+   - `LuminaPresentation-6.0.0-beta.1-win-x64.zip` — **Windows 7 SP1 … Windows 11+ (64 bits)**
 3. Descomprimir el ZIP **completo** y ejecutar **`LuminaLauncher.exe`**.
    **El usuario nunca instala nada**:
    - Windows 10 1903+ / Windows 11 → **.NET Framework 4.8** integrado en el SO
@@ -28,6 +28,36 @@
      + las 3 DLL gestionadas en la carpeta de la variante elegida) y explica con
      claridad qué hacer si falta algo.
    - Ambas variantes comparten la misma carpeta de datos `data\`.
+
+## 🌟 Novedades v6.0.0 «HORIZONTE» — BETA
+
+> **Las funciones diferidas del spec llegan al motor y a la capa de datos**,
+> conservando la arquitectura híbrida probada (C++17 /MT + WPF/WinForms) y
+> TODOS los gates de CI (selfcheck + uicheck + flowcheck + Win7-imports,
+> ambas variantes y arquitecturas):
+> - **Transiciones de proyección**: fundido (crossfade) entre diapositivas —
+>   AlphaBlend sobre el doble búfer GDI desde el **último fotograma
+>   proyectado** (continuidad visual exacta, cero destello de escritorio).
+>   Configurable en *Ajustes › Proyección* (corte / fundido, 0..5000 ms,
+>   persistente) y por la nueva API `lumina_set_transition` (ABI aditiva,
+>   reflejada en el estado del motor).
+> - **Resaltado en PROYECCIÓN**: cuando un pasaje llega al escenario desde la
+>   **búsqueda bíblica por palabra**, la palabra buscada se proyecta en
+>   **color de acento** (coincidencia insensible a mayúsculas y acentos
+>   latinos, con frontera de palabra — módulo portable `Highlight` con
+>   tests propios).
+> - **Importación OSIS XML**: segundo formato académico de biblias junto a
+>   ZEFania/.BIB/JSON — streaming con memoria constante, códigos de libro
+>   OSIS 1..66, notas editoriales descartadas (`.w`/`.seg` aplanados).
+> - **Importación PPTX**: las diapositivas de texto de un PowerPoint entran a
+>   la cola del culto (**1 diapositiva = 1 ítem**, fidelidad de proyección) —
+>   lector ZIP/OPC propio (`ZipReader`, cero dependencias del GAC), orden real
+>   vía `sldIdLst`→`rels`, round-trip contra el propio exportador verificado
+>   por tests.
+> - **Notas del director persistentes**: el panel de notas de la tercera
+>   pantalla se guarda **por ítem** del culto y viaja en el plan JSON; nuevo
+>   **«Guardar plan JSON…»** exporta el culto completo (ítems + notas +
+>   resaltados) re-importable.
 
 ## 🌟 Novedades v5.4.0 «ESTUDIO» — BETA
 

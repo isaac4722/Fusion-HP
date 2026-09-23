@@ -1,5 +1,5 @@
 # ============================================================================
-#  LuminaPresentation / LuminaPresentation Suite — CI/CD híbrido v5.0.0 «SINERGIA»
+#  LuminaPresentation / LuminaPresentation Suite — CI/CD híbrido v6.0.0 «HORIZONTE»
 #  Copyright (c) 2026 Isaac. Licencia View-Only.
 # ----------------------------------------------------------------------------
 #  Pipeline de la arquitectura híbrida (docs/architecture-hybrid.md §6):
@@ -50,7 +50,7 @@ concurrency:
 
 env:
   DOTNET_VERSION: '8.0.x'
-  APP_VERSION: '5.4.0-beta.1'
+  APP_VERSION: '6.0.0-beta.1'
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -538,7 +538,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path "$stage/data" | Out-Null
 
           @'
-          LuminaPresentation v5.4.0 «ESTUDIO» BETA — núcleo C++ + interfaz WPF
+          LuminaPresentation v6.0.0 «HORIZONTE» BETA — núcleo C++ + interfaz WPF
           =====================================================
 
           PROGRAMA PORTABLE — BETA. No requiere instalación ni permisos de
@@ -570,6 +570,22 @@ jobs:
             resources\data\     — Biblia Reina-Valera 1909 completa incluida:
                                   al abrir la base de datos, la app ofrece
                                   instalarla (~31.000 versículos).
+
+          v6.0.0 «HORIZONTE» (BETA): las funciones diferidas del spec llegan
+          al motor y a la capa de datos:
+            * Transiciones: fundido entre diapositivas en la salida del
+              proyector (crossfade desde el último fotograma, sin destello),
+              configurable en Ajustes > Proyección (corte/fundido + duración).
+            * Resaltado en PROYECCIÓN: la palabra buscada en la Biblia se
+              proyecta en color de acento cuando el pasaje viene de una
+              búsqueda (insensible a mayúsculas y acentos).
+            * OSIS XML: importación de biblias en el formato académico OSIS
+              junto a ZEFania/.BIB/JSON.
+            * PPTX: importación de PowerPoint a la cola del culto (1
+              diapositiva de texto = 1 ítem; las vacías se agregan en blanco).
+            * Notas del director persistentes por ítem + «Guardar plan
+              JSON…» (el culto completo, con notas y resaltados, se guarda y
+              re-importa).
 
           v5.4.0 «ESTUDIO» (BETA): la interfaz principal pasa a WPF (Windows
           Presentation Foundation) sobre .NET Framework 4.8 — mismo motor
@@ -814,18 +830,36 @@ jobs:
       - name: Publicar BETA
         uses: softprops/action-gh-release@v2
         with:
-          name: "LuminaPresentation ${{ github.ref_name }} «ESTUDIO» — BETA"
+          name: "LuminaPresentation ${{ github.ref_name }} «HORIZONTE» — BETA"
           body: |
-            **LuminaPresentation v5.4.0-beta.1 «ESTUDIO» — BETA · núcleo C++ + interfaz WPF (.NET 4.8) + baseline WinForms (.NET 3.5)**
+            **LuminaPresentation v6.0.0-beta.1 «HORIZONTE» — BETA · núcleo C++ + interfaz WPF (.NET 4.8) + baseline WinForms (.NET 3.5)**
 
             > ⚠ **ESTA PUBLICACIÓN ES UNA BETA** (pre-release de evaluación):
             > funcionalidad completa y gates de CI en verde, pero sujeta a
             > cambios. Reporte de fallos bienvenido.
 
             ## Descargas
-            - `LuminaPresentation-5.4.0-beta.1-win-x86.zip` — **Windows 7 SP1 a Windows 11 (32 bits)**
-            - `LuminaPresentation-5.4.0-beta.1-win-x64.zip` — **Windows 7 SP1 a Windows 11+ (64 bits)**
+            - `LuminaPresentation-6.0.0-beta.1-win-x86.zip` — **Windows 7 SP1 a Windows 11 (32 bits)**
+            - `LuminaPresentation-6.0.0-beta.1-win-x64.zip` — **Windows 7 SP1 a Windows 11+ (64 bits)**
             - `SHA256SUMS.txt` — integridad de los paquetes
+            ## ✨ v6.0.0 «HORIZONTE» — Las funciones diferidas del spec llegan al motor
+            - **Transiciones**: fundido entre diapositivas en la salida del
+              proyector (crossfade AlphaBlend desde el último fotograma
+              proyectado — cero destello de escritorio), configurable en
+              Ajustes › Proyección (corte / fundido 0..5000 ms) y por la nueva
+              API `lumina_set_transition`.
+            - **Resaltado en proyección**: la palabra buscada en la Biblia viaja
+              con el pasaje («highlight») y el motor la pinta en color de acento
+              en pantalla — coincidencia insensible a mayúsculas y acentos
+              latinos, con frontera de palabra.
+            - **OSIS XML**: importador de biblias en el formato académico OSIS
+              (streaming, códigos de libro 1..66, notas editoriales descartadas).
+            - **PPTX**: importación de PowerPoint (.pptx) a la cola del culto —
+              1 diapositiva de texto = 1 ítem, con lector ZIP/OPC propio (sin
+              dependencias del GAC, Win7 SP1 → Win11).
+            - **Notas del director persistentes**: el panel de notas de la
+              tercera pantalla se guarda por ítem del culto y viaja en el plan
+              JSON (nuevo «Guardar plan JSON…»).
 
             ## ✨ v5.4.0 «ESTUDIO» — La GUI pasa a WPF (Windows Presentation Foundation)
             La interfaz principal del paquete (net48) se reescribió en **WPF
