@@ -288,19 +288,20 @@ jobs:
             "$stage/ui-publish-x86","$stage/ui-publish-x64","$stage/ui-publish35-x86","$stage/ui-publish35-x64",`
             "$stage/poc-net48","$stage/poc-net35",`
             "$stage/pocfacade-net48","$stage/tests-net48" | Out-Null
-          # UI net48/net35 publicada POR ARQUITECTURA (para el paquete portable).
-          # v5.1.0: el publish lleva TODAS las DLL gestionadas dependientes
-          # (Lumina.Core/Bridge/Api) — el paquete las copia COMPLETAS.
-          Copy-Item managed/Lumina.UI/bin/Release/net48/publish-x86/* "$stage/ui-publish-x86/"
-          Copy-Item managed/Lumina.UI/bin/Release/net48/publish-x64/* "$stage/ui-publish-x64/"
+          # UI net48 (WPF v5.4.0) + net35 (WinForms) publicadas POR ARQUITECTURA
+          # (para el paquete portable). El publish lleva TODAS las DLL
+          # gestionadas dependientes (Lumina.Core/Bridge/Api) — el paquete las
+          # copia COMPLETAS.
+          Copy-Item managed/Lumina.WPF/bin/Release/net48/publish-x86/* "$stage/ui-publish-x86/"
+          Copy-Item managed/Lumina.WPF/bin/Release/net48/publish-x64/* "$stage/ui-publish-x64/"
           Copy-Item managed/Lumina.UI/bin/Release/net35/publish35-x86/* "$stage/ui-publish35-x86/"
           Copy-Item managed/Lumina.UI/bin/Release/net35/publish35-x64/* "$stage/ui-publish35-x64/"
           # Respaldo: si un publish dejó el exe en otra carpeta, copiar del build
           if (-not (Test-Path "$stage/ui-publish-x86/LuminaPresentation.exe")) {
-            Copy-Item managed/Lumina.UI/bin/Release/net48/LuminaPresentation.exe "$stage/ui-publish-x86/"
+            Copy-Item managed/Lumina.WPF/bin/Release/net48/LuminaPresentation.exe "$stage/ui-publish-x86/"
           }
           if (-not (Test-Path "$stage/ui-publish-x64/LuminaPresentation.exe")) {
-            Copy-Item managed/Lumina.UI/bin/Release/net48/LuminaPresentation.exe "$stage/ui-publish-x64/"
+            Copy-Item managed/Lumina.WPF/bin/Release/net48/LuminaPresentation.exe "$stage/ui-publish-x64/"
           }
           # PoC.Managed (binarios net48 y net35)
           Copy-Item managed/PoC/PoC.Managed/bin/Release/net48/* "$stage/poc-net48/"
