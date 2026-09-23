@@ -275,13 +275,16 @@ namespace lumina.core
     }
 
     /// <summary>
-    /// Preámbulo ES3 evaluado ANTES que cualquier módulo: define jsonParse()
-    /// para consumir los payloads JSON de onEvent. Los payloads los construye
-    /// el propio programa (MiniJson.Serialize de contextos internos: títulos,
-    /// índices, rutas) y los módulos son archivos locales del propio usuario —
-    /// el mismo modelo de confianza que los activadores (reglas que ejecutan
-    /// acciones), por lo que eval() sobre '(' + json + ')' es suficiente y
-    /// NO introduce entrada remota.
+    /// Preámbulo ES3 evaluado ANTES que cualquier módulo. Los módulos se
+    /// parsean con contexto de ítem («jslib»): el código compila DENTRO del
+    /// ítem y su «this» de nivel superior es el objeto host — el preámbulo lo
+    /// fija como global «jslib» (patrón del contexto de ítem de WSH). Define
+    /// jsonParse() para consumir los payloads JSON de onEvent: los payloads
+    /// los construye el propio programa (MiniJson.Serialize de contextos
+    /// internos: títulos, índices, rutas) y los módulos son archivos locales
+    /// del propio usuario — el mismo modelo de confianza que los activadores
+    /// (reglas que ejecutan acciones), por lo que eval() sobre '(' + json +
+    /// ')' es suficiente y NO introduce entrada remota.
     /// </summary>
     public static class JsPrelude
     {
@@ -291,9 +294,11 @@ namespace lumina.core
         /// <summary>Texto del preámbulo (ES3 puro: el JScript de Win7 no tiene
         /// JSON.parse ni strict mode; \r\n porque Notepad clásico lo espera).</summary>
         public const string Text =
-            "// lumina prelude v6.1.0 — jsonParse para los payloads de onEvent\r\n" +
+            "// lumina prelude v6.1.0 — el host entra como «this» del contexto del ítem\r\n" +
+            "var jslib = this;\r\n" +
             "function jsonParse(s) {\r\n" +
-            "    return eval('(' + s + ')');\r\n" +
+            "    return eval('(' + s + ')');\r\n"
+            +
             "}\r\n" +
             "var lumina = { version: '6.1.0', guion: 'GUION' };\r\n";
     }

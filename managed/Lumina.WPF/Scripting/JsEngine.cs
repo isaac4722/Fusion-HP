@@ -167,8 +167,12 @@ namespace lumina.wpf.scripting
                     ParseText(m.Code, m.Name);
                 }
 
+                // GetScriptDispatch con el NOMBRE DEL ÍTEM: el código se compila
+                // dentro del ítem (pstrItemName) — sus funciones y variables
+                // (incluida la «jslib» del preámbulo) viven en el espacio del
+                // ítem, no en el global anónimo.
                 object globals;
-                _com.GetScriptDispatch(null, out globals);
+                _com.GetScriptDispatch("jslib", out globals);
                 _globals = globals;
 
                 _log.Add("módulos cargados: " + _loaded.Count
@@ -196,17 +200,21 @@ namespace lumina.wpf.scripting
             _pendingError = false;
             try
             {
-                // flags 0: el texto se EJECUTA durante la llamada (las «function»
-                // y «var» del nivel superior quedan en el espacio global).
-                // Dispatch por bitness (IID distinta — ver interop).
+                // pstrItemName = "jslib": el código compila DENTRO del ítem — el
+                // motor resuelve el ítem al parsear (GetItemInfo+QI, ver
+                // ParseScriptText→lookup_named_item de jscript.c de Wine) y el
+                // «this» de nivel superior del código es el objeto host. El
+                // preámbulo fija «var jslib = this;» y los módulos llaman
+                // jslib.log(...) sobre ese valor.
+                // flags 0: el texto se EJECUTA durante la llamada.
                 if (_parse32 != null)
                 {
-                    _parse32.ParseScriptText(code, null, IntPtr.Zero, null,
+                    _parse32.ParseScriptText(code, "jslib", IntPtr.Zero, null,
                         UIntPtr.Zero, 1, 0, IntPtr.Zero, IntPtr.Zero);
                 }
                 else
                 {
-                    _parse64.ParseScriptText(code, null, IntPtr.Zero, null,
+                    _parse64.ParseScriptText(code, "jslib", IntPtr.Zero, null,
                         UIntPtr.Zero, 1, 0, IntPtr.Zero, IntPtr.Zero);
                 }
                 if (file.IndexOf("(prelude)", StringComparison.Ordinal) < 0)
