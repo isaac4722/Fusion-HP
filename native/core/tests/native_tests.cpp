@@ -93,7 +93,7 @@ static std::string TempDbPath() {
 /* ------------------------------------------------------------------ main */
 
 int main() {
-    std::printf("== Selftest del nucleo nativo - LuminaPresentation v6.0.0 ==\n");
+    std::printf("== Selftest del nucleo nativo - LuminaPresentation v6.1.0 ==\n");
 
     /* ================================================================ 1 == */
     Section("[1] Chords (port wx 1:1)");

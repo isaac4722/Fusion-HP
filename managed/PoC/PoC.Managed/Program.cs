@@ -64,7 +64,7 @@ namespace lumina.poc
             {
                 // Chequeos 1-2 sin handle.
                 Check(1, "Cargar biblioteca nativa", CheckLibraryLoads);
-                Check(2, "lumina_version empieza por LuminaCore y contiene 6.0", CheckVersion);
+                Check(2, "lumina_version empieza por LuminaCore y contiene 6.1", CheckVersion);
 
                 if (Failures.Count == 0)
                 {
@@ -229,7 +229,7 @@ namespace lumina.poc
         {
             string v = LuminaEngine.Version();
             Console.WriteLine("        version = \"" + v + "\"");
-            return v.StartsWith("LuminaCore", StringComparison.Ordinal) && v.Contains("6.0");
+            return v.StartsWith("LuminaCore", StringComparison.Ordinal) && v.Contains("6.1");
         }
 
         private static bool CheckHandle(LuminaEngine engine)

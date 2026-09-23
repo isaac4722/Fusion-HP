@@ -8,7 +8,7 @@ Núcleo **C++17** (`native/`, Win32+GDI, SQLite+FTS5 embebido, /MT) +
 capa gestionada **C#** (`managed/`, **WPF net48** = interfaz principal v5.4.0
 «ESTUDIO» + **WinForms net35;net48** = línea base Win7 SP1; Core añade net8.0
 solo para el arnés de tests). ABI C plana (`lumina.h`).
-Versión actual: **5.4.0 «ESTUDIO» BETA** (ver `README.md`). Todo lo publicado
+Versión actual: **6.1.0 «GUION» BETA** (ver `README.md`). Todo lo publicado
 es BETA (pre-release) — nunca «release» final.
 
 ## Ciclo obligatorio — 9 pasos

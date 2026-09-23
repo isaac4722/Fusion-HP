@@ -1,5 +1,5 @@
 // ============================================================================
-//  LuminaPresentation Suite v5.4.0 «ESTUDIO» — managed/Lumina.WPF/App.xaml.cs
+//  LuminaPresentation Suite v6.1.0 «GUION» — managed/Lumina.WPF/App.xaml.cs
 //  Copyright (c) 2026 Isaac. Licencia View-Only.
 // ============================================================================
 //  App.xaml.cs : punto de entrada WPF con blindaje anti-crash y los TRES
@@ -35,7 +35,7 @@ namespace lumina.wpf
     public partial class App : Application
     {
         private const string AppName = "LuminaPresentation Suite";
-        private const string AppVersion = "5.4.0";
+        private const string AppVersion = "6.1.0";
 
         private static string _logPath;
 

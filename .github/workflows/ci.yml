@@ -1,5 +1,5 @@
 # ============================================================================
-#  LuminaPresentation / LuminaPresentation Suite — CI/CD híbrido v6.0.0 «HORIZONTE»
+#  LuminaPresentation / LuminaPresentation Suite — CI/CD híbrido v6.1.0 «GUION»
 #  Copyright (c) 2026 Isaac. Licencia View-Only.
 # ----------------------------------------------------------------------------
 #  Pipeline de la arquitectura híbrida (docs/architecture-hybrid.md §6):
@@ -50,7 +50,7 @@ concurrency:
 
 env:
   DOTNET_VERSION: '8.0.x'
-  APP_VERSION: '6.0.0-beta.1'
+  APP_VERSION: '6.1.0-beta.1'
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -538,7 +538,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path "$stage/data" | Out-Null
 
           @'
-          LuminaPresentation v6.0.0 «HORIZONTE» BETA — núcleo C++ + interfaz WPF
+          LuminaPresentation v6.1.0 «GUION» BETA — núcleo C++ + interfaz WPF
           =====================================================
 
           PROGRAMA PORTABLE — BETA. No requiere instalación ni permisos de
@@ -570,6 +570,19 @@ jobs:
             resources\data\     — Biblia Reina-Valera 1909 completa incluida:
                                   al abrir la base de datos, la app ofrece
                                   instalarla (~31.000 versículos).
+
+          v6.1.0 «GUION» (BETA): motor de scripts JSLib (spec §3.3) sobre
+            IActiveScript/JScript del propio Windows — ES3, CERO despliegue:
+            * Módulos .js en data\modules\ cargados al activar o «Recargar»
+              (Integraciones > Módulos JS): registro en vivo de 60 líneas.
+            * jslib: log/notify, httpGet(url, cb), tcp/ws persistentes por id,
+              cmd('next'|'prev'|'black'|'clear'|'show'), showText(texto),
+              onEvent(...) y setTimeout/clearTimeout.
+            * Los módulos ven los MISMOS eventos que los activadores
+              (slide_changed, item_changed, song_started, video_ended,
+              midi_*) con payload JSON (jsonParse del preámbulo).
+            * Nueva acción de activador «script»: function=nombre ·
+              data={"k":v} invoca funciones globales de los módulos.
 
           v6.0.0 «HORIZONTE» (BETA): las funciones diferidas del spec llegan
           al motor y a la capa de datos:
@@ -830,18 +843,42 @@ jobs:
       - name: Publicar BETA
         uses: softprops/action-gh-release@v2
         with:
-          name: "LuminaPresentation ${{ github.ref_name }} «HORIZONTE» — BETA"
+          name: "LuminaPresentation ${{ github.ref_name }} «GUION» — BETA"
           body: |
-            **LuminaPresentation v6.0.0-beta.1 «HORIZONTE» — BETA · núcleo C++ + interfaz WPF (.NET 4.8) + baseline WinForms (.NET 3.5)**
+            **LuminaPresentation v6.1.0-beta.1 «GUION» — BETA · núcleo C++ + interfaz WPF (.NET 4.8) + baseline WinForms (.NET 3.5)**
 
             > ⚠ **ESTA PUBLICACIÓN ES UNA BETA** (pre-release de evaluación):
             > funcionalidad completa y gates de CI en verde, pero sujeta a
             > cambios. Reporte de fallos bienvenido.
 
             ## Descargas
-            - `LuminaPresentation-6.0.0-beta.1-win-x86.zip` — **Windows 7 SP1 a Windows 11 (32 bits)**
-            - `LuminaPresentation-6.0.0-beta.1-win-x64.zip` — **Windows 7 SP1 a Windows 11+ (64 bits)**
+            - `LuminaPresentation-6.1.0-beta.1-win-x86.zip` — **Windows 7 SP1 a Windows 11 (32 bits)**
+            - `LuminaPresentation-6.1.0-beta.1-win-x64.zip` — **Windows 7 SP1 a Windows 11+ (64 bits)**
             - `SHA256SUMS.txt` — integridad de los paquetes
+
+            ## ✨ v6.1.0 «GUION» — Motor de scripts JSLib (spec §3.3)
+            - **IActiveScript/JScript del propio Windows** (ES3, cero
+              despliegue, Win7 SP1 → Win11): módulos `.js` del usuario en
+              `data\modules\` cargados al activar o con «Recargar» — sin
+              recompilar ni instalar nada.
+            - **API `jslib`** (la del spec): `log/notify`, `httpGet(url, cb)`
+              (15 s), `tcp(id, host, puerto, onLine)` + `tcpSend/tcpClose`,
+              `ws(id, url, onMessage)` + `wsSend/wsClose`,
+              `cmd('next'|'prev'|'black'|'clear'|'show')`, `showText(texto)`,
+              `onEvent(nombre, cb)` y `setTimeout/clearTimeout`.
+            - **Eventos en tiempo real**: los módulos ven los mismos eventos
+              que los activadores (`slide_changed`, `item_changed`,
+              `song_started`, `video_ended`, `midi_note/cc/program`) con
+              payload JSON (helper `jsonParse` del preámbulo).
+            - **Activadores → scripts**: nueva acción `script`
+              (`function=nombre · data={"k":v}`) invoca funciones globales
+              de los módulos.
+            - **UI**: tarjeta «Módulos JS» en Integraciones (activar,
+              recargar, carpeta y registro en vivo de 60 líneas) y gate REAL
+              de CI: el `--selfcheck` crea el motor COM en el runner de
+              Windows y ejercita módulos, funciones, eventos, `cmd`,
+              `showText` y un `setTimeout` asíncrono real.
+
             ## ✨ v6.0.0 «HORIZONTE» — Las funciones diferidas del spec llegan al motor
             - **Transiciones**: fundido entre diapositivas en la salida del
               proyector (crossfade AlphaBlend desde el último fotograma
@@ -886,7 +923,8 @@ jobs:
             - Gestionado: build net35+net48+WPF (0 err/0 warn) + tests n/n.
             - GATE exportadores: python-pptx + pypdf abren los archivos generados.
             - Interop real: PoC C# ↔ DLL nativa «POC PASS 12/12» (x86/x64).
-            - GATE humo: `--selfcheck` de ambas variantes (WPF y WinForms).
+            - GATE humo: `--selfcheck` de ambas variantes (WPF y WinForms) —
+              incluye el motor JSLib REAL (IActiveScript) del runner Windows.
             - GATE UI: `--uicheck` — la ventana WPF completa se construye
               headless (XAML incluido) antes de empaquetar.
             - GATE flujos: `--flowcheck` — Biblia→Escenario completo y en modo

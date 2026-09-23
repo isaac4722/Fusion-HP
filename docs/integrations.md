@@ -1,8 +1,31 @@
-# Integraciones — OBS Studio · MIDI · Mando remoto (v5.0.0 «SINERGIA»)
+# Integraciones — OBS Studio · MIDI · Mando remoto · JSLib (v6.1.0 «GUION»)
 
 > Requisito del spec (§3.3/§3.4): servidor API local, motor de activadores,
-> integración OBS (WebSocket), entrada MIDI y control remoto móvil por LAN.
-> Todo dentro del programa de escritorio; **cero instalaciones** para el usuario.
+> integración OBS (WebSocket), entrada MIDI, control remoto móvil por LAN y
+> **motor de scripts JSLib** (IActiveScript/JScript). Todo dentro del
+> programa de escritorio; **cero instalaciones** para el usuario.
+
+## Motor de scripts JSLib (spec §3.3 — v6.1.0 «GUION»)
+
+Página **«Integraciones»** → tarjeta **Módulos JS**.
+
+* Módulos `.js` del usuario en `data\modules\`, cargados al activar el
+  motor o con **«Recargar módulos»** (hot reload completo: motor nuevo,
+  conexiones cerradas por diseño). Registro en vivo de 60 líneas.
+* Motor: **IActiveScript/JScript del propio Windows** (ES3, `jscript.dll`
+  de Win7 SP1 a Win11 — cero despliegue). Ver `docs/api/JsEngine.md`.
+* API `jslib`: `log/notify`, `httpGet(url, cb)`, `tcp(id, host, puerto,
+  onLine)` + `tcpSend/tcpClose/tcpConnected`, `ws(id, url, onMessage)` +
+  `wsSend/wsClose/wsConnected`, `cmd('next'|'prev'|'black'|'clear'|'show')`,
+  `showText(texto[, segundos])`, `onEvent(nombre, cb)`,
+  `setTimeout/clearTimeout` y `version()`.
+* **Eventos**: los módulos ven los MISMOS eventos que los activadores
+  (`slide_changed`, `item_changed`, `song_started`, `video_ended`,
+  `midi_note/cc/program`) con payload JSON (helper `jsonParse`).
+* **Activadores**: nueva acción `script` (`function=nombre ·
+  data={"k":v}`) invoca funciones globales de los módulos.
+* Disponible en la variante **net48** (la baseline net35 mantiene la
+  automatización por activadores — misma decisión que OBS WebSocket).
 
 ## OBS Studio (obs-websocket 5.x)
 

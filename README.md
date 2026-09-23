@@ -1,4 +1,4 @@
-# LuminaPresentation Suite v6.0.0 «HORIZONTE» — BETA
+# LuminaPresentation Suite v6.1.0 «GUION» — BETA
 
 **Proyección para iglesias con arquitectura híbrida: núcleo C++17 nativo + interfaz WPF (.NET 4.8) con baseline WinForms (.NET mínimo 3.5)**
 — motor de proyección en tiempo real con la agilidad de desarrollo de .NET,
@@ -14,8 +14,8 @@
 
 1. Ir a **[Betas](https://github.com/isaac4722/Fusion-HP/releases)** (pre-releases de evaluación).
 2. Descargar el paquete para tu arquitectura:
-   - `LuminaPresentation-6.0.0-beta.1-win-x86.zip` — **Windows 7 SP1 … Windows 11 (32 bits)**
-   - `LuminaPresentation-6.0.0-beta.1-win-x64.zip` — **Windows 7 SP1 … Windows 11+ (64 bits)**
+   - `LuminaPresentation-6.1.0-beta.1-win-x86.zip` — **Windows 7 SP1 … Windows 11 (32 bits)**
+   - `LuminaPresentation-6.1.0-beta.1-win-x64.zip` — **Windows 7 SP1 … Windows 11+ (64 bits)**
 3. Descomprimir el ZIP **completo** y ejecutar **`LuminaLauncher.exe`**.
    **El usuario nunca instala nada**:
    - Windows 10 1903+ / Windows 11 → **.NET Framework 4.8** integrado en el SO
@@ -28,6 +28,33 @@
      + las 3 DLL gestionadas en la carpeta de la variante elegida) y explica con
      claridad qué hacer si falta algo.
    - Ambas variantes comparten la misma carpeta de datos `data\`.
+
+## 🌟 Novedades v6.1.0 «GUION» — Motor de scripts JSLib
+
+> **El último requisito §3.3 del spec llega completo**: automatización e
+> integración con otros sistemas (mezcladores, OBS, servicios web) mediante
+> módulos `.js` cargados en caliente — **sin recompilar ni instalar nada**
+> (IActiveScript/JScript del propio Windows, ES3, cero despliegue):
+> - **Módulos del usuario**: los `.js` de `data\modules\` se cargan al activar
+>   el motor o con «Recargar» (tarjeta **Módulos JS** en *Integraciones*:
+>   carpeta, estado y registro en vivo de 60 líneas). Un módulo roto no impide
+>   que el resto cargue (error con archivo y línea, como el spec §2.6 exige).
+> - **API `jslib` completa**: `log/notify`, `httpGet(url, cb)` (15 s),
+>   `tcp(id, host, puerto, onLine)` + `tcpSend/tcpClose`, `ws(id, url,
+>   onMessage)` + `wsSend/wsClose` (net48), `cmd('next'|'prev'|'black'|
+>   'clear'|'show')`, `showText(texto)`, `onEvent(nombre, cb)` y
+>   `setTimeout/clearTimeout` — callbacks SIEMPRE en el hilo de UI (el motor
+>   COM es apartamento-hilo; sockets en hilos propios sin async/await).
+> - **Eventos en tiempo real**: los módulos ven los mismos eventos que los
+>   activadores (`slide_changed`, `item_changed`, `song_started`,
+>   `video_ended`, `midi_note/cc/program`) con payload JSON (helper
+>   `jsonParse` del preámbulo ES3).
+> - **Activadores → scripts**: nueva acción `script` (`function=nombre ·
+>   data={"k":v}`) invoca funciones globales de los módulos.
+> - **Gate REAL en CI**: el `--selfcheck` crea el motor COM en el runner de
+>   Windows y ejercita módulos, funciones globales, eventos, `cmd`,
+>   `showText` y un `setTimeout` asíncrono (bombeo del dispatcher) — la
+>   ABI nativa NO cambió (JSLib es capa gestionada pura).
 
 ## 🌟 Novedades v6.0.0 «HORIZONTE» — BETA
 

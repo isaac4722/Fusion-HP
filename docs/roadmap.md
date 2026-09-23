@@ -43,12 +43,21 @@ nada / no configura nada». Se documenta el plan técnico de cada punto.
 
 ## Motor de scripts (JSLib del spec §3.3)
 
-* Evaluación con **IActiveScript/JScript** del propio Windows (ES3, cero
-  despliegue) o Lua embebido (abriría binario nativo adicional — a valorar).
-* Entregar `JSLib`-like mínimo: `tcp(host, port, onLine)`, `ws(url, onMessage)`,
-  `httpGet(url)`, `cmd(action)`, `showText(text)`.
-* Prioridad actual: los **activadores** cubren los flujos de automatización
-  del spec sin código de usuario; el scripting queda para usuarios avanzados.
+* ✅ **CUBIERTO en v6.1.0 «GUION»** — motor **IActiveScript/JScript** del
+  propio Windows (ES3, cero despliegue) hospedado en la UI WPF:
+  `managed/Lumina.Core/Scripting/JsModules.cs` (lógica pura: escáner,
+  ring de log, registro de eventos, timers — testeable en el arnés net8) +
+  `managed/Lumina.WPF/Scripting/` (interop COM fiel al vtable de ActivScp.h,
+  `JsLibHost` ComVisible AutoDispatch y `JsEngine` con el ciclo canónico).
+  Ver `docs/api/JsEngine.md` (la API real: `jslib.log/notify/httpGet/tcp/
+  tcpSend/tcpClose/ws/wsSend/wsClose/cmd/showText/onEvent/setTimeout/
+  clearTimeout/version` + preámbulo `jsonParse`).
+* Acción de activador **`script`** (v6.1.0): `function=nombre · data={"k":v}`
+  invoca funciones globales de los módulos → los activadores pueden disparar
+  código de usuario.
+* Detalle honesto: la variante **net35** (WinForms) no trae el motor (misma
+  decisión que OBS/WebSocket: la UI principal es WPF net48); los activadores
+  siguen cubriendo la automatización sin código en la baseline.
 
 ## Multimedia
 

@@ -902,3 +902,65 @@ modular §1.2, teclado + foco visible §1.3, WCAG 2.2 §2, animaciones ≤ 160ms
   compilación MSVC de Projector.cpp/AlphaBlend y el gate uicheck con los
   controles nuevos se validan allí) → release BETA con zips + SHA256.
 
+
+---
+## [v6.1.0-GUION] Motor de scripts JSLib (IActiveScript) — el último ítem §3.3 del spec · 2026-09-24 UTC
+- Agente: Super Z (principal, GLM)
+- Hecho:
+  - **Pieza 1** (commit f450326): núcleo PURO en Core
+    (`managed/Lumina.Core/Scripting/JsModules.cs`): JsModuleScanner tolerante
+    (carpeta ausente → vacío, orden alfabético, error POR ARCHIVO),
+    JsLogRing (60, thread-safe), JsEventRegistry (tokens opacos),
+    JsTimerIds (ids > 0 validados) y JsPrelude ES3 (jsonParse vía eval —
+    payloads del propio programa, módulos locales del usuario). Tests +2
+    (hallaron 2 bugs reales antes del commit: la BCL reemplaza UTF-8 roto
+    por U+FFFD en silencio → lector estricto throwOnInvalidBytes; y
+    Release aceptaba ids jamás emitidos → validación de rango).
+  - **Pieza 2** (commit d6359fd): motor IActiveScript REAL en WPF
+    (`managed/Lumina.WPF/Scripting/`): ActiveScriptInterop (vtables fieles a
+    ActivScp.h, EXCEPINFO con BSTRs liberados), JsLibHost ComVisible
+    AutoDispatch sin sobrecargas (log/notify/httpGet/tcp*/ws*/cmd/showText/
+    onEvent/setTimeout/clearTimeout/version; sockets con hilos propios sin
+    async/await, callbacks SIEMPRE en el hilo de UI por Dispatcher), JsEngine
+    (orden canónico SetScriptSite→InitNew→AddNamedItem→Started→Parse→
+    Connected→GetScriptDispatch; recarga destruye host+motor; Dispose cierra
+    conexiones ANTES del motor) y **selfcheck paso 5**: gate REAL del motor
+    COM en el runner Windows (auto.js ejercita log/onEvent+jsonParse/cmd/
+    showText/setTimeout asíncrono con bombeo de frames/clearTimeout; roto.js
+    exige error archivo:línea). Fix CS0121 (delegado anónimo Thread).
+  - **Pieza 3** (commit 82ccfd3): UI + wiring — tarjeta «Módulos JS»
+    (activar/recargar/carpeta/registro vivo 1 Hz), Settings jsEnabled+
+    ModulesDir, arranque por el checkbox (patrón chkMidiEnabled) con red de
+    seguridad, FireJsEvent junto a cada _triggers.Fire (slide/item/song/
+    video_ended/midi_*), acción de activador «script» (function= · data=)
+    y MainWindowJsSink (cmd→api_cmd, showText→zócalo).
+  - **Cierre** (este commit): version bump 6.1.0 (núcleo×2, props, launcher,
+    CI APP_VERSION, AppVersion WPF que estabastale en 5.4.0, PoC×2, tests,
+    banner selftest), README.txt del paquete y release con novedades «GUION»,
+    README novedades, roadmap JSLib CUBIERTO, JsEngine.md REESCRITO al diseño
+    real (IActiveScript C#, no QJSEngine), integrations.md con sección JSLib,
+    AGENT.md a 6.1.0 y esta bitácora.
+- Decisiones:
+  - IActiveScript/JScript del propio Windows (ES3, cero despliegue) tal cual
+    el roadmap; sin Lua (abriría binario nativo adicional).
+  - Misma lección de ObsProtocol/ObsClient: lógica pura en Core (testeable
+    en el arnés net8/Linux) + runtime COM en WPF net48; la baseline net35 no
+    trae el motor (los activadores la cubren — decisión documentada).
+  - Payloads de eventos como JSON string + jsonParse ES3 del preámbulo
+    (JScript clásico no tiene JSON.parse; los payloads los construye MiniJson
+    del propio programa y los módulos son archivos locales — mismo modelo de
+    confianza que los activadores).
+  - Invocación de funciones JScript por IDispatch tardío (DISPID_VALUE /
+    GetIDsOfNames del global) sin `dynamic` (contrato C# 7.3).
+  - ABI nativa INTACTA: JSLib es capa gestionada pura (lumina.h sin cambios).
+- Gates: build gestionado **0 err/0 warn** (net35+net48+net8+WPF) ·
+  lumina_selftest **164/164** · lumina_poc_native **52/52** (check 6.1) ·
+  PoC.Managed **12/12** (local con libLuminaCore.so, check 6.1) ·
+  Lumina.Tests **23/23** (+2 JSLib; 6 skips por LUMINA_SKIP_NATIVE=1 del
+  arnés local; nativos verificados en PoC 12/12).
+- Bloqueos: ninguno. (El doc técnico original sigue sin llegar al servidor —
+  el ciclo completo se ejecuta contra la spec del repo, como los 4 ciclos
+  anteriores.)
+- Siguiente: push → tag v6.1.0-beta.1 → CI verde (los gates Windows-validan
+  el motor COM REAL: selfcheck paso 5, uicheck con la tarjeta nueva) →
+  release BETA «GUION» con zips + SHA256SUMS.
