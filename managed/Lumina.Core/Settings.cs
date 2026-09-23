@@ -51,10 +51,18 @@ namespace lumina.core
         // v6.0.0 «HORIZONTE»: transición de proyección (fundido entre slides)
         public bool TransitionFade = true;            // false = corte inmediato
         public int  TransitionMs   = 220;             // 0..5000 ms
+        public bool JsEnabled = false;                // v6.1.0 «GUION»: motor de scripts JSLib (WPF)
 
         public string TriggersFile
         {
             get { return Path.Combine(Path.Combine(_dataDir, "triggers"), "triggers.json"); }
+        }
+
+        /// <summary>v6.1.0 «GUION»: módulos .js del usuario (cargados en
+        /// caliente por el motor IActiveScript — data\modules\automatizacion.js…).</summary>
+        public string ModulesDir
+        {
+            get { return Path.Combine(_dataDir, "modules"); }
         }
 
         public Settings() : this(null) {}
@@ -172,6 +180,7 @@ namespace lumina.core
                 s.AutoBackupOnExit = MiniJson.GetBool(o, "autoBackupOnExit", false);
                 s.TransitionFade = MiniJson.GetBool(o, "transitionFade", true);
                 s.TransitionMs = (int)MiniJson.GetInt(o, "transitionMs", 220);
+                s.JsEnabled = MiniJson.GetBool(o, "jsEnabled", false);     // v6.1.0
                 s.Normalize();
             }
             catch (Exception)
@@ -210,6 +219,7 @@ namespace lumina.core
             o["autoBackupOnExit"] = AutoBackupOnExit;
             o["transitionFade"] = TransitionFade;                  // v6.0.0
             o["transitionMs"] = TransitionMs;
+            o["jsEnabled"] = JsEnabled;                            // v6.1.0 «GUION»
             string dir = _dataDir;
             if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
             File.WriteAllText(FilePath, MiniJson.Serialize(o) + "\n", new UTF8Encoding(false));

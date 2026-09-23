@@ -1,5 +1,5 @@
 // ============================================================================
-//  LuminaPresentation Suite v5.4.0 «ESTUDIO» — Pages/IntegrationsPage.xaml.cs
+//  LuminaPresentation Suite — Pages/IntegrationsPage.xaml.cs
 //  Copyright (c) 2026 Isaac. Licencia View-Only.
 // ============================================================================
 using System.Windows;
@@ -36,6 +36,16 @@ namespace lumina.wpf
         private void OnRemoteApply(object sender, RoutedEventArgs e)
         {
             if (Shell != null) Shell.RemoteApplyClick();
+        }
+
+        private void OnJsAutoApply(object sender, RoutedEventArgs e)
+        {
+            if (Shell != null) Shell.JsAutoApply();
+        }
+
+        private void OnJsReload(object sender, RoutedEventArgs e)
+        {
+            if (Shell != null) Shell.JsReloadClick();
         }
     }
 }

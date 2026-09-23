@@ -16,15 +16,22 @@ using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Threading;
 using lumina.api;
 using lumina.bridge;
 using lumina.core;
+using lumina.wpf.scripting;
 
 namespace lumina.wpf
 {
     public partial class MainWindow : Window
     {
         private lumina.ui.ObsClient _obs;
+
+        /* v6.1.0 «GUION»: motor de scripts JSLib (IActiveScript) + temporizador
+           de refresco del registro en la página Integraciones. */
+        private JsEngine _js;
+        private DispatcherTimer _jsLogTimer;
 
         /* ======================================================================
          *  API LOCAL
@@ -178,6 +185,12 @@ namespace lumina.wpf
             pageIntegrations.txtRemoteToken.Text = _settings.RemoteToken;
             pageIntegrations.chkMidiEnabled.IsChecked = _settings.MidiEnabled;
             pageIntegrations.chkAutoAdvanceVideo.IsChecked = _settings.AutoAdvanceVideo;
+            // v6.1.0 «GUION»: motor de scripts. Al final del bloque porque el
+            // evento Checked dispara JsAutoApply → SaveIntegrationsFromControls
+            // (los demás controles ya deben estar sincronizados — mismo patrón
+            // que chkMidiEnabled).
+            pageIntegrations.txtJsDir.Text = _settings.ModulesDir;
+            pageIntegrations.chkJsEnabled.IsChecked = _settings.JsEnabled;
 
             // Pantalla del proyector persistida.
             pageLive.ClampScreenIndex(_settings.ProjectionScreen);
@@ -237,6 +250,7 @@ namespace lumina.wpf
             if (pageIntegrations.cmbMidiDevice.SelectedIndex >= 0)
                 _settings.MidiDevice = pageIntegrations.cmbMidiDevice.SelectedIndex;
             _settings.AutoAdvanceVideo = pageIntegrations.chkAutoAdvanceVideo.IsChecked == true;
+            _settings.JsEnabled = pageIntegrations.chkJsEnabled.IsChecked == true;
             SaveSettings();
         }
 
@@ -252,6 +266,11 @@ namespace lumina.wpf
                 MidiRefreshDevices();
                 StartMidi();
             }
+            // v6.1.0 «GUION»: el checkbox (sincronizado en ApplySettingsToControls)
+            // ya arrancó el motor vía evento; esto es la red de seguridad.
+            if (_settings.JsEnabled && _js == null) StartJs();
+            UpdateJsState();
+            StartJsLogTimer();
             UpdateRemoteInfo();
             UpdateObsState();
             if (_settings.ObsAutoConnect && _settings.ObsUrl.Length > 0)
@@ -459,26 +478,159 @@ namespace lumina.wpf
 
         private void FireMidiTriggers(lumina.ui.MidiEventArgs e)
         {
-            if (_triggers == null || !_settings.TriggersEnabled) return;
             Dictionary<string, object> ctx = new Dictionary<string, object>();
             ctx["channel"] = e.Channel;
+            string evt = null;
             if (e.Command == lumina.ui.MidiInput.CmdNote)
             {
                 ctx["note"] = e.Data1;
                 ctx["velocity"] = e.Data2;
-                _triggers.Fire("midi_note", ctx);
+                evt = "midi_note";
             }
             else if (e.Command == lumina.ui.MidiInput.CmdCc)
             {
                 ctx["controller"] = e.Data1;
                 ctx["value"] = e.Data2;
-                _triggers.Fire("midi_cc", ctx);
+                evt = "midi_cc";
             }
             else if (e.Command == lumina.ui.MidiInput.CmdProgram)
             {
                 ctx["program"] = e.Data1;
-                _triggers.Fire("midi_program", ctx);
+                evt = "midi_program";
             }
+            if (evt == null) return;
+            // v6.1.0: mismos eventos a los módulos JS (antes que las reglas —
+            // el orden es determinístico y documentado en JsEngine.md).
+            FireJsEvent(evt, ctx);
+            if (_triggers == null || !_settings.TriggersEnabled) return;
+            _triggers.Fire(evt, ctx);
+        }
+
+        /* ======================================================================
+         *  MÓDULOS JS (JSLib — v6.1.0 «GUION»)
+         *  Motor IActiveScript/JScript de Windows: módulos .js en data\modules\,
+         *  retransmisión de eventos junto a los activadores y acciones
+         *  cmd/showText hacia la propia aplicación (ver docs/api/JsEngine.md).
+         * ==================================================================== */
+
+        /// <summary>Checbox Activar/Desactivar (persiste y arranca/detiene).</summary>
+        internal void JsAutoApply()
+        {
+            SaveIntegrationsFromControls();
+            if (_settings.JsEnabled) StartJs();
+            else StopJs();
+            UpdateJsState();
+        }
+
+        /// <summary>Botón «Recargar módulos» (motor nuevo, conexiones cerradas).</summary>
+        internal void JsReloadClick()
+        {
+            SaveIntegrationsFromControls();
+            if (!_settings.JsEnabled)
+            {
+                Status("El motor JSLib está desactivado — actívelo primero.");
+                return;
+            }
+            if (_js == null)
+            {
+                StartJs();
+                UpdateJsState();
+                return;
+            }
+            bool ok = _js.Reload();
+            Status(ok ? "Módulos JS recargados (" + _settings.ModulesDir + ")."
+                      : "Módulos recargados con errores: " + JsErrorsText());
+            UpdateJsState();
+        }
+
+        private void StartJs()
+        {
+            StopJs();
+            _js = JsEngine.Create(Dispatcher, new MainWindowJsSink(this));
+            bool ok = _js.LoadModules(_settings.ModulesDir);
+            if (ok)
+            {
+                Status("Motor JSLib listo — " + _js.LoadedModules().Count + " módulo/s ("
+                       + _settings.ModulesDir + ").");
+            }
+            else
+            {
+                Status("Motor JSLib listo con errores: " + JsErrorsText());
+            }
+        }
+
+        private void StopJs()
+        {
+            if (_js != null)
+            {
+                try { _js.Dispose(); }
+                catch (Exception) { }
+                _js = null;
+            }
+        }
+
+        private string JsErrorsText()
+        {
+            List<string> e = _js != null ? _js.Errors() : new List<string>();
+            return e.Count == 0 ? "(sin detalle)" : string.Join(" | ", e.ToArray());
+        }
+
+        private void UpdateJsState()
+        {
+            bool on = _js != null && _js.IsAlive;
+            int n = on ? _js.LoadedModules().Count : 0;
+            pageIntegrations.lblJsState.Text = on
+                ? "● MOTOR ACTIVO — " + n + " módulo/s" + (_js.Errors().Count > 0 ? " (con errores)" : "")
+                : "● MOTOR DETENIDO";
+            pageIntegrations.lblJsState.Foreground = on ? OkBrush : TextDisabledBrush;
+            pageIntegrations.txtJsDir.Text = _settings.ModulesDir;
+        }
+
+        /// <summary>Refresco del registro (ring de 60) mientras la app viva.
+        /// Barato: 1 Hz y solo asigna ItemsSource (la lista acota sola).</summary>
+        private void StartJsLogTimer()
+        {
+            if (_jsLogTimer != null) return;
+            _jsLogTimer = new DispatcherTimer(TimeSpan.FromSeconds(1),
+                DispatcherPriority.Background, delegate(object s, EventArgs e) { JsTick(); }, Dispatcher);
+            _jsLogTimer.Start();
+        }
+
+        private void JsTick()
+        {
+            if (_closing) return;
+            if (_js == null)
+            {
+                if (pageIntegrations.lstJsLog.Items.Count > 0)
+                    pageIntegrations.lstJsLog.ItemsSource = null;
+                return;
+            }
+            pageIntegrations.lstJsLog.ItemsSource = _js.Log.Snapshot();
+        }
+
+        /// <summary>Retransmite un evento del presentador a los módulos JS
+        /// (junto a los activadores — mismos nombres y contexto, payload JSON
+        /// vía MiniJson para jsonParse() del preámbulo).</summary>
+        internal void FireJsEvent(string name, Dictionary<string, object> ctx)
+        {
+            if (_js == null || !_settings.JsEnabled) return;
+            try
+            {
+                string payload = ctx == null || ctx.Count == 0 ? "{}" : MiniJson.Serialize(ctx);
+                _js.FireEvent(name, payload);
+            }
+            catch (Exception) { }
+        }
+
+        internal void StopJsForShutdown()
+        {
+            if (_jsLogTimer != null)
+            {
+                try { _jsLogTimer.Stop(); }
+                catch (Exception) { }
+                _jsLogTimer = null;
+            }
+            StopJs();
         }
 
         // ---- MIDI OUT mínimo (winmm) para la acción midi_out ----
@@ -738,7 +890,7 @@ namespace lumina.wpf
             cmbAction.Items.Add("obs_scene"); cmbAction.Items.Add("obs_source_text");
             cmbAction.Items.Add("play_audio"); cmbAction.Items.Add("show_text");
             cmbAction.Items.Add("set_theme"); cmbAction.Items.Add("api_cmd");
-            cmbAction.Items.Add("midi_out");
+            cmbAction.Items.Add("midi_out"); cmbAction.Items.Add("script");
             if (r.Actions.Count > 0) cmbAction.SelectedItem = r.Actions[0].Type;
             else cmbAction.SelectedIndex = 0;
             sp.Children.Add(cmbAction);
@@ -746,7 +898,8 @@ namespace lumina.wpf
             sp.Children.Add(new TextBlock
             {
                 Text = "Parámetros de la acción (clave=valor, «;»). Ej.: scene=Culto · text=¡Bienvenido! · " +
-                       "source=Titulo · path=C:\\audio\\clipe.mp3 · theme=Soleado · action=next · status=192 · data1=7",
+                       "source=Titulo · path=C:\\audio\\clipe.mp3 · theme=Soleado · action=next · status=192 · data1=7 · " +
+                       "function=alIniciar · data={\"bloque\":\"Alabanza\"}",
                 Style = (Style)FindResource("TxtLabel"),
                 Margin = new Thickness(0, 10, 0, 4), TextWrapping = TextWrapping.Wrap
             });
@@ -821,6 +974,34 @@ namespace lumina.wpf
 
         // -------------------------------------------------- sink (ejecución) ----
 
+        /// <summary>Sink JSLib → MainWindow (v6.1.0): cmd reutiliza el dispatcher
+        /// de acciones de los activadores (api_cmd) y showText el zócalo.</summary>
+        private sealed class MainWindowJsSink : IJsLibSink
+        {
+            private readonly MainWindow _owner;
+            internal MainWindowJsSink(MainWindow owner) { _owner = owner; }
+
+            public string Command(string action, int index)
+            {
+                lumina.core.TriggerAction a = new lumina.core.TriggerAction();
+                a.Type = "api_cmd";
+                a.Params["action"] = action;
+                if (index >= 0) a.Params["index"] = index;
+                return _owner.ExecuteTriggerActionCore(a);
+            }
+
+            public void ShowText(string text, int seconds)
+            {
+                _owner.ShowLowerThird(text, string.Empty, seconds <= 0 ? 6 : seconds);
+            }
+
+            public void Notify(string title, string text)
+            {
+                _owner.Status(string.IsNullOrEmpty(title) ? "JSLib: " + text
+                                                          : "JSLib — " + title + ": " + text);
+            }
+        }
+
         private sealed class TriggerSink : ITriggerSink
         {
             private readonly MainWindow _owner;
@@ -892,6 +1073,16 @@ namespace lumina.wpf
                         int d1 = a.GetInt("data1", 0);
                         int d2 = a.GetInt("data2", 0);
                         return MidiOutSend(status, d1, d2) ? "MIDI OUT enviado" : "MIDI OUT falló";
+                    }
+                case "script":
+                    {
+                        // v6.1.0 «GUION»: invoca una FUNCIÓN GLOBAL de un módulo JS
+                        // con un payload JSON (function=nombre · data={"k":v}).
+                        if (_js == null || !_js.IsAlive) return "Motor JSLib detenido";
+                        string fn = a.GetString("function", a.GetString("value", string.Empty));
+                        if (fn.Length == 0) return "Script sin función";
+                        _js.CallGlobal(fn, a.GetString("data", "{}"));
+                        return "Script: " + fn;
                     }
                 default:
                     return "Acción desconocida: " + a.Type;

@@ -78,6 +78,43 @@
           </StackPanel>
         </local:Card>
 
+        <!-- ======== Módulos JS (JSLib — v6.1.0) ======== -->
+        <local:Card Title="Módulos JS (JSLib · IActiveScript)" Icon="{StaticResource IconTerminal}"
+                    Margin="0,14,0,0">
+          <StackPanel>
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="150"/>
+              <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="36"/>
+              <RowDefinition Height="40"/>
+              <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <StackPanel Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2">
+              <CheckBox x:Name="chkJsEnabled" Content="Activar el motor de scripts (módulos .js del usuario)"
+                        VerticalAlignment="Center"
+                        Checked="OnJsAutoApply" Unchecked="OnJsAutoApply"/>
+            </StackPanel>
+            <TextBlock Grid.Row="1" Grid.Column="0" Text="Carpeta de módulos" Style="{StaticResource TxtLabel}"
+                       VerticalAlignment="Center"/>
+            <TextBox x:Name="txtJsDir" Grid.Row="1" Grid.Column="1" IsReadOnly="True"/>
+            <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="0,8,0,0">
+              <local:LumButton x:Name="btnJsReload" Variant="Secondary" Icon="{StaticResource IconRefresh}"
+                               Text="Recargar módulos" Click="OnJsReload"/>
+            </StackPanel>
+          </Grid>
+          <TextBlock x:Name="lblJsState" Text="● MOTOR DETENIDO" Style="{StaticResource TxtLabel}"
+                     Foreground="{StaticResource TextDisabledBrush}" Margin="0,8,0,0"/>
+          <TextBlock Style="{StaticResource TxtSmall}" Margin="0,4,0,0" TextWrapping="Wrap"
+                     Text="Los archivos .js se cargan al activar y con «Recargar»: jslib.log/notify, httpGet(url,cb), tcp/ws persistentes, cmd('next'|'black'…), showText, onEvent('slide_changed'…) y setTimeout. Los payloads de onEvent son JSON — parsearlos con jsonParse()."/>
+          <ListBox x:Name="lstJsLog" Height="130" Margin="0,8,0,0"
+                   ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                   FontFamily="Consolas"/>
+          </StackPanel>
+        </local:Card>
+
         <!-- ======== Remoto ======== -->
         <local:Card Title="Control remoto móvil (red local)" Icon="{StaticResource IconWifi}"
                     Margin="0,14,0,0">

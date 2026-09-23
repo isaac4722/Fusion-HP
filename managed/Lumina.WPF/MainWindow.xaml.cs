@@ -511,6 +511,7 @@ namespace lumina.wpf
                 StopMidi();
                 CloseMidiOut();
                 StopRemote();
+                StopJsForShutdown();          // v6.1.0 «GUION»: motor JSLib
                 if (_obs != null) { try { _obs.Dispose(); } catch (Exception) { } _obs = null; }
                 if (_api != null) { try { _api.Dispose(); } catch (Exception) { } _api = null; }
                 if (_engine != null) { try { _engine.Dispose(); } catch (Exception) { } _engine = null; }
@@ -529,6 +530,7 @@ namespace lumina.wpf
             try { SaveSettings(); } catch (Exception) { }
             if (_remote != null) { try { _remote.Dispose(); } catch (Exception) { } _remote = null; }
             if (_midi != null) { try { _midi.Dispose(); } catch (Exception) { } _midi = null; }
+            StopJsForShutdown();              // v6.1.0 «GUION»: motor JSLib
             if (_obs != null) { try { _obs.Dispose(); } catch (Exception) { } _obs = null; }
             if (_api != null) { try { _api.Dispose(); } catch (Exception) { } _api = null; }
             if (_engine != null) { try { _engine.Dispose(); } catch (Exception) { } _engine = null; }

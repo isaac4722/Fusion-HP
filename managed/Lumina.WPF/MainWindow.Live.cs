@@ -369,23 +369,33 @@ namespace lumina.wpf
                 ObsSendLiveText(BuildLiveText());
             }
 
+            Dictionary<string, object> jsCtx = new Dictionary<string, object>();
+            jsCtx["index"] = _currentIndex;
+            jsCtx["item"] = itemIndex;
+            if (curItem != null)
+            {
+                jsCtx["kind"] = curItem.Kind;
+                jsCtx["title"] = curItem.Title;
+                jsCtx["path"] = curItem.Kind == "video" ? curItem.VideoPath : curItem.ImagePath;
+            }
+            // v6.1.0 «GUION»: los módulos JS ven los MISMOS eventos que los
+            // activadores (payload JSON para jsonParse del preámbulo).
+            FireJsEvent("slide_changed", jsCtx);
+            if (curItem != null)
+            {
+                FireJsEvent("item_changed", jsCtx);
+                if (curItem.Kind == "song" && _lastItemIndex != itemIndex)
+                    FireJsEvent("song_started", jsCtx);
+            }
+
             if (_triggers != null && _settings.TriggersEnabled)
             {
-                Dictionary<string, object> ctx = new Dictionary<string, object>();
-                ctx["index"] = _currentIndex;
-                ctx["item"] = itemIndex;
+                _triggers.Fire("slide_changed", jsCtx);
                 if (curItem != null)
                 {
-                    ctx["kind"] = curItem.Kind;
-                    ctx["title"] = curItem.Title;
-                    ctx["path"] = curItem.Kind == "video" ? curItem.VideoPath : curItem.ImagePath;
-                }
-                _triggers.Fire("slide_changed", ctx);
-                if (curItem != null)
-                {
-                    _triggers.Fire("item_changed", ctx);
+                    _triggers.Fire("item_changed", jsCtx);
                     if (curItem.Kind == "song" && _lastItemIndex != itemIndex)
-                        _triggers.Fire("song_started", ctx);
+                        _triggers.Fire("song_started", jsCtx);
                 }
             }
             _lastItemIndex = itemIndex;
@@ -407,13 +417,14 @@ namespace lumina.wpf
                 Dispatcher.BeginInvoke((Action)(delegate
                 {
                     string path = _videoForm != null ? _videoForm.CurrentPath : string.Empty;
+                    Dictionary<string, object> vctx = new Dictionary<string, object>();
+                    vctx["item"] = _lastItemIndex;
+                    vctx["path"] = path;
+                    vctx["title"] = Path.GetFileName(path);
+                    FireJsEvent("video_ended", vctx);          // v6.1.0 «GUION»
                     if (_triggers != null && _settings.TriggersEnabled)
                     {
-                        Dictionary<string, object> ctx = new Dictionary<string, object>();
-                        ctx["item"] = _lastItemIndex;
-                        ctx["path"] = path;
-                        ctx["title"] = Path.GetFileName(path);
-                        _triggers.Fire("video_ended", ctx);
+                        _triggers.Fire("video_ended", vctx);
                     }
                     if (_settings.AutoAdvanceVideo && _videoSlideIndex >= 0 && RequireEngine())
                     {
