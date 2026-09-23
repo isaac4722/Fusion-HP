@@ -758,7 +758,7 @@ modular §1.2, teclado + foco visible §1.3, WCAG 2.2 §2, animaciones ≤ 160ms
     contratos (RequireEngine/Status/LoadScenarioFromItems/SyncLiveExtras/
     activadores con sink/OBS/MIDI/mando remoto/respaldo). Ventanas auxiliares
     WinForms (video WMP, escenario, director, zócalo, ObsClient, MidiInput,
-    PdfImageDecoder) copiadas a `Aux/` — HWNDs independientes coexisten con
+    PdfImageDecoder) copiadas a `AuxForms/` — HWNDs independientes coexisten con
     WPF en el mismo proceso, sin WindowsFormsHost.
   * 9 páginas XAML: En Vivo (transporte con tooltips de atajos, lista con
     insignias y barra ámbar, vista previa 16:9 con borde «en vivo» e info
