@@ -67,6 +67,10 @@ namespace lumina.tests
             Run("TriggerEngine: reglas, condiciones y persistencia", TestTriggerEngine);
             Run("ObsProtocol: handshake V5 y mensajes", TestObsProtocol);
 
+            // --- v6.1.0 «GUION» (siempre corren: lógica PURA del JSLib) ------
+            Run("JsModules: escáner tolerante de módulos .js", TestJsModules);
+            Run("JsModules: ring de log, registro de eventos y timers", TestJsRegistry);
+
             // --- v5.1.0 «FUNDAMENTO» (siempre corren) ----------------------------
             Run("BooksTable: 66 libros y referencias legibles", TestBooksTable);
             Run("BibleJson: lector streaming de biblias JSON", TestBibleJson);
@@ -1041,6 +1045,123 @@ namespace lumina.tests
                     AssertTrue(st == LuminaStatus.Ok, "LoadScenario con notes");
                 }
             }
+        }
+
+        private static void TestJsModules()
+        {
+            // Escáner: carpeta ausente → vacía (NUNCA lanza), orden alfabético
+            // estable, archivo ilegible → error por archivo sin tumbar el resto.
+            string dir = Path.Combine(Path.GetTempPath(),
+                "lumina-tests-js-" + Guid.NewGuid().ToString("N").Substring(0, 8));
+            try
+            {
+                List<JsModuleFile> none = JsModuleScanner.Scan(Path.Combine(dir, "no-existe"));
+                AssertTrue(none.Count == 0, "carpeta ausente → lista vacía");
+
+                Directory.CreateDirectory(dir);
+                // BOM UTF-8 como lo deja Notepad (contrato del lector).
+                byte[] bom = new byte[] { 0xEF, 0xBB, 0xBF };
+                byte[] bCode = new UTF8Encoding(false).GetBytes("jslib.log('uno');");
+                byte[] withBom = new byte[bom.Length + bCode.Length];
+                bom.CopyTo(withBom, 0); bCode.CopyTo(withBom, bom.Length);
+                File.WriteAllBytes(Path.Combine(dir, "b_auto.js"), withBom);
+                File.WriteAllText(Path.Combine(dir, "a_primero.js"),
+                    "// módulo a\r\njslib.log('primero');", new UTF8Encoding(false));
+                // Bytes UTF-8 INVÁLIDOS (y sin BOM — 0xFF 0xFE se confundiría con
+                // BOM UTF-16 LE y StreamReader cambiaría de codificación en
+                // silencio): el lector estricto debe fallar y el escáner
+                // reportarlo por archivo (el resto sigue cargando — spec §2.6).
+                File.WriteAllBytes(Path.Combine(dir, "c_roto.js"),
+                    new byte[] { 0x6A, 0x73, 0xFF, 0x81, 0x6C, 0x69, 0x62 });
+                File.WriteAllText(Path.Combine(dir, "otro.txt"), "ignorado");
+
+                List<JsModuleFile> mods = JsModuleScanner.Scan(dir);
+                AssertTrue(mods.Count == 3, "solo *.js cuentan (3 de 4 archivos)");
+                AssertTrue(mods[0].Name == "a_primero.js" && mods[1].Name == "b_auto.js"
+                    && mods[2].Name == "c_roto.js", "orden alfabético estable");
+                AssertTrue(mods[0].Ok && mods[0].Code.IndexOf("primero") >= 0,
+                    "a_primero leído");
+                AssertTrue(mods[1].Ok && mods[1].Code.IndexOf("uno") >= 0,
+                    "b_auto leído con BOM tolerado");
+                AssertTrue(!mods[2].Ok && mods[2].Error.Length > 0,
+                    "c_roto reporta error por archivo");
+            }
+            finally
+            {
+                try { Directory.Delete(dir, true); } catch (Exception) { }
+            }
+
+            // Prelude: define jsonParse y expone la versión (ES3 puro, sin
+            // depender de JSON.parse que no existe en el JScript de Win7).
+            AssertTrue(JsPrelude.Text.IndexOf("function jsonParse") >= 0,
+                "prelude define jsonParse");
+            AssertTrue(JsPrelude.Text.IndexOf(JsPrelude.Version, StringComparison.Ordinal) >= 0,
+                "prelude expone la versión del motor");
+            AssertTrue(JsPrelude.Text.IndexOf("JSON.parse") < 0,
+                "prelude ES3 sin JSON.parse");
+        }
+
+        private static void TestJsRegistry()
+        {
+            // Ring: acota en 60 y preserva orden (thread-safe por contrato —
+            // httpGet/tcp/ws escriben desde hilos de fondo).
+            JsLogRing ring = new JsLogRing();
+            for (int i = 0; i < 100; i++) ring.Add("línea " + i);
+            AssertTrue(ring.Count == JsLogRing.Capacity, "ring acotado en 60");
+            List<string> snap = ring.Snapshot();
+            AssertTrue(snap[0].EndsWith("línea 40", StringComparison.Ordinal)
+                && snap[snap.Count - 1].EndsWith("línea 99", StringComparison.Ordinal),
+                "ring conserva el orden y las últimas 60");
+            AssertTrue(snap[0].Length > 8 && snap[0][2] == ':',
+                "línea con marca de tiempo HH:mm:ss");
+            ring.Add(null);   // tolerante a null
+            AssertTrue(ring.Count == JsLogRing.Capacity, "null no rompe el ring");
+            ring.Clear();
+            AssertTrue(ring.Count == 0 && ring.Snapshot().Count == 0, "Clear vacía");
+
+            // Registro de eventos: tokens opacos, orden de suscripción,
+            // case-sensibilidad (JScript), Clear total al recargar.
+            JsEventRegistry reg = new JsEventRegistry();
+            object cbA = "cbA", cbB = "cbB", cbC = "cbC";
+            reg.Subscribe("slide_changed", cbA);
+            reg.Subscribe("slide_changed", cbB);
+            reg.Subscribe("slide_changed", cbA);      // duplicado ignorado
+            reg.Subscribe("item_changed", cbC);
+            AssertTrue(reg.HasSubscribers("slide_changed")
+                && !reg.HasSubscribers("video_ended"), "has-subscribers correcto");
+            AssertTrue(!reg.HasSubscribers("SLIDE_CHANGED"),
+                "nombres case-sensitive como JScript");
+            List<object> subs = reg.Subscribers("slide_changed");
+            AssertTrue(subs.Count == 2 && subs[0] == cbA && subs[1] == cbB,
+                "orden de suscripción sin duplicados");
+            reg.Unsubscribe("slide_changed", cbA);
+            AssertTrue(reg.Subscribers("slide_changed").Count == 1, "unsubscribe");
+            reg.Unsubscribe("evento-desconocido", cbA);   // no lanza
+            reg.Subscribe(null, cbA);                     // ignorado
+            reg.Subscribe("x", null);                     // ignorado
+            List<string> active = reg.ActiveEvents();
+            AssertTrue(active.Count == 2, "eventos activos");
+            reg.Clear();
+            AssertTrue(!reg.HasSubscribers("item_changed")
+                && reg.ActiveEvents().Count == 0, "Clear suelta todo (recarga)");
+
+            // Timers: ids > 0 únicos, liberación y reutilización de huecos.
+            JsTimerIds ids = new JsTimerIds();
+            int t1 = ids.Alloc();
+            int t2 = ids.Alloc();
+            int t3 = ids.Alloc();
+            AssertTrue(t1 > 0 && t2 > 0 && t3 > 0 && t1 != t2 && t2 != t3,
+                "ids positivos y únicos");
+            AssertTrue(ids.LiveCount == 3, "3 vivos");
+            ids.Release(t2);
+            AssertTrue(ids.LiveCount == 2, "2 vivos tras liberar");
+            int t2b = ids.Alloc();
+            AssertTrue(t2b == t2, "hueco reutilizado");
+            AssertTrue(ids.LiveCount == 3, "3 vivos tras reutilizar");
+            ids.Release(0);
+            ids.Release(-5);
+            ids.Release(9999);   // no reservado: ignorado en silencio
+            AssertTrue(ids.LiveCount == 3, "liberaciones inválidas ignoradas");
         }
 
         private sealed class CountingSink : ITriggerSink
