@@ -198,7 +198,9 @@ namespace lumina.wpf.scripting
     // ----------------------------------------------------------------- engine
 
     /// <summary>IActiveScript — el motor JScript. 13 métodos en orden de vtable
-    /// (GetScriptDispatch declara object: el marshaler hace QI de IDispatch).</summary>
+    /// (GetScriptDispatch declara object con MarshalAs IDispatch: «out object»
+    /// A SECAS se marshala como VARIANT* y el marshaler lanza «Specified OLE
+    /// variant is invalid» — lección del segundo run del tag).</summary>
     [ComImport, Guid("BB1A2AE1-A4F9-11cf-8F20-00805F2CD064"),
      InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     internal interface IActiveScript
@@ -211,7 +213,7 @@ namespace lumina.wpf.scripting
         void AddNamedItem([MarshalAs(UnmanagedType.LPWStr)] string name, uint flags);
         void AddTypeLib(ref Guid typeLib, uint major, uint minor, uint flags);
         void GetScriptDispatch([MarshalAs(UnmanagedType.LPWStr)] string itemName,
-                               out object dispatch);
+                               [MarshalAs(UnmanagedType.IDispatch)] out object dispatch);
         void GetCurrentScriptThreadID(out uint threadId);
         void GetScriptThreadID(uint win32ThreadId, out uint scriptThreadId);
         void GetScriptThreadState(uint scriptThreadId, out ScriptThreadState state);

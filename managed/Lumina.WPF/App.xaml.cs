@@ -328,7 +328,9 @@ namespace lumina.wpf
         }
 
         /// <summary>Módulo de autoprueba del motor (evaluado de verdad por
-        /// IActiveScript en el runner de Windows — ve el jslib COMPLETO).</summary>
+        /// IActiveScript en el runner de Windows — ve el jslib COMPLETO). Una
+        /// llamada por línea: el «archivo:línea» del error de script identifica
+        /// SIN ambigüedad la API que falló (lección de los runs del tag).</summary>
         private const string SelfcheckJsModule =
             "// auto.js del selfcheck — módulo de autoprueba del JSLib (v6.1.0)\r\n" +
             "var scHits = 0;\r\n" +
@@ -337,10 +339,7 @@ namespace lumina.wpf
             "function scCount() { return scHits; }\r\n" +
             "function scLastEvent() { return scLast; }\r\n" +
             "jslib.log('selfcheck: módulo cargado');\r\n" +
-            "jslib.onEvent('sc_evento', function (data) {\r\n" +
-            "    scHits = scHits + 1;\r\n" +
-            "    scLast = jsonParse(data).saludo;\r\n" +
-            "});\r\n" +
+            "jslib.onEvent('sc_evento', function (data) { scHits = scHits + 1; scLast = jsonParse(data).saludo; });\r\n" +
             "jslib.cmd('next');\r\n" +
             "jslib.showText('Aviso del selfcheck JSLib', 2);\r\n" +
             "jslib.setTimeout(120, function () { scHits = scHits + 1; });\r\n" +

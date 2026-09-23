@@ -379,9 +379,14 @@ namespace lumina.wpf.scripting
                 if (string.Equals(name, "jslib", StringComparison.Ordinal) &&
                     (mask & ScriptInfo.IUnknown) != 0)
                 {
-                    // GetIUnknownForObject devuelve el puntero con AddRef: el
-                    // motor lo libera cuando termine (contrato del sitio).
-                    item = Marshal.GetIUnknownForObject(_host);
+                    // GetIDispatchForObject (patrón canónico de los hosts C#):
+                    // devuelve el IDispatch AddRef-eado del CCW del host — el
+                    // motor lo libera cuando termine. A diferencia de entregar
+                    // el IUnknown pelado, el envoltorio JScript resuelve los
+                    // miembros por GetIDsOfTypes de inmediato (entregar IUnknown
+                    // derivó en un objeto opaco y «Function expected» — lección
+                    // del segundo run del tag).
+                    item = Marshal.GetIDispatchForObject(_host);
                     return;
                 }
                 throw new COMException("ítem no disponible: " + name,
