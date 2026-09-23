@@ -266,6 +266,9 @@ namespace lumina.wpf
             string versesText = ResolveScriptureText(reference, version);
             ScenarioItem it = ScenarioBuilder.ScriptureItem(
                 reference, version, pageBible.numVerses.IntValue, versesText);
+            // v6.0.0: si el pasaje viene de una búsqueda, la palabra buscada se
+            // resalta EN PROYECCIÓN (color de acento, insensible a caja/acento).
+            it.Highlight = _lastBibleSearchTerm;
             if (!_dbOpen)
                 Status("Nota: sin BD abierta el núcleo no puede resolver los versículos.");
             LoadScenarioFromItems(new ScenarioItem[] { it }, reference);

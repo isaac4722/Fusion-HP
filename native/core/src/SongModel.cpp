@@ -58,6 +58,10 @@ json SlideToJson(const Slide& s) {
     }
     if (!s.imagePath.empty())
         j["imagePath"] = s.imagePath;
+    // v6.0.0: resaltado en proyección (evolución ADITIVA del contrato de
+    // slide: solo se emite cuando hay valor — consumidores viejos lo ignoran).
+    if (!s.highlight.empty())
+        j["highlight"] = s.highlight;
     return j;
 }
 

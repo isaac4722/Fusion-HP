@@ -221,7 +221,10 @@ void Engine::Flatten(std::vector<Slide>* out, std::vector<std::string>* titles,
             Slide s; s.kind = SLIDE_BLANK; s.title = it.title;
             itemSlides.push_back(s);
         }
-        for (const Slide& s : itemSlides) {
+        for (Slide& s : itemSlides) {
+            // v6.0.0: propaga el resaltado del ítem a sus slides (text/
+            // scripture/image — el Renderer pinta los matches en acento).
+            if (!it.highlight.empty()) s.highlight = it.highlight;
             out->push_back(s);
             if (titles) titles->push_back(it.title.empty() ? s.title : it.title);
             if (itemIdx) itemIdx->push_back(itemNumber);
@@ -264,6 +267,8 @@ LuminaStatus Engine::LoadScenario(const std::string& jsonText) {
                 it.imagePath = io.value("imagePath", std::string());
                 it.maxLinesPerSlide = io.value("maxLinesPerSlide", 4);
                 it.versesPerSlide = io.value("versesPerSlide", 1);   // v5.2.0
+                // v6.0.0: resaltado en proyección (palabra/frase; opcional).
+                it.highlight = io.value("highlight", std::string());
                 if (io.contains("song") && io["song"].is_object()) loadSong(io["song"], &it);
                 else if (it.kind == "song") {
                     // canción inline (campos de canción al nivel del ítem)

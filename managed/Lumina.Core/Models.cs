@@ -192,6 +192,13 @@ namespace lumina.core
         public string ImagePath = string.Empty; // kind=image
         public int MaxLinesPerSlide = 4;        // kind=text
         /// <summary>
+        /// v6.0.0 «HORIZONTE»: palabra/frase a RESALTAR EN PROYECCIÓN (color de
+        /// acento). El núcleo la propaga a las slides de text/scripture/image;
+        /// típico: el término de la búsqueda bíblica que originó el ítem.
+        /// Cadena vacía = sin resaltado.
+        /// </summary>
+        public string Highlight = string.Empty;
+        /// <summary>
         /// v5.0.0: ruta del video (kind=video). Campo C#-side: el NÚCLEO lo
         /// ignora (kind desconocido → slide en blanco) y la UI lo intercepta
         /// para reproducirlo sobre la pantalla del proyector (VideoPlayerForm).

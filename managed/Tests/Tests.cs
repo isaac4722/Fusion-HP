@@ -27,6 +27,7 @@ namespace lumina.tests
 {
     internal static class Tests
     {
+        private static bool _nativeOk;   // fija Main() tras ProbeNativeLibrary
         private static int _pass;
         private static int _skip;
         private static readonly List<string> Failures = new List<string>();
@@ -35,11 +36,21 @@ namespace lumina.tests
         {
             Console.WriteLine("Lumina.Tests — selftest de la capa gestionada");
 
+            // --- Sondeo del núcleo nativo (antes de los Run: TestScenarioHighlight
+            //     del grupo «siempre corren» también lo usa) ----------------------
+            bool skipNative = string.Equals(
+                Environment.GetEnvironmentVariable("LUMINA_SKIP_NATIVE"), "1", StringComparison.Ordinal);
+            bool libOk = !skipNative && ProbeNativeLibrary();
+            _nativeOk = libOk;
+            if (skipNative) Console.WriteLine("  (LUMINA_SKIP_NATIVE=1 → chequeos nativos omitidos)");
+            else if (!libOk) Console.WriteLine("  (biblioteca nativa ausente → chequeos nativos omitidos)");
+
             // --- Solo gestionado (siempre corren) --------------------------------
             Run("MiniJson: roundtrip completo con acentos y escapes", TestMiniJsonRoundtrip);
             Run("MiniJson: números long/double y literales", TestMiniJsonNumbers);
             Run("MiniJson: tolerancia a BOM UTF-8", TestMiniJsonBom);
             Run("ScenarioBuilder: estructura del JSON de escenario", TestScenarioStructure);
+            Run("ScenarioBuilder: highlight en proyección (v6.0.0)", TestScenarioHighlight);
             Run("ChordUtil: IsChordLine con el criterio del núcleo", TestChordUtilIsChordLine);
             Run("ChordUtil: DetectKey y tonalidad latina", TestChordUtilDetectKey);
             Run("Settings: roundtrip portable", TestSettingsRoundtrip);
@@ -57,13 +68,6 @@ namespace lumina.tests
             Run("BooksTable: 66 libros y referencias legibles", TestBooksTable);
             Run("BibleJson: lector streaming de biblias JSON", TestBibleJson);
             Run("ZipBackup: ZIP válido y extraíble", TestZipBackup);
-
-            // --- Núcleo nativo (condicionales) -----------------------------------
-            bool skipNative = string.Equals(
-                Environment.GetEnvironmentVariable("LUMINA_SKIP_NATIVE"), "1", StringComparison.Ordinal);
-            bool libOk = !skipNative && ProbeNativeLibrary();
-            if (skipNative) Console.WriteLine("  (LUMINA_SKIP_NATIVE=1 → chequeos nativos omitidos)");
-            else if (!libOk) Console.WriteLine("  (biblioteca nativa ausente → chequeos nativos omitidos)");
 
             Run("Nativo: lumina_version", TestNativeVersion, libOk);
             Run("Nativo: ScenarioBuilder → LoadScenario==0", TestNativeLoadScenario, libOk);
@@ -129,6 +133,8 @@ namespace lumina.tests
                 Console.WriteLine("  [FAIL] " + name + " (" + ex.Message + ")");
             }
         }
+
+        private static bool NativeAvailable() { return _nativeOk; }
 
         private static void AssertTrue(bool cond, string what)
         {
@@ -298,6 +304,42 @@ namespace lumina.tests
             Dictionary<string, object> first = (Dictionary<string, object>)items[0];
             AssertTrue(MiniJson.GetString(first, "kind", "") == "song", "ítem 0 = song");
             AssertTrue(MiniJson.GetObject(first, "song") != null, "song anidada");
+        }
+
+        private static void TestScenarioHighlight()
+        {
+            // v6.0.0: «highlight» viaja al núcleo y regresa íntegro (contrato
+            // aditivo: ítems sin highlight NO emiten el campo).
+            ScenarioItem it = ScenarioBuilder.TextItem("Aviso", "linea uno\nlinea dos", 4);
+            it.Highlight = "misericordia";
+            string json = ScenarioBuilder.BuildScenarioJson("HL", new Theme(),
+                new ScenarioItem[] { it });
+            Dictionary<string, object> o = MiniJson.Parse(json);
+            List<object> items = MiniJson.GetArray(o, "items");
+            AssertTrue(items.Count == 1, "1 ítem");
+            Dictionary<string, object> item = (Dictionary<string, object>)items[0];
+            AssertTrue(MiniJson.GetString(item, "highlight", "") == "misericordia",
+                "highlight emitido: " + MiniJson.GetString(item, "highlight", ""));
+
+            ScenarioItem plain = ScenarioBuilder.TextItem("Sin resaltado", "texto", 4);
+            string json2 = ScenarioBuilder.BuildScenarioJson("HL2", new Theme(),
+                new ScenarioItem[] { plain });
+            AssertTrue(json2.IndexOf("\"highlight\"", StringComparison.Ordinal) < 0,
+                "sin highlight → campo ausente (contrato aditivo)");
+
+            // El núcleo (si está disponible) acepta el JSON con highlight,
+            // aplana las slides y las cuenta en el estado (patrón de los tests
+            // nativos: engine local desechable, headless).
+            if (NativeAvailable())
+            {
+                using (LuminaEngine engine = LuminaEngine.Create(true, null))
+                {
+                    int st = engine.LoadScenario(json);
+                    AssertTrue(st == LuminaStatus.Ok, "LoadScenario=" + LuminaStatus.Name(st));
+                    Dictionary<string, object> state = MiniJson.Parse(engine.StateJson());
+                    AssertTrue(MiniJson.GetInt(state, "slideCount", 0) > 0, "slideCount>0");
+                }
+            }
         }
 
         /* ------------------------------------------------ Settings ---------- */

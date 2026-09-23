@@ -12,6 +12,7 @@
 // ============================================================================
 #include "Renderer.h"
 
+#include "Highlight.h"
 #include "Utf8.h"
 
 #include <windows.h>
@@ -170,6 +171,33 @@ void DrawOutlined(HDC hdc, int x, int y, const std::wstring& s,
     TextOutW(hdc, x, y, s.c_str(), (int)s.size());
 }
 
+// v6.0.0 «HORIZONTE»: dibuja una LÍNEA con resaltado — segmento por segmento,
+// centrando el conjunto igual que una línea simple. Los segmentos que
+// coinciden con la palabra buscada se pintan con relleno de ACENTO (el resto
+// conserva el relleno de primer plano); contorno/sombra idénticos por
+// segmento. Mismo estilo visual del tema, énfasis solo por color.
+void DrawLineWithHighlight(HDC hdc, int w, int y, const std::string& lnUtf8,
+                            const std::string& highlightUtf8,
+                            COLORREF outline, double outlineWidth, COLORREF fill,
+                            COLORREF accent, COLORREF shadow, int shadowOffset) {
+    std::vector<HlSegment> segs = Highlight::Split(lnUtf8, highlightUtf8);
+    std::vector<int> widths(segs.size(), 0);
+    int totalW = 0;
+    for (size_t i = 0; i < segs.size(); ++i) {
+        widths[i] = TextWidth(hdc, Utf8ToWide(segs[i].text));
+        totalW += widths[i];
+    }
+    int x = (w - totalW) / 2;
+    for (size_t i = 0; i < segs.size(); ++i) {
+        const std::wstring sw = Utf8ToWide(segs[i].text);
+        if (!sw.empty()) {
+            DrawOutlined(hdc, x, y, sw, outline, outlineWidth,
+                         segs[i].match ? accent : fill, shadow, shadowOffset);
+        }
+        x += widths[i];
+    }
+}
+
 HFONT MakeFont(const Theme& theme, int pxHeight, bool bold) {
     const std::wstring face = Utf8ToWide(theme.fontFace.empty()
                                              ? std::string("Segoe UI")
@@ -222,15 +250,20 @@ void Renderer::DrawSlide(HDC hdc, int w, int h,
     // v5.1.0: cada línea lleva su línea de acordes adjunta (vacía si no hay):
     // se dibuja ENCIMA de la letra, en acento y al 62% del cuerpo — el modo
     // "músicos" de Holyrics (requisito del spec, componente 1).
-    std::vector<std::pair<std::wstring, std::wstring> > lines;   // (chords, text)
+    // v6.0.0: se conserva también el texto UTF-8 (con uppercase aplicado) para
+    // el resaltado en proyección (Highlight::Split trabaja sobre UTF-8).
+    std::vector<std::pair<std::wstring, std::string> > texts;   // (wstring, utf8)
+    std::vector<std::string> chordLines;
     for (const SlideLine& l : slide->lines) {
         std::string t = l.text;
         if (theme.uppercase) {
             for (size_t i = 0; i < t.size(); ++i)
                 if (t[i] >= 'a' && t[i] <= 'z') t[i] = (char)(t[i] - 'a' + 'A');
         }
-        lines.push_back(std::make_pair(Utf8ToWide(l.chords), Utf8ToWide(t)));
+        texts.push_back(std::make_pair(Utf8ToWide(t), t));
+        chordLines.push_back(l.chords);
     }
+    const bool useHighlight = !slide->highlight.empty();
 
     // Tamaño base de fuente escalado a la altura del lienzo (1080p nominal).
     int fontPx = std::max(14, (int)std::lround(theme.fontSize * (h / 1080.0)));
@@ -250,23 +283,21 @@ void Renderer::DrawSlide(HDC hdc, int w, int h,
         (void)old;
         totalH = 0;
         int maxW = 0;
-        bool anyChord = false;
-        for (size_t i = 0; i < lines.size(); ++i) {
-            const std::wstring& ln = lines[i].second;
-            if (!lines[i].first.empty()) {
-                anyChord = true;
+        for (size_t i = 0; i < texts.size(); ++i) {
+            const std::wstring& ln = texts[i].first;
+            if (!chordLines[i].empty()) {
+                const std::wstring chw = Utf8ToWide(chordLines[i]);
                 // v5.2.0: higiene /W4 — el retorno de SelectObject de medición
                 // no se usa (se restaura con font de inmediato).
                 (void)SelectObject(hdc, fontCh);
-                totalH += TextHeight(hdc, lines[i].first) + std::max(2, fontPx / 8);
-                maxW = std::max(maxW, TextWidth(hdc, lines[i].first));
+                totalH += TextHeight(hdc, chw) + std::max(2, fontPx / 8);
+                maxW = std::max(maxW, TextWidth(hdc, chw));
                 SelectObject(hdc, font);
             }
             totalH += TextHeight(hdc, ln);
             maxW = std::max(maxW, TextWidth(hdc, ln));
         }
-        (void)anyChord;
-        totalH += gapBase * (int)(lines.size() > 1 ? lines.size() - 1 : 0);
+        totalH += gapBase * (int)(texts.size() > 1 ? texts.size() - 1 : 0);
         SelectObject(hdc, GetStockObject(SYSTEM_FONT));
         if (totalH <= maxBlockH && maxW <= (int)(w * 0.9)) break;
         fontPx = (int)std::lround(fontPx * 0.9);
@@ -282,9 +313,9 @@ void Renderer::DrawSlide(HDC hdc, int w, int h,
     const int shadowOffset = std::max(2, fontPx / 16);
     const int gap = std::max(6, fontPx / 4);
     int y = y0;
-    for (size_t li = 0; li < lines.size(); ++li) {
-        const std::wstring& ch = lines[li].first;
-        const std::wstring& ln = lines[li].second;
+    for (size_t li = 0; li < texts.size(); ++li) {
+        const std::wstring& ch = Utf8ToWide(chordLines[li]);
+        const std::wstring& ln = texts[li].first;
         if (!ch.empty()) {
             // v5.2.0: higiene /W4 — ídem: retorno de medición no usado.
             (void)SelectObject(hdc, fontCh);
@@ -295,10 +326,17 @@ void Renderer::DrawSlide(HDC hdc, int w, int h,
             y += TextHeight(hdc, ch) + std::max(2, fontPx / 8);
             SelectObject(hdc, font);
         }
-        const int tw = TextWidth(hdc, ln);
-        const int x = (w - tw) / 2;
-        DrawOutlined(hdc, x, y, ln, outline,
-                     theme.outlineWidth * (fontPx / 54.0), fill, shadow, shadowOffset);
+        if (useHighlight) {
+            // v6.0.0: línea con resaltado (matches en color de acento).
+            DrawLineWithHighlight(hdc, w, y, texts[li].second, slide->highlight,
+                                  outline, theme.outlineWidth * (fontPx / 54.0),
+                                  fill, ToColorRef(ac), shadow, shadowOffset);
+        } else {
+            const int tw = TextWidth(hdc, ln);
+            const int x = (w - tw) / 2;
+            DrawOutlined(hdc, x, y, ln, outline,
+                         theme.outlineWidth * (fontPx / 54.0), fill, shadow, shadowOffset);
+        }
         y += TextHeight(hdc, ln) + gap;
     }
     SelectObject(hdc, oldFont);

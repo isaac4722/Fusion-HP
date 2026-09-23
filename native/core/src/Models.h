@@ -39,6 +39,10 @@ struct Slide {
     std::string refLabel;   // etiqueta de referencia ("Verso 1", "Juan 3:16")
     std::vector<SlideLine> lines;
     std::string imagePath;  // solo SLIDE_IMAGE
+    // v6.0.0 «HORIZONTE»: palabra/frase a resaltar en PROYECCIÓN (color de
+    // acento, coincidencia insensible a mayúsculas/acento — ver Highlight.h).
+    // Cadena vacía = sin resaltado. Evolución ADITIVA del contrato de slide.
+    std::string highlight;
 };
 
 /* -------------------------------- Tema --------------------------------- */
@@ -96,6 +100,10 @@ struct ScenarioItem {
     int   maxLinesPerSlide = 4;  // kind=text
     int   versesPerSlide = 1;    // kind=scripture (v5.2.0: era "reservado" — el
                                  // motor ahora lo HONRA; antes siempre 1/slide)
+    // v6.0.0: palabra/frase a resaltar en proyección (p. ej. término de la
+    // búsqueda bíblica que originó el ítem). El motor la propaga a las slides
+    // de text/scripture/image; el Renderer pinta los matches en acento.
+    std::string highlight;
 };
 
 struct Scenario {

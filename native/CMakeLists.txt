@@ -14,6 +14,7 @@ set(LUMINA_CORE_SOURCES
     core/src/Lyrics.cpp
     core/src/BibleRef.cpp
     core/src/Scripture.cpp
+    core/src/Highlight.cpp
     ${CMAKE_SOURCE_DIR}/third_party/sqlite3/sqlite3.c
 )
 

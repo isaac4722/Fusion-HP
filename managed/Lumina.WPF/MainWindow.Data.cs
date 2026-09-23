@@ -162,6 +162,9 @@ namespace lumina.wpf
                 pageBible.lblResolve.Text = "Escribe una referencia.";
                 return;
             }
+            // v6.0.0: resolver una referencia es una acción MANUAL: el término
+            // de la última búsqueda ya no aplica como resaltado del pasaje.
+            _lastBibleSearchTerm = string.Empty;
             try
             {
                 string resJson = LuminaEngine.BibleRefResolve(reference);
@@ -227,6 +230,10 @@ namespace lumina.wpf
                 Status("Escribe una palabra para buscar en la Biblia (p. ej. «misericordia»).");
                 return;
             }
+            // v6.0.0: el término queda pegado al último resultado — al cargar al
+            // escenario/agregar al culto se propaga como «highlight» y el motor
+            // resalta las coincidencias EN PROYECCIÓN (color de acento).
+            _lastBibleSearchTerm = term;
             try
             {
                 string sql = "SELECT version, book, chapter, verse, text FROM bible_fts " +
@@ -650,9 +657,12 @@ namespace lumina.wpf
             }
             ScenarioItem it = ScenarioBuilder.ScriptureItem(
                 reference, pageBible.txtVersion.Text.Trim(), pageBible.numVerses.IntValue, string.Empty);
+            // v6.0.0: si hubo búsqueda previa, la palabra se resalta al proyectar.
+            it.Highlight = _lastBibleSearchTerm;
             _serviceItems.Add(it);
             RefreshServiceList();
-            Status("Pasaje «" + reference + "» agregado al culto (" + _serviceItems.Count + " ítems).");
+            Status("Pasaje «" + reference + "» agregado al culto (" + _serviceItems.Count + " ítems)." +
+                   (it.Highlight.Length > 0 ? " Resaltará «" + it.Highlight + "» en proyección." : ""));
         }
 
         internal void AddImageItemToService()

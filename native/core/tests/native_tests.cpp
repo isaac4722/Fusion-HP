@@ -18,6 +18,7 @@
 #include "SongModel.h"
 #include "BibleBib.h"
 #include "Scripture.h"
+#include "Highlight.h"
 
 #include <nlohmann/json.hpp>
 
@@ -408,6 +409,64 @@ int main() {
     // versos vacíos → false
     std::vector<Slide> scr4;
     CHECK(!Scripture::BuildSlides("Juan 3:16", {}, 1, &scr4));
+
+    /* ================================================================ 6b == */
+    Section("[6b] Highlight (resaltado en proyección, v6.0.0)");
+    // FoldLatin: mayúsculas + acentos latinos → ASCII plegado
+    CHECK(Highlight::FoldLatin("Porque Amó Él") == "porque amo el");
+    CHECK(Highlight::FoldLatin("Espíritu") == "espiritu");
+    CHECK(Highlight::FoldLatin("ÑANDÚ") == "nandu");
+    // Split: match con acento en AMBOS lados (texto «amó», palabra «amo»)
+    {
+        const std::vector<HlSegment> s1 = Highlight::Split("Porque de tal manera amó Dios", "amo");
+        CHECK(s1.size() == 3);
+        CHECK(!s1[0].match && s1[0].text == "Porque de tal manera ");
+        CHECK(s1[1].match  && s1[1].text == "amó");
+        CHECK(!s1[2].match && s1[2].text == " Dios");
+    }
+    // Match insensible a mayúsculas (Dios/dios)
+    {
+        const std::vector<HlSegment> s2 = Highlight::Split("Dios es Dios", "dios");
+        CHECK(s2.size() == 3);
+        CHECK(s2[0].match && s2[0].text == "Dios");
+        CHECK(s2[2].match && s2[2].text == "Dios");
+    }
+    // Frontera de palabra: «Dios» NO matchea dentro de «Diosas»
+    {
+        const std::vector<HlSegment> s3 = Highlight::Split("Las Diosas cantan", "Dios");
+        CHECK(s3.size() == 1 && !s3[0].match);
+    }
+    // Palabra al inicio y al final del texto
+    {
+        const std::vector<HlSegment> s4 = Highlight::Split("amor eterno amor", "amor");
+        CHECK(s4.size() == 3 && s4[0].match && s4[2].match && !s4[1].match);
+    }
+    // Palabra vacía → un segmento sin marca
+    {
+        const std::vector<HlSegment> s5 = Highlight::Split("texto", "");
+        CHECK(s5.size() == 1 && !s5[0].match && s5[0].text == "texto");
+    }
+    // Sin coincidencias → un segmento sin marca
+    {
+        const std::vector<HlSegment> s6 = Highlight::Split("texto sin la palabra", "zzz");
+        CHECK(s6.size() == 1 && !s6[0].match);
+    }
+    // Frase multi-palabra con acentos y mayúsculas
+    {
+        const std::vector<HlSegment> s7 =
+            Highlight::Split("Porque AMÓ Dios al mundo", "amó dios");
+        CHECK(s7.size() == 3);
+        CHECK(s7[1].match && s7[1].text == "AMÓ Dios");
+    }
+    // Concatenación de segmentos == texto original (bytes intactos)
+    {
+        const std::vector<HlSegment> s8 = Highlight::Split("El Señor es mi pastor", "señor");
+        std::string joined;
+        for (const HlSegment& sg : s8) joined += sg.text;
+        CHECK(joined == "El Señor es mi pastor");
+        CHECK(s8[1].match && s8[1].text == "Señor");
+    }
+
 
     /* ================================================================ 7 == */
     Section("[7] API C (ABI): version/song/chords/bib/ref");

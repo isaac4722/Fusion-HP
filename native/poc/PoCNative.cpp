@@ -214,6 +214,18 @@ int main() {
     }, &st));
     CHECK(st.find("\"black\":true") != std::string::npos);
 
+    // v6.0.0: ítem de texto con «highlight» (resaltado en proyección) — el
+    // campo se acepta, el escenario aplanan las slides y el estado las cuenta.
+    const char* scenarioHl =
+        "{\"name\":\"HL\",\"items\":["
+        "{\"kind\":\"text\",\"title\":\"Aviso\",\"text\":\"linea uno\\nlinea dos\","
+        "\"maxLinesPerSlide\":1,\"highlight\":\"uno\"}]}";
+    CHECK(lumina_load_scenario(h, scenarioHl, -1) == LUMINA_OK);
+    CHECK(ApiCallOnce([&](char* o, int32_t c, int32_t* n) {
+        return lumina_state_json(h, o, c, n);
+    }, &st));
+    CHECK(st.find("\"slideCount\":2") != std::string::npos);   // 2 líneas → 2 slides
+
     /* -------------------------------------------------------- 8 BD+FTS */
     Section("[8] lumina_db_* (SQLite+FTS5)");
     const std::string dbPath = TempDbPath();

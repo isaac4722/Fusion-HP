@@ -53,6 +53,10 @@ namespace lumina.wpf
 
         /* -------- control de la página Biblia (lo usa el --flowcheck) ------- */
         internal System.Windows.Controls.TextBox _txtRef;
+        /* v6.0.0: término de la última búsqueda bíblica (p. ej. «misericordia»);
+        se propaga como «highlight» al cargar/agregar el pasaje → el motor lo
+        resalta EN PROYECCIÓN. Se limpia al resolver una referencia manual. */
+        internal string _lastBibleSearchTerm = string.Empty;
 
         /* -------- salidas auxiliares (WinForms heredado, HWND independiente) - */
         private lumina.ui.VideoPlayerForm _videoForm;
