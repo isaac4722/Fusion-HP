@@ -133,18 +133,10 @@ namespace lumina.wpf.scripting
                 _com.SetScriptSite(_site);
                 if (_parse32 != null) _parse32.InitNew(); else _parse64.InitNew();
                 _com.SetScriptState(ScriptState.Started);
-                // AddNamedItem con GLOBALMEMBERS (sexto experimento del ciclo,
-                // verificado por la sonda del selfcheck): el JScript real
-                // resuelve el ítem con GetItemInfo SOLO cuando el script evalúa
-                // un identificador GLOBAL de la API (los miembros del host se
-                // publican como funciones globales — la forma «JSLib-like
-                // mínimo» del spec §3.3: tcp(host, puerto, onLine), ws(url,
-                // onMessage), httpGet(url), cmd(action), showText(text)).
                 _com.AddNamedItem("jslib",
-                    ScriptItem.IsVisible | ScriptItem.GlobalMembers | ScriptItem.IsPersistent);
+                    ScriptItem.IsVisible | ScriptItem.IsPersistent);
 
-                // Prelude (jsonParse/lumina) — SIN referencias a ítems: se puede
-                // ejecutar ya (estado STARTED).
+                // Prelude (jsonParse/lumina) — SIN referencias a ítems.
                 ParseText(JsPrelude.Text, "(prelude)");
 
                 // LECCIÓN DEL TERCER RUN DEL TAG: JScript vincula los ítems con
@@ -158,6 +150,41 @@ namespace lumina.wpf.scripting
                 // superior después de conectar el motor).
                 _com.SetScriptState(ScriptState.Connected);
 
+                // GetScriptDispatch(null) ANTES de los módulos: el espacio
+                // GLOBAL del motor — ahí viven las funciones/variables de los
+                // módulos (pstrItemName NULL) para CallGlobal.
+                object globals;
+                _com.GetScriptDispatch(null, out globals);
+                _globals = globals;
+
+                // INYECCIÓN del host como variable global «jslib» vía
+                // IExpando/IDispatchEx (LECCIÓN DEFINITIVA del ciclo — octavo
+                // experimento): el JScript real NUNCA llamó a GetItemInfo (ni
+                // con ISVISIBLE, ni GLOBALMEMBERS, ni contexto de ítem, ni
+                // antes/después de Started) — el ítem quedaba como VT_UNKNOWN
+                // opaco y «jslib.log» no era función. La vía canónica del
+                // interop .NET↔JScript: el global del motor es un objeto
+                // EXPANDO (IDispatchEx) — AddField crea el miembro «jslib» y
+                // SetValue lo fija con el host como VT_DISPATCH (CCW con
+                // IDispatch+TypeInfo AutoDual) — JScript envuelve los
+                // VT_DISPATCH y los miembros SE RESUELVEN por GetIDsOfNames
+                // (igual que ActiveXObject("ADODB…") funciona en WSH). La
+                // inyección ocurre ANTES de parsear los módulos para que estos
+                // ya vean «jslib».
+                System.Runtime.InteropServices.Expando.IExpando expando =
+                    _globals as System.Runtime.InteropServices.Expando.IExpando;
+                if (expando != null)
+                {
+                    System.Reflection.FieldInfo jsField = expando.AddField("jslib");
+                    jsField.SetValue(_globals, _host);
+                    _log.Add("host «jslib» inyectado como global (IExpando)");
+                }
+                else
+                {
+                    _log.Add("aviso: el global no es expando (sin IExpando) — "
+                        + "la inyección «jslib» no se hizo");
+                }
+
                 List<JsModuleFile> modules = JsModuleScanner.Scan(_modulesDir);
                 foreach (JsModuleFile m in modules)
                 {
@@ -168,13 +195,6 @@ namespace lumina.wpf.scripting
                     }
                     ParseText(m.Code, m.Name);
                 }
-
-                // GetScriptDispatch(null): el espacio GLOBAL del motor — ahí
-                // viven las funciones/variables de los módulos (pstrItemName
-                // NULL) para CallGlobal (acción de activador «script»).
-                object globals;
-                _com.GetScriptDispatch(null, out globals);
-                _globals = globals;
 
                 _log.Add("módulos cargados: " + _loaded.Count
                     + (_errors.Count > 0 ? " · errores: " + _errors.Count : string.Empty));
