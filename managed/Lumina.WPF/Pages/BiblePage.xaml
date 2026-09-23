@@ -54,13 +54,15 @@
         <local:Card Title="Importar biblias" Icon="{StaticResource IconDownload}" Margin="0,14,0,0">
           <StackPanel>
             <TextBlock Style="{StaticResource TxtSmall}" TextWrapping="Wrap"
-                       Text="Formatos admitidos: .BIB (directivas #BIB/#VERSION/#BOOKS), ZEFania XML (Reina Valera 1960, etc.) y archivos JSON. La importación valida el archivo con el núcleo y luego inserta los versículos en la base de datos."
+                       Text="Formatos admitidos: .BIB (directivas #BIB/#VERSION/#BOOKS), ZEFania XML (Reina Valera 1960, etc.), OSIS XML (académico: KJV, LXX…) y archivos JSON. La importación valida el archivo y luego inserta los versículos en la base de datos."
                        Margin="0,0,0,10"/>
             <StackPanel Orientation="Horizontal">
               <local:LumButton Variant="Secondary" Icon="{StaticResource IconBook}"
                                Text="Importar Biblia .BIB…" Click="OnImportBib"/>
               <local:LumButton Variant="Secondary" Icon="{StaticResource IconDownload}"
-                               Text="Importar ZEFania XML…" Margin="8,0,0,0" Click="OnImportZefania"/>
+                               Text="Importar ZEFania XML…" Click="OnImportZefania"/>
+              <local:LumButton Variant="Secondary" Icon="{StaticResource IconFileText}"
+                               Text="Importar OSIS XML…" Margin="8,0,0,0" Click="OnImportOsis"/>
             </StackPanel>
           </StackPanel>
         </local:Card>

@@ -51,6 +51,11 @@ namespace lumina.wpf
             if (Shell != null) Shell.ImportZefaniaXml();
         }
 
+        private void OnImportOsis(object sender, RoutedEventArgs e)
+        {
+            if (Shell != null) Shell.ImportOsisXml();
+        }
+
         private void OnSearchClick(object sender, RoutedEventArgs e)
         {
             if (Shell != null) Shell.SearchBibleWords();

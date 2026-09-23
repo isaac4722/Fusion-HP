@@ -61,6 +61,7 @@ namespace lumina.tests
             Run("PdfExporter: estructura PDF 1.4 y xref coherente", TestPdfStructure);
             Run("PdfExporter: páginas, acentos WinAnsi e imagen DCTDecode", TestPdfContent);
             Run("ZefaniaBible: parseo streaming y tolerancia", TestZefania);
+            Run("OsisBible: OSIS XML académico (v6.0.0)", TestOsis);
             Run("TriggerEngine: reglas, condiciones y persistencia", TestTriggerEngine);
             Run("ObsProtocol: handshake V5 y mensajes", TestObsProtocol);
 
@@ -915,6 +916,51 @@ namespace lumina.tests
             AssertTrue(v0.Text.Contains("\n"), "BR → salto de línea");
             AssertTrue(v0.Text.Contains("amó"), "texto con acento intacto");
             AssertTrue(res.BookCount == 1, "1 libro válido");
+        }
+
+        private static void TestOsis()
+        {
+            // v6.0.0: OSIS XML (formato académico) — streaming + tolerante.
+            // Cubre: osisIDWork, <work><title>, <w>, <note> descartado, <lb/>,
+            // osisID compuesto (libro/cap/vers), div type="book", fila inválida.
+            string xml =
+"<?xml version=\"1.0\" encoding=\"UTF-8\"?>" +
+"<osis><osisText osisRefWork=\"Bible\" osisIDWork=\"KJV\">" +
+"<header><work osisWork=\"KJV\"><title>King James Version</title></work></header>" +
+"<div type=\"book\" osisID=\"Gen\">" +
+"<chapter osisID=\"Gen.1\">" +
+"<verse osisID=\"Gen.1.1\">In the beginning God <w>created</w> the heaven<lb/>and the earth.</verse>" +
+"<verse osisID=\"Gen.1.2\">And the earth <note>esto es editorial</note>was without form.</verse>" +
+"</chapter></div>" +
+"<div type=\"book\" osisID=\"John\">" +
+"<chapter osisID=\"John.3\">" +
+"<verse osisID=\"John.3.16\">For God so <w>loved</w> the world.</verse>" +
+"</chapter></div>" +
+"<div type=\"section\" osisID=\"Otro\">" +
+"<chapter osisID=\"Otro.9\"><verse osisID=\"Otro.9.9\">div que NO es libro → descartado</verse>" +
+"</chapter></div>" +
+"</osisText></osis>";
+
+            OsisResult res;
+            using (MemoryStream ms = new MemoryStream(new UTF8Encoding(false).GetBytes(xml)))
+            {
+                res = OsisBible.Parse(ms, null, "fallback");
+            }
+            AssertTrue(res.VersionName == "King James Version",
+                "work/title gana: " + res.VersionName);
+            AssertTrue(res.Verses.Count == 3, "3 versículos (hay " + res.Verses.Count + ")");
+            AssertTrue(res.SkippedRows == 1, "1 fila descartada (div no-book)");
+            OsisVerse v0 = res.Verses[0];
+            AssertTrue(v0.Book == 1 && v0.Chapter == 1 && v0.Verse == 1, "Gen → coords 1/1/1");
+            AssertTrue(v0.Text.Contains("created") && v0.Text.Contains("In the beginning"),
+                "texto con <w> aplanado");
+            AssertTrue(v0.Text.Contains("\n"), "lb → salto de línea");
+            AssertTrue(!v0.Text.Contains("editorial"), "note descartado");
+            OsisVerse v2 = res.Verses[2];
+            AssertTrue(v2.Book == 43 && v2.Chapter == 3 && v2.Verse == 16, "John → 43/3/16");
+            AssertTrue(res.BookCount == 2, "2 libros válidos");
+            AssertTrue(res.BooksSeen.Contains("Gen") && res.BooksSeen.Contains("John"),
+                "códigos vistos");
         }
 
         private sealed class CountingSink : ITriggerSink

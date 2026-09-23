@@ -411,6 +411,62 @@ namespace lumina.wpf
             InsertBibleRows(version, rows, res.Verses.Count);
         }
 
+        internal void ImportOsisXml()
+        {
+            if (!RequireEngine()) return;
+            Microsoft.Win32.OpenFileDialog dlg = new Microsoft.Win32.OpenFileDialog();
+            dlg.Title = "Importar Biblia OSIS XML";
+            dlg.Filter = "Biblia OSIS (*.xml)|*.xml|Todos los archivos (*.*)|*.*";
+            if (dlg.ShowDialog(this) != true) return;
+
+            OsisResult res;
+            try { res = OsisBible.Parse(dlg.FileName, null); }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "El XML no se pudo leer: " + ex.Message, "Importar",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            if (res.Verses.Count == 0)
+            {
+                MessageBox.Show(this,
+                    "No se encontraron versículos.\n\n" +
+                    "El formato esperado es OSIS XML:\n" +
+                    "  <osis><osisText osisIDWork=\"…\">\n" +
+                    "    <div type=\"book\" osisID=\"Gen\"><chapter osisID=\"Gen.1\">\n" +
+                    "      <verse osisID=\"Gen.1.1\">texto…</verse>",
+                    "Importar OSIS", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            string version = res.VersionName.Length > 0 ? res.VersionName : "OSIS";
+            MessageBox.Show(this,
+                "Biblia OSIS validada:\n" +
+                "  Versión: " + version + "\n" +
+                "  Libros: " + res.BookCount + "\n" +
+                "  Versículos: " + res.Verses.Count + "\n" +
+                "  Filas descartadas: " + res.SkippedRows,
+                "Importar OSIS", MessageBoxButton.OK, MessageBoxImage.Information);
+
+            if (MessageBox.Show(this, "¿Insertar esta biblia en la base de datos?",
+                    "Importar OSIS", MessageBoxButton.YesNo, MessageBoxImage.Question)
+                != MessageBoxResult.Yes) return;
+            if (!RequireDb()) return;
+
+            List<object> rows = new List<object>(res.Verses.Count);
+            foreach (OsisVerse v in res.Verses)
+            {
+                List<object> row = new List<object>(5);
+                row.Add(version);
+                row.Add(v.Book);
+                row.Add(v.Chapter);
+                row.Add(v.Verse);
+                row.Add(v.Text);
+                rows.Add(row);
+            }
+            InsertBibleRows(version, rows, res.Verses.Count);
+        }
+
         /// <summary>INSERT por lotes en transacción (100 filas por sentencia).</summary>
         private void InsertBibleRows(string version, List<object> rows, long expectedVerses)
         {
