@@ -89,6 +89,11 @@ namespace lumina.wpf
             if (Shell != null) Shell.ImportBibFile();
         }
 
+        private void OnImportPptx(object sender, RoutedEventArgs e)
+        {
+            if (Shell != null) Shell.ImportPptxToService();
+        }
+
         private void OnImportPlan(object sender, RoutedEventArgs e)
         {
             if (Shell != null) Shell.ImportPlanJson();

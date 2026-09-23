@@ -685,6 +685,78 @@ namespace lumina.wpf
             }
         }
 
+        /* --------------------------------------------------- PPTX v6.0.0 */
+        /// <summary>
+        /// Importa un PowerPoint a la cola del culto: cada diapositiva de TEXTO
+        /// se mapea a un ítem de texto (1 diapositiva = 1 ítem, fidelidad de
+        /// proyección); las diapositivas vacías se agregan «en blanco».
+        /// </summary>
+        internal void ImportPptxToService()
+        {
+            Microsoft.Win32.OpenFileDialog dlg = new Microsoft.Win32.OpenFileDialog();
+            dlg.Title = "Importar PPTX al culto";
+            dlg.Filter = "PowerPoint (*.pptx)|*.pptx|Todos los archivos (*.*)|*.*";
+            if (dlg.ShowDialog(this) != true) return;
+
+            PptxImportResult res;
+            try { res = PptxImporter.Import(dlg.FileName); }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "El PPTX no se pudo leer: " + ex.Message, "Importar PPTX",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            if (res.Slides.Count == 0)
+            {
+                MessageBox.Show(this,
+                    "No se encontraron diapositivas de texto en el archivo.\n\n" +
+                    "La importación lee las CAJAS DE TEXTO de cada diapositiva " +
+                    "(imágenes, tablas y gráficos no se convierten).",
+                    "Importar PPTX", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            int added = 0, blank = 0;
+            for (int i = 0; i < res.Slides.Count; i++)
+            {
+                PptxSlide sl = res.Slides[i];
+                if (sl.Lines.Count == 0)
+                {
+                    _serviceItems.Add(ScenarioBuilder.BlankItem("Diapositiva " + (i + 1)));
+                    blank++;
+                    continue;
+                }
+                // Título sugerido: primera línea no vacía; texto: todas las líneas.
+                string title = string.Empty;
+                StringBuilder body = new StringBuilder();
+                foreach (string l in sl.Lines)
+                {
+                    string t = l == null ? string.Empty : l.Trim();
+                    if (t.Length == 0) continue;
+                    if (title.Length == 0) title = t;
+                    if (body.Length > 0) body.Append('\n');
+                    body.Append(t);
+                }
+                if (body.Length == 0)
+                {
+                    _serviceItems.Add(ScenarioBuilder.BlankItem("Diapositiva " + (i + 1)));
+                    blank++;
+                    continue;
+                }
+                // maxLinesPerSlide = líneas de la diapositiva → 1:1 (no se reparte).
+                _serviceItems.Add(ScenarioBuilder.TextItem(
+                    title.Length > 0 ? title : "Diapositiva " + (i + 1),
+                    body.ToString(), Math.Max(1, sl.Lines.Count)));
+                added++;
+            }
+            string name = res.Title.Length > 0 ? res.Title : Path.GetFileNameWithoutExtension(dlg.FileName);
+            if (name.Length > 0 && pageService.txtServiceName.Text.Trim() == "Culto")
+                pageService.txtServiceName.Text = name;
+            RefreshServiceList();
+            Status("PPTX importado: " + added + " diapositivas de texto + " + blank +
+                   " en blanco (" + (added + blank) + " ítems en el culto).");
+        }
+
         /* ------------------------------------------------ editor de culto v5.1.0 */
 
         internal void AddCurrentSongToService()

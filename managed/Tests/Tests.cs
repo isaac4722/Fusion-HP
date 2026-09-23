@@ -62,6 +62,7 @@ namespace lumina.tests
             Run("PdfExporter: páginas, acentos WinAnsi e imagen DCTDecode", TestPdfContent);
             Run("ZefaniaBible: parseo streaming y tolerancia", TestZefania);
             Run("OsisBible: OSIS XML académico (v6.0.0)", TestOsis);
+            Run("PptxImporter: round-trip exportar→importar (v6.0.0)", TestPptxImport);
             Run("TriggerEngine: reglas, condiciones y persistencia", TestTriggerEngine);
             Run("ObsProtocol: handshake V5 y mensajes", TestObsProtocol);
 
@@ -961,6 +962,53 @@ namespace lumina.tests
             AssertTrue(res.BookCount == 2, "2 libros válidos");
             AssertTrue(res.BooksSeen.Contains("Gen") && res.BooksSeen.Contains("John"),
                 "códigos vistos");
+        }
+
+        private static void TestPptxImport()
+        {
+            // v6.0.0: importación PPTX — round-trip con el PROPIO exportador
+            // (ZipReader + sldIdLst + rels + sp/txBody/a:p/a:t).
+            Theme t = new Theme();
+            List<ExportSlide> slides = SampleExportSlides();
+            byte[] pptx = PptxExporter.ExportToBytes("Muestra CI", slides, t);
+
+            PptxImportResult res;
+            using (MemoryStream ms = new MemoryStream(pptx))
+            {
+                res = PptxImporter.Import(ms);
+            }
+            // 3 diapositivas (la blank sin texto también — fidelidad 1:1).
+            AssertTrue(res.Slides.Count == 3, "3 slides (hay " + res.Slides.Count + ")");
+            // Slide 1 (Título): título + subtítulo, en orden visual.
+            AssertTrue(res.Slides[0].Lines.Count == 2, "slide1: 2 líneas (hay " +
+                res.Slides[0].Lines.Count + ")");
+            AssertTrue(res.Slides[0].Lines[0] == "Culto de prueba", "slide1 línea 1");
+            AssertTrue(res.Slides[0].Lines[1] == "Iglesia — Sala Mayor", "slide1 línea 2");
+            // Slide 2 (Escritura): 2 líneas de texto + referencia al pie.
+            AssertTrue(res.Slides[1].Lines.Count == 3, "slide2: 3 líneas (hay " +
+                res.Slides[1].Lines.Count + ")");
+            AssertTrue(res.Slides[1].Lines[0].Contains("amó"), "slide2 acento intacto");
+            AssertTrue(res.Slides[1].Lines[2] == "Juan 3:16", "referencia al pie");
+            // Slide 3 (blank): sin líneas.
+            AssertTrue(res.Slides[2].Lines.Count == 0, "slide3 (blank) sin líneas");
+
+            // Título de la presentación desde docProps/core.xml.
+            AssertTrue(res.Title == "Muestra CI", "core title: " + res.Title);
+
+            // ZIP dañado → excepción descriptiva (no crash mudo).
+            try
+            {
+                byte[] junk = new byte[64];
+                using (MemoryStream ms = new MemoryStream(junk))
+                {
+                    PptxImporter.Import(ms);
+                }
+                AssertTrue(false, "ZIP basura debió lanzar");
+            }
+            catch (InvalidDataException)
+            {
+                AssertTrue(true, "InvalidDataException para ZIP basura");
+            }
         }
 
         private sealed class CountingSink : ITriggerSink

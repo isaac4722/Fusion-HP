@@ -77,6 +77,10 @@
             <local:LumButton Variant="Secondary" Icon="{StaticResource IconClipboard}"
                              Text="Importar plan JSON…" Margin="0,8,0,0" HorizontalAlignment="Stretch"
                              Click="OnImportPlan"/>
+            <local:LumButton Variant="Secondary" Icon="{StaticResource IconFileText}"
+                             Text="Importar PPTX…" Margin="0,8,0,0" HorizontalAlignment="Stretch"
+                             ToolTip="Lee las diapositivas de texto de un PowerPoint y las agrega al culto (1 diapositiva = 1 ítem)"
+                             Click="OnImportPptx"/>
             <TextBlock Style="{StaticResource TxtCaption}" TextWrapping="Wrap" Margin="0,14,0,0"
                        Text="El plan JSON admite items: song (title/artist/lyrics), scripture (ref/version), text y blank — formato documentado en docs/api/PlanningCenter.md."/>
           </StackPanel>

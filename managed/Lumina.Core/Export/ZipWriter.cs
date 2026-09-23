@@ -152,6 +152,18 @@ namespace lumina.core
             s.WriteByte((byte)((v >> 24) & 0xFF));
         }
 
+        // v6.0.0 (ZipReader, importación PPTX): lecturas little-endian sobre
+        // el archivo completo en memoria (mismo APPNOTE.TXT que la escritura).
+        internal static ushort ReadU16(byte[] b, int off)
+        {
+            return (ushort)((b[off] | (b[off + 1] << 8)) & 0xFFFF);
+        }
+
+        internal static uint ReadU32(byte[] b, int off)
+        {
+            return (uint)(b[off] | (b[off + 1] << 8) | (b[off + 2] << 16) | (b[off + 3] << 24));
+        }
+
         private static readonly uint[] CrcTable = BuildCrcTable();
 
         private static uint[] BuildCrcTable()
