@@ -47,7 +47,7 @@ namespace lumina.wpf
                 else if (string.Equals(a, "--uicheck", StringComparison.OrdinalIgnoreCase)) uicheck = true;
                 else if (string.Equals(a, "--flowcheck", StringComparison.OrdinalIgnoreCase)) flowcheck = true;
             }
-            if (selfcheck) { Shutdown(RunSelfCheck()); return; }
+            if (selfcheck) { Environment.Exit(RunSelfCheck()); }
             if (uicheck) { RunUiCheck(); return; }        // sale por sí mismo (0/3)
             if (flowcheck) { RunFlowCheck(); return; }    // sale por sí mismo (0/4)
 
@@ -266,7 +266,10 @@ namespace lumina.wpf
                 ? "UICHECK PASS (" + AppVersion + ")"
                 : "UICHECK FAIL (" + failures + " fallo/s)");
             LogLine(failures == 0 ? "UICHECK PASS" : "UICHECK FAIL(" + failures + ")");
-            Shutdown(failures == 0 ? 0 : 3);
+            // Environment.Exit (no Shutdown): corta CUALQUIER hilo de integración
+            // iniciado por el constructor y evita el teardown de WPF tras una
+            // excepción en la construcción (lección WinForms v5.1.1).
+            Environment.Exit(failures == 0 ? 0 : 3);
         }
 
         /* ---------------------------------------------------------- flowcheck */
@@ -378,7 +381,7 @@ namespace lumina.wpf
                 ? "FLOWCHECK PASS (" + AppVersion + ")"
                 : "FLOWCHECK FAIL (" + failures + " fallo/s)");
             LogLine(failures == 0 ? "FLOWCHECK PASS" : "FLOWCHECK FAIL(" + failures + ")");
-            Shutdown(failures == 0 ? 0 : 4);
+            Environment.Exit(failures == 0 ? 0 : 4);
         }
 
         private static System.Reflection.FieldInfo FieldOf(System.Type t, string name)

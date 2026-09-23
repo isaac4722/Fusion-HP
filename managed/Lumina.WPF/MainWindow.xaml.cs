@@ -146,6 +146,12 @@ namespace lumina.wpf
             NavigateToIndex(page);
         }
 
+        /// <summary>Acceso rápido al proyector desde la cabecera (F5).</summary>
+        private void OnHeaderProjectorClick(object sender, RoutedEventArgs e)
+        {
+            ShowProjector();
+        }
+
         /// <summary>Cambia la página visible y sincroniza la píldora del sidebar.</summary>
         internal void NavigateToIndex(int index)
         {
