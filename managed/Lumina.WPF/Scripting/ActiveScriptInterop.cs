@@ -12,12 +12,24 @@
 //  métodos aunque solo usemos 5, e IActiveScriptParse declara AddScriptlet
 //  aunque nunca se llame: ocupa su slot de vtable).
 //
-//  GUID (Windows SDK):
+//  ⚠ LECCIÓN DEL GATE DE CI (primer run del tag v6.1.0-beta.1): el QI por
+//  IActiveScriptParse devolvía E_NOINTERFACE porque esta interfaz tiene
+//  **IID DISTINTA POR ARQUITECTURA** — su vtable lleva un DWORD_PTR
+//  (dwSourceContextCookie, tamaño de puntero): IID 32 bits
+//  BB1A2AE2-A4F9-11CF-8F20-00805F2CD064 · IID 64 bits
+//  C7EF7658-E1EE-480E-97EA-D52CB4D76D17 (fuente: activscp.idl del SDK/Wine).
+//  El motor consulta la de SU bitness y responde E_NOINTERFACE a la otra —
+//  por eso aquí se declaran IActiveScriptParse32/IActiveScriptParse64 con la
+//  MISMA forma (UIntPtr para el cookie) y el JsEngine se queda con la que
+//  acepte el QueryInterface.
+//
+//  GUID (activscp.idl — verificados contra el run de CI):
 //    CLSID_JScript            F414C260-6AC0-11CF-B6D1-00AA00BBBB58 (jscript.dll,
 //                             presente de Win7 SP1 a Win11 — cero despliegue)
 //    IID_IActiveScript        BB1A2AE1-A4F9-11CF-8F20-00805F2CD064
+//    IID_IActiveScriptParse32 BB1A2AE2-A4F9-11CF-8F20-00805F2CD064
+//    IID_IActiveScriptParse64 C7EF7658-E1EE-480E-97EA-D52CB4D76D17
 //    IID_IActiveScriptSite    DB01A1E3-A42B-11CF-8F20-00805F2CD064
-//    IID_IActiveScriptParse   4974DE60-7B4A-11CF-B0B9-00805F2CD064
 //    IID_IActiveScriptError   EAE1BA61-A4ED-11CF-8F20-00805F2CD064
 // ============================================================================
 using System;
@@ -115,11 +127,49 @@ namespace lumina.wpf.scripting
 
     // ------------------------------------------------------------------ parse
 
-    /// <summary>IActiveScriptParse — InitNew + ParseScriptText (AddScriptlet
-    /// declarado por fidelidad de vtable, jamás se llama). 3 métodos.</summary>
-    [ComImport, Guid("4974DE60-7B4A-11cf-B0B9-00805F2CD064"),
+    /// <summary>
+    /// IActiveScriptParse — InitNew + ParseScriptText (AddScriptlet declarado
+    /// por fidelidad de vtable, jamás se llama). 3 métodos.
+    ///
+    /// ⚠ POR ARQUITECTURA: dwSourceContextCookie es DWORD_PTR (tamaño de
+    /// puntero) → el IID y la vtable cambian entre x86 y x64. Declaramos las
+    /// DOS formas (32/64) con UIntPtr (tamaño de puntero en cada proceso) y
+    /// el motor responde a la de SU bitness: JsEngine consulta ambas con «as»
+    /// (QI) y se queda con la que acepte.
+    /// </summary>
+    [ComImport, Guid("BB1A2AE2-A4F9-11cf-8F20-00805F2CD064"),
      InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    internal interface IActiveScriptParse
+    internal interface IActiveScriptParse32
+    {
+        void InitNew();
+        void AddScriptlet(
+            [MarshalAs(UnmanagedType.LPWStr)] string defaultName,
+            [MarshalAs(UnmanagedType.LPWStr)] string code,
+            [MarshalAs(UnmanagedType.LPWStr)] string itemName,
+            IntPtr context,
+            [MarshalAs(UnmanagedType.LPWStr)] string delimiter,
+            UIntPtr sourceContextCookie,
+            uint startingLineNumber,
+            uint flags,
+            IntPtr varResult,
+            IntPtr excepInfo);
+        void ParseScriptText(
+            [MarshalAs(UnmanagedType.LPWStr)] string code,
+            [MarshalAs(UnmanagedType.LPWStr)] string itemName,
+            IntPtr context,
+            [MarshalAs(UnmanagedType.LPWStr)] string delimiter,
+            UIntPtr sourceContextCookie,
+            uint startingLineNumber,
+            uint flags,
+            IntPtr varResult,
+            IntPtr excepInfo);
+    }
+
+    /// <summary>IActiveScriptParse para proceso de 64 bits (misma forma,
+    /// IID propia del vtable x64 — ver la lección en la cabecera).</summary>
+    [ComImport, Guid("C7EF7658-E1EE-480E-97EA-D52CB4D76D17"),
+     InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    internal interface IActiveScriptParse64
     {
         void InitNew();
         void AddScriptlet(

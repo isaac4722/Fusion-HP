@@ -40,7 +40,11 @@ namespace lumina.wpf.scripting
         private JsEventRegistry _events;
         private JsLibHost _host;
         private IActiveScript _com;
-        private IActiveScriptParse _parse;
+        // IActiveScriptParse por ARQUITECTURA (IID distinta en x86/x64 — ver
+        // la lección del primer run del tag en ActiveScriptInterop.cs): solo
+        // una de las dos queda viva (la que acepte el QueryInterface).
+        private IActiveScriptParse32 _parse32;
+        private IActiveScriptParse64 _parse64;
         private ActiveScriptSite _site;
         private object _globals;                        // IDispatch del global
 
@@ -107,13 +111,19 @@ namespace lumina.wpf.scripting
             try
             {
                 _com = ActiveScriptInterop.CreateJScriptEngine();
-                _parse = (IActiveScriptParse)_com;
+                _parse32 = _com as IActiveScriptParse32;
+                _parse64 = _com as IActiveScriptParse64;
+                if (_parse32 == null && _parse64 == null)
+                {
+                    throw new InvalidOperationException(
+                        "El motor JScript no expone IActiveScriptParse (x86/x64).");
+                }
                 _events = new JsEventRegistry();
                 _host = new JsLibHost(this, _sink, _ui);
                 _site = new ActiveScriptSite(this, _host);
 
                 _com.SetScriptSite(_site);
-                _parse.InitNew();
+                if (_parse32 != null) _parse32.InitNew(); else _parse64.InitNew();
                 _com.AddNamedItem("jslib", ScriptItem.IsVisible | ScriptItem.IsPersistent);
                 _com.SetScriptState(ScriptState.Started);
 
@@ -163,8 +173,17 @@ namespace lumina.wpf.scripting
             {
                 // flags 0: el texto se EJECUTA durante la llamada (las «function»
                 // y «var» del nivel superior quedan en el espacio global).
-                _parse.ParseScriptText(code, null, IntPtr.Zero, null,
-                    UIntPtr.Zero, 1, 0, IntPtr.Zero, IntPtr.Zero);
+                // Dispatch por bitness (IID distinta — ver interop).
+                if (_parse32 != null)
+                {
+                    _parse32.ParseScriptText(code, null, IntPtr.Zero, null,
+                        UIntPtr.Zero, 1, 0, IntPtr.Zero, IntPtr.Zero);
+                }
+                else
+                {
+                    _parse64.ParseScriptText(code, null, IntPtr.Zero, null,
+                        UIntPtr.Zero, 1, 0, IntPtr.Zero, IntPtr.Zero);
+                }
                 if (file.IndexOf("(prelude)", StringComparison.Ordinal) < 0)
                 {
                     lock (_loaded) { _loaded.Add(file); }
@@ -295,7 +314,8 @@ namespace lumina.wpf.scripting
                 catch (Exception) { }
             }
             _com = null;
-            _parse = null;
+            _parse32 = null;
+            _parse64 = null;
             _host = null;
         }
 
