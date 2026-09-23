@@ -132,8 +132,14 @@ namespace lumina.wpf.scripting
 
                 _com.SetScriptSite(_site);
                 if (_parse32 != null) _parse32.InitNew(); else _parse64.InitNew();
-                _com.AddNamedItem("jslib", ScriptItem.IsVisible | ScriptItem.IsPersistent);
                 _com.SetScriptState(ScriptState.Started);
+                // AddNamedItem EN STARTED + GLOBALMEMBERS (quinto experimento del
+                // ciclo, ver jscript.c de Wine): el motor vincula el ítem
+                // ANSIOOSAMENTE — GetItemInfo(IUNKNOWN)+QI(IDispatch) durante el
+                // PROPIO AddNamedItem — y los miembros quedan como globales del
+                // script además del nombre («jslib.xxx» / «xxx()»).
+                _com.AddNamedItem("jslib",
+                    ScriptItem.IsVisible | ScriptItem.GlobalMembers | ScriptItem.IsPersistent);
 
                 // Prelude (jsonParse/lumina) — SIN referencias a ítems: se puede
                 // ejecutar ya (estado STARTED).

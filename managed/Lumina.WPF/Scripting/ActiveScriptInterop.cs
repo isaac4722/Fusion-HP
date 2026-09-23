@@ -74,12 +74,17 @@ namespace lumina.wpf.scripting
         public int scode;
     }
 
-    /// <summary>SCRIPTITEM_ISVISIBLE|SCRIPTITEM_ISPERSISTENT para AddNamedItem:
-    /// el ítem queda visible bajo su nombre («jslib.xxx» desde JScript) y
-    /// sobrevive a las transiciones de estado del motor.</summary>
+    /// <summary>SCRIPTITEM_* de AddNamedItem (valores verificados contra
+    /// activscp.idl): GLOBALMEMBERS además de ISVISIBLE — el motor vincula el
+    /// ítem ANSIOOSAMENTE (GetItemInfo+QI(IDispatch) durante el propio
+    /// AddNamedItem, ver jscript.c de Wine) y los miembros quedan accesibles
+    /// como globales del script («log(...)») además de por nombre («jslib.log») —
+    /// sin GLOBALMEMBERS el JScript real dejó el ítem como «unknown» opaco.
+    /// ISPERSISTENT: sobrevive a las transiciones de estado.</summary>
     internal static class ScriptItem
     {
         public const uint IsVisible = 0x2;
+        public const uint GlobalMembers = 0x8;
         public const uint IsPersistent = 0x40;
     }
 
