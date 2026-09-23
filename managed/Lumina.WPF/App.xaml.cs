@@ -257,6 +257,11 @@ namespace lumina.wpf
                         object s2 = js.CallGlobal("scT2");
                         Console.WriteLine("selfcheck: JSLib sonda jslib.version()=" + s2);
                         LogLine("selfcheck: JSLib sonda jslib.version()=" + s2);
+                        foreach (string tr in js.GetItemInfoTrace())
+                        {
+                            Console.WriteLine("selfcheck: JSLib GetItemInfo " + tr);
+                            LogLine("selfcheck: JSLib GetItemInfo " + tr);
+                        }
 
                         if (!js.LoadedModules().Contains("auto.js"))
                             throw new InvalidOperationException(

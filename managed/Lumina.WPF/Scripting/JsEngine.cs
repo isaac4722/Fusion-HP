@@ -50,6 +50,7 @@ namespace lumina.wpf.scripting
 
         private readonly List<string> _loaded = new List<string>();
         private readonly List<string> _errors = new List<string>();
+        private readonly List<string> _itemInfoTrace = new List<string>();   // diagnóstico
         private string _modulesDir;
         private string _currentFile;                    // atribución de OnScriptError
         private bool _pendingError;                     // OnScriptError ya reportó
@@ -90,6 +91,13 @@ namespace lumina.wpf.scripting
 
         /// <summary>Carpeta de módulos en uso.</summary>
         public string ModulesDir { get { return _modulesDir; } }
+
+        /// <summary>Traza de las llamadas GetItemInfo del motor (nombre +
+        /// máscara pedida — diagnóstico del interop, impresa por el selfcheck).</summary>
+        public List<string> GetItemInfoTrace()
+        {
+            lock (_itemInfoTrace) { return new List<string>(_itemInfoTrace); }
+        }
 
         // ------------------------------------------------------------- módulos
 
@@ -305,6 +313,40 @@ namespace lumina.wpf.scripting
             _log.Add("error de script en " + where + ":" + line + " — " + description);
         }
 
+        /// <summary>Traza del sitio: el motor pidió el ítem «name» con máscara
+        /// «mask» (SCRIPTINFO_IUNKNOWN=1 · SCRIPTINFO_ITYPEINFO=2).</summary>
+        internal void OnGetItemInfoTrace(string name, uint mask)
+        {
+            lock (_itemInfoTrace)
+            {
+                _itemInfoTrace.Add(name + ":0x" + mask.ToString("X",
+                    System.Globalization.CultureInfo.InvariantCulture));
+            }
+        }
+
+        /// <summary>ITypeInfo del host para GetItemInfo(SCRIPTINFO_ITYPEINFO):
+        /// se obtiene del IDispatch del CCW (AutoDual garantiza que el CCW
+        /// publica TypeInfo — es lo que JScript necesita para vincular los
+        /// miembros; sin esto el ítem queda «unknown»/opaco).</summary>
+        internal static IntPtr GetHostTypeInfo(JsLibHost host)
+        {
+            IntPtr disp = Marshal.GetIDispatchForObject(host);
+            try
+            {
+                IDispatchInfo d = (IDispatchInfo)Marshal.GetObjectForIUnknown(disp);
+                IntPtr ti;
+                d.GetTypeInfo(0, 0, out ti);
+                if (ti == IntPtr.Zero)
+                    throw new COMException("el CCW no publicó ITypeInfo",
+                        unchecked((int)0x8002802B));
+                return ti;   // AddRef hecho por GetTypeInfo: el motor la libera
+            }
+            finally
+            {
+                Marshal.Release(disp);
+            }
+        }
+
         /// <summary>Cierra la generación actual (host+motor) en orden seguro:
         /// primero conexiones/callbacks (huérfanos), después el motor COM.</summary>
         private void ShutdownGeneration()
@@ -387,18 +429,23 @@ namespace lumina.wpf.scripting
             {
                 item = IntPtr.Zero;
                 typeInfo = IntPtr.Zero;
-                if (string.Equals(name, "jslib", StringComparison.Ordinal) &&
-                    (mask & ScriptInfo.IUnknown) != 0)
+                _owner.OnGetItemInfoTrace(name, mask);
+                if (string.Equals(name, "jslib", StringComparison.Ordinal))
                 {
-                    // GetIDispatchForObject (patrón canónico de los hosts C#):
-                    // devuelve el IDispatch AddRef-eado del CCW del host — el
-                    // motor lo libera cuando termine. A diferencia de entregar
-                    // el IUnknown pelado, el envoltorio JScript resuelve los
-                    // miembros por GetIDsOfTypes de inmediato (entregar IUnknown
-                    // derivó en un objeto opaco y «Function expected» — lección
-                    // del segundo run del tag).
-                    item = Marshal.GetIDispatchForObject(_host);
-                    return;
+                    // IUNKNOWN → IDispatch del CCW (AddRef'd; el motor libera).
+                    if ((mask & ScriptInfo.IUnknown) != 0)
+                    {
+                        item = Marshal.GetIDispatchForObject(_host);
+                    }
+                    // ITYPEINFO → ITypeInfo del CCW: JScript es un compilador
+                    // ESTÁTICO — sin TypeInfo el ítem queda «unknown» y sus
+                    // miembros no son funciones (cuarto run del tag).
+                    if ((mask & ScriptInfo.ITypeInfo) != 0)
+                    {
+                        try { typeInfo = JsEngine.GetHostTypeInfo(_host); }
+                        catch (Exception) { /* sin typeinfo: el ítem sigue entregándose */ }
+                    }
+                    if (item != IntPtr.Zero || typeInfo != IntPtr.Zero) return;
                 }
                 throw new COMException("ítem no disponible: " + name,
                     unchecked((int)0x8002802B));   // TYPE_E_ELEMENTNOTFOUND

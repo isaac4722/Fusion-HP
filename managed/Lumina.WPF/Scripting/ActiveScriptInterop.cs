@@ -221,6 +221,22 @@ namespace lumina.wpf.scripting
         void Clone(out IActiveScript engine);
     }
 
+    /// <summary>IDispatch «de solo lectura» para pedirle el ITypeInfo al CCW
+    /// del host (vtable: GetTypeInfoCount, GetTypeInfo, GetIDsOfNames, Invoke —
+    /// los dos últimos declarados por fidelidad de vtable, jamás se llaman).
+    /// JScript vincula los miembros de los ítems por TYPEINFO (typeof
+    /// «unknown» = ítem opaco sin TypeInfo — lección del cuarto run).</summary>
+    [ComImport, Guid("00020400-0000-0000-C000-000000000046"),
+     InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    internal interface IDispatchInfo
+    {
+        void GetTypeInfoCount(out uint count);
+        void GetTypeInfo(uint index, uint lcid, out IntPtr typeInfo);
+        void GetIDsOfNames(ref Guid riid, IntPtr names, uint cNames, uint lcid, IntPtr dispIds);
+        void Invoke(IntPtr dispIdSelf, ref Guid riid, uint lcid, ushort flags,
+                    IntPtr dispParams, IntPtr varResult, IntPtr excepInfo, IntPtr argErr);
+    }
+
     /// <summary>Activación del CLSID_JScript (jscript.dll). Type.GetTypeFromCLSID
     /// + Activator.CreateInstance + cast (el cast hace el QueryInterface).</summary>
     internal static class ActiveScriptInterop
