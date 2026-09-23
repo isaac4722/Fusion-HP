@@ -1,0 +1,128 @@
+<!--
+  IntegrationsPage.xaml — «Integraciones»: OBS Studio (obs-websocket 5.x),
+  entrada MIDI (activadores) y mando remoto móvil por red local.
+-->
+<UserControl x:Class="lumina.wpf.IntegrationsPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:lumina.wpf">
+  <DockPanel>
+    <local:PageHeader DockPanel.Dock="Top" Title="Integraciones"
+                      Subtitle="OBS Studio · MIDI · Control remoto móvil (LAN)"
+                      Icon="{StaticResource IconShare}"/>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+      <StackPanel MaxWidth="780" HorizontalAlignment="Stretch">
+
+        <!-- ======== OBS ======== -->
+        <local:Card Title="OBS Studio (obs-websocket 5.x)" Icon="{StaticResource IconCast}">
+          <StackPanel>
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="150"/>
+              <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="40"/>
+              <RowDefinition Height="40"/>
+              <RowDefinition Height="40"/>
+              <RowDefinition Height="32"/>
+              <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="Servidor WebSocket" Style="{StaticResource TxtLabel}"
+                       VerticalAlignment="Center"/>
+            <TextBox x:Name="txtObsUrl" Grid.Row="0" Grid.Column="1"/>
+            <TextBlock Grid.Row="1" Grid.Column="0" Text="Contraseña (opcional)" Style="{StaticResource TxtLabel}"
+                       VerticalAlignment="Center"/>
+            <PasswordBox x:Name="txtObsPassword" Grid.Row="1" Grid.Column="1"/>
+            <TextBlock Grid.Row="2" Grid.Column="0" Text="Fuente de texto en vivo" Style="{StaticResource TxtLabel}"
+                       VerticalAlignment="Center"/>
+            <TextBox x:Name="txtObsTextSource" Grid.Row="2" Grid.Column="1"/>
+            <CheckBox x:Name="chkObsAutoConnect" Grid.Row="3" Grid.Column="1"
+                      Content="Conectar automáticamente al abrir la aplicación" VerticalAlignment="Center"/>
+            <StackPanel Grid.Row="4" Grid.Column="1" Orientation="Horizontal" Margin="0,8,0,0">
+              <local:LumButton x:Name="btnObsConnect" Variant="Primary" Icon="{StaticResource IconLink}"
+                               Text="Conectar con OBS" Click="OnObsConnect"/>
+            </StackPanel>
+          </Grid>
+          <TextBlock x:Name="lblObsState" Text="● SIN CONECTAR" Style="{StaticResource TxtLabel}"
+                     Foreground="{StaticResource TextDisabledBrush}" Margin="0,8,0,0"/>
+          </StackPanel>
+        </local:Card>
+
+        <!-- ======== MIDI ======== -->
+        <local:Card Title="Entrada MIDI (activadores)" Icon="{StaticResource IconMic}" Margin="0,14,0,0">
+          <StackPanel>
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="150"/>
+              <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="36"/>
+              <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <StackPanel Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2" Orientation="Horizontal">
+              <CheckBox x:Name="chkMidiEnabled" Content="Activar entrada MIDI" VerticalAlignment="Center"
+                        Checked="OnMidiAutoApply" Unchecked="OnMidiAutoApply"/>
+            </StackPanel>
+            <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Orientation="Horizontal"
+                        Margin="0,8,0,0">
+              <ComboBox x:Name="cmbMidiDevice" Width="300"/>
+              <local:LumButton Variant="Secondary" Icon="{StaticResource IconRefresh}"
+                               Text="Buscar dispositivos" Margin="8,0,0,0" Click="OnMidiRefresh"/>
+            </StackPanel>
+          </Grid>
+          <TextBlock x:Name="lblMidiState" Text="● ENTRADA DETENIDA" Style="{StaticResource TxtLabel}"
+                     Foreground="{StaticResource TextDisabledBrush}" Margin="0,8,0,0"/>
+          </StackPanel>
+        </local:Card>
+
+        <!-- ======== Remoto ======== -->
+        <local:Card Title="Control remoto móvil (red local)" Icon="{StaticResource IconWifi}"
+                    Margin="0,14,0,0">
+          <StackPanel>
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="150"/>
+              <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="36"/>
+              <RowDefinition Height="40"/>
+              <RowDefinition Height="40"/>
+              <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <StackPanel Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2">
+              <CheckBox x:Name="chkRemoteEnabled" Content="Abrir el mando a los dispositivos de la red"
+                        VerticalAlignment="Center"/>
+            </StackPanel>
+            <TextBlock Grid.Row="1" Grid.Column="0" Text="Puerto" Style="{StaticResource TxtLabel}"
+                       VerticalAlignment="Center"/>
+            <local:LumNumeric x:Name="numRemotePort" Grid.Row="1" Grid.Column="1" Min="1024" Max="65535"
+                              Width="100" HorizontalAlignment="Left" Value="8070"/>
+            <TextBlock Grid.Row="2" Grid.Column="0" Text="Token de acceso" Style="{StaticResource TxtLabel}"
+                       VerticalAlignment="Center"/>
+            <TextBox x:Name="txtRemoteToken" Grid.Row="2" Grid.Column="1"/>
+            <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="0,8,0,0">
+              <local:LumButton x:Name="btnRemoteToggle" Variant="Primary" Icon="{StaticResource IconWifi}"
+                               Text="Aplicar y abrir mando" Click="OnRemoteApply"/>
+            </StackPanel>
+          </Grid>
+          <TextBlock x:Name="lblRemoteState" Text="● MANDO DETENIDO" Style="{StaticResource TxtLabel}"
+                     Foreground="{StaticResource TextDisabledBrush}" Margin="0,8,0,0"/>
+          <TextBlock x:Name="lblRemoteUrl" Text="El mando se abre con el botón o al activarlo en ajustes."
+                     Style="{StaticResource TxtSmall}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+          </StackPanel>
+        </local:Card>
+
+        <!-- ======== Opciones de proyección ======== -->
+        <local:Card Title="Opciones de proyección" Icon="{StaticResource IconVideo}" Margin="0,14,0,0">
+          <CheckBox x:Name="chkAutoAdvanceVideo"
+                    Content="Al terminar un video, avanzar automáticamente a la siguiente diapositiva"
+                    VerticalAlignment="Center"/>
+        </local:Card>
+      </StackPanel>
+    </ScrollViewer>
+  </DockPanel>
+</UserControl>

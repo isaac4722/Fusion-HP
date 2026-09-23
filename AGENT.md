@@ -5,9 +5,11 @@ Aplica a TODO agente (IA o humano automatizado). Sin excepciones.
 ## Stack
 
 Núcleo **C++17** (`native/`, Win32+GDI, SQLite+FTS5 embebido, /MT) +
-capa gestionada **C#** (`managed/`, WinForms net35;net48 — línea base Win7
-SP1 —, Core añade net8.0 solo para el arnés de tests). ABI C plana (`lumina.h`).
-Versión actual: **5.0.0 «SINERGIA»** (ver `README.md`).
+capa gestionada **C#** (`managed/`, **WPF net48** = interfaz principal v5.4.0
+«ESTUDIO» + **WinForms net35;net48** = línea base Win7 SP1; Core añade net8.0
+solo para el arnés de tests). ABI C plana (`lumina.h`).
+Versión actual: **5.4.0 «ESTUDIO» BETA** (ver `README.md`). Todo lo publicado
+es BETA (pre-release) — nunca «release» final.
 
 ## Ciclo obligatorio — 9 pasos
 
@@ -34,7 +36,7 @@ El paso 2 es opcional en reintentos cuando ya se consultó en el ciclo original.
 |-------|---------|
 | Núcleo nativo (Linux) | `cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build` |
 | Gates nativos | `./build/native/lumina_selftest && ./build/native/lumina_poc_native` |
-| Capa gestionada | `dotnet build managed/Lumina.sln -c Release` |
+| Capa gestionada | `dotnet build managed/Lumina.sln -c Release` (incluye `managed/Lumina.WPF`) |
 | Suite de tests | `dotnet run --project managed/Tests -f net8.0` (con `libLuminaCore.so` junto al exe) |
 | Muestras + gate exportadores | `LUMINA_EXPORT_SAMPLES=/tmp/s LUMINA_SKIP_NATIVE=1 dotnet run --project managed/Tests -f net8.0` → `python3 tools/validate_pptx.py /tmp/s/muestra.pptx /tmp/s/muestra.pdf` |
 | Interop | `dotnet build managed/PoC/PoC.Managed -f net48 -c Release` (gate: «POC PASS 12/12») |

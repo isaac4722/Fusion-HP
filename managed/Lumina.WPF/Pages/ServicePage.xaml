@@ -1,0 +1,87 @@
+<!--
+  ServicePage.xaml — «Culto»: orden del servicio con editor completo
+  (canción actual, pasaje, imagen, texto/aviso, blanco, video) + planes JSON.
+-->
+<UserControl x:Class="lumina.wpf.ServicePage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:lumina.wpf">
+  <DockPanel>
+    <local:PageHeader DockPanel.Dock="Top" Title="Culto"
+                      Subtitle="Orden del servicio: canciones, pasajes y proyección"
+                      Icon="{StaticResource IconClipboard}"/>
+
+    <Grid>
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="6.5*"/>
+        <ColumnDefinition Width="3.5*"/>
+      </Grid.ColumnDefinitions>
+
+      <!-- ======== lista del culto ======== -->
+      <local:Card Grid.Column="0" Title="Ítems del culto" Icon="{StaticResource IconList}"
+                  Margin="0,0,14,0">
+        <DockPanel>
+          <!-- botones (3 filas con icono, sin recorte) -->
+          <WrapPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
+            <local:LumButton Variant="Secondary" Icon="{StaticResource IconUp}" Text="Subir"
+                             Margin="0,0,6,6" Click="OnMoveUp"/>
+            <local:LumButton Variant="Secondary" Icon="{StaticResource IconDown}" Text="Bajar"
+                             Margin="0,0,6,6" Click="OnMoveDown"/>
+            <local:LumButton Variant="Secondary" Icon="{StaticResource IconTrash}" Text="Eliminar"
+                             Margin="0,0,6,6" Click="OnRemove"/>
+            <local:LumButton Variant="Secondary" Icon="{StaticResource IconVideo}" Text="Video…"
+                             Margin="0,0,6,6" Click="OnAddVideo"/>
+            <local:LumButton Variant="Primary" Icon="{StaticResource IconSong}" Text="Canción actual"
+                             Margin="0,0,6,6" Click="OnAddCurrentSong"/>
+            <local:LumButton Variant="Primary" Icon="{StaticResource IconBook}" Text="Pasaje bíblico"
+                             Margin="0,0,6,6" Click="OnAddCurrentScripture"/>
+            <local:LumButton Variant="Secondary" Icon="{StaticResource IconImage}" Text="Imagen…"
+                             Margin="0,0,6,6" Click="OnAddImage"/>
+            <local:LumButton Variant="Secondary" Icon="{StaticResource IconMessage}" Text="Texto/aviso…"
+                             Margin="0,0,6,6" Click="OnAddText"/>
+            <local:LumButton Variant="Secondary" Icon="{StaticResource IconBlack}" Text="En blanco"
+                             Margin="0,0,0,6" Click="OnAddBlank"/>
+          </WrapPanel>
+
+          <!-- nombre -->
+          <StackPanel DockPanel.Dock="Top" Orientation="Horizontal">
+            <TextBlock Text="Nombre:" Style="{StaticResource TxtLabel}" VerticalAlignment="Center"
+                       Margin="0,0,8,0"/>
+            <TextBox x:Name="txtServiceName" Width="240" Text="Culto"/>
+          </StackPanel>
+
+          <ListBox x:Name="lstItems" Margin="0,10,0,4"
+                   ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+            <ListBox.ItemTemplate>
+              <DataTemplate>
+                <TextBlock Text="{Binding}" Style="{StaticResource TxtBody}"
+                           TextTrimming="CharacterEllipsis"/>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </DockPanel>
+      </local:Card>
+
+      <!-- ======== acciones ======== -->
+      <local:Card Grid.Column="1" Title="Acciones" Icon="{StaticResource IconShare}">
+        <DockPanel>
+          <local:LumButton DockPanel.Dock="Bottom" Variant="Primary" Icon="{StaticResource IconPlay}"
+                           Text="Enviar a proyección" MinHeight="42" Click="OnSendToStage"/>
+          <StackPanel VerticalAlignment="Top">
+            <local:LumButton Variant="Secondary" Icon="{StaticResource IconSong}"
+                             Text="Importar canción JSON…" HorizontalAlignment="Stretch"
+                             Click="OnImportSongJson"/>
+            <local:LumButton Variant="Secondary" Icon="{StaticResource IconBook}"
+                             Text="Importar Biblia .BIB…" Margin="0,8,0,0" HorizontalAlignment="Stretch"
+                             Click="OnImportBib"/>
+            <local:LumButton Variant="Secondary" Icon="{StaticResource IconClipboard}"
+                             Text="Importar plan JSON…" Margin="0,8,0,0" HorizontalAlignment="Stretch"
+                             Click="OnImportPlan"/>
+            <TextBlock Style="{StaticResource TxtCaption}" TextWrapping="Wrap" Margin="0,14,0,0"
+                       Text="El plan JSON admite items: song (title/artist/lyrics), scripture (ref/version), text y blank — formato documentado en docs/api/PlanningCenter.md."/>
+          </StackPanel>
+        </DockPanel>
+      </local:Card>
+    </Grid>
+  </DockPanel>
+</UserControl>

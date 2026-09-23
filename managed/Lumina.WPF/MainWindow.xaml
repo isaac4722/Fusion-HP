@@ -1,0 +1,178 @@
+<!--
+  ==========================================================================
+  MainWindow.xaml — caparazón «Lumina Studio» (WPF, v5.4.0 «ESTUDIO»).
+  Cabecera: marca «faro» + chips de estado + proyector de acceso rápido (F5).
+  Sidebar: navegación agrupada (PRESENTACIÓN · BIBLIOTECA · EXTENSIÓN ·
+  SISTEMA) con píldora ámbar de página activa y tarjeta de salida.
+  Barra de estado: punto de severidad (rojo fallo · ámbar aviso).
+  ==========================================================================
+-->
+<Window x:Class="lumina.wpf.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:lumina.wpf"
+        xmlns:pages="clr-namespace:lumina.wpf"
+        Title="LuminaPresentation Suite — v5.4.0 BETA"
+        Width="1180" Height="760" MinWidth="980" MinHeight="660"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource PageBrush}"
+        TextOptions.TextFormattingMode="Display"
+        UseLayoutRounding="True"
+        PreviewKeyDown="OnWindowPreviewKeyDown">
+  <Grid>
+    <Grid.RowDefinitions>
+      <RowDefinition Height="54"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="28"/>
+    </Grid.RowDefinitions>
+    <Grid.ColumnDefinitions>
+      <ColumnDefinition Width="{StaticResource NavWidth}"/>
+      <ColumnDefinition Width="*"/>
+    </Grid.ColumnDefinitions>
+
+    <!-- =================== CABECERA =================== -->
+    <Border Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2"
+            Background="{StaticResource BarBrush}"
+            BorderBrush="{StaticResource BarBorderBrush}" BorderThickness="0,0,0,1">
+      <DockPanel>
+        <!-- Marca «faro»: cuadrado ámbar con destello -->
+        <StackPanel Orientation="Horizontal" Margin="14,0,0,0" VerticalAlignment="Center">
+          <Grid Width="30" Height="30">
+            <Border CornerRadius="8">
+              <Border.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                  <GradientStop Color="#FFF2B85C" Offset="0"/>
+                  <GradientStop Color="#FFD8942E" Offset="1"/>
+                </LinearGradientBrush>
+              </Border.Background>
+            </Border>
+            <Path Data="M 3,2 L 7.2,6.8 L 11,2 Z"
+                  Fill="White" Stretch="None" HorizontalAlignment="Center"
+                  VerticalAlignment="Center" Margin="0,-5,0,4"/>
+            <Path Data="M 2,7.6 L 7,9.4 L 12,7.6"
+                  Stroke="White" StrokeThickness="1.6" StrokeStartLineCap="Round"
+                  StrokeEndLineCap="Round" Stretch="None"
+                  HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,3,0,0"/>
+          </Grid>
+          <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+            <TextBlock Text="LuminaPresentation" FontFamily="Segoe UI" FontSize="15"
+                       FontWeight="SemiBold" Foreground="White"/>
+          </StackPanel>
+          <local:Chip x:Name="chipVersion" Text="v5.4.0 · WPF · BETA" Margin="12,0,0,0"
+                      VerticalAlignment="Center"/>
+        </StackPanel>
+
+        <!-- Derecha: proyector rápido + chips de estado -->
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"
+                    HorizontalAlignment="Right" Margin="0,0,14,0" VerticalAlignment="Center">
+          <local:LumButton x:Name="btnHeaderProjector" Variant="Secondary"
+                           Icon="{StaticResource IconCast}" Text="Proyector"
+                           ToolTip="Mostrar la ventana de proyección (F5)"
+                           Click="OnHeaderProjectorClick" Margin="0,0,12,0"/>
+          <local:Chip x:Name="chipCore" Text="Núcleo: iniciando" Margin="0,0,8,0"
+                      VerticalAlignment="Center"/>
+          <local:Chip x:Name="chipDb" Text="BD: —" Margin="0,0,8,0"
+                      VerticalAlignment="Center"/>
+          <local:Chip x:Name="chipApi" Text="API: detenida" VerticalAlignment="Center"/>
+        </StackPanel>
+        <Border/>
+      </DockPanel>
+    </Border>
+
+    <!-- =================== SIDEBAR =================== -->
+    <Border Grid.Row="1" Grid.Column="0"
+            Background="{StaticResource BarBrush}"
+            BorderBrush="{StaticResource BarBorderBrush}" BorderThickness="0,0,1,0">
+      <DockPanel>
+        <!-- Tarjeta de salida (abajo) -->
+        <Border DockPanel.Dock="Bottom" Margin="12,8,12,12" Padding="11,9"
+                CornerRadius="{StaticResource RadiusCard}"
+                Background="{StaticResource CardBrush}"
+                BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1">
+          <StackPanel>
+            <StackPanel Orientation="Horizontal">
+              <Ellipse x:Name="dotCore" Width="8" Height="8" Fill="{StaticResource TextDisabledBrush}"
+                       VerticalAlignment="Center" Margin="0,0,8,0"/>
+              <TextBlock x:Name="txtSidebarScreen" Text="Salida · Pantalla 1" Style="{StaticResource TxtSmall}"
+                         FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
+            </StackPanel>
+            <TextBlock x:Name="txtSidebarCore" Text="Núcleo no disponible" Style="{StaticResource TxtSmall}"
+                       Foreground="{StaticResource ErrBrush}" Margin="0,4,0,0" TextTrimming="CharacterEllipsis"/>
+          </StackPanel>
+        </Border>
+
+        <!-- Navegación (arriba, con scroll) -->
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Margin="0,12,0,4">
+            <TextBlock Text="PRESENTACIÓN" Style="{StaticResource TxtCaption}" Margin="22,8,0,5"/>
+            <local:NavItem x:Name="navLive" Icon="{StaticResource IconLive}" Label="En Vivo"
+                           Click="OnNavClick" Tag="0"/>
+            <local:NavItem x:Name="navService" Icon="{StaticResource IconClipboard}" Label="Culto"
+                           Click="OnNavClick" Tag="4"/>
+
+            <TextBlock Text="BIBLIOTECA" Style="{StaticResource TxtCaption}" Margin="22,14,0,5"/>
+            <local:NavItem x:Name="navSongs" Icon="{StaticResource IconSong}" Label="Canciones"
+                           Click="OnNavClick" Tag="1"/>
+            <local:NavItem x:Name="navBible" Icon="{StaticResource IconBook}" Label="Biblia"
+                           Click="OnNavClick" Tag="2"/>
+            <local:NavItem x:Name="navThemes" Icon="{StaticResource IconDroplet}" Label="Temas"
+                           Click="OnNavClick" Tag="3"/>
+
+            <TextBlock Text="EXTENSIÓN" Style="{StaticResource TxtCaption}" Margin="22,14,0,5"/>
+            <local:NavItem x:Name="navExport" Icon="{StaticResource IconDownload}" Label="Exportar"
+                           Click="OnNavClick" Tag="5"/>
+            <local:NavItem x:Name="navIntegrations" Icon="{StaticResource IconShare}" Label="Integraciones"
+                           Click="OnNavClick" Tag="6"/>
+            <local:NavItem x:Name="navTriggers" Icon="{StaticResource IconLive}" Label="Activadores"
+                           Click="OnNavClick" Tag="7"/>
+
+            <TextBlock Text="SISTEMA" Style="{StaticResource TxtCaption}" Margin="22,14,0,5"/>
+            <local:NavItem x:Name="navSettings" Icon="{StaticResource IconGear}" Label="Ajustes"
+                           Click="OnNavClick" Tag="8"/>
+
+            <TextBlock Style="{StaticResource TxtCaption}" Margin="22,18,0,4"
+                       Text="F1 atajos · Ctrl+1…9 páginas"/>
+          </StackPanel>
+        </ScrollViewer>
+      </DockPanel>
+    </Border>
+
+    <!-- =================== CONTENIDO (9 páginas) =================== -->
+    <Border Grid.Row="1" Grid.Column="1" Background="{StaticResource PageBrush}">
+      <Grid Margin="20,14,20,12">
+        <pages:LivePage x:Name="pageLive" Visibility="Collapsed"/>
+        <pages:SongsPage x:Name="pageSongs" Visibility="Collapsed"/>
+        <pages:BiblePage x:Name="pageBible" Visibility="Collapsed"/>
+        <pages:ThemesPage x:Name="pageThemes" Visibility="Collapsed"/>
+        <pages:ServicePage x:Name="pageService" Visibility="Collapsed"/>
+        <pages:ExportPage x:Name="pageExport" Visibility="Collapsed"/>
+        <pages:IntegrationsPage x:Name="pageIntegrations" Visibility="Collapsed"/>
+        <pages:TriggersPage x:Name="pageTriggers" Visibility="Collapsed"/>
+        <pages:SettingsPage x:Name="pageSettings" Visibility="Collapsed"/>
+      </Grid>
+    </Border>
+
+    <!-- =================== BARRA DE ESTADO =================== -->
+    <Border Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2"
+            Background="{StaticResource BarBrush}"
+            BorderBrush="{StaticResource BarBorderBrush}" BorderThickness="0,1,0,0">
+      <DockPanel>
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="0,0,16,0"
+                    VerticalAlignment="Center">
+          <TextBlock x:Name="txtStCore" Text="Núcleo: —" Style="{StaticResource TxtSmall}"
+                     Foreground="{StaticResource TextDisabledBrush}" Margin="0,0,14,0"/>
+          <TextBlock x:Name="txtStApi" Text="API: detenida" Style="{StaticResource TxtSmall}"
+                     Foreground="{StaticResource TextDisabledBrush}" Margin="0,0,14,0"/>
+          <TextBlock x:Name="txtStDb" Text="BD: —" Style="{StaticResource TxtSmall}"
+                     Foreground="{StaticResource TextDisabledBrush}"/>
+        </StackPanel>
+        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
+          <Ellipse x:Name="dotStatus" Width="8" Height="8"
+                   Fill="{StaticResource TextSecondaryBrush}" Margin="0,0,8,0"/>
+          <TextBlock x:Name="txtStatus" Text="Listo." Style="{StaticResource TxtSmall}"
+                     Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
+        </StackPanel>
+      </DockPanel>
+    </Border>
+  </Grid>
+</Window>

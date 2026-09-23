@@ -19,6 +19,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PocFacade", "PoC\PocFacade\
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tests", "Tests\Tests.csproj", "{6ABE8E92-4631-4E3B-8701-39357CA62C20}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lumina.WPF", "Lumina.WPF\Lumina.WPF.csproj", "{8760EFF9-A103-457B-BDFA-049AD5213ED2}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -56,6 +58,10 @@ Global
 		{6ABE8E92-4631-4E3B-8701-39357CA62C20}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{6ABE8E92-4631-4E3B-8701-39357CA62C20}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{6ABE8E92-4631-4E3B-8701-39357CA62C20}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8760EFF9-A103-457B-BDFA-049AD5213ED2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8760EFF9-A103-457B-BDFA-049AD5213ED2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8760EFF9-A103-457B-BDFA-049AD5213ED2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8760EFF9-A103-457B-BDFA-049AD5213ED2}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{D95AB061-706E-40AB-A940-1F29CFC47153} = {74A52A37-FCDB-4303-A278-A08E696482FC}

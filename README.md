@@ -1,31 +1,57 @@
-# LuminaPresentation Suite v5.3.0 «INTERFAZ»
+# LuminaPresentation Suite v5.4.0 «ESTUDIO» — BETA
 
-**Proyección para iglesias con arquitectura híbrida: núcleo C++17 nativo + interfaz C# (.NET mínimo 3.5 — usa 4.8 si está disponible)**
+**Proyección para iglesias con arquitectura híbrida: núcleo C++17 nativo + interfaz WPF (.NET 4.8) con baseline WinForms (.NET mínimo 3.5)**
 — motor de proyección en tiempo real con la agilidad de desarrollo de .NET,
 **sin JVM, sin Electron, sin redistributables y sin instalaciones**.
 
 > ⚠️ Código fuente bajo **Licencia de Solo Lectura (View-Only)** — ver [LICENSE.md](LICENSE.md).
-> Los binarios publicados en [Releases](https://github.com/isaac4722/Fusion-HP/releases) son de uso libre.
+> Los binarios publicados en [Betas](https://github.com/isaac4722/Fusion-HP/releases) son de uso libre.
+> **Todas las publicaciones actuales son BETAS (pre-releases de evaluación).**
 
 ---
 
 ## 🚀 Descargar (sin instalar nada)
 
-1. Ir a **[Releases](https://github.com/isaac4722/Fusion-HP/releases)**.
+1. Ir a **[Betas](https://github.com/isaac4722/Fusion-HP/releases)** (pre-releases de evaluación).
 2. Descargar el paquete para tu arquitectura:
-   - `LuminaPresentation-5.3.0-win-x86.zip` — **Windows 7 SP1 … Windows 11 (32 bits)**
-   - `LuminaPresentation-5.3.0-win-x64.zip` — **Windows 7 SP1 … Windows 11+ (64 bits)**
+   - `LuminaPresentation-5.4.0-beta.1-win-x86.zip` — **Windows 7 SP1 … Windows 11 (32 bits)**
+   - `LuminaPresentation-5.4.0-beta.1-win-x64.zip` — **Windows 7 SP1 … Windows 11+ (64 bits)**
 3. Descomprimir el ZIP **completo** y ejecutar **`LuminaLauncher.exe`**.
    **El usuario nunca instala nada**:
    - Windows 10 1903+ / Windows 11 → **.NET Framework 4.8** integrado en el SO
-     (el launcher usa `net48\LuminaPresentation.exe`).
+     (el launcher usa `net48\LuminaPresentation.exe`: **interfaz WPF**).
    - Windows 7 SP1 / 8.x → **.NET Framework 3.5 SP1** integrado de fábrica
-     (el launcher usa `net35\LuminaPresentation35.exe`, la línea base mínima).
+     (el launcher usa `net35\LuminaPresentation35.exe`, la línea base mínima
+     con interfaz WinForms).
    - El motor C++ (`LuminaCore.dll`) va enlazado estáticamente (/MT): **cero redistributables**.
    - El launcher **verifica el paquete completo antes de lanzar** (exe + DLL nativa
      + las 3 DLL gestionadas en la carpeta de la variante elegida) y explica con
      claridad qué hacer si falta algo.
    - Ambas variantes comparten la misma carpeta de datos `data\`.
+
+## 🌟 Novedades v5.4.0 «ESTUDIO» — BETA
+
+> **La GUI principal pasa a WPF (Windows Presentation Foundation)** sobre
+> .NET Framework 4.8, conservando el motor probado, la arquitectura híbrida
+> y TODOS los gates de CI (selfcheck + uicheck + flowcheck + Win7-imports,
+> ambas variantes y arquitecturas). La baseline net35 (WinForms) se conserva
+> para Windows 7 SP1 sin .NET 4.8. Proyecto `managed/Lumina.WPF`:
+> - **Diseño «Lumina Studio» rehecho en XAML**: tokens semánticos de color
+>   (superficies/texto/marca/estados), tarjetas redondeadas, botones con
+>   variantes (primary/secondary/danger/ghost) y estados completos
+>   (hover/pulsado/foco visible/deshabilitado/toggle activo), navegación
+>   lateral con píldora ámbar y barra de estado con punto de severidad.
+> - **94 iconos vectoriales Feather (licencia MIT)** convertidos a geometrías
+>   XAML (`Theme/Icons.xaml`) — nitidez perfecta en Win7 y Win11, sin
+>   dependencias de archivos externos.
+> - **Vista previa del tema con contorno por silueta y sombra REAL**
+>   (FormattedText.BuildGeometry: la MISMA técnica del motor nativo).
+> - **UX transversal**: F1 mapa de atajos · Ctrl+1…9 navegación · foco
+>   visible por teclado · tooltips con atajos · estados vacíos explicativos.
+> - **Ventanas auxiliares intactas** (video WMP, monitor de escenario,
+>   director, zócalo): HWNDs WinForms coexisten con WPF en el mismo proceso.
+> - **Mismo contrato de paquete**: el launcher y verify_portable no cambian —
+>   `net48\LuminaPresentation.exe` ahora es el exe WPF.
 
 ## 🌟 Novedades v5.3.0 «INTERFAZ»
 
@@ -211,7 +237,7 @@
 | Capa | Tecnología | Contenido |
 |---|---|---|
 | **Motor / Núcleo** | **C++17** (`LuminaCore.dll`, /MT) | Proyección nativa Win32+GDI (doble búfer, contorno+sombra, ajuste tipográfico), modelo de escenario, acordes (latina/anglosajona + transposición), letras con Modo Hinario, referencias bíblicas (66 libros), **parser JSON de canciones** (esquema propio + subconjunto OpenLP) y **parser .BIB de biblias** (detección automática), **SQLite+FTS5** embebido, eventos por callbacks, API C plana estable (`lumina.h`) |
-| **Interfaz** | **C# WinForms** en 2 variantes (`net48\LuminaPresentation.exe` optimizada · `net35\LuminaPresentation35.exe` línea base) | Editor de escenarios, bibliotecas (canciones/biblia con búsqueda FTS por palabra), control En Vivo con teclado, vista previa renderizada por el motor, temas, importadores JSON/.BIB/**ZEFania XML**, exportadores **PPTX/PDF**, activadores, ajustes |
+| **Interfaz** | **C# WPF** (`net48\LuminaPresentation.exe`, v5.4.0 «ESTUDIO») + **baseline WinForms** (`net35\LuminaPresentation35.exe`) | Editor de escenarios, bibliotecas (canciones/biblia con búsqueda FTS por palabra), control En Vivo con teclado, vista previa renderizada por el motor, temas, importadores JSON/.BIB/**ZEFania XML**, exportadores **PPTX/PDF**, activadores, ajustes |
 | **Exportación** | **C# propio** | **PPTX** (OPC empaquetado con `ZipWriter` propio — sin WindowsBase, idéntico en CLR2/CLR4) y **PDF 1.4** (escritor íntegro: AFM+base-14+zlib) — ambos sin NuGet en los binarios distribuidos |
 | **Datos** | **C#** (orquestación) + SQLite nativo | CRUD siempre con **parámetros enlazados**; canciones con FTS5, biblia con índice UNIQUE + dedupe idempotente |
 | **API local** | **C# HttpListener** | `/api/state`, `/api/cmd`, `/api/live.txt` y webhook OBS — solo localhost, token opcional |
@@ -265,7 +291,7 @@ ejecutable y forma parte del CI:
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build --config Release
 ./build/native/lumina_selftest && ./build/native/lumina_poc_native
 
-# Capa gestionada (net35+net48+net8 en Core; funciona también en Linux)
+# Capa gestionada (net35+net48+WPF+net8 en Core; funciona también en Linux)
 dotnet build managed/Lumina.sln -c Release
 dotnet run --project managed/Tests --framework net8.0   # con libLuminaCore.so junto al exe: tests completos
 # Muestras + validación externa de exportadores:
@@ -283,7 +309,7 @@ En Windows, `native/` compila con MSVC (`-A Win32` o `-A x64`) y produce `Lumina
 - **v2.0.0 «HORIZONTE» (wxWidgets)** — reescritura nativa completa (código archivado en
   `apps/native-wx-src` con su historial).
 - **v3.0.0 «HÍBRIDA»** — núcleo C++ puro + capa .NET, PoC de interop validado (12/12),
-  CI de 7 jobs con gates, empaquetado portable x86/x64 y releases automáticos.
+  CI de 7 jobs con gates, empaquetado portable x86/x64 y betas automáticas (pre-releases).
 - **v4.0.0 «LUMINA»** — producto renombrado a LuminaPresentation Suite,
   interfaz rediseñada (tema oscuro, navegación lateral, chips de estado) y blindaje
   completo anti-crash (modos degradados, pre-chequeos del launcher y logs de diagnóstico).

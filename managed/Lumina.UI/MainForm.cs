@@ -48,7 +48,7 @@ namespace lumina.ui
     public sealed class MainForm : Form
     {
         private const string AppName = "LuminaPresentation Suite";
-        private const string AppVersion = "5.3.0";
+        private const string AppVersion = "5.4.0";
         private const string AppTitle = AppName + " — v" + AppVersion;
 
         /* ------------------------------------------------------------ servicios */

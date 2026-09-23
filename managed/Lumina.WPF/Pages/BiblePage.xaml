@@ -1,0 +1,99 @@
+<!--
+  BiblePage.xaml — «Biblia»: cargar pasaje (referencia/versión/versos por
+  slide), importadores (.BIB · ZEFania XML) y búsqueda por palabra (FTS5).
+-->
+<UserControl x:Class="lumina.wpf.BiblePage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:lumina.wpf">
+  <DockPanel>
+    <local:PageHeader DockPanel.Dock="Top" Title="Biblia"
+                      Subtitle="Pasajes y versículos para proyectar"
+                      Icon="{StaticResource IconBook}"/>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+      <StackPanel>
+        <!-- ======== cargar pasaje ======== -->
+        <local:Card Title="Cargar pasaje" Icon="{StaticResource IconBook}">
+          <StackPanel>
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="130"/>
+              <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="38"/>
+              <RowDefinition Height="38"/>
+              <RowDefinition Height="38"/>
+              <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="Referencia" Style="{StaticResource TxtLabel}"
+                       VerticalAlignment="Center"/>
+            <TextBox x:Name="txtRef" Grid.Row="0" Grid.Column="1" Text="Jn 3:16"/>
+            <TextBlock Grid.Row="1" Grid.Column="0" Text="Versión" Style="{StaticResource TxtLabel}"
+                       VerticalAlignment="Center"/>
+            <TextBox x:Name="txtVersion" Grid.Row="1" Grid.Column="1"/>
+            <TextBlock Grid.Row="2" Grid.Column="0" Text="Versos por slide" Style="{StaticResource TxtLabel}"
+                       VerticalAlignment="Center"/>
+            <local:LumNumeric x:Name="numVerses" Grid.Row="2" Grid.Column="1" Min="1" Max="4" Width="70"
+                              HorizontalAlignment="Left"
+                              ToolTip="Cuántos versículos agrupar por diapositiva"/>
+            <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="0,8,0,0">
+              <local:LumButton Variant="Primary" Icon="{StaticResource IconPlay}"
+                               Text="Cargar al escenario" Click="OnLoadToStage"/>
+              <local:LumButton Variant="Secondary" Icon="{StaticResource IconSearch}"
+                               Text="Resolver referencia" Margin="8,0,0,0" Click="OnResolve"/>
+            </StackPanel>
+          </Grid>
+          <TextBlock x:Name="lblResolve" Text="Ejemplos: Jn 3:16 · Sal 23:1-4 · Ap 21:4"
+                     Style="{StaticResource TxtSmall}" Margin="0,9,0,0"/>
+          </StackPanel>
+        </local:Card>
+
+        <!-- ======== importar ======== -->
+        <local:Card Title="Importar biblias" Icon="{StaticResource IconDownload}" Margin="0,14,0,0">
+          <StackPanel>
+            <TextBlock Style="{StaticResource TxtSmall}" TextWrapping="Wrap"
+                       Text="Formatos admitidos: .BIB (directivas #BIB/#VERSION/#BOOKS), ZEFania XML (Reina Valera 1960, etc.) y archivos JSON. La importación valida el archivo con el núcleo y luego inserta los versículos en la base de datos."
+                       Margin="0,0,0,10"/>
+            <StackPanel Orientation="Horizontal">
+              <local:LumButton Variant="Secondary" Icon="{StaticResource IconBook}"
+                               Text="Importar Biblia .BIB…" Click="OnImportBib"/>
+              <local:LumButton Variant="Secondary" Icon="{StaticResource IconDownload}"
+                               Text="Importar ZEFania XML…" Margin="8,0,0,0" Click="OnImportZefania"/>
+            </StackPanel>
+          </StackPanel>
+        </local:Card>
+
+        <!-- ======== búsqueda por palabra ======== -->
+        <local:Card Title="Buscar en la Biblia por palabra" Icon="{StaticResource IconSearch}"
+                    Margin="0,14,0,0">
+          <StackPanel>
+            <StackPanel Orientation="Horizontal">
+              <TextBox x:Name="txtSearch" Width="260" KeyDown="OnSearchKeyDown"
+                       ToolTip="Búsqueda por palabra en TODAS las versiones (índice FTS5) — Enter para ejecutar"/>
+              <local:LumButton Variant="Secondary" Icon="{StaticResource IconSearch}" Text="Buscar"
+                               Margin="8,0,0,0" Click="OnSearchClick"/>
+            </StackPanel>
+            <ListBox x:Name="lstResults" Height="210" Margin="0,10,0,0"
+                     MouseDoubleClick="OnResultDoubleClick"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <StackPanel>
+                    <TextBlock Text="{Binding Ref}" Style="{StaticResource TxtLabel}"
+                               Foreground="{StaticResource AccentBrush}"/>
+                    <TextBlock Text="{Binding Text}" Style="{StaticResource TxtBody}"
+                               TextWrapping="Wrap" Margin="0,2,0,0"/>
+                  </StackPanel>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+            <TextBlock x:Name="lblSearchInfo" Style="{StaticResource TxtCaption}" Margin="0,8,0,0"
+                       Text="Busca en TODAS las versiones instaladas (índice FTS5). El término aparece resaltado con «…». Doble clic → carga el pasaje al escenario."/>
+          </StackPanel>
+        </local:Card>
+      </StackPanel>
+    </ScrollViewer>
+  </DockPanel>
+</UserControl>

@@ -1,0 +1,96 @@
+<!--
+  SettingsPage.xaml — «Ajustes»: API local, base de datos, respaldo
+  (Drive/OneDrive-compatible) y acerca de.
+-->
+<UserControl x:Class="lumina.wpf.SettingsPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:lumina.wpf">
+  <DockPanel>
+    <local:PageHeader DockPanel.Dock="Top" Title="Ajustes"
+                      Subtitle="API local, base de datos e información del sistema"
+                      Icon="{StaticResource IconGear}"/>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+      <StackPanel MaxWidth="760">
+
+        <!-- ======== API local ======== -->
+        <local:Card Title="API local (control remoto · OBS)" Icon="{StaticResource IconServer}">
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="130"/>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="180"/>
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="40"/>
+              <RowDefinition Height="40"/>
+            </Grid.RowDefinitions>
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="Puerto API" Style="{StaticResource TxtLabel}"
+                       VerticalAlignment="Center"/>
+            <local:LumNumeric x:Name="numPort" Grid.Row="0" Grid.Column="1" Min="1024" Max="65535"
+                              Width="110" HorizontalAlignment="Left" Value="8069"/>
+            <local:LumButton x:Name="btnApiToggle" Grid.Row="0" Grid.Column="2" Variant="Primary"
+                             Icon="{StaticResource IconPower}" Text="Iniciar API"
+                             HorizontalAlignment="Stretch" Click="OnToggleApi"/>
+            <TextBlock Grid.Row="1" Grid.Column="0" Text="Token API" Style="{StaticResource TxtLabel}"
+                       VerticalAlignment="Center"/>
+            <TextBox x:Name="txtToken" Grid.Row="1" Grid.Column="1"/>
+            <TextBlock x:Name="lblApiState" Grid.Row="1" Grid.Column="2" Text="● DETENIDA"
+                       Style="{StaticResource TxtLabel}" Foreground="{StaticResource ErrBrush}"
+                       VerticalAlignment="Center"/>
+          </Grid>
+        </local:Card>
+
+        <!-- ======== base de datos ======== -->
+        <local:Card Title="Base de datos" Icon="{StaticResource IconDb}" Margin="0,14,0,0">
+          <StackPanel>
+            <TextBlock Text="Ruta de la BD" Style="{StaticResource TxtLabel}" Margin="0,0,0,4"/>
+            <TextBox x:Name="txtDbPath"/>
+            <StackPanel Orientation="Horizontal" Margin="0,9,0,0">
+              <local:LumButton Variant="Secondary" Icon="{StaticResource IconFolder}" Text="Explorar…"
+                               Click="OnBrowseDb"/>
+              <local:LumButton Variant="Primary" Icon="{StaticResource IconDb}" Text="Crear / Abrir BD"
+                               Margin="8,0,0,0" Click="OnOpenDb"/>
+              <local:LumButton Variant="Secondary" Icon="{StaticResource IconSave}" Text="Guardar ajustes"
+                               Margin="8,0,0,0" Click="OnSaveSettings"/>
+            </StackPanel>
+          </StackPanel>
+        </local:Card>
+
+        <!-- ======== respaldo ======== -->
+        <local:Card Title="Respaldo y sincronización" Icon="{StaticResource IconDrive}" Margin="0,14,0,0">
+          <StackPanel>
+            <TextBlock Text="Carpeta de respaldo" Style="{StaticResource TxtLabel}" Margin="0,0,0,4"/>
+            <StackPanel Orientation="Horizontal">
+              <TextBox x:Name="txtBackupFolder" Width="330"/>
+              <local:LumButton Variant="Secondary" Icon="{StaticResource IconFolder}" Text="Explorar…"
+                               Margin="8,0,0,0" Click="OnBrowseBackup"/>
+              <local:LumButton Variant="Primary" Icon="{StaticResource IconUpload}" Text="Respaldar ahora"
+                               Margin="8,0,0,0" Click="OnBackupNow"/>
+            </StackPanel>
+            <CheckBox x:Name="chkAutoBackup" Margin="0,10,0,0"
+                      Content="Respaldar automáticamente al cerrar la aplicación (ZIP de la carpeta data\ en la carpeta elegida)"/>
+            <TextBlock Style="{StaticResource TxtCaption}" TextWrapping="Wrap" Margin="0,8,0,0"
+                       Text="Compatible con Google Drive / OneDrive: apunte la carpeta a la del cliente de sincronización instalado (sin OAuth ni contraseñas) y sus canciones, biblias, temas y ajustes quedarán respaldados en la nube."/>
+          </StackPanel>
+        </local:Card>
+
+        <!-- ======== acerca de ======== -->
+        <local:Card Title="Acerca de" Icon="{StaticResource IconInfo2}" Margin="0,14,0,0">
+          <StackPanel>
+            <TextBlock Text="Núcleo (C++)" Style="{StaticResource TxtLabel}" Margin="0,0,0,3"/>
+            <TextBlock x:Name="lblAboutCore" Text="…" Style="{StaticResource TxtBody}"/>
+            <TextBlock Text="Interfaz" Style="{StaticResource TxtLabel}" Margin="0,9,0,3"/>
+            <TextBlock x:Name="lblAboutUi" Text="WPF · .NET Framework 4.8" Style="{StaticResource TxtBody}"/>
+            <TextBlock Text="Proyección" Style="{StaticResource TxtLabel}" Margin="0,9,0,3"/>
+            <TextBlock Text="Nativa GDI vía LuminaCore (Windows 7 SP1 → Windows 11)"
+                       Style="{StaticResource TxtBody}"/>
+            <TextBlock Text="Versión: 5.4.0 «ESTUDIO» · BETA" Style="{StaticResource TxtCaption}"
+                       Margin="0,10,0,0"/>
+          </StackPanel>
+        </local:Card>
+      </StackPanel>
+    </ScrollViewer>
+  </DockPanel>
+</UserControl>

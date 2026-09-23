@@ -50,7 +50,7 @@ concurrency:
 
 env:
   DOTNET_VERSION: '8.0.x'
-  APP_VERSION: '5.3.0'
+  APP_VERSION: '5.4.0-beta.1'
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -189,7 +189,7 @@ jobs:
           python tools/validate_pptx.py export-samples/muestra.pptx export-samples/muestra.pdf
           if ($LASTEXITCODE -ne 0) { Write-Host 'Los exportadores no produjeron archivos válidos'; exit 1 }
 
-      - name: Publicar UI net48 + net35 POR ARQUITECTURA (x86 y x64)
+      - name: Publicar UI WPF net48 + WinForms net35 POR ARQUITECTURA (x86 y x64)
         shell: pwsh
         run: |
           # LECCIÓN v5.1.0 (hallada por el gate de humo): el PRIMER publish
@@ -258,8 +258,25 @@ jobs:
             Write-Host "  [publish] $destName listo con $((Get-ChildItem "$bin/$destName").Count) archivos"
           }
 
-          Publish-Ui 'net48' 'x86' 'publish-x86'
-          Publish-Ui 'net48' 'x64' 'publish-x64'
+          # v5.4.0 «ESTUDIO»: la variante net48 del paquete es la interfaz WPF
+          # (LuminaPresentation.exe). Mismas lecciones v5.1.0: clean ANTES DE
+          # cada publish + aserción dura del bitness del PE.
+          function Publish-Wpf([string]$platform, [string]$destName) {
+            dotnet clean managed/Lumina.WPF -f net48 -c Release | Out-Null
+            dotnet build managed/Lumina.WPF -f net48 -c Release -p:PlatformTarget=$platform
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $bin = "managed/Lumina.WPF/bin/Release/net48"
+            $exe = Get-ChildItem "$bin/*.exe" | Select-Object -First 1
+            Assert-PeBitness $exe.FullName $platform
+            New-Item -ItemType Directory -Force -Path "$bin/$destName" | Out-Null
+            Copy-Item "$bin/*.exe" "$bin/$destName/" -ErrorAction Stop
+            Copy-Item "$bin/*.dll" "$bin/$destName/" -ErrorAction Stop
+            Copy-Item "$bin/*.exe.config" "$bin/$destName/" -ErrorAction Stop
+            Write-Host "  [publish] $destName listo con $((Get-ChildItem "$bin/$destName").Count) archivos"
+          }
+
+          Publish-Wpf 'x86' 'publish-x86'
+          Publish-Wpf 'x64' 'publish-x64'
           Publish-Ui 'net35' 'x86' 'publish35-x86'
           Publish-Ui 'net35' 'x64' 'publish35-x64'
 
@@ -520,10 +537,10 @@ jobs:
           New-Item -ItemType Directory -Force -Path "$stage/data" | Out-Null
 
           @'
-          LuminaPresentation v5.3.0 «INTERFAZ» — núcleo C++ + interfaz C#
+          LuminaPresentation v5.4.0 «ESTUDIO» BETA — núcleo C++ + interfaz WPF
           =====================================================
 
-          PROGRAMA PORTABLE — no requiere instalación ni permisos de
+          PROGRAMA PORTABLE — BETA. No requiere instalación ni permisos de
           administrador.
 
           1) Descomprimir el ZIP COMPLETO en cualquier carpeta propia.
@@ -531,7 +548,8 @@ jobs:
 
           Requisitos (cualquiera de los dos, según su Windows):
             • Windows 10 1903+ / Windows 11 → .NET Framework 4.8 integrado
-              (el launcher usa la variante net48, con OBS WebSocket).
+              (el launcher usa la variante net48, con interfaz WPF y OBS
+              WebSocket).
             • Windows 7 SP1 / 8.x → .NET Framework 3.5 integrado
               (el launcher usa la variante net35, la baseline mínima).
 
@@ -544,25 +562,27 @@ jobs:
           Contenido:
             LuminaLauncher.exe  — detecta el runtime .NET y lanza la variante
                                   correcta; verifica el paquete completo antes.
-            net48\              — interfaz optimizada .NET 4.8.
-            net35\              — interfaz baseline .NET 3.5 (Win7 SP1).
+            net48\              — interfaz WPF optimizada (.NET 4.8).
+            net35\              — interfaz WinForms baseline (.NET 3.5, Win7 SP1).
             LuminaCore.dll      — motor C++ nativo (/MT, sin dependencias),
                                   dentro de cada carpeta de variante.
             resources\data\     — Biblia Reina-Valera 1909 completa incluida:
                                   al abrir la base de datos, la app ofrece
                                   instalarla (~31.000 versículos).
 
-          v5.3.0 «INTERFAZ»: rediseño completo de la interfaz (mismo motor
-          probado de v5.2.0): tema «Lumina Studio» con tarjetas redondeadas,
-          botones con iconos vectoriales y estados (hover/foco/deshabilitado),
-          navegación lateral agrupada por secciones, página «En Vivo» rehecha
-          (transporte compacto con tooltips y atajos, lista de diapositivas
-          con insignias y hover, vista previa con información de diapositiva y
-          estado vacío explicativo), casillas y listas coherentes con el tema,
-          foco visible por teclado en todos los controles y Ctrl+1…9 para
-          saltar entre páginas. Atajos: F1 ayuda · F5 proyector · F6/F7/F8
-          escenario/director/aviso · ←/→/Espacio diapositivas · B negro ·
-          L limpiar · P pausa de video.
+          v5.4.0 «ESTUDIO» (BETA): la interfaz principal pasa a WPF (Windows
+          Presentation Foundation) sobre .NET Framework 4.8 — mismo motor
+          probado de v5.2.0+ y mismos gates de CI. Diseño «Lumina Studio»
+          rehecho en XAML: tokens semánticos de color, 94 iconos vectoriales
+          Feather (MIT), tarjetas redondeadas, botones con variantes y estados,
+          navegación lateral con píldora ámbar, vista previa del tema con
+          contorno por silueta (misma técnica del núcleo), foco visible por
+          teclado y tooltips con atajos. La baseline net35 (WinForms) se
+          conserva para Windows 7 SP1 sin .NET 4.8. ESTA VERSIÓN ES BETA.
+
+          v5.3.0 «INTERFAZ»: rediseño completo de la UI/UX de la variante
+          WinForms (tema «Lumina Studio», sistema de diseño UiKit, página
+          «En Vivo» rehecha, atajos F1/Ctrl+1…9).
 
           v5.2.0 «MOTOR»: corregido el fallo que dejaba la app «con la GUI
           pero más nada» en Windows 7 SP1 (reporte de campo): el CRT/STL
@@ -769,10 +789,10 @@ jobs:
           if-no-files-found: error
 
   # ---------------------------------------------------------------------------
-  # 7) Release: solo en tags v*
+  # 7) BETA: solo en tags v* (v5.4.0: TODO lo publicado es BETA / pre-release)
   # ---------------------------------------------------------------------------
   release:
-    name: Publicar Release (tags v*)
+    name: Publicar BETA (tags v*)
     needs: [package]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
@@ -790,136 +810,61 @@ jobs:
           find . -name '*.zip' -print0 | sort -z | xargs -0 sha256sum | sed 's|\./||' > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
-      - name: Publicar
+      - name: Publicar BETA
         uses: softprops/action-gh-release@v2
         with:
-          name: "LuminaPresentation ${{ github.ref_name }} «INTERFAZ»"
+          name: "LuminaPresentation ${{ github.ref_name }} «ESTUDIO» — BETA"
           body: |
-            **LuminaPresentation v5.3.0 «INTERFAZ» — núcleo C++ + interfaz C# (.NET mínimo 3.5 · 4.8 si está disponible)**
+            **LuminaPresentation v5.4.0-beta.1 «ESTUDIO» — BETA · núcleo C++ + interfaz WPF (.NET 4.8) + baseline WinForms (.NET 3.5)**
+
+            > ⚠ **ESTA PUBLICACIÓN ES UNA BETA** (pre-release de evaluación):
+            > funcionalidad completa y gates de CI en verde, pero sujeta a
+            > cambios. Reporte de fallos bienvenido.
 
             ## Descargas
-            - `LuminaPresentation-5.3.0-win-x86.zip` — **Windows 7 SP1 a Windows 11 (32 bits)**
-            - `LuminaPresentation-5.3.0-win-x64.zip` — **Windows 7 SP1 a Windows 11+ (64 bits)**
+            - `LuminaPresentation-5.4.0-beta.1-win-x86.zip` — **Windows 7 SP1 a Windows 11 (32 bits)**
+            - `LuminaPresentation-5.4.0-beta.1-win-x64.zip` — **Windows 7 SP1 a Windows 11+ (64 bits)**
             - `SHA256SUMS.txt` — integridad de los paquetes
 
-            ## ✨ v5.3.0 — Rediseño completo de la interfaz («Lumina Studio»)
-            Misma funcionalidad probada de v5.2.0, con una interfaz renovada
-            de extremo a extremo y verificada por los mismos gates (selfcheck
-            + uicheck + flowcheck + Win7-imports, en ambas variantes y
-            arquitecturas, ANTES de publicar):
-            - **Sistema de diseño nuevo** (`UiKit.cs`): paleta refinada con
-              gradación de profundidad, tarjetas redondeadas con brillo
-              superior, botones owner-drawn con variantes (primario/secondary/
-              danger/ghost), iconos vectoriales escalables (32 iconos GDI+,
-              idénticos en Win7 y Win11) y casillas oscuras coherentes.
-            - **Carcasa nueva**: cabecera con logotipo «faro» + chips de estado
-              + acceso rápido al proyector; navegación lateral agrupada por
-              secciones (PRESENTACIÓN · BIBLIOTECA · EXTENSIÓN · SISTEMA) con
-              píldora activa ámbar; barra de estado con punto de severidad.
-            - **Página «En Vivo» rehecha**: transporte compacto con iconos y
-              tooltips con atajos, botón «Negro» con estado encendido, lista
-              de diapositivas alta (34 px) con insignias numéricas, hover y
-              barra ámbar en la diapositiva en curso, vista previa 16:9 con
-              borde «en vivo» e información «Jn 3:16 · Diapositiva 2 de 5»,
-              y estados vacíos que explican qué hacer.
-            - **UX transversal**: F1 abre el mapa de atajos, Ctrl+1…9 navega
-              entre páginas, foco visible por teclado en todo control propio,
-              marcas de agua en las búsquedas y tooltips en las acciones.
+            ## ✨ v5.4.0 «ESTUDIO» — La GUI pasa a WPF (Windows Presentation Foundation)
+            La interfaz principal del paquete (net48) se reescribió en **WPF
+            sobre .NET Framework 4.8** (integrado en Win10 1903+/Win11;
+            instalable en Win7 SP1/8.x). Misma arquitectura híbrida probada
+            (núcleo C++17 /MT), mismas funciones y MISMOS GATES de CI:
+            - **Diseño «Lumina Studio» en XAML**: tokens semánticos de color,
+              tarjetas redondeadas, botones con variantes (primary/secondary/
+              danger/ghost) y estados (hover/pulsado/foco/deshabilitado/toggle),
+              navegación lateral con píldora ámbar y barra de estado con punto
+              de severidad.
+            - **94 iconos vectoriales** Feather (licencia MIT) convertidos a
+              geometrías XAML — nitidez idéntica en Win7 y Win11, sin archivos
+              externos.
+            - **Vista previa del tema** con contorno por silueta y sombra real
+              (FormattedText.BuildGeometry — la MISMA técnica del motor).
+            - **UX transversal**: F1 atajos · Ctrl+1…9 páginas · foco visible
+              por teclado · tooltips con atajos · estados vacíos explicativos.
+            - **Baseline intacta**: la variante net35 (WinForms) se conserva
+              para Windows 7 SP1 sin .NET 4.8 — mismo paquete, cero regresión.
 
-            ## ⚠ Corregido en v5.2.0 (crítico — «carga la GUI pero más nada»)
-            Reporte de campo en Windows 7 SP1 x86 con .NET 4.8: la app abría
-            pero NINGUNA acción funcionaba y «Cargar al escenario» (página
-            Biblia) lanzaba `NullReferenceException` en `LoadScenarioFromItems`.
-            **Causa raíz**: el CRT/STL estático de MSVC enlaza
-            `GetSystemTimePreciseAsFileTime` — una API que **solo existe desde
-            Windows 8** — como import ESTÁTICO de `LuminaCore.dll`; en Win7 SP1
-            `LoadLibrary` falla con `ERROR_PROCEDURE_NOT_FOUND` → el núcleo
-            queda en null («modo limitado») → la GUI abre sin motor.
-            Corrección doble:
-            - **Nativo**: `/DELAYLOAD:GetSystemTimePreciseAsFileTime` + hook
-              (`Win7Compat.cpp`) que usa la API real en Win8+ y un fallback
-              seguro (`GetSystemTimeAsFileTime`) en Win7.
-            - **Defensivo**: todos los flujos que tocan el núcleo quedan
-              blindados (aviso en la barra de estado, JAMÁS excepción) y el
-              fallo del núcleo queda registrado con diagnóstico completo
-              (`LoadLibrary` + `GetLastError`) en el log de sesión.
-            Gates de CI para que NUNCA vuelva a pasar:
-            - **`tools/verify_win7_imports.py`**: audita la tabla de
-              importaciones de cada binario publicado — cero APIs Win8+
-              estáticas, cero runtime dinámico (UCRT/VCRedist).
-            - **`--flowcheck`**: ejercita el flujo Biblia→Escenario completo
-              (con núcleo activo Y en modo limitado simulado) antes de
-              empaquetar. Un flujo que lance excepciones ya no se publica.
-
-            ## ⚠ Corregido en v5.1.1 (crítico — la app no abría)
-            En v5.1.0, al construir la ventana principal el control `Chip` de la
-            cabecera asignaba un fondo transparente **sin activar antes el estilo
-            WinForms que lo permite** (`ControlStyles.SupportsTransparentBackColor`):
-            `ArgumentException: Control does not support transparent background colors`
-            → la ventana moría en `MainForm.BuildHeader` y **la aplicación no abría**
-            (reportado en Windows 7 SP1 x86, bajo .NET 4.8 y bajo 3.5 por igual).
-            v5.1.1 activa el estilo correctamente, pinta el fondo sin depender de la
-            transparencia simulada y añade un **gate `--uicheck` en la CI**: antes de
-            empaquetar, ambas variantes construyen la ventana principal completa de
-            forma headless. Un paquete cuya ventana no se pueda construir ya no puede
-            publicarse.
-
-            ## ⚠ Corregido en v5.1.0 (crítico)
-            El paquete v5.0.0 se publicó **sin las DLL gestionadas** (Lumina.Core/Bridge/Api)
-            y la aplicación no abría (`FileNotFoundException` al arrancar). v5.1.0 incluye
-            **todas** las dependencias junto a cada variante y añade un **gate de humo** en
-            la CI: ambos ejecutables se auto-verifican (`--selfcheck`: motor nativo + BD +
-            parsers + exportadores) ANTES de empaquetar. Un paquete roto ya no puede publicarse.
-
-            ## Arquitectura híbrida (mejorada)
-            - **Motor nativo C++17** (`LuminaCore.dll`, /MT estático): proyección Win32 sin
-              parpadeo, SQLite+FTS5, acordes — cero dependencias externas.
-            - **Interfaz C# WinForms en DOS variantes**: `net48\LuminaPresentation.exe`
-              (optimizada) y `net35\LuminaPresentation35.exe` (baseline, Win7 SP1 de fábrica).
-              **.NET mínimo 3.5; el launcher usa la 4.8 si el equipo la tiene.**
-            - **LuminaLauncher.exe** (nativo): elige la variante por registro y VERIFICA el
-              paquete completo antes de lanzar (mensaje claro si falta algún componente).
-            - Ambas variantes comparten `data\` (canciones, biblias, temas, ajustes).
-            - Sin WindowsBase/System.IO.Packaging: el PPTX se empaqueta con motor ZIP propio
-              (la baseline corre idéntica bajo CLR 2.0 y CLR 4.0).
-
-            ## Novedades v5.1.0 «FUNDAMENTO»
-            - **Teclado en vivo**: →/←/Espacio (línea a línea), B negro, L limpiar, P pausa
-              de video, F5 proyector, F6 monitor, F7 director, F8 zócalo.
-            - **Acordes proyectables** (línea de cifrado en acento sobre la letra).
-            - **Búsqueda bíblica por palabra** (FTS5) con resaltado y doble clic → escenario.
-            - **Biblia RVR1909 de fábrica**: al abrir la BD se ofrece instalarla (~31.000
-              versículos, importación por lotes).
-            - **Tercera pantalla — Director**: texto completo del ítem, cronómetro y notas.
-            - **Editor de culto completo**: canción actual, pasaje, imagen, texto/aviso,
-              blanco e **importación de planes JSON** (formato documentado).
-            - **Video con bucle/volumen/pausa** (antes hardcodeado) y pantallas reales
-              del sistema en el selector.
-            - **Respaldo ZIP a carpeta** (Google Drive/OneDrive) manual o automático al salir.
-            - Fix: índice de ítem en eventos del motor (video/escenario/activadores
-              desincronizados en cultos multi-ítem), fuga GDI del zócalo, log de errores
-              del núcleo al archivo de sesión.
-
-            ## Verificación CI (todas las gates verdes)
-            - Núcleo: selftest nativo 146/146 + PoC API headless 37/37 (x86/x64, Win y Linux).
-            - Gestionado: build net35+net48+net8 (0 err/0 warn) + tests 23/23.
-            - **GATE exportadores: python-pptx + pypdf abren los archivos generados.**
-            - Interop real: PoC C# ↔ DLL nativa «POC PASS 12/12» en x86 y x64.
-            - **GATE humo: `--selfcheck` de ambas variantes ANTES de empaquetar.**
-            - **GATE UI (v5.1.1): `--uicheck` — ambas variantes construyen la ventana
-              principal completa (headless) ANTES de empaquetar.**
-            - **GATE flujos (v5.2.0): `--flowcheck` — Biblia→Escenario completo y en
-              modo limitado simulado, sin excepciones, ANTES de empaquetar.**
-            - **GATE Win7 (v5.2.0): `verify_win7_imports.py` — sin imports estáticos
-              Win8+ ni runtime dinámico en LuminaCore.dll (x86/x64) y launcher.**
-            - Empaquetado: auditoría PE `verify_portable` (15 archivos exigidos) + SHA256.
+            ## Verificación CI (todas las gates verdes ANTES de publicar)
+            - Núcleo: selftest nativo + PoC API headless (x86/x64, Win y Linux).
+            - Gestionado: build net35+net48+WPF (0 err/0 warn) + tests n/n.
+            - GATE exportadores: python-pptx + pypdf abren los archivos generados.
+            - Interop real: PoC C# ↔ DLL nativa «POC PASS 12/12» (x86/x64).
+            - GATE humo: `--selfcheck` de ambas variantes (WPF y WinForms).
+            - GATE UI: `--uicheck` — la ventana WPF completa se construye
+              headless (XAML incluido) antes de empaquetar.
+            - GATE flujos: `--flowcheck` — Biblia→Escenario completo y en modo
+              limitado simulado, sin excepciones.
+            - GATE Win7: `verify_win7_imports.py` — sin imports estáticos Win8+.
+            - Empaquetado: `verify_portable` (layout completo) + SHA256.
 
             ## Instalación
             Descomprimir el ZIP **completo** en una carpeta propia y ejecutar
-            `LuminaLauncher.exe`. En Win10 1903+/Win11 usa .NET 4.8 integrado; en
-            Win7 SP1 usa .NET 3.5 integrado (o 4.8 si lo tiene instalado).
+            `LuminaLauncher.exe`. En Win10 1903+/Win11 usa .NET 4.8 integrado
+            (GUI WPF); en Win7 SP1 usa .NET 3.5 integrado (GUI WinForms).
           draft: false
-          prerelease: false
+          prerelease: true
           files: |
             artifacts/**/*.zip
             artifacts/SHA256SUMS.txt

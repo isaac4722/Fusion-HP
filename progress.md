@@ -718,3 +718,66 @@ nunca se congela, consistencia Win7→Win11, estados vivos en la interfaz).
   (campos _engine/_dbOpen/_slides/_txtRef + LoadScriptureToStage) quedó intacta a propósito.
 - Siguiente: commit → push main → CI (7 jobs; gates selfcheck/uicheck/flowcheck ×2 +
   Win7-imports) → tag v5.3.0 → release «INTERFAZ».
+
+## 2026-09-23 — CICLO v5.4.0 «ESTUDIO» BETA: la GUI pasa a WPF + publicaciones → BETAS
+
+Encargo: «Crea la GUI en WPF (Windows Presentation Foundation), busca los assets
+de GUI para el programa, y que sea mejor (hay errores). Verifica el estado actual
+para no liarla. OJO: estamos en BETA, no releases — cambia todo lo que sea
+release por BETA». Skills aplicadas: qt-ui-design (instalada desde
+TheQtCompanyRnD/agent-skills junto a qt-cpp-review y qt-cpp-docs en
+~/.agents/skills/): tokens semánticos de color §1.4, escala tipográfica
+modular §1.2, teclado + foco visible §1.3, WCAG 2.2 §2, animaciones ≤ 160ms §1.1.
+
+- ESTADO VERIFICADO ANTES DE TOCAR (para «no liarla»): main = e233b99 (v5.3.0),
+  CI verde (run 35800555845), 10 releases publicadas como finales
+  (prerelease=False) — convertidas a BETAS vía API (véase el cierre).
+- NUEVO `managed/Lumina.WPF` (net48 · UseWPF+UseWindowsForms · AssemblyName
+  **LuminaPresentation** → SUSTITUYE a la variante WinForms net48 dentro del
+  paquete portable; la baseline net35 (WinForms) se conserva intacta para
+  Win7 SP1 sin .NET 4.8 — evolución, no reemplazo):
+  * `App.xaml/.cs`: blindaje anti-crash (DispatcherUnhandledException +
+    AppDomain) + log de sesión + los TRES gates de humo heredados:
+    `--selfcheck` (0/2) · `--uicheck` (0/3, construye la ventana WPF completa
+    headless — XAML incluido) · `--flowcheck` (0/4, MISMOS nombres por
+    reflexión: _engine/_dbOpen/_slides/_txtRef + LoadScriptureToStage).
+  * `Theme/Tokens.xaml`: paleta semántica por roles (superficies con gradación
+    de profundidad, texto, marca, estados), escala tipográfica modular
+    (base 13 · razón 1.2), radios/espaciados/duraciones.
+  * `Theme/Icons.xaml`: **94 iconos vectoriales Feather (MIT)** convertidos a
+    StreamGeometry (script tools/ → primitivas SVG→path). Assets de GUI buscados
+    e integrados como recurso embebido (cero archivos externos).
+  * `Theme/Controls.xaml`: LumButton (4 variantes × hover/pulsado/foco
+    visible/deshabilitado/toggle activo), NavItem (píldora ámbar), Chip, Card
+    (ContentControl con plantilla), TextBox/PasswordBox/CheckBox/ComboBox/
+    ListBox/ListBoxItem/ScrollBar/ToolTip oscuros.
+  * `Support/`: Widgets.cs (LumButton/Chip/NavItem/Card), LumNumeric (WPF no
+    trae NumericUpDown), PageHeader, EmptyState, Vms.cs.
+  * `MainWindow` en 5 parciales (caparazón/Live/Data/Integrations/Themes):
+    puerto 1:1 de los 5.369 líneas de MainForm — mismas funciones, mismos
+    contratos (RequireEngine/Status/LoadScenarioFromItems/SyncLiveExtras/
+    activadores con sink/OBS/MIDI/mando remoto/respaldo). Ventanas auxiliares
+    WinForms (video WMP, escenario, director, zócalo, ObsClient, MidiInput,
+    PdfImageDecoder) copiadas a `Aux/` — HWNDs independientes coexisten con
+    WPF en el mismo proceso, sin WindowsFormsHost.
+  * 9 páginas XAML: En Vivo (transporte con tooltips de atajos, lista con
+    insignias y barra ámbar, vista previa 16:9 con borde «en vivo» e info
+    «Jn 3:16 · 2 de 5»), Culto (editor completo), Canciones (FTS + transponer
+    con tonalidad detectada), Biblia (FTS por palabra + importadores), Temas
+    (vista previa por GEOMETRÍA de texto: contorno por silueta + sombra, la
+    misma técnica del núcleo), Exportar, Integraciones, Activadores, Ajustes.
+- CI (`.github/workflows/ci.yml`): job `managed` publica el exe **WPF** para
+  net48 x86/x64 (Publish-Wpf con Assert-PeBitness) + WinForms para net35;
+  APP_VERSION=5.4.0-beta.1; README.txt del paquete actualizado; job `release`
+  renombrado a **«Publicar BETA»**: prerelease=true y título/cuerpo BETA.
+- Docs: README.md (título v5.4.0 «ESTUDIO» — BETA, sección de novedades WPF,
+  «Releases»→«Betas», tabla de arquitectura, historial), AGENT.md (stack +
+  versión 5.4.0 BETA), launcher (título de mensajes v5.4.0) y
+  Directory.Build.props (Version 5.4.0 — coherente en todas las DLL).
+- Verificación local (SDK .NET 8 en el sandbox): `dotnet build
+  managed/Lumina.WPF -c Release` → **0 errores / 0 avisos** (compilación XAML
+  incluida: EnableWindowsTargeting). Los gates de humo corren en la CI de
+  Windows (WPF no ejecuta en Linux).
+- Siguiente: commit → push main → CI (8 jobs) → tag v5.4.0-beta.1 → BETA
+  publicada como pre-release + conversión de las 10 releases históricas a
+  BETAS vía API.
