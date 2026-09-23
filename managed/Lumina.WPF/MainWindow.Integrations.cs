@@ -164,6 +164,9 @@ namespace lumina.wpf
             pageSettings.txtDbPath.Text = Path.Combine(_settings.DataDir, "lumina.db");
             pageSettings.txtBackupFolder.Text = _settings.BackupFolder;
             pageSettings.chkAutoBackup.IsChecked = _settings.AutoBackupOnExit;
+            // v6.0.0: transición de proyección (fundido).
+            pageSettings.chkFade.IsChecked = _settings.TransitionFade;
+            pageSettings.numFadeMs.Value = _settings.TransitionMs;
 
             // Integraciones
             pageIntegrations.txtObsUrl.Text = _settings.ObsUrl;
@@ -197,7 +200,28 @@ namespace lumina.wpf
             _settings.Theme = _theme != null ? _theme.Name : "Predeterminado";
             _settings.LastBibleVersion = pageBible.txtVersion.Text.Trim();
             _settings.ThemeJson = _theme != null ? MiniJson.Serialize(_theme.ToDict()) : string.Empty;
+            // v6.0.0: transición de proyección — se persiste Y se aplica al núcleo.
+            _settings.TransitionFade = pageSettings.chkFade.IsChecked == true;
+            _settings.TransitionMs = pageSettings.numFadeMs.IntValue;
             _settings.Save();
+            ApplyTransitionToEngine();
+        }
+
+        /// <summary>v6.0.0: aplica la transición persistida al núcleo (si vive).</summary>
+        internal void ApplyTransitionToEngine()
+        {
+            if (_engine == null) return;
+            try
+            {
+                int mode = _settings.TransitionFade ? 1 : 0;
+                int st = _engine.SetTransition(mode, _settings.TransitionMs);
+                if (st != 0)
+                    Status("Transición no aplicada (código " + st + ").");
+            }
+            catch (Exception)
+            {
+                // Núcleo caído a mitad de sesión: sin efecto, sin ruido.
+            }
         }
 
         internal void SaveIntegrationsFromControls()

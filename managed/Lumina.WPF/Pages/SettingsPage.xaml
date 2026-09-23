@@ -76,6 +76,24 @@
           </StackPanel>
         </local:Card>
 
+        <!-- ======== proyección (v6.0.0: transición) ======== -->
+        <local:Card Title="Proyección" Icon="{StaticResource IconMonitor}" Margin="0,14,0,0">
+          <StackPanel>
+            <CheckBox x:Name="chkFade" Margin="0,0,0,6"
+                      Content="Fundir entre diapositivas (transición suave en la salida del proyector)"/>
+            <StackPanel Orientation="Horizontal">
+              <TextBlock Text="Duración del fundido:" Style="{StaticResource TxtLabel}"
+                         VerticalAlignment="Center"/>
+              <local:LumNumeric x:Name="numFadeMs" Min="0" Max="5000" Width="90"
+                                Margin="8,0,0,0" Value="220"/>
+              <TextBlock Text="ms" Style="{StaticResource TxtLabel}"
+                         VerticalAlignment="Center" Margin="6,0,0,0"/>
+            </StackPanel>
+            <TextBlock Style="{StaticResource TxtCaption}" TextWrapping="Wrap" Margin="0,8,0,0"
+                       Text="El fundido cruza desde el último fotograma proyectado (sin parpadeo ni destello del escritorio). Desactívelo para el corte inmediato clásico; la duración se ajusta a 0..5000 ms."/>
+          </StackPanel>
+        </local:Card>
+
         <!-- ======== acerca de ======== -->
         <local:Card Title="Acerca de" Icon="{StaticResource IconInfo2}" Margin="0,14,0,0">
           <StackPanel>

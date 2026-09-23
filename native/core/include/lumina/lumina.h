@@ -90,6 +90,11 @@ LUMINA_EXPORT int32_t lumina_projector_show(LuminaHandle h, int32_t screenIndex,
 LUMINA_EXPORT int32_t lumina_projector_hide(LuminaHandle h);
 LUMINA_EXPORT int32_t lumina_render_preview_png(LuminaHandle h, int32_t slideIndex,
                                                 char* out, int32_t cap, int32_t* needed);
+/* v6.0.0 «HORIZONTE» — transición entre slides de la proyección (ADITIVA).
+   mode: 0=corte (inmediato), 1=fundido (crossfade AlphaBlend sobre el doble
+   búfer). durationMs: 0..5000 (fuera de rango → LUMINA_ERR_LIMIT). En headless
+   la configuración se guarda y se refleja en el estado ("transition"). */
+LUMINA_EXPORT int32_t lumina_set_transition(LuminaHandle h, int32_t mode, int32_t durationMs);
 
 /* ---------------------------------------------------- canciones / biblia */
 /* Valida + normaliza una canción JSON y devuelve {"ok":1,"slides":[...],"song":{...}} */

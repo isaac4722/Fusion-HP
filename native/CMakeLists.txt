@@ -55,7 +55,7 @@ if(NOT MSVC)
     set_source_files_properties(${CMAKE_SOURCE_DIR}/third_party/sqlite3/sqlite3.c
         PROPERTIES COMPILE_OPTIONS "-Wno-stringop-overread")
 else()
-    target_link_libraries(LuminaCore PRIVATE user32 gdi32 gdiplus ole32)
+    target_link_libraries(LuminaCore PRIVATE user32 gdi32 gdiplus ole32 msimg32)
     # v5.2.0 «MOTOR»: el import Win8+ (GetSystemTimePreciseAsFileTime) se
     # elimina DEFINIENDO el símbolo __imp__ en Win7Compat.cpp/.asm (objeto >
     # lib). Un /DELAYLOAD con nombre de función NO es válido para link.exe
@@ -72,7 +72,7 @@ target_compile_definitions(LuminaCoreStatic PRIVATE LUMINA_CORE_STATIC=1)
 if(NOT MSVC)
     target_link_libraries(LuminaCoreStatic PRIVATE pthread dl)
 else()
-    target_link_libraries(LuminaCoreStatic PRIVATE user32 gdi32 gdiplus ole32)
+    target_link_libraries(LuminaCoreStatic PRIVATE user32 gdi32 gdiplus ole32 msimg32)
 endif()
 set_target_properties(LuminaCoreStatic PROPERTIES OUTPUT_NAME "LuminaCoreStatic")
 

@@ -161,6 +161,13 @@ int32_t lumina_projector_hide(LuminaHandle h) {
     return reinterpret_cast<Engine*>(h)->ProjectorHide();
 }
 
+// v6.0.0 «HORIZONTE»: transición entre slides (0=corte, 1=fundido; 0..5000 ms).
+// Valida rango ANTES de tocar el motor (headless guarda y refleja en estado).
+int32_t lumina_set_transition(LuminaHandle h, int32_t mode, int32_t durationMs) {
+    if (!h) return LUMINA_ERR_ARG;
+    return reinterpret_cast<Engine*>(h)->SetTransition(mode, durationMs);
+}
+
 int32_t lumina_render_preview_png(LuminaHandle h, int32_t slideIndex,
                                   char* out, int32_t cap, int32_t* needed) {
     return Api([&]() -> LuminaStatus {

@@ -48,6 +48,9 @@ namespace lumina.core
         public int DirectorScreen = 2;                // pantalla del Director (3ª salida)
         public string BackupFolder = string.Empty;    // carpeta de respaldo (Drive/OneDrive local)
         public bool AutoBackupOnExit = false;         // respaldar data\ al cerrar
+        // v6.0.0 «HORIZONTE»: transición de proyección (fundido entre slides)
+        public bool TransitionFade = true;            // false = corte inmediato
+        public int  TransitionMs   = 220;             // 0..5000 ms
 
         public string TriggersFile
         {
@@ -129,6 +132,8 @@ namespace lumina.core
             if (ProjectionScreen < 0) ProjectionScreen = 0;
             if (DirectorScreen < 0) DirectorScreen = 0;
             if (BackupFolder == null) BackupFolder = string.Empty;
+            if (TransitionMs < 0) TransitionMs = 0;
+            if (TransitionMs > 5000) TransitionMs = 5000;
         }
 
         /// <summary>Carga desde el directorio dado (o default). Tolerante a errores: devuelve defaults.</summary>
@@ -165,6 +170,8 @@ namespace lumina.core
                 s.DirectorScreen = (int)MiniJson.GetInt(o, "directorScreen", 2);
                 s.BackupFolder = MiniJson.GetString(o, "backupFolder", string.Empty);
                 s.AutoBackupOnExit = MiniJson.GetBool(o, "autoBackupOnExit", false);
+                s.TransitionFade = MiniJson.GetBool(o, "transitionFade", true);
+                s.TransitionMs = (int)MiniJson.GetInt(o, "transitionMs", 220);
                 s.Normalize();
             }
             catch (Exception)
@@ -201,6 +208,8 @@ namespace lumina.core
             o["directorScreen"] = DirectorScreen;
             if (BackupFolder.Length > 0) o["backupFolder"] = BackupFolder;
             o["autoBackupOnExit"] = AutoBackupOnExit;
+            o["transitionFade"] = TransitionFade;                  // v6.0.0
+            o["transitionMs"] = TransitionMs;
             string dir = _dataDir;
             if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
             File.WriteAllText(FilePath, MiniJson.Serialize(o) + "\n", new UTF8Encoding(false));

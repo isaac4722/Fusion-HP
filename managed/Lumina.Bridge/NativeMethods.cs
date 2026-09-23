@@ -178,6 +178,10 @@ namespace lumina.bridge
         [DllImport(LibraryName, EntryPoint = "lumina_projector_hide", CallingConvention = CallConv, SetLastError = false, ExactSpelling = true)]
         internal static extern int lumina_projector_hide(IntPtr handle);
 
+        // v6.0.0 «HORIZONTE»: transición entre slides (0=corte, 1=fundido).
+        [DllImport(LibraryName, EntryPoint = "lumina_set_transition", CallingConvention = CallConv, SetLastError = false, ExactSpelling = true)]
+        internal static extern int lumina_set_transition(IntPtr handle, int mode, int durationMs);
+
         [DllImport(LibraryName, EntryPoint = "lumina_render_preview_png", CallingConvention = CallConv, SetLastError = false, ExactSpelling = true)]
         internal static extern int lumina_render_preview_png(IntPtr handle, int slideIndex, byte[] outBuf, int cap, out int needed);
 

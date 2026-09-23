@@ -226,6 +226,24 @@ int main() {
     }, &st));
     CHECK(st.find("\"slideCount\":2") != std::string::npos);   // 2 líneas → 2 slides
 
+    // v6.0.0: lumina_set_transition (headless guarda y refleja en el estado)
+    CHECK(lumina_set_transition(nullptr, 1, 100) == LUMINA_ERR_ARG);   // handle nulo
+    CHECK(lumina_set_transition(h, 7, 100) == LUMINA_ERR_LIMIT);       // modo inválido
+    CHECK(lumina_set_transition(h, 1, 9999) == LUMINA_ERR_LIMIT);      // duración > 5000
+    CHECK(lumina_set_transition(h, 1, -1) == LUMINA_ERR_LIMIT);        // duración negativa
+    CHECK(lumina_set_transition(h, 1, 250) == LUMINA_OK);
+    CHECK(ApiCallOnce([&](char* o, int32_t c, int32_t* n) {
+        return lumina_state_json(h, o, c, n);
+    }, &st));
+    CHECK(st.find("\"transition\"") != std::string::npos);
+    CHECK(st.find("\"mode\":1") != std::string::npos);
+    CHECK(st.find("\"durationMs\":250") != std::string::npos);
+    CHECK(lumina_set_transition(h, 0, 0) == LUMINA_OK);                // corte
+    CHECK(ApiCallOnce([&](char* o, int32_t c, int32_t* n) {
+        return lumina_state_json(h, o, c, n);
+    }, &st));
+    CHECK(st.find("\"durationMs\":0") != std::string::npos);
+
     /* -------------------------------------------------------- 8 BD+FTS */
     Section("[8] lumina_db_* (SQLite+FTS5)");
     const std::string dbPath = TempDbPath();

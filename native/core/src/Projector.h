@@ -39,6 +39,13 @@ public:
                     const std::vector<std::string>& itemTitles,
                     const Theme& theme, int current, bool black);
 
+    // v6.0.0 «HORIZONTE»: transición entre slides (roadmap: «fundido animado
+    // entre slides — alpha blend entre buffers»). mode: 0=corte (inmediato),
+    // 1=fundido (crossfade AlphaBlend sobre el doble búfer). durationMs se
+    // ajusta a [0,5000]. El fundido cruza desde el ÚLTIMO FOTOGRAMA pintado
+    // (cache) → continuidad visual exacta, sin cortes ni parpadeo.
+    void SetTransition(int mode, int durationMs);
+
     // Renderiza una slide a PNG con el mismo renderizador (preview).
     static bool RenderSlidePng(const Slide& s, const Theme& t,
                                int w, int h, std::string* pngOut);

@@ -53,6 +53,12 @@ public:
     LuminaStatus ProjectorHide();
     int  RenderPreviewPng(int slideIndex, std::string* pngOut);   // -1=err
 
+    // v6.0.0 «HORIZONTE»: transición entre slides de la proyección.
+    // mode: 0=corte, 1=fundido; durationMs 0..5000. En headless la
+    // configuración se guarda y se refleja en el estado (la ventana la
+    // aplica cuando exista). Fuera de rango → LUMINA_ERR_LIMIT.
+    LuminaStatus SetTransition(int32_t mode, int32_t durationMs);
+
     LuminaStatus DbOpen(const std::string& pathUtf8);
     LuminaStatus DbClose();
     LuminaStatus DbExec(const std::string& sqlJson, std::string* outJson);
@@ -88,6 +94,9 @@ private:
     int   current_ = -1;                     // índice de slide en vivo
     bool  black_   = false;
     bool  cleared_ = true;
+    // v6.0.0: transición de proyección (mode 0=corte, 1=fundido; ms 0..5000)
+    int   transitionMode_ = 1;
+    int   transitionMs_   = 220;
 
     /* hilo de eventos */
     std::thread            eventThread_;

@@ -201,6 +201,10 @@ namespace lumina.wpf
                 bool headless = !IsWindows();
                 _engine = LuminaEngine.Create(headless, OnEngineEventRaw, _uiCtx);
                 _engine.UiEventReceived += OnEngineUiEvent;
+                // v6.0.0: transición persistida (fundido) desde el arranque.
+                // Siempre se aplica: el default del núcleo es fundido 220 ms y
+                // el ajuste del usuario puede ser «corte» (mode 0).
+                _engine.SetTransition(_settings.TransitionFade ? 1 : 0, _settings.TransitionMs);
                 SetChipCore("Núcleo " + SafeCoreVersion(), true);
                 App.LogLine("Núcleo: ACTIVO (" + SafeCoreVersion()
                     + (headless ? ", headless)" : ", proyección Win32)"));

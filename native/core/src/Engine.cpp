@@ -72,7 +72,12 @@ Engine::Engine(const LuminaConfig& cfg) : cfg_(cfg) {
         PushEvent(LUMINA_EV_LOG, "{\"level\":\"warn\",\"msg\":\"structSize distinto\"}");
     }
 #ifdef LUMINA_HAS_WIN32
-    if (!cfg_.headless) projector_.reset(new Projector());
+    if (!cfg_.headless) {
+        projector_.reset(new Projector());
+        // v6.0.0: transición por defecto (fundido 220 ms) — configurable vía
+        // lumina_set_transition antes/después de crear la ventana.
+        projector_->SetTransition(transitionMode_, transitionMs_);
+    }
 #endif
     db_.reset(new Database());
     started_ = true;
@@ -434,6 +439,8 @@ std::string Engine::StateJson() const {
     j["black"] = black_;
     j["cleared"] = cleared_;
     j["headless"] = cfg_.headless ? 1 : 0;
+    // v6.0.0: transición de proyección (evolución aditiva del estado).
+    j["transition"] = json{{"mode", transitionMode_}, {"durationMs", transitionMs_}};
     j["items"] = json::array();
     for (const ScenarioItem& it : scenario_.items)
         j["items"].push_back(json{{"kind", it.kind}, {"title", it.title}});
@@ -464,6 +471,21 @@ LuminaStatus Engine::ProjectorHide() {
 #else
     return LUMINA_ERR_UNSUPPORTED;
 #endif
+}
+
+LuminaStatus Engine::SetTransition(int32_t mode, int32_t durationMs) {
+    if (mode != 0 && mode != 1) return LUMINA_ERR_LIMIT;
+    if (durationMs < 0 || durationMs > 5000) return LUMINA_ERR_LIMIT;
+    {
+        std::lock_guard<std::mutex> lk(mx_);
+        transitionMode_ = mode;
+        transitionMs_   = durationMs;
+#ifdef LUMINA_HAS_WIN32
+        if (projector_) projector_->SetTransition(mode, durationMs);
+#endif
+    }
+    PostStateEvent();
+    return LUMINA_OK;
 }
 
 int Engine::RenderPreviewPng(int slideIndex, std::string* pngOut) {

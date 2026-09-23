@@ -300,6 +300,17 @@ namespace lumina.bridge
 
         public int ProjectorHide() { ThrowIfDisposed(); return NativeMethods.lumina_projector_hide(_handle); }
 
+        /// <summary>
+        /// v6.0.0: transición entre slides de la proyección. mode: 0=corte,
+        /// 1=fundido (crossfade); durationMs 0..5000. Devuelve 0=OK,
+        /// -5 (Limit) si el modo/duración están fuera de rango.
+        /// </summary>
+        public int SetTransition(int mode, int durationMs)
+        {
+            ThrowIfDisposed();
+            return NativeMethods.lumina_set_transition(_handle, mode, durationMs);
+        }
+
         /// <summary>PNG de vista previa de la slide (null si el núcleo no puede renderizar, p. ej. headless).</summary>
         public byte[] RenderPreviewPng(int slideIndex)
         {
