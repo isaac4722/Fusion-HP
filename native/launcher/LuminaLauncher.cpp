@@ -71,16 +71,10 @@
 #include "../core/src/Renderer.cpp"
 #include "../core/src/Projector.cpp"   // incluye VideoDS.cpp (DirectShow)
 
-// v7.0.0: en x86 el CRT referencia el símbolo DECORADO
-// __imp__GetSystemTimePreciseAsFileTime@4 (WinAPI stdcall). El núcleo lo
-// define con MASM (Win7CompatX86.asm); el CMake autónomo del launcher no
-// compila .asm → /alternatename del enlazador resuelve el decorado al
-// símbolo SIN decorar que Win7Compat.cpp define como DATO de objeto
-// (las definiciones de objeto ganan a los stubs de kernel32.lib → el
-// import estático Win8+ NO se genera y el exe carga en Win7 SP1).
-#if defined(_M_IX86)
-#pragma comment(linker, "/alternatename:__imp__GetSystemTimePreciseAsFileTime@4=__imp_GetSystemTimePreciseAsFileTime")
-#endif
+// v7.0.0: Win7Compat.cpp define el __imp_ como DATO de objeto (x64) y el
+// shim Win8+/Win7. En x86 el import decorado NO llega porque Projector.cpp
+// usa CreateThread puro (el STL de std::thread/join era el que arrastraba
+// GetSystemTimePreciseAsFileTime — diagnóstico v5.2.0).
 
 using namespace lumina;
 
