@@ -34,6 +34,15 @@
 //
 //  Subsistema: WINDOWS (GUI). Compilación: x86 y x64 con /MT.
 // ============================================================================
+// NOMINMAX/WIN32_LEAN_AND_MEAN ANTES del primer windows.h (el CMake autónomo
+// del launcher no los define: sin NOMINMAX las macros min/max de Win32
+// rompen std::min/std::max del Renderer incluido abajo — C2589).
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <windows.h>
 #include <commdlg.h>      // GetOpenFileNameW (sesión plana del modo emergencia)
 #include <shellapi.h>     // CommandLineToArgvW / ShellExecuteW
