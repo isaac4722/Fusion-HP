@@ -29,7 +29,6 @@
 #include <condition_variable>
 #include <mutex>
 #include <string>
-#include <thread>
 #include <vector>
 
 namespace lumina {
@@ -79,7 +78,10 @@ struct Projector::Impl {
     bool fading = false;
     std::chrono::steady_clock::time_point fadeStart;
 
-    std::thread worker;
+    // v7.0.0: hilo Win32 puro (std::thread/join en x86 arrastra el import
+    // Win8+ GetSystemTimePreciseAsFileTime del STL — diagnóstico v5.2.0; el
+    // launcher no compila .asm y CreateThread es equivalente).
+    HANDLE workerThread = nullptr;
     HWND hwnd = nullptr;
     ATOM cls = 0;
 
@@ -314,8 +316,13 @@ bool Projector::Show(int screenIndex, bool fullscreen) {
         p->showWindow = true;
         p->quit = false;
     }
-    if (!p->worker.joinable()) {
-        p->worker = std::thread([this] { WindowLoop(); });
+    if (p->workerThread == nullptr) {
+        p->workerThread = CreateThread(nullptr, 0,
+            [](LPVOID self) -> DWORD {
+                reinterpret_cast<Projector*>(self)->WindowLoop();
+                return 0;
+            },
+            this, 0, nullptr);
     }
     return true;
 }
@@ -337,7 +344,11 @@ void Projector::Close() {
         p->showWindow = false;
     }
     if (p->hwnd) PostMessageW(p->hwnd, WM_CLOSE, 0, 0);
-    if (p->worker.joinable()) p->worker.join();
+    if (p->workerThread != nullptr) {
+        WaitForSingleObject(p->workerThread, 5000);
+        CloseHandle(p->workerThread);
+        p->workerThread = nullptr;
+    }
     // Los búferes de fundido se liberan aquí (el tamaño del lienzo puede
     // cambiar al reabrir): se recrean bajo demanda en SetContent/PaintInto.
     if (p->fadeFrom)  { DeleteObject(p->fadeFrom);  p->fadeFrom  = nullptr; }
