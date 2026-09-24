@@ -740,7 +740,11 @@ int main() {
         CHECK(st.written == 2);
         CHECK(st.dropped == 1);
         CHECK(log.ActiveFile().find("lumina-") != std::string::npos);
-        // El archivo existe y tiene 2 líneas con formato.
+        // El archivo existe y tiene 2 líneas con formato. En Windows el
+        // handle del logger aún está abierto (compartición del CRT): se
+        // cierra ANTES de reabrir para lectura.
+        log.Close();
+        CHECK(!log.IsOpen());
         std::FILE* f = std::fopen(log.ActiveFile().c_str(), "r");
         CHECK(f != nullptr);
         if (f) {
@@ -753,8 +757,6 @@ int main() {
             CHECK(lines == 2);
             std::fclose(f);
         }
-        log.Close();
-        CHECK(!log.IsOpen());
         RemoveTempDir(tmp);
         // ABI del log ligado al handle.
         LuminaConfig cfg = {};
