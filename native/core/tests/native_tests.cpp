@@ -59,6 +59,7 @@ static void Section(const char* name) { std::printf("%s\n", name); }
 // tiene rm/mkdir -p).
 static bool MakeTempDir(const std::string& path) {
 #ifdef _WIN32
+    // rutas RELATIVAS al cwd del runner (\tmp no existe fuera de Git-Bash)
     (void)system(("if exist \"" + path + "\" rmdir /s /q \"" + path + "\"").c_str());
     return _mkdir(path.c_str()) == 0;
 #else
@@ -713,7 +714,11 @@ int main() {
         CHECK(red.find("REDACTED") != std::string::npos);
         CHECK(Redact("token=sekret").find("sekret") == std::string::npos);
         // Escritura real a disco (rotación diaria, stats, re-apertura).
+#ifdef _WIN32
+        std::string tmp = "lumina-test-log";      // relativo al cwd del runner
+#else
         std::string tmp = "/tmp/lumina-test-log";
+#endif
         CHECK(MakeTempDir(tmp));
         Log log;
         Log::Options o;
@@ -757,7 +762,11 @@ int main() {
         cfg.headless = 1;
         LuminaHandle h = lumina_create(&cfg);
         CHECK(h != nullptr);
+#ifdef _WIN32
+        std::string tmp2 = "lumina-test-log2";
+#else
         std::string tmp2 = "/tmp/lumina-test-log2";
+#endif
         CHECK(MakeTempDir(tmp2));
         std::string opts = "{\"dir\":\"" + tmp2 + "\",\"retentionDays\":14}";
         CHECK(lumina_log_open(h, opts.c_str()) == LUMINA_OK);
