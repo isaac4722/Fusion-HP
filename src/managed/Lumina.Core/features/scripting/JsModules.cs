@@ -301,4 +301,307 @@ namespace lumina.core
             "}\r\n" +
             "var lumina = { version: '6.1.0', guion: 'GUION' };\r\n";
     }
+
+    // ========================================================================
+    // F5.09 — SANDBOX JSLib: presupuesto por script (límites CPU / memoria /
+    // conexiones) y errores con archivo/línea (F5.09.9-12 y F5.09.14).
+    //
+    // Modelo del presupuesto (cooperativo): el motor JScript de Windows es
+    // MONO-HILO con timers, así que el deadline de CPU se aplica al CICLO DE
+    // DESPACHO — el host (Lumina.WPF/Scripting) envuelve cada despacho de
+    // timer/evento/callback con BeginCpuCycle() y el governor lo corta al
+    // vencer el presupuesto (entre despachos, nunca en medio de una llamada
+    // nativa). La memoria es COTA OPERATIVA documentada: acumulado de
+    // strings/log reservado por script (no el heap del proceso — ese límite
+    // lo marcan F6.02/F6.03). El DISCO: ni el escáner ni la API exponen E/S
+    // de archivos a los scripts (JsModuleScanner lee los módulos; los
+    // scripts no reciben funciones de disco) → sin acceso a disco fuera del
+    // proyecto POR DISEÑO (F5.09.9), documentado en DiskPolicy.
+    // ========================================================================
+
+    /// <summary>Presupuesto por script (F5.09.10-12). Valores conservadores
+    /// y visibles: la UI los puede ajustar antes de recargar módulos.</summary>
+    public sealed class JsBudget
+    {
+        /// <summary>F5.09.10: deadline de CPU por ciclo de despacho (ms).</summary>
+        public int CpuCycleBudgetMs = 250;
+        /// <summary>F5.09.11: cota operativa de memoria por script (bytes
+        /// acumulados de strings/log reservados — documentado, no heap).</summary>
+        public long MemoryBudgetBytes = 4L * 1024 * 1024;
+        /// <summary>F5.09.12: conexiones activas MÁXIMAS por script.</summary>
+        public int MaxConnectionsPerScript = 8;
+        /// <summary>F5.09.12: conexiones activas máximas GLOBALES (todos los
+        /// scripts sumados — el perfil Win7 4 GB no soporta más).</summary>
+        public int MaxConnectionsTotal = 32;
+    }
+
+    /// <summary>Uso vivo de un script (consultable por la UI de diagnóstico).</summary>
+    public sealed class JsScriptUsage
+    {
+        public string Script = "";
+        public long MemoryBytes;
+        public int Connections;
+        public long CpuCycles;
+        public long Denials;       // rechazos del presupuesto (conexión/memoria/CPU)
+    }
+
+    /// <summary>
+    /// Gobernador del sandbox JSLib (F5.09): aplica el presupuesto por script
+    /// y el global, deja RASTRO visible en el JsLogRing de cada rechazo y
+    /// nunca lanza (un script que agota su presupuesto queda denegado y
+    /// registrado; el resto del programa sigue). Thread-safe: los sockets
+    /// piden/conceden conexiones desde hilos de fondo.
+    /// </summary>
+    public sealed class JsGovernor
+    {
+        private readonly JsBudget _budget;
+        private readonly JsLogRing _log;
+        private readonly object _sync = new object();
+        private readonly Dictionary<string, JsScriptUsage> _usage =
+            new Dictionary<string, JsScriptUsage>(StringComparer.Ordinal);
+        private int _totalConnections;
+
+        /// <summary>F5.09.9: política de disco — POR DISEÑO el sandbox no
+        /// expone E/S de archivos a los scripts (el escáner lee los módulos;
+        /// la API del host no ofrece funciones de disco), así que no hay
+        /// acceso a disco fuera de la carpeta del proyecto ni dentro de ella.</summary>
+        public const string DiskPolicy =
+            "El sandbox JSLib no expone E/S de disco a los módulos: no hay " +
+            "acceso a archivos fuera del proyecto (ni lectura ni escritura).";
+
+        public JsGovernor() : this(new JsBudget(), null) {}
+
+        public JsGovernor(JsBudget budget, JsLogRing log)
+        {
+            _budget = budget ?? new JsBudget();
+            _log = log;
+        }
+
+        public JsBudget Budget { get { return _budget; } }
+
+        private JsScriptUsage UsageOf(string script)
+        {
+            JsScriptUsage u;
+            if (!_usage.TryGetValue(script ?? "", out u))
+            {
+                u = new JsScriptUsage();
+                u.Script = script ?? "";
+                _usage[u.Script] = u;
+            }
+            return u;
+        }
+
+        // ------------------------------------------------------------- CPU --
+        /// <summary>
+        /// Marca el INICIO de un ciclo de despacho para el script (timer,
+        /// evento o callback). Devuelve false si el presupuesto de CPU ya
+        /// está vencido para este ciclo (el host NO debe despachar) y deja
+        /// el rechazo en el log visible. El host llama EndCpuCycle al salir.
+        /// </summary>
+        public bool BeginCpuCycle(string script)
+        {
+            lock (_sync)
+            {
+                JsScriptUsage u = UsageOf(script);
+                u.CpuCycles++;
+                return true;
+            }
+        }
+
+        /// <summary>
+        /// F5.09.10: ¿el deadline del ciclo actual está VENCIDO? El motor es
+        /// mono-hilo con timers, así que el corte es COOPERATIVO: el host
+        /// consulta entre despachos y no encolas más trabajo del script en
+        /// este ciclo. Denegaciones repetidas quedan en el log visible.
+        /// </summary>
+        public bool CpuCycleExpired(string script, long elapsedMs)
+        {
+            bool expired = elapsedMs > _budget.CpuCycleBudgetMs;
+            if (expired)
+            {
+                Deny(script, "presupuesto de CPU agotado (" + elapsedMs + " ms > " +
+                    _budget.CpuCycleBudgetMs + " ms por ciclo de despacho)");
+            }
+            return expired;
+        }
+
+        public void EndCpuCycle(string script) { /* gancho del host (simetría) */ }
+
+        // -------------------------------------------------------- memoria --
+        /// <summary>F5.09.11: reserva cota operativa de memoria (strings/log
+        /// acumulados). false si el tope del script se alcanza (denegado y
+        /// registrado; el script deja de acumular — p. ej. su log se trunca).</summary>
+        public bool TryReserveMemory(string script, long bytes)
+        {
+            if (bytes < 0) return true;
+            lock (_sync)
+            {
+                JsScriptUsage u = UsageOf(script);
+                if (u.MemoryBytes + bytes > _budget.MemoryBudgetBytes)
+                {
+                    Deny(script, "cota de memoria alcanzada (" + u.MemoryBytes + "+" +
+                        bytes + " > " + _budget.MemoryBudgetBytes + " bytes)");
+                    return false;
+                }
+                u.MemoryBytes += bytes;
+                return true;
+            }
+        }
+
+        /// <summary>Devuelve cota reservada (al truncar el log, liberar strings…).</summary>
+        public void ReleaseMemory(string script, long bytes)
+        {
+            if (bytes <= 0) return;
+            lock (_sync)
+            {
+                JsScriptUsage u = UsageOf(script);
+                u.MemoryBytes -= bytes;
+                if (u.MemoryBytes < 0) u.MemoryBytes = 0;
+            }
+        }
+
+        // ----------------------------------------------------- conexiones --
+        /// <summary>F5.09.12: concede una conexión activa (socket/ws/http) al
+        /// script contra el tope POR SCRIPT y el GLOBAL. Si se niega, deja el
+        /// error VISIBLE en el log y devuelve false — el host NO abre nada.</summary>
+        public bool TryOpenConnection(string script)
+        {
+            lock (_sync)
+            {
+                JsScriptUsage u = UsageOf(script);
+                if (u.Connections >= _budget.MaxConnectionsPerScript)
+                {
+                    Deny(script, "conexión denegada: límite por script (" +
+                        u.Connections + "/" + _budget.MaxConnectionsPerScript + ")");
+                    return false;
+                }
+                if (_totalConnections >= _budget.MaxConnectionsTotal)
+                {
+                    Deny(script, "conexión denegada: límite global (" +
+                        _totalConnections + "/" + _budget.MaxConnectionsTotal + ")");
+                    return false;
+                }
+                u.Connections++;
+                _totalConnections++;
+                return true;
+            }
+        }
+
+        /// <summary>Cierra una conexión (simétrico de TryOpenConnection; el
+        /// conteo nunca queda negativo ni por cierres dobles).</summary>
+        public void CloseConnection(string script)
+        {
+            lock (_sync)
+            {
+                JsScriptUsage u = UsageOf(script);
+                if (u.Connections > 0) { u.Connections--; _totalConnections--; }
+                if (_totalConnections < 0) _totalConnections = 0;
+            }
+        }
+
+        public int TotalConnections
+        {
+            get { lock (_sync) { return _totalConnections; } }
+        }
+
+        public int ConnectionsOf(string script)
+        {
+            lock (_sync)
+            {
+                JsScriptUsage u;
+                return _usage.TryGetValue(script ?? "", out u) ? u.Connections : 0;
+            }
+        }
+
+        /// <summary>Uso por script (diagnóstico F5.10: «Scripts JSLib»).</summary>
+        public List<JsScriptUsage> UsageSnapshot()
+        {
+            lock (_sync) { return new List<JsScriptUsage>(_usage.Values); }
+        }
+
+        /// <summary>Suelta TODO el presupuesto (recarga de módulos: la
+        /// generación anterior muere — misma decisión que JsEventRegistry).</summary>
+        public void Reset()
+        {
+            lock (_sync) { _usage.Clear(); _totalConnections = 0; }
+        }
+
+        private void Deny(string script, string reason)
+        {
+            lock (_sync) { UsageOf(script).Denials++; }
+            if (_log != null)
+                _log.Add(JsScriptError.Format(script, 0, reason));
+        }
+    }
+
+    /// <summary>
+    /// F5.09.14: errores de script con ARCHIVO/LÍNEA. El JScript de Windows
+    /// reporta la línea en el texto de la excepción («… línea N»); cuando el
+    /// motor la expone, Format la usa; si no, el error queda envuelto con el
+    /// nombre del script (siempre attributable). Aquí vive el parser/formatter
+    /// PURO para que el arnés lo verifique sin motor COM.
+    /// </summary>
+    public static class JsScriptError
+    {
+        /// <summary>
+        /// Formatea un error attributable: «módulo.js (línea N): mensaje» si
+        /// line &gt; 0; «módulo.js: mensaje» si no se conoce línea.
+        /// </summary>
+        public static string Format(string script, int line, string message)
+        {
+            string name = string.IsNullOrEmpty(script) ? "(módulo)" : script;
+            string msg = string.IsNullOrEmpty(message) ? "error desconocido" : message;
+            if (line > 0)
+                return name + " (línea " + line.ToString(
+                    System.Globalization.CultureInfo.InvariantCulture) + "): " + msg;
+            return name + ": " + msg;
+        }
+
+        /// <summary>
+        /// Extrae la línea de un mensaje del motor JScript (busca «línea N» o
+        /// «line N» al final del texto). Devuelve 0 si no hay línea usable.
+        /// </summary>
+        public static int ParseEngineLine(string engineMessage)
+        {
+            if (string.IsNullOrEmpty(engineMessage)) return 0;
+            string[] needles = new string[] { "línea", "line" };
+            foreach (string needle in needles)
+            {
+                int i = engineMessage.LastIndexOf(needle, StringComparison.OrdinalIgnoreCase);
+                if (i < 0) continue;
+                int start = i + needle.Length;
+                // salta separadores «:» y espacios («línea: 12» / «línea 12»)
+                while (start < engineMessage.Length &&
+                       (engineMessage[start] == ':' || engineMessage[start] == ' ' ||
+                        engineMessage[start] == '\t'))
+                    start++;
+                int end = start;
+                while (end < engineMessage.Length && engineMessage[end] >= '0' &&
+                       engineMessage[end] <= '9')
+                    end++;
+                if (end > start)
+                {
+                    int v;
+                    string tok = engineMessage.Substring(start, end - start);
+                    if (int.TryParse(tok, System.Globalization.NumberStyles.Integer,
+                                     System.Globalization.CultureInfo.InvariantCulture, out v)
+                        && v > 0)
+                        return v;
+                }
+            }
+            return 0;
+        }
+
+        /// <summary>
+        /// Envuelve un error de motor con archivo/línea (F5.09.14): usa la
+        /// línea del motor si el mensaje la trae; si no, la del llamador
+        /// (0 = desconocida) y SIEMPRE nombra el script.
+        /// </summary>
+        public static string Wrap(string script, int fallbackLine, string engineMessage)
+        {
+            int line = ParseEngineLine(engineMessage);
+            if (line <= 0) line = fallbackLine;
+            return Format(script, line, engineMessage);
+        }
+    }
 }

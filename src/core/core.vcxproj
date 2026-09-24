@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ============================================================================
+  LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
+  ============================================================================
+  core.vcxproj : núcleo nativo C++ de la línea reestructurada v1.0.0 (MSBuild).
+
+  Mecanismo de build NORMATIVO de la reestructuración (AGENT.md «Comandos
+  Ejecutables»: msbuild src/core/core.vcxproj /p:Platform=Win32|x64). El plan
+  del propietario PROHÍBE crear/modificar CMake: este proyecto NO toca el
+  CMake heredado de native/ (que sigue compilando el subset portable en el
+  CI Linux); aquí se compila el núcleo COMPLETO:
+
+    * Fuentes base en native/core/src (ruta congelada por la restricción del
+      plan; el grafo de inclusión interno se respeta: lumina_api.cpp incluye
+      Bootstrap.cpp + NativeLog.cpp + IpcV1.cpp, y Projector.cpp incluye
+      VideoDS.cpp — jamás se compilan por partida doble).
+    * Módulos nuevos de la línea reestructurada en src/core/src
+      (EnvironmentReport F0.09/F6.01, RendererD2D F0.06.1).
+    * sqlite3 amalgamado (terceros empaquetado, C puro).
+    * MASM Win7CompatX86.asm solo en Win32 (shim del import Win8+, lección v5.2.0).
+
+  Compatibilidad: _WIN32_WINNT=0x0601 (Win7 SP1), CRT estático /MT, W4.
+  -->
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{7E5B1C0A-1F2A-4D63-9C41-0A55100000F0}</ProjectGuid>
+    <RootNamespace>lumina.core</RootNamespace>
+    <ProjectName>LuminaCore</ProjectName>
+    <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
+    <!-- 8.1 = toolset mínimo que compila para Win7 con SDK moderno; el CI
+         windows-latest resuelve al SDK instalado. _WIN32_WINNT fija el suelo
+         real de API (0x0601), no el SDK. -->
+  </PropertyGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+
+  <PropertyGroup>
+    <EnableD2D Condition="'$(EnableD2D)'==''">true</EnableD2D>
+    <OutDir>$(SolutionDir)build\$(Platform)\$(Configuration)\</OutDir>
+    <IntDir>$(OutDir)obj\$(ProjectName)\</IntDir>
+    <TargetName>LuminaCore</TargetName>
+  </PropertyGroup>
+
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <WarningLevel>Level4</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>LUMINA_CORE_BUILD=1;LUMINA_HAS_WIN32=1;NOMINMAX;WIN32_LEAN_AND_MEAN;_CRT_SECURE_NO_WARNINGS;_WIN32_WINNT=0x0601;WINVER=0x0601;SQLITE_ENABLE_FTS5=1;SQLITE_ENABLE_JSON1=1;SQLITE_THREADSAFE=1;SQLITE_OMIT_LOAD_EXTENSION=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(EnableD2D)'=='true'">%(PreprocessorDefinitions);LUMINA_HAS_D2D=1</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\..\native\core\include;$(ProjectDir)..\..\native\core\src;$(ProjectDir)..\..\third_party\sqlite3;$(ProjectDir)..\..\third_party\nlohmann;$(ProjectDir)src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <TreatWarningAsError>false</TreatWarningAsError>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <AdditionalDependencies>d2d1.lib;dwrite.lib;windowscodecs.lib;gdiplus.lib;winmm.lib;ole32.lib;oleaut32.lib;uuid.lib;advapi32.lib;user32.lib;gdi32.lib;shell32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <GenerateWindowsMetadata>false</GenerateWindowsMetadata>
+    </Link>
+    <MASM>
+      <UseSafeExceptionHandlers>false</UseSafeExceptionHandlers>
+    </MASM>
+  </ItemDefinitionGroup>
+
+  <!-- /MT estático en Release (cero dependencias redistribuibles [SPEC §3.1]);
+       /MTd en Debug. -->
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='Release'">
+    <ClCompile>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
+    <ClCompile>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <Optimization>Disabled</Optimization>
+    </ClCompile>
+  </ItemDefinitionGroup>
+
+  <ItemGroup>
+    <!-- Base del núcleo (grafo de inclusión interno respetado: Bootstrap/
+         NativeLog/IpcV1 viven dentro de lumina_api.cpp; VideoDS dentro de
+         Projector.cpp — compilarlos aparte duplicaría símbolos). -->
+    <ClCompile Include="..\..\native\core\src\lumina_api.cpp" />
+    <ClCompile Include="..\..\native\core\src\Engine.cpp" />
+    <ClCompile Include="..\..\native\core\src\Storage.cpp" />
+    <ClCompile Include="..\..\native\core\src\SongModel.cpp" />
+    <ClCompile Include="..\..\native\core\src\BibleBib.cpp" />
+    <ClCompile Include="..\..\native\core\src\Chords.cpp" />
+    <ClCompile Include="..\..\native\core\src\Lyrics.cpp" />
+    <ClCompile Include="..\..\native\core\src\BibleRef.cpp" />
+    <ClCompile Include="..\..\native\core\src\Scripture.cpp" />
+    <ClCompile Include="..\..\native\core\src\Highlight.cpp" />
+    <!-- Módulos nuevos de la línea reestructurada (src/core/src). -->
+    <ClCompile Include="src\EnvironmentReport.cpp" />
+    <ClCompile Include="src\RendererD2D.cpp" />
+    <!-- Win32-only del núcleo base (ruta congelada por el plan). -->
+    <ClCompile Include="..\..\native\core\src\Renderer.cpp" />
+    <ClCompile Include="..\..\native\core\src\Projector.cpp" />
+    <ClCompile Include="..\..\native\core\src\Win7Compat.cpp" />
+    <!-- sqlite3 amalgamado: C puro (ClCompile con CompileAs). -->
+    <ClCompile Include="..\..\third_party\sqlite3\sqlite3.c">
+      <CompileAs>CompileAsC</CompileAs>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+    </ClCompile>
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(Platform)'=='Win32'">
+    <!-- Shim MASM del import Win8+ en x86 (lección v5.2.0 del repo). -->
+    <MASM Include="..\..\native\core\src\Win7CompatX86.asm" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ClInclude Include="..\..\native\core\include\lumina\lumina.h" />
+    <ClInclude Include="..\..\native\core\src\LuminaCore.h" />
+    <ClInclude Include="..\..\native\core\src\Bootstrap.h" />
+    <ClInclude Include="..\..\native\core\src\IpcV1.h" />
+    <ClInclude Include="..\..\native\core\src\NativeLog.h" />
+    <ClInclude Include="..\..\native\core\src\Engine.h" Condition="Exists('..\..\native\core\src\Engine.h')" />
+    <ClInclude Include="..\..\native\core\src\Renderer.h" />
+    <ClInclude Include="..\..\native\core\src\Projector.h" />
+    <ClInclude Include="..\..\native\core\src\VideoDS.h" />
+    <ClInclude Include="..\..\native\core\src\Storage.h" />
+    <ClInclude Include="..\..\native\core\src\Models.h" />
+    <ClInclude Include="..\..\native\core\src\SongModel.h" />
+    <ClInclude Include="..\..\native\core\src\Scripture.h" />
+    <ClInclude Include="..\..\native\core\src\BibleRef.h" />
+    <ClInclude Include="..\..\native\core\src\BibleBib.h" />
+    <ClInclude Include="..\..\native\core\src\Chords.h" />
+    <ClInclude Include="..\..\native\core\src\Lyrics.h" />
+    <ClInclude Include="..\..\native\core\src\Highlight.h" />
+    <ClInclude Include="..\..\native\core\src\Utf8.h" />
+    <ClInclude Include="src\EnvironmentReport.h" />
+    <ClInclude Include="src\RendererD2D.h" />
+  </ItemGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>

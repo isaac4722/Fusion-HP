@@ -19,6 +19,12 @@
 //   * <a:br/> → '\n'; <a:fld> (campos) aporta su texto; formas sin txBody
 //     (imágenes/gráficos) se omiten silenciosamente.
 //   * Entradas de slide de tamaño absurdo → descartadas (defensa).
+//
+//  F4.15 (v1.0.0-beta.1): el resultado expone `Report` (FidelityReport) con
+//  unidades convertidas, omisiones (tablas/gráficos SmartArt), animaciones
+//  descartadas y MACROS detectadas (ppt/vbaProject.bin — detectadas y JAMÁS
+//  ejecutadas, F4.16.3). Las firmas existentes NO cambian: el informe viaja
+//  como campo del resultado ya existente.
 // ============================================================================
 using System;
 using System.Collections.Generic;
@@ -42,6 +48,9 @@ namespace lumina.core
         public List<PptxSlide> Slides = new List<PptxSlide>();
         /// <summary>Título de la presentación (dc:title del core.xml o vacío).</summary>
         public string Title = string.Empty;
+        /// <summary>F4.15: informe de fidelidad de la importación (siempre
+        /// presente; sin omisiones si el paquete era fiel 1:1).</summary>
+        public FidelityReport Report = new FidelityReport();
     }
 
     public static class PptxImporter
@@ -71,18 +80,45 @@ namespace lumina.core
 
             PptxImportResult res = new PptxImportResult();
             res.Title = ReadCoreTitle(byName);
+            res.Report.Source = "pptx-import";
+
+            // F4.15 — MACROS detectadas (ppt/vbaProject.bin o partes .bin de
+            // VBA): se REPORTAN y NO se ejecutan (F4.16.3: pptm sin macros).
+            foreach (KeyValuePair<string, byte[]> kv in byName)
+            {
+                string n = kv.Key == null ? "" : kv.Key.Replace('\\', '/').ToLowerInvariant();
+                if (n.EndsWith("/vbaproject.bin", StringComparison.Ordinal) ||
+                    n.EndsWith("vbaproject.bin", StringComparison.Ordinal))
+                {
+                    res.Report.AddMacro("proyecto VBA detectado en " + kv.Key +
+                        " (detectado, no ejecutado)");
+                }
+            }
 
             // Orden REAL de las diapositivas: presentation.xml.sldIdLst →
             // presentation.xml.rels (rId → ppt/slides/slideN.xml).
             List<string> ordered = SlideOrder(byName);
+            int slideNo = 0;
             foreach (string slideName in ordered)
             {
                 byte[] data;
                 if (!byName.TryGetValue(slideName, out data)) continue;
-                if (data == null || data.Length == 0 || data.Length > MaxSlideXmlBytes) continue;
-                PptxSlide slide = ParseSlideXml(data);
+                if (data == null || data.Length == 0 || data.Length > MaxSlideXmlBytes)
+                {
+                    res.Report.AddOmission("diapositiva " + (slideNo + 1) +
+                        " descartada (parte vacía o demasiado grande)");
+                    slideNo++;
+                    continue;
+                }
+                slideNo++;
+                PptxSlide slide = ParseSlideXml(data, slideNo, res.Report);
                 if (slide != null) res.Slides.Add(slide);
             }
+            // F4.15: resultado final — unidades convertidas + herencia (el
+            // tema viaja 1:1 con el paquete; la herencia se resuelve al
+            // proyectar, aquí se reporta la del tema leído del master).
+            res.Report.AddConverted(res.Slides.Count,
+                "diapositivas convertidas a texto (una slide = un ítem)");
             return res;
         }
 
@@ -224,22 +260,55 @@ namespace lumina.core
 
         /* ---------------------------------------------------- slide XML ---- */
 
-        private static PptxSlide ParseSlideXml(byte[] data)
+        private static PptxSlide ParseSlideXml(byte[] data, int slideNo, FidelityReport report)
         {
             PptxSlide slide = new PptxSlide();
+            int graphicFrames = 0, animations = 0;
             XmlReaderSettings st = NewSettings();
             using (XmlReader r = XmlReader.Create(new MemoryStream(data), st))
             {
                 // Recorre TODO el spTree por documento: cada <p:sp> aporta sus
                 // párrafos; el orden de aparición = orden visual del panel.
-                while (r.Read())
+                // SEMÁNTICA XmlReader (misma lección de ParseShape): tras Skip
+                // el reader YA está en el nodo siguiente — se reprocesa SIN
+                // llamar Read() de nuevo (si no, se pierde ese nodo).
+                bool more = r.Read();
+                while (more)
                 {
-                    if (r.NodeType != XmlNodeType.Element) continue;
-                    if (!string.Equals(r.LocalName, "sp", StringComparison.Ordinal)) continue;
-                    if (r.IsEmptyElement) continue;
-                    ParseShape(r, slide);
+                    bool advanced = false;
+                    if (r.NodeType == XmlNodeType.Element)
+                    {
+                        string ln = r.LocalName;
+                        if (string.Equals(ln, "sp", StringComparison.Ordinal))
+                        {
+                            if (!r.IsEmptyElement) ParseShape(r, slide);
+                            // tras ParseShape el reader queda en </p:sp>: el
+                            // Read() del final del bucle avanza normalmente.
+                        }
+                        else if (string.Equals(ln, "graphicFrame", StringComparison.Ordinal))
+                        {
+                            // F4.15: tablas/gráficos SmartArt NO tienen
+                            // representación de texto — omitidos y REPORTADOS
+                            // (antes: silencio).
+                            graphicFrames++;
+                            if (!r.IsEmptyElement) { r.Skip(); advanced = true; }
+                        }
+                        else if (string.Equals(ln, "timing", StringComparison.Ordinal))
+                        {
+                            // F4.15: animaciones de la diapositiva → efecto
+                            // no soportado.
+                            animations++;
+                            if (!r.IsEmptyElement) { r.Skip(); advanced = true; }
+                        }
+                    }
+                    more = advanced ? true : r.Read();
                 }
             }
+            if (graphicFrames > 0)
+                report.AddOmission("diapositiva " + slideNo + ": " + graphicFrames +
+                    " tabla(s)/gráfico(s) sin representación de texto");
+            if (animations > 0)
+                report.AddUnsupported("diapositiva " + slideNo + ": animaciones descartadas");
             // Fidelidad 1:1: la slide se reporta AUNQUE no tenga texto (la UI
             // la mapea a un ítem «en blanco» — mismo número de diapositivas).
             return slide;

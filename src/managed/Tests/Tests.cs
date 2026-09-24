@@ -27,6 +27,7 @@ using lumina.api;
 using lumina.bridge;
 using lumina.core;
 using lumina.core.project;
+using lumina.core.integrations;
 
 #pragma warning disable SYSLIB0014
 namespace lumina.tests
@@ -106,6 +107,13 @@ namespace lumina.tests
             Run("Nativo: BibleRefResolve Jn 3:16", TestNativeRefResolve, libOk);
             Run("Nativo: ChordsTranspose Do Sol → Re# La# (+3)", TestNativeChordsTranspose, libOk);
             Run("Nativo: BD INSERT/SELECT/FTS5", TestNativeDb, libOk);
+
+            // --- v1.0.0-beta.1 «ULTRA» — brechas gestionadas F1.05/F4.15/F5.09/F6.04/F6.08
+            Run("Settings: atajos personalizables persistidos (F1.05)", TestSettingsShortcuts);
+            Run("Fidelidad: informe F4.15 en importación/exportación", TestFidelityReport);
+            Run("JSLib: sandbox CPU/memoria/conexiones + errores con línea (F5.09)", TestJsSandboxBudgets);
+            Run("Drive: offline-first, cola y conflictos con historial (F6.04)", TestDriveOfflineQueue);
+            Run("F6.08: sesión de servicio simulada (LUMINA_SESSION_MINUTES)", TestSession60);
 
             int failed = Failures.Count;
             int total = _pass + _skip + failed;
@@ -2093,6 +2101,819 @@ namespace lumina.tests
             AssertTrue(checks.Count == 8, "las 8 comprobaciones obligatorias (F5.10)");
         }
 
+        // =====================================================================
+        // v1.0.0-beta.1 «ULTRA» — brechas gestionadas:
+        //   F1.05 atajos · F4.15 informe de fidelidad · F5.09 sandbox JSLib ·
+        //   F6.04 Drive offline-first · F6.08 sesión de 60 minutos.
+        // =====================================================================
+
+        private static void TestSettingsShortcuts()
+        {
+            // F1.05: atajos personalizables persistidos en el JSON existente de
+            // Settings — flechas, Espacio, Enter, F1-F12 (favoritos) y Esc =
+            // pantalla de reposo. Defaults de fábrica si falta el archivo o el
+            // campo; campo desconocido IGNORADO (F2.01.8).
+            string dir = Path.Combine(Path.GetTempPath(),
+                "lumina_tests_sc_" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                // — Defaults de fábrica sin archivo —
+                Settings def = Settings.Load(Path.Combine(dir, "vacía"));
+                AssertTrue(def.GetShortcut("avanzar") == "Espacio", "default avanzar=Espacio");
+                AssertTrue(def.GetShortcut("retroceder") == "Izquierda", "default flecha izq");
+                AssertTrue(def.GetShortcut("avanzarElemento") == "Derecha", "default flecha der");
+                AssertTrue(def.GetShortcut("retrocederLinea") == "Arriba", "default flecha arriba");
+                AssertTrue(def.GetShortcut("avanzarLinea") == "Abajo", "default flecha abajo");
+                AssertTrue(def.GetShortcut("retrocederElemento") == "Enter", "default Enter");
+                AssertTrue(def.GetShortcut("reposo") == "Escape", "default Esc=reposo");
+                AssertTrue(def.GetShortcut("favorito1") == "F1" &&
+                           def.GetShortcut("favorito12") == "F12", "F1-F12 favoritos");
+                AssertTrue(def.GetShortcut("acción-inexistente").Length == 0,
+                    "acción desconocida → cadena vacía");
+
+                // — Personalización + roundtrip JSON —
+                Settings written = new Settings(dir);
+                written.SetShortcut("avanzar", "N");
+                written.SetShortcut("favorito3", "F9");
+                written.SetShortcut("", "X");          // acción vacía ignorada
+                written.SetShortcut("reposo", "");     // tecla vacía ignorada
+                written.Save();
+                AssertTrue(File.Exists(written.FilePath), "settings.json creado");
+
+                Settings read = Settings.Load(dir);
+                AssertTrue(read.GetShortcut("avanzar") == "N", "atajo personalizado persistido");
+                AssertTrue(read.GetShortcut("favorito3") == "F9", "favorito repunteado persistido");
+                AssertTrue(read.GetShortcut("reposo") == "Escape", "los no tocados quedan por defecto");
+
+                // — Campo desconocido dentro de shortcuts → ignorado; valor no
+                // string → ignorado (el campo válido sobrevive vía roundtrip) —
+                string path = read.FilePath;
+                Dictionary<string, object> root = MiniJson.Parse(
+                    File.ReadAllText(path, new UTF8Encoding(false)));
+                AssertTrue(root.ContainsKey("shortcuts"), "campo shortcuts presente");
+                Dictionary<string, object> sc = MiniJson.GetObject(root, "shortcuts");
+                sc["atajoDelFuturo"] = "Ctrl+Q";       // acción desconocida (F2.01.8)
+                sc["retroceder"] = 42L;                // valor no string
+                File.WriteAllText(path, MiniJson.Serialize(root), new UTF8Encoding(false));
+                Settings tolerant = Settings.Load(dir);
+                AssertTrue(!tolerant.ShortcutsSnapshot().ContainsKey("atajoDelFuturo"),
+                    "acción desconocida descartada");
+                AssertTrue(tolerant.GetShortcut("retroceder") == "Izquierda",
+                    "valor no-string → se rellena con el default de fábrica");
+                AssertTrue(tolerant.GetShortcut("favorito3") == "F9",
+                    "las entradas válidas persisten junto a las ignoradas");
+
+                // — JSON viejo SIN el campo shortcuts → defaults completos —
+                root.Remove("shortcuts");
+                File.WriteAllText(path, MiniJson.Serialize(root), new UTF8Encoding(false));
+                Settings old = Settings.Load(dir);
+                AssertTrue(old.GetShortcut("avanzar") == "Espacio" &&
+                           old.GetShortcut("favorito12") == "F12",
+                    "sin campo → defaults de fábrica");
+
+                // — ResetShortcuts vuelve a fábrica —
+                old.SetShortcut("reposo", "R");
+                old.ResetShortcuts();
+                AssertTrue(old.GetShortcut("reposo") == "Escape" &&
+                           old.GetShortcut("avanzar") == "Espacio", "reset de fábrica");
+            }
+            finally
+            {
+                try { Directory.Delete(dir, true); } catch (Exception) { }
+            }
+        }
+
+        private static void TestFidelityReport()
+        {
+            // F4.15: informe de fidelidad generalizado. Fixture PPTX REAL con el
+            // propio PptxExporter (patrón «PptxExporter: estructura OPC mínima»),
+            // macros con ZIP sintético ppt/vbaProject.bin, texto humano no vacío.
+            Theme t = new Theme();
+
+            // — Importación fiel 1:1 (exportar → importar) —
+            byte[] pptx = PptxExporter.ExportToBytes("F4.15", SampleExportSlides(), t);
+            PptxImportResult res;
+            using (MemoryStream ms = new MemoryStream(pptx))
+            {
+                res = PptxImporter.Import(ms);
+            }
+            FidelityReport rep = res.Report;
+            AssertTrue(rep != null, "informe presente en el resultado (campo, sin romper API)");
+            AssertTrue(rep.UnitsConverted == 3,
+                "3 diapositivas convertidas (hay " + rep.UnitsConverted + ")");
+            AssertTrue(rep.OmittedCount == 0, "paquete fiel → sin omisiones");
+            AssertTrue(rep.MacrosCount == 0, "paquete limpio → sin macros");
+            AssertTrue(rep.Ok, "resultado final OK");
+            string human = rep.ToHumanText();
+            AssertTrue(!string.IsNullOrEmpty(human) && human.Length > 40,
+                "texto humano no vacío");
+            AssertTrue(human.Contains("Copiar detalles técnicos"),
+                "plantilla humanizer: «Copiar detalles técnicos»");
+            Dictionary<string, object> j = MiniJson.Parse(rep.ToJson());
+            AssertTrue(MiniJson.GetString(j, "format", "") == "fidelity.v1", "JSON fidelity.v1");
+            Dictionary<string, object> rj = MiniJson.GetObject(j, "resultado");
+            AssertTrue(MiniJson.GetInt(rj, "unidadesConvertidas", 0) == 3,
+                "resultado JSON con conteos");
+
+            // — Exportador con informe (overload out; la firma histórica sigue) —
+            FidelityReport expRep;
+            PptxExporter.ExportToBytes("F4.15-out", SampleExportSlides(), t, out expRep);
+            AssertTrue(expRep.UnitsConverted == 3, "exporter: 3 diapositivas");
+            AssertTrue(expRep.Warnings.Count > 0 &&
+                       expRep.Warnings[0].Contains("MVP"), "regla MVP documentada");
+            AssertTrue(expRep.UnsupportedCount >= 1, "animaciones declaradas no soportadas");
+            FidelityReport pdfRep;
+            PdfExporter.ExportToBytes("F4.15-pdf", SampleExportSlides(), t, out pdfRep);
+            AssertTrue(pdfRep.UnitsConverted == 3, "pdf: 3 páginas");
+            AssertTrue(pdfRep.ToHumanText().Contains("unidades convertidas"), "pdf: texto humano");
+
+            // — MACROS detectadas (fixture sintético ZIP con ppt/vbaProject.bin):
+            // se REPORTAN y JAMÁS se ejecutan (F4.16.3) — el contenido íntegro
+            // se sigue importando.
+            byte[] slide1 = new UTF8Encoding(false).GetBytes(
+                "<?xml version=\"1.0\"?>" +
+                "<p:sld xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\" " +
+                "xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\">" +
+                "<p:cSld><p:spTree>" +
+                "<p:sp><p:txBody><a:p><a:r><a:t>Palabra viva</a:t></a:r></a:p></p:txBody></p:sp>" +
+                "</p:spTree></p:cSld></p:sld>");
+            List<KeyValuePair<string, byte[]>> parts = new List<KeyValuePair<string, byte[]>>();
+            parts.Add(new KeyValuePair<string, byte[]>("ppt/presentation.xml",
+                new UTF8Encoding(false).GetBytes(
+                    "<p:presentation xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\"/>")));
+            parts.Add(new KeyValuePair<string, byte[]>("ppt/slides/slide1.xml", slide1));
+            parts.Add(new KeyValuePair<string, byte[]>("ppt/vbaProject.bin",
+                new byte[] { 0x4D, 0x53, 0x46, 0x54 }));   // firma OLE sintética
+            MemoryStream macrosZip = new MemoryStream();
+            ZipWriter.WriteEntries(macrosZip, parts);
+            macrosZip.Position = 0;
+            PptxImportResult mres = PptxImporter.Import(macrosZip);
+            AssertTrue(mres.Report.MacrosCount == 1,
+                "macro detectada (hay " + mres.Report.MacrosCount + ")");
+            AssertTrue(mres.Slides.Count == 1 && mres.Slides[0].Lines[0] == "Palabra viva",
+                "contenido íntegro pese a la macro");
+            AssertTrue(mres.Report.ToHumanText().Contains("NO se ejecutaron"),
+                "macro: avisada como no ejecutada");
+
+            // — Tabla (graphicFrame) y animaciones OMITIDAS y REPORTADAS —
+            byte[] slideTable = new UTF8Encoding(false).GetBytes(
+                "<?xml version=\"1.0\"?>" +
+                "<p:sld xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\" " +
+                "xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\">" +
+                "<p:cSld><p:spTree>" +
+                "<p:sp><p:txBody><a:p><a:r><a:t>Texto visible</a:t></a:r></a:p></p:txBody></p:sp>" +
+                "<p:graphicFrame><a:graphic><a:graphicData uri=\"tabla\">" +
+                "<a:tbl><a:tr><a:tc><a:t>celda no representable</a:t></a:tc></a:tr></a:tbl>" +
+                "</a:graphicData></a:graphic></p:graphicFrame>" +
+                "<p:timing><p:tnLst><p:par/></p:tnLst></p:timing>" +
+                "</p:spTree></p:cSld></p:sld>");
+            parts = new List<KeyValuePair<string, byte[]>>();
+            parts.Add(new KeyValuePair<string, byte[]>("ppt/slides/slide1.xml", slideTable));
+            MemoryStream tableZip = new MemoryStream();
+            ZipWriter.WriteEntries(tableZip, parts);
+            tableZip.Position = 0;
+            PptxImportResult tres = PptxImporter.Import(tableZip);
+            AssertTrue(tres.Slides.Count == 1 && tres.Slides[0].Lines.Count == 1,
+                "el texto de la slide sobrevive (sin perder fidelidad)");
+            AssertTrue(tres.Report.OmittedCount == 1, "tabla omitida reportada");
+            AssertTrue(tres.Report.UnsupportedCount == 1, "animación reportada como efecto");
+            AssertTrue(tres.Report.ToHumanText().Contains("tabla(s)/gráfico(s)"),
+                "detalle de la omisión visible al operador");
+
+            // — Holyrics: el resultado EXISTENTE se MAPEA (sin romper su API) —
+            lumina.core.import.HolyricsReport hr = new lumina.core.import.HolyricsReport();
+            hr.Imported = 2;
+            hr.Skipped = 1;
+            hr.BackgroundsLinked = 1;
+            hr.Warnings.Add("prueba");
+            FidelityReport fHr = FidelityReport.FromHolyrics(hr, "biblio.xml");
+            AssertTrue(fHr.Source == "holyrics", "fuente holyrics");
+            AssertTrue(fHr.UnitsConverted == 2 && fHr.OmittedCount == 1 &&
+                       fHr.PathsRelinked == 1, "mapeo Holyrics→F4.15");
+        }
+
+        private static void TestJsSandboxBudgets()
+        {
+            // F5.09: presupuesto por script (CPU/memoria/conexiones) y errores
+            // con archivo/línea. Sin disco expuesto (política documentada) y
+            // REGRESIÓN: un ciclo normal de timers sigue funcionando.
+            JsLogRing log = new JsLogRing();
+            JsBudget budget = new JsBudget();
+            budget.CpuCycleBudgetMs = 50;
+            budget.MemoryBudgetBytes = 1000;
+            budget.MaxConnectionsPerScript = 2;
+            budget.MaxConnectionsTotal = 3;
+            JsGovernor gov = new JsGovernor(budget, log);
+
+            // — Script que excede el límite de conexiones → DENEGADO con error
+            // visible en el log (F5.09.12 + F5.04.5) —
+            AssertTrue(gov.TryOpenConnection("luces.js"), "conexión 1 concedida");
+            AssertTrue(gov.TryOpenConnection("luces.js"), "conexión 2 concedida");
+            AssertTrue(!gov.TryOpenConnection("luces.js"),
+                "conexión 3 DENEGADA (tope por script)");
+            AssertTrue(gov.ConnectionsOf("luces.js") == 2 && gov.TotalConnections == 2,
+                "conteos activos correctos");
+            List<string> snap = log.Snapshot();
+            AssertTrue(snap.Count >= 1, "la denegación deja rastro en el log");
+            AssertTrue(snap[snap.Count - 1].Contains("luces.js") &&
+                       snap[snap.Count - 1].Contains("conexión denegada") &&
+                       snap[snap.Count - 1].Contains("2/2"),
+                "error visible y attributable: " + snap[snap.Count - 1]);
+            gov.CloseConnection("luces.js");
+            AssertTrue(gov.TryOpenConnection("luces.js"), "tras cerrar, el cupo se libera");
+
+            // — Límite GLOBAL —
+            AssertTrue(gov.TryOpenConnection("media.js"), "segundo script conecta");
+            AssertTrue(gov.TotalConnections == 3, "global llena (3/3)");
+            AssertTrue(!gov.TryOpenConnection("tercero.js"), "global deniega");
+            gov.CloseConnection("media.js");
+            AssertTrue(gov.TryOpenConnection("tercero.js"), "cupo global liberado");
+
+            // — Memoria: cota operativa por script (documentada, no heap) —
+            AssertTrue(gov.TryReserveMemory("luces.js", 600), "memoria 600/1000 ok");
+            AssertTrue(!gov.TryReserveMemory("luces.js", 500),
+                "memoria denegada (600+500 > 1000)");
+            gov.ReleaseMemory("luces.js", 600);
+            AssertTrue(gov.TryReserveMemory("luces.js", 500), "tras liberar, vuelve a caber");
+
+            // — CPU: deadline por ciclo de despacho (motor mono-hilo → cooperativo) —
+            AssertTrue(!gov.CpuCycleExpired("luces.js", 10), "ciclo dentro del presupuesto");
+            AssertTrue(gov.CpuCycleExpired("luces.js", 51), "ciclo vencido detectado");
+
+            // — Disco: POR DISEÑO no hay E/S de archivos expuesta a scripts —
+            AssertTrue(JsGovernor.DiskPolicy.Contains("disco") &&
+                       JsGovernor.DiskPolicy.Contains("proyecto"),
+                "política de disco documentada");
+
+            // — Errores con archivo/línea (F5.09.14) —
+            AssertTrue(JsScriptError.ParseEngineLine("Se esperaba ';' en la línea 14") == 14,
+                "línea extraída del mensaje del motor");
+            AssertTrue(JsScriptError.ParseEngineLine("error sin línea") == 0,
+                "sin línea en el motor → 0");
+            string withLine = JsScriptError.Wrap("luces.js", 0, "TypeError en la línea 7");
+            AssertTrue(withLine.Contains("luces.js") && withLine.Contains("(línea 7)"),
+                "error attributable con la línea del motor: " + withLine);
+            string wrapped = JsScriptError.Wrap("luces.js", 3, "expresión inválida");
+            AssertTrue(wrapped.Contains("luces.js") && wrapped.Contains("(línea 3)"),
+                "sin línea del motor → envuelto con el nombre del script");
+
+            // — REGRESIÓN: ciclo NORMAL de timers con el sandbox activo —
+            JsEventRegistry reg = new JsEventRegistry();
+            JsTimerIds ids = new JsTimerIds();
+            reg.Subscribe("tick", "cbTick");
+            int executed = 0;
+            for (int i = 0; i < 5; i++)
+            {
+                AssertTrue(gov.BeginCpuCycle("luces.js"), "despacho " + i + " admitido");
+                int id = ids.Alloc();          // setTimeout
+                ids.Release(id);               // clearTimeout
+                gov.EndCpuCycle("luces.js");
+                executed++;
+            }
+            AssertTrue(executed == 5 && ids.LiveCount == 0,
+                "5 ciclos de timers normales con sandbox activo");
+            AssertTrue(reg.Subscribers("tick").Count == 1, "registro de eventos intacto");
+            AssertTrue(gov.UsageSnapshot().Count >= 3, "uso por script consultable (F5.10)");
+            gov.Reset();
+            AssertTrue(gov.TotalConnections == 0, "Reset suelta el presupuesto (recarga)");
+        }
+
+        /// <summary>Transporte Drive SIMULADO (F6.04): nube en memoria con
+        /// token/lista/descarga/subida — cero red real, cero credenciales.</summary>
+        private sealed class FakeDriveTransport : lumina.core.integrations.IDriveTransport
+        {
+            public readonly Dictionary<string, byte[]> Cloud =
+                new Dictionary<string, byte[]>(StringComparer.Ordinal);
+            public int Calls;
+            public readonly List<string> Seen = new List<string>();
+
+            public lumina.core.integrations.DriveHttpResponse Send(
+                lumina.core.integrations.DriveHttpRequest rq)
+            {
+                Calls++;
+                Seen.Add(rq.Method + " " + rq.Url);
+                // OAuth token endpoint
+                if (rq.Url.Contains("/token"))
+                    return Json(200, "{\"access_token\":\"T-ARNES\",\"refresh_token\":\"R-ARNES\"}");
+                // Multipart upload → actualiza la nube simulada
+                if (rq.Url.Contains("uploadType=multipart"))
+                {
+                    string body = Latin1.GetString(rq.Body);
+                    int nameAt = body.IndexOf("\"name\":\"", StringComparison.Ordinal) + 8;
+                    int nameEnd = body.IndexOf("\"", nameAt);
+                    string name = body.Substring(nameAt, nameEnd - nameAt);
+                    string marker = "application/octet-stream\r\n\r\n";
+                    int start = body.LastIndexOf(marker, StringComparison.Ordinal) + marker.Length;
+                    int tail = body.LastIndexOf("\r\n--", StringComparison.Ordinal);
+                    byte[] data = new byte[Math.Max(0, tail - start)];
+                    Buffer.BlockCopy(rq.Body, start, data, 0, data.Length);
+                    Cloud[name] = data;
+                    return Json(200, "{\"id\":\"arnes-" + name + "\",\"name\":\"" + name + "\"}");
+                }
+                // Lista por nombre (files.list)
+                if (rq.Url.Contains("/files?"))
+                {
+                    string q = Uri.UnescapeDataString(rq.Url);
+                    int a = q.IndexOf("'", StringComparison.Ordinal);
+                    int b = q.IndexOf("'", a + 1);
+                    string name = a >= 0 && b > a ? q.Substring(a + 1, b - a - 1) : "";
+                    if (Cloud.ContainsKey(name))
+                        return Json(200, "{\"files\":[{\"id\":\"arnes-" + name +
+                            "\",\"name\":\"" + name + "\"}]}");
+                    return Json(200, "{\"files\":[]}");
+                }
+                // Descarga por id (alt=media)
+                if (rq.Url.Contains("alt=media"))
+                {
+                    int f = rq.Url.IndexOf("/files/", StringComparison.Ordinal) + 7;
+                    int e = rq.Url.IndexOf("?", f);
+                    string id = rq.Url.Substring(f, e - f).Replace("arnes-", "");
+                    if (Cloud.ContainsKey(id))
+                    {
+                        lumina.core.integrations.DriveHttpResponse r =
+                            new lumina.core.integrations.DriveHttpResponse();
+                        r.StatusCode = 200;
+                        r.Body = Cloud[id];
+                        return r;
+                    }
+                    return Json(404, "{\"error\":\"not found\"}");
+                }
+                return Json(400, "{\"error\":\"petición no simulada\"}");
+            }
+
+            private static lumina.core.integrations.DriveHttpResponse Json(int code, string json)
+            {
+                lumina.core.integrations.DriveHttpResponse r =
+                    new lumina.core.integrations.DriveHttpResponse();
+                r.StatusCode = code;
+                r.Body = new UTF8Encoding(false).GetBytes(json);
+                return r;
+            }
+        }
+
+        private static void TestDriveOfflineQueue()
+        {
+            // F6.04: copias de canciones/biblias/configuraciones/proyectos;
+            // OFFLINE PRIMERO (cola persistente → descarga al reconectar);
+            // conflictos por versión ahp.v1 SIN pérdida silenciosa; historial
+            // de conflictos consultable y persistente (WhenUtc/Resource/…).
+            string dir = Path.Combine(Path.GetTempPath(),
+                "lumina_drive_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                FakeDriveTransport fake = new FakeDriveTransport();
+                GoogleDriveClient client = new GoogleDriveClient(
+                    "arnes-client", "arnes-secret",
+                    "http://auth.test/o/oauth2/auth", "http://auth.test/token",
+                    "http://drive.test/v3", "http://drive.test/upload/v3");
+                client.Transport = fake;
+                // Sesión OAuth restaurada (patrón real: el refresh token vive
+                // en Settings de arranques anteriores) → EnsureToken() pasa
+                // por el endpoint /token del transporte simulado.
+                client.SetSession("R-ARNES", "");
+                string conflictsFile = Path.Combine(dir, "conflictos.json");
+                client.ConflictHistoryFile = conflictsFile;
+
+                DriveSyncEngine engine = new DriveSyncEngine(client,
+                    Path.Combine(dir, "cola.json"));
+                engine.IsOnline = false;   // OFFLINE PRIMERO (F6.04.5)
+
+                AssertTrue(DriveSyncEngine.ResourceFor("proyectos", "culto.ahp")
+                    == "proyectos/culto.ahp", "categoría proyectos → recurso remoto");
+                AssertTrue(DriveSyncEngine.ResourceFor("CANCIONES", "aleluya.json")
+                    == "canciones/aleluya.json", "categoría canciones → recurso remoto");
+
+                // — Offline: encolada, CERO red, cola persistida —
+                string cloudJson = "{\"format\":\"ahp.v1\",\"project\":{\"name\":\"Culto\",\"nextId\":12},\"media\":[]}";
+                fake.Cloud["proyectos/culto.ahp"] = Encoding.UTF8.GetBytes(cloudJson);
+                string localPath = Path.Combine(dir, "culto.ahp");
+                engine.QueueDownload("proyectos/culto.ahp", localPath);
+                AssertTrue(engine.PendingCount == 1, "1 operación en cola");
+                AssertTrue(fake.Calls == 0, "offline: CERO llamadas de red");
+                DriveSyncResult offline = engine.Flush();
+                AssertTrue(!offline.Ok && engine.PendingCount == 1 && fake.Calls == 0,
+                    "flush sin red no toca nada (sigue en cola)");
+                AssertTrue(File.Exists(Path.Combine(dir, "cola.json")),
+                    "cola persistida en JSON");
+
+                // — Reconectar: la operación se DESCARGA (F6.04.5) —
+                engine.IsOnline = true;
+                DriveSyncResult res = engine.Flush();
+                AssertTrue(res.Ok, "flush en línea sin errores: " + res.LastError +
+                    " | peticiones: [" + string.Join(" | ", fake.Seen.ToArray()) + "]");
+                AssertTrue(res.Downloaded == 1 && engine.PendingCount == 0,
+                    "descargada al reconectar");
+                AssertTrue(File.ReadAllText(localPath) == cloudJson, "contenido íntegro");
+                AssertTrue(client.Status().Downloaded >= 1, "contador visible (F5.10)");
+
+                // — Conflicto ahp.v1: LOCAL gana (20 > 12). La nube perdedora
+                // queda como COPIA y la decisión va al historial (F6.04.6-8) —
+                string local20 = "{\"format\":\"ahp.v1\",\"project\":{\"name\":\"Culto LOCAL\",\"nextId\":20},\"media\":[]}";
+                File.WriteAllText(localPath, local20, new UTF8Encoding(false));
+                engine.QueueUpload("proyectos/culto.ahp", localPath);
+                res = engine.Flush();
+                AssertTrue(res.Conflicts == 1 && res.Uploaded == 1,
+                    "conflicto resuelto: local gana y sube");
+                AssertTrue(Encoding.UTF8.GetString(fake.Cloud["proyectos/culto.ahp"]) == local20,
+                    "la nube recibe la versión ganadora");
+                string[] bakCloud = Directory.GetFiles(dir, "culto.ahp.conflicto-nube-*.bak");
+                AssertTrue(bakCloud.Length == 1,
+                    "copia conservada de la nube (JAMÁS pérdida silenciosa)");
+                AssertTrue(File.ReadAllText(bakCloud[0]) == cloudJson,
+                    "la copia es la versión perdedora íntegra");
+
+                // — Conflicto: NUBE gana (5 < 30) — la LOCAL perdedora se
+                // conserva y el archivo local toma la versión de la nube —
+                string local5 = "{\"format\":\"ahp.v1\",\"project\":{\"name\":\"Viejo\",\"nextId\":5},\"media\":[]}";
+                File.WriteAllText(localPath, local5, new UTF8Encoding(false));
+                fake.Cloud["proyectos/culto.ahp"] = Encoding.UTF8.GetBytes(
+                    "{\"format\":\"ahp.v1\",\"project\":{\"name\":\"Culto NUBE\",\"nextId\":30},\"media\":[]}");
+                engine.QueueUpload("proyectos/culto.ahp", localPath);
+                res = engine.Flush();
+                AssertTrue(res.Conflicts == 1, "segundo conflicto detectado");
+                AssertTrue(File.ReadAllText(localPath).Contains("NUBE"),
+                    "la nube ganadora queda en local");
+                string[] bakLocal = Directory.GetFiles(dir, "culto.ahp.conflicto-local-*.bak");
+                AssertTrue(bakLocal.Length == 1 &&
+                           File.ReadAllText(bakLocal[0]) == local5,
+                    "la LOCAL perdedora se conserva íntegra");
+
+                // — Historial de conflictos consultable y PERSISTENTE —
+                List<DriveConflict> hist = client.ConflictHistory();
+                AssertTrue(hist.Count == 2, "2 conflictos en historial (hay " + hist.Count + ")");
+                AssertTrue(hist[0].Resolution == "local" &&
+                           hist[0].Resource == "proyectos/culto.ahp", "resolución registrada");
+                AssertTrue(hist[1].Resolution == "nube", "segunda resolución registrada");
+                AssertTrue(hist[0].LocalVersion == "20" && hist[0].CloudVersion == "12",
+                    "versiones del conflicto registradas");
+                AssertTrue(File.Exists(conflictsFile), "historial persistido a JSON");
+                Dictionary<string, object> hroot = MiniJson.Parse(
+                    File.ReadAllText(conflictsFile, new UTF8Encoding(false)));
+                List<object> harr = MiniJson.GetArray(hroot, "conflicts");
+                AssertTrue(harr.Count == 2 &&
+                           MiniJson.GetString((Dictionary<string, object>)harr[0],
+                               "resolution", "") == "local",
+                    "JSON del historial con WhenUtc/Resource/Resolution");
+                GoogleDriveClient client2 = new GoogleDriveClient("t", "s", "a", "b", "c", "d");
+                client2.ConflictHistoryFile = conflictsFile;
+                client2.LoadConflictHistory();
+                AssertTrue(client2.ConflictHistory().Count == 2,
+                    "historial sobrevive al reinicio");
+                AssertTrue(client2.ConflictHistory()[0].WhenUtc >
+                        DateTime.UtcNow.AddDays(-1), "WhenUtc legible");
+
+                // — Misma versión → SIN conflicto (subida idempotente omitida) —
+                File.WriteAllText(localPath, cloudJson, new UTF8Encoding(false));
+                fake.Cloud["proyectos/culto.ahp"] = Encoding.UTF8.GetBytes(cloudJson);
+                engine.QueueUpload("proyectos/culto.ahp", localPath);
+                res = engine.Flush();
+                AssertTrue(res.Conflicts == 0 && res.Uploaded == 0,
+                    "misma versión → nada que hacer");
+            }
+            finally
+            {
+                try { Directory.Delete(dir, true); } catch (IOException) { }
+            }
+        }
+
+        private static void TestSession60()
+        {
+            // F6.08: sesión de servicio SIMULADA y cronometrada — proyección
+            // continua (escenario/elemento/línea vía ScenarioBuilder +
+            // AhpBridge), cambios de tema (StyleCascade), imágenes, Lower
+            // Third, Stage View state, API y Triggers, y ERRORES CONTROLADOS
+            // (archivo corrupto → fail-safe). Duración por env var
+            // LUMINA_SESSION_MINUTES (default 2 en el arnés; 60 = campaña
+            // completa documentada). FALLA si hay ERROR no justificado.
+            double minutes = 2.0;
+            string env = Environment.GetEnvironmentVariable("LUMINA_SESSION_MINUTES");
+            if (!string.IsNullOrEmpty(env))
+            {
+                double parsed;
+                if (double.TryParse(env, NumberStyles.Float, CultureInfo.InvariantCulture,
+                                    out parsed) && parsed >= 0 && parsed <= 60)
+                    minutes = parsed;
+            }
+            Console.WriteLine("  [F6.08] duración: " +
+                minutes.ToString("0.##", CultureInfo.InvariantCulture) + " min" +
+                (minutes >= 60 ? " (campaña completa)" : " (arnés; LUMINA_SESSION_MINUTES=60 para campaña)"));
+
+            lumina.core.diagnostics.MetricsCollector metrics =
+                new lumina.core.diagnostics.MetricsCollector();
+            StateProvider stage = new StateProvider();
+            CountingSink sink = new CountingSink();
+
+            // — TriggerEngine: regla del servicio (elemento → escena OBS) —
+            TriggerEngine triggers = new TriggerEngine();
+            TriggerRule rule = new TriggerRule();
+            rule.Id = "s1"; rule.Name = "Escena por canto";
+            rule.Event = "item_changed";
+            rule.Match["title"] = "contains:canto";
+            TriggerAction act = new TriggerAction();
+            act.Type = "obs_scene";
+            act.Params["scene"] = "Culto";
+            rule.Actions.Add(act);
+            triggers.SetRules(new TriggerRule[] { rule });
+            triggers.SetSink(sink);
+
+            // — Escenario del servicio: ahp.v1 → JSON del motor (AhpBridge) —
+            AhpProject project = BuildSampleProject();
+            string engineJson = AhpBridge.ToEngineScenario(project.Scenarios[0], "C:\\base");
+            Dictionary<string, object> scenario = MiniJson.Parse(engineJson);
+            List<object> items = MiniJson.GetArray(scenario, "items");
+            AssertTrue(items.Count == 5, "escenario con los 5 elementos (F2.02)");
+            AhpElement ltElement = project.Scenarios[0].Elements[4];   // Lower Third
+
+            // — Cambios de tema (cascada Tema→Plantilla→Escenario→Elemento) —
+            Dictionary<string, string> themeA = new Dictionary<string, string>();
+            themeA["fontFace"] = "Segoe UI"; themeA["fontSize"] = "48";
+            Dictionary<string, string> themeB = new Dictionary<string, string>();
+            themeB["fontFace"] = "Georgia"; themeB["fontSize"] = "56";
+
+            // — Imagen REAL para las ops de imagen (PNG válido del QR propio) —
+            string imgPath = Path.Combine(Path.GetTempPath(),
+                "lumina_sesion_" + Guid.NewGuid().ToString("N") + ".png");
+            File.WriteAllBytes(imgPath, QrCode.ToPng(QrCode.Encode("F6.08"), 2, 2));
+
+            // — API real SOLO con núcleo nativo (sin él: parte JUSTIFICADA,
+            // no es un error — el resto del servicio sigue simulado) —
+            ApiV1Server api = null;
+            LuminaEngine nativeEngine = null;
+            int apiPort = 0;
+            try
+            {
+                nativeEngine = LuminaEngine.Create(true, null);
+                api = new ApiV1Server(nativeEngine);
+                apiPort = 19000 + (System.Diagnostics.Process.GetCurrentProcess().Id % 1000);
+                if (!api.StartLocal(apiPort)) { api = null; }
+            }
+            catch (Exception)
+            {
+                if (nativeEngine != null) { try { nativeEngine.Dispose(); } catch (Exception) { } }
+                nativeEngine = null;
+                api = null;
+            }
+            string apiToken = api != null ? api.Token : "";
+            string apiBase = api != null ? "http://127.0.0.1:" + apiPort + "/" : "";
+            Console.WriteLine("  [F6.08] API " +
+                (api != null ? "real en :" + apiPort : "simulada (sin núcleo nativo — justificado)"));
+
+            // — Errores controlados: fixtures corruptos (fail-safe) —
+            string corruptDir = Path.Combine(Path.GetTempPath(),
+                "lumina_sesion_corrupt_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(corruptDir);
+            File.WriteAllText(Path.Combine(corruptDir, "settings.json"),
+                "{ esto no es json", new UTF8Encoding(false));
+            File.WriteAllText(Path.Combine(corruptDir, "triggers.json"),
+                "[[[(corrupto", new UTF8Encoding(false));
+            byte[] corruptPptx = new byte[256];
+            for (int i = 0; i < corruptPptx.Length; i++) corruptPptx[i] = (byte)(i * 7);
+
+            long operations = 0, lineChanges = 0, elementChanges = 0, themeChanges = 0;
+            long imageOps = 0, ltOps = 0, stageOps = 0, apiOps = 0, triggerFires = 0;
+            long controlledErrors = 0, unjustified = 0;
+            int element = 0, line = 0;
+            bool restActive = false;
+            bool first = true;
+            DateTime startUtc = DateTime.UtcNow;   // inicio real de la sesión
+            System.Diagnostics.Stopwatch tick = new System.Diagnostics.Stopwatch();
+            System.Diagnostics.Stopwatch session = System.Diagnostics.Stopwatch.StartNew();
+            DateTime lastImage = DateTime.UtcNow;
+            DateTime lastPdf = DateTime.UtcNow;
+            DateTime lastCorrupt = DateTime.UtcNow;
+            DateTime lastProgress = DateTime.UtcNow;
+            double nextApiPoll = 0;   // segundos de sesión
+
+            try
+            {
+                while (DateTime.UtcNow < startUtc.AddMinutes(minutes) || first)
+                {
+                    first = false;
+                    tick.Restart();
+                    try
+                    {
+                        // 1) Proyección continua: navega línea/elemento.
+                        int lineCount = SessionLineCount(items[element]);
+                        line++;
+                        if (line >= lineCount)
+                        {
+                            line = 0;
+                            element = (element + 1) % items.Count;
+                            elementChanges++;
+                            Dictionary<string, object> ctx = new Dictionary<string, object>();
+                            ctx["title"] = "Canto " + element;
+                            triggerFires += triggers.Fire("item_changed", ctx);
+                        }
+                        else lineChanges++;
+
+                        // 2) Stage View state + proyección publicada (thread-safe).
+                        StateSnapshot snap = new StateSnapshot();
+                        snap.Mode = "live";
+                        snap.ScenarioTitle = "Sesión F6.08";
+                        snap.ElementIndex = element;
+                        snap.ElementCount = items.Count;
+                        snap.LineIndex = line;
+                        snap.LineCount = lineCount;
+                        snap.ThemeRef = themeChanges % 2 == 0 ? "theme-calma" : "theme-fiesta";
+                        snap.RestActive = restActive;
+                        snap.RestScreen = restActive ? "logo" : "black";
+                        snap.OutputVisible = true;
+                        snap.VideoPlaying = element == 3;   // el elemento 4 es video
+                        snap.Volume = 80;
+                        stage.Publish(snap);
+                        stageOps++;
+
+                        // El retrato publicado DEBE leerse íntegro (contrato).
+                        StateSnapshot cur = stage.Current;
+                        if (cur.ElementIndex != element || cur.LineIndex != line ||
+                            cur.OutputVisible != true)
+                            throw new Exception("estado publicado no coincide (Stage View)");
+
+                        // 3) Cambio de tema cada 12 cambios de elemento (cascada).
+                        if (elementChanges > 0 && elementChanges % 12 == 0)
+                        {
+                            Dictionary<string, string> vacio = new Dictionary<string, string>();
+                            Dictionary<string, string> active = themeChanges % 2 == 0 ? themeB : themeA;
+                            AhpStyleValue v = StyleCascade.ResolveWithOrigin("fontSize", "40",
+                                vacio, vacio, vacio, active);
+                            if (string.IsNullOrEmpty(v.Value)) throw new Exception("cascada sin valor");
+                            themeChanges++;
+                        }
+
+                        // 4) Lower Third periódico (F3.04) — JSON de activación.
+                        if (operations % 10 == 0)
+                        {
+                            string ltj = AhpBridge.LtJson(ltElement);
+                            Dictionary<string, object> lto = MiniJson.Parse(ltj);
+                            if (MiniJson.GetInt(lto, "durationMs", 0) <= 0)
+                                throw new Exception("LtJson sin duración");
+                            ltOps++;
+                        }
+
+                        // 5) Imágenes: PPTX con informe cada ~5 s; PDF cada ~10 s.
+                        if ((DateTime.UtcNow - lastImage).TotalSeconds >= 5)
+                        {
+                            lastImage = DateTime.UtcNow;
+                            List<ExportSlide> slides = SampleExportSlides();
+                            ExportSlide img = new ExportSlide();
+                            img.Kind = SlideKind.Image;
+                            img.Title = "Imagen de sesión";
+                            img.ImagePath = imgPath;
+                            slides.Add(img);
+                            FidelityReport rep;
+                            PptxExporter.ExportToBytes("Sesión F6.08", slides, new Theme(), out rep);
+                            if (rep.UnitsConverted != slides.Count) throw new Exception("PPTX incompleto");
+                            imageOps++;
+                        }
+                        if ((DateTime.UtcNow - lastPdf).TotalSeconds >= 10)
+                        {
+                            lastPdf = DateTime.UtcNow;
+                            FidelityReport rep;
+                            PdfExporter.ExportToBytes("Sesión F6.08",
+                                SampleExportSlides(), new Theme(), out rep);
+                            if (rep.UnitsConverted != SampleExportSlides().Count)
+                                throw new Exception("PDF incompleto");
+                            imageOps++;
+                        }
+
+                        // 6) API: encuesta del control remoto (GET /state) cada 2 s.
+                        if (api != null && session.Elapsed.TotalSeconds >= nextApiPoll)
+                        {
+                            nextApiPoll = Math.Floor(session.Elapsed.TotalSeconds / 2) * 2 + 2;
+                            HttpWebRequest rq = (HttpWebRequest)WebRequest.Create(
+                                apiBase + "api/v1/state");
+                            rq.Method = "GET";
+                            rq.Timeout = 3000;
+                            rq.Headers["Authorization"] = "Bearer " + apiToken;
+                            using (HttpWebResponse rs = (HttpWebResponse)rq.GetResponse())
+                            using (StreamReader sr = new StreamReader(rs.GetResponseStream()))
+                            {
+                                string body = sr.ReadToEnd();
+                                if (!body.Contains("\"version\"")) throw new Exception("estado API vacío");
+                            }
+                            apiOps++;
+                        }
+
+                        // 7) Errores controlados cada ~3 s: archivo corrupto →
+                        // fail-safe (settings/trigger tolerant, PPTX InvalidData).
+                        if ((DateTime.UtcNow - lastCorrupt).TotalSeconds >= 3)
+                        {
+                            lastCorrupt = DateTime.UtcNow;
+                            Settings corrupted = Settings.Load(corruptDir);
+                            if (corrupted.ApiPort != 8069)
+                                throw new Exception("settings corrupto NO volvió a defaults");
+                            TriggerEngine corruptedTriggers = TriggerEngine.Load(
+                                Path.Combine(corruptDir, "triggers.json"));
+                            if (corruptedTriggers.RulesSnapshot().Count != 0)
+                                throw new Exception("triggers corrupto NO quedó vacío");
+                            try
+                            {
+                                using (MemoryStream cms = new MemoryStream(corruptPptx))
+                                {
+                                    PptxImporter.Import(cms);
+                                }
+                                throw new Exception("PPTX corrupto NO fue rechazado");
+                            }
+                            catch (InvalidDataException)
+                            {
+                                // fail-safe esperado: rechazo explícito y legible.
+                            }
+                            controlledErrors++;
+                        }
+
+                        // 8) Métricas del servicio (F6.01): frame simulado con
+                        // el tiempo REAL del tick + volcado cada 60 s.
+                        metrics.ObserveRenderMs(tick.Elapsed.TotalMilliseconds);
+                        metrics.Count("operaciones", 1);
+                        string dump = metrics.Tick60("sesion60");
+                        if (dump != null && (int)session.Elapsed.TotalMinutes % 1 == 0)
+                            Console.WriteLine("  [F6.08] " +
+                                session.Elapsed.TotalMinutes.ToString("0.0", CultureInfo.InvariantCulture) +
+                                " min — ops=" + operations + " dump60 recogido");
+                        if ((DateTime.UtcNow - lastProgress).TotalSeconds >= 60)
+                        {
+                            lastProgress = DateTime.UtcNow;
+                            Console.WriteLine("  [F6.08] progreso: " +
+                                session.Elapsed.TotalMinutes.ToString("0.0", CultureInfo.InvariantCulture) +
+                                " min · ops=" + operations +
+                                " · RAM=" + metrics.SnapshotJson("sesion60"));
+                        }
+                        operations++;
+                    }
+                    catch (Exception ex)
+                    {
+                        // CUALQUIER excepción del ciclo es un ERROR: los 3
+                        // fail-safes de arriba ya capturan lo JUSTIFICADO, así
+                        // que aquí no debería llegar NADA (F6.08.11).
+                        unjustified++;
+                        Console.WriteLine("  [F6.08] ERROR no justificado: " + ex.Message);
+                    }
+                    while (tick.ElapsedMilliseconds < 100)
+                    {
+                        Thread.Sleep(10);   // cadencia del servicio (~10 Hz)
+                    }
+                }
+            }
+            finally
+            {
+                if (api != null) { try { api.Dispose(); } catch (Exception) { } }
+                if (nativeEngine != null) { try { nativeEngine.Dispose(); } catch (Exception) { } }
+                try { File.Delete(imgPath); } catch (Exception) { }
+                try { Directory.Delete(corruptDir, true); } catch (Exception) { }
+            }
+
+            // — Reporte final de la sesión (F6.08.11-13) —
+            TimeSpan dur = session.Elapsed;
+            string snapJson = metrics.SnapshotJson("sesion60");
+            Dictionary<string, object> mj = MiniJson.Parse(snapJson);
+            double ram = MiniJson.GetDouble(mj, "ramWorkingSetMb", 0);
+            double peak = MiniJson.GetDouble(mj, "ramPeakMb", 0);
+            Console.WriteLine("  [F6.08] REPORTE: duración=" +
+                dur.TotalMinutes.ToString("0.00", CultureInfo.InvariantCulture) +
+                " min · ops=" + operations +
+                " · líneas=" + lineChanges + " · elementos=" + elementChanges +
+                " · temas=" + themeChanges + " · imágenes=" + imageOps +
+                " · LT=" + ltOps + " · stage=" + stageOps +
+                " · api=" + apiOps + " · triggers=" + triggerFires +
+                " · erroresControlados=" + controlledErrors +
+                " · NO justificados=" + unjustified +
+                " · RAM=" + ram.ToString("0", CultureInfo.InvariantCulture) + " MB" +
+                " · pico=" + peak.ToString("0", CultureInfo.InvariantCulture) + " MB" +
+                " · dumps60=" + metrics.Dumps().Count);
+            AssertTrue(unjustified == 0, "0 errores no justificados (hay " + unjustified + ")");
+            AssertTrue(operations > 0, "el servicio simulado ejecutó operaciones");
+            AssertTrue(lineChanges > 0 && stageOps > 0,
+                "proyección continua con Stage View");
+            if (minutes >= 1)
+            {
+                AssertTrue(elementChanges > 0 && triggerFires > 0,
+                    "navegación de elementos y triggers disparados");
+                AssertTrue(metrics.Dumps().Count >= 1, "volcados de 60 s recolectados (F6.01)");
+                AssertTrue(imageOps > 0 && themeChanges > 0 && controlledErrors > 0,
+                    "imágenes, temas y errores controlados ejercitados en sesión larga");
+                AssertTrue(ltOps > 0, "Lower Third ejercitado");
+            }
+            if (api != null) AssertTrue(apiOps > 0, "API real encuestada con éxito");
+        }
+
+        /// <summary>Líneas proyectables de un ítem del JSON del motor
+        /// (lines[] estructurado, text plano o slide única).</summary>
+        private static int SessionLineCount(object itemObj)
+        {
+            Dictionary<string, object> item = itemObj as Dictionary<string, object>;
+            if (item == null) return 1;
+            List<object> lines = MiniJson.GetArray(item, "lines");
+            if (lines.Count > 0) return lines.Count;
+            string text = MiniJson.GetString(item, "text", "");
+            if (text.Length > 0)
+            {
+                int n = 1;
+                foreach (char c in text) if (c == '\n') n++;
+                return n;
+            }
+            return 1;
+        }
     }
 }
 

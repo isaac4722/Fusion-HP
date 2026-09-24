@@ -82,19 +82,42 @@ namespace lumina.core
         /// <summary>Exporta en memoria (tests / validación de estructura).</summary>
         public static byte[] ExportToBytes(string scenarioName, IList<ExportSlide> slides, Theme theme)
         {
+            FidelityReport rep;
+            return ExportToBytes(scenarioName, slides, theme, out rep);
+        }
+
+        /// <summary>
+        /// Exporta y reporta (F4.15): diapositivas convertidas, imágenes no
+        /// incrustadas, efectos no soportados (animaciones/transiciones) y la
+        /// REGLA MVP — una diapositiva por diapositiva proyectada (sin
+        /// re-agrupar líneas). La firma histórica sigue válida y delega aquí.
+        /// </summary>
+        public static byte[] ExportToBytes(string scenarioName, IList<ExportSlide> slides,
+                                           Theme theme, out FidelityReport report)
+        {
             if (slides == null) slides = new List<ExportSlide>();
             if (theme == null) theme = new Theme();
+            report = new FidelityReport();
+            report.Source = "pptx";
 
             // v5.1.0: OPC propio (dict nombre→(tipo, contenido)) — sin WindowsBase.
             OpcParts parts = new OpcParts();
             {
                 string bgImagePart = AddImageIfNeeded(parts, theme.ImagePath);
+                if (!string.IsNullOrEmpty(theme.ImagePath) && bgImagePart == null)
+                    report.AddOmission("imagen de fondo del tema no incrustada (ausente o no PNG/JPEG): " + theme.ImagePath);
                 string[] slideImageParts = new string[slides.Count];
                 for (int i = 0; i < slides.Count; i++)
                 {
                     ExportSlide s = slides[i] ?? new ExportSlide();
                     slideImageParts[i] = AddImageIfNeeded(parts, s.ImagePath);
+                    if (!string.IsNullOrEmpty(s.ImagePath) && slideImageParts[i] == null)
+                        report.AddOmission("diapositiva " + (i + 1) +
+                            ": imagen no incrustada (ausente o no PNG/JPEG): " + s.ImagePath);
                 }
+                if (parts.CountMedia() > 0)
+                    report.AddRelinked(parts.CountMedia(),
+                        "imágenes copiadas al paquete como ppt/media/imageN (rutas internas OPC)");
 
                 AddXmlPart(parts, "/_rels/.rels", CtRels,
                     "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
@@ -160,6 +183,18 @@ namespace lumina.core
                     AddXmlPart(parts, "/ppt/slides/_rels/slide" + (i + 1) + ".xml.rels", CtRels, slideRels);
                 }
             }
+
+            // F4.15: resultado final — REGLA MVP (una diapositiva por diapositiva
+            // proyectada), herencia Tema→Master aplicada a cada diapositiva
+            // (fondo/texto/acento/fuente/tamaño = 5 propiedades por slide) y
+            // efectos no soportados declarados (animaciones/transiciones).
+            report.AddConverted(slides.Count,
+                "diapositivas escritas (una por diapositiva proyectada — regla MVP)");
+            if (slides.Count > 0)
+                report.AddInheritance(slides.Count * 5,
+                    "fondo/texto/acento/fuente/tamaño heredados del tema vía slideMaster");
+            report.AddUnsupported("animaciones y transiciones (no exportadas)");
+            report.AddWarning("Regla MVP: cada diapositiva proyectada se exporta 1:1, sin re-agrupar líneas.");
             return BuildOpcZip(parts);
         }
 

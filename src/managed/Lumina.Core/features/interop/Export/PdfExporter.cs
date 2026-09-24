@@ -67,10 +67,23 @@ namespace lumina.core
             }
         }
 
+        /// <summary>F4.15: variante CON informe de fidelidad (out). La firma
+        /// histórica sigue válida y delega aquí (el informe se descarta).</summary>
         public static byte[] ExportToBytes(string scenarioName, IList<ExportSlide> slides, Theme theme)
+        {
+            FidelityReport rep;
+            return ExportToBytes(scenarioName, slides, theme, out rep);
+        }
+
+        /// <summary>Exporta y reporta (F4.15): páginas convertidas, imágenes
+        /// omitidas (ilegibles) y la regla MVP de una página por diapositiva.</summary>
+        public static byte[] ExportToBytes(string scenarioName, IList<ExportSlide> slides,
+                                           Theme theme, out FidelityReport report)
         {
             if (slides == null) slides = new List<ExportSlide>();
             if (theme == null) theme = new Theme();
+            report = new FidelityReport();
+            report.Source = "pdf";
 
             // IDs: 1=Catalog 2=Pages 3=F1 4=F2 5=Info, luego por página: page, contents, [imgs]
             PdfWriter w = new PdfWriter();
@@ -84,14 +97,16 @@ namespace lumina.core
 
             List<int> pageIds = new List<int>();
             int nextId = 6;
+            int pageNo = 0;
             foreach (ExportSlide s in slides)
             {
                 ExportSlide sl = s ?? new ExportSlide();
+                pageNo++;
                 int pageId = nextId++;
                 int contentId = nextId++;
                 List<int> imgIds = new List<int>();
 
-                string content = BuildPageContent(sl, theme, w, ref nextId, imgIds);
+                string content = BuildPageContent(sl, theme, w, ref nextId, imgIds, report, pageNo);
                 w.AddTextStream(contentId, content);
 
                 StringBuilder pg = new StringBuilder();
@@ -114,13 +129,21 @@ namespace lumina.core
             foreach (int id in pageIds) kids.Append(id).Append(" 0 R ");
             w.AddObject(pagesId, "<< /Type /Pages /Kids [" + kids.ToString() + "] /Count " + pageIds.Count + " >>");
 
+            // F4.15: resultado final — una diapositiva = una página (regla MVP),
+            // herencia del tema aplicada en cada página (fondo/texto/acento/fuente).
+            report.AddConverted(pageIds.Count, "páginas PDF escritas (una por diapositiva — regla MVP)");
+            if (pageIds.Count > 0)
+                report.AddInheritance(pageIds.Count * 4,
+                    "fondo/texto/acento/tipografía heredados del tema en cada página");
+            report.AddUnsupported("animaciones y transiciones (el PDF es papel estático)");
             return w.Finish(catalogId, infoId);
         }
 
         // ================================================================ página
 
         private static string BuildPageContent(ExportSlide s, Theme t, PdfWriter w,
-                                               ref int nextId, List<int> imgIds)
+                                               ref int nextId, List<int> imgIds,
+                                               FidelityReport report, int pageNo)
         {
             StringBuilder c = new StringBuilder();
             double bgR, bgG, bgB;
@@ -145,6 +168,11 @@ namespace lumina.core
                     c.Append("q " + Fmt(PageW) + " 0 0 " + Fmt(PageH) + " 0 0 cm /Im" + imgNo + " Do Q\n");
                 }
             }
+            else if (!string.IsNullOrEmpty(t.ImagePath))
+            {
+                // F4.15: fondo del tema ilegible → omitido y REPORTADO.
+                report.AddOmission("página " + pageNo + ": imagen de fondo del tema no decodificable (" + t.ImagePath + ")");
+            }
 
             // Imagen de la slide (área útil centrada)
             PdfImage img = LoadImage(s.ImagePath);
@@ -160,6 +188,11 @@ namespace lumina.core
                     double ox = (PageW - iw) / 2.0, oy = (PageH - ih) / 2.0;
                     c.Append("q " + Fmt(iw) + " 0 0 " + Fmt(ih) + " " + Fmt(ox) + " " + Fmt(oy) + " cm /Im" + imgNo + " Do Q\n");
                 }
+            }
+            else if (!string.IsNullOrEmpty(s.ImagePath))
+            {
+                // F4.15: imagen de la diapositiva ilegible → omitida y REPORTADA.
+                report.AddOmission("página " + pageNo + ": imagen de la diapositiva no decodificable (" + s.ImagePath + ")");
             }
 
             int kind = s.Kind;

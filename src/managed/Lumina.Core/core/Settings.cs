@@ -5,7 +5,8 @@
 //  (carpeta "data"), sin registro de Windows ni rutas de usuario — requisito
 //  de portabilidad del proyecto (un solo directorio copiable).
 //  Contenido: {apiPort, apiToken, theme, lastBibleVersion, themeJson,
-//              obs*, remote*, midi*, stageScreen, autoAdvanceVideo, triggersEnabled}.
+//              obs*, remote*, midi*, stageScreen, autoAdvanceVideo, triggersEnabled,
+//              shortcuts (F1.05: atajos personalizables acción→tecla)}.
 //  BasePath: derivado de Environment.GetCommandLineArgs()[0] (portable incluso
 //  si el exe se lanza por ruta relativa); sobreescribible para tests.
 // ============================================================================
@@ -59,6 +60,104 @@ namespace lumina.core
         public int  TransitionMs   = 220;             // 0..5000 ms
         public bool JsEnabled = false;                // v6.1.0 «GUION»: motor de scripts JSLib (WPF)
 
+        // ---- v1.0.0-beta.1 «ULTRA» — F1.05: atajos personalizables ----
+        // Diccionario acción→tecla (valores de tecla legibles es-VE). Los
+        // nombres de acción son estables (contrato con la UI y los triggers);
+        // las teclas son datos, no texto de UI. Defaults de fábrica en
+        // DefaultShortcuts(): flechas, Espacio, Enter, F1-F12 (favoritos) y
+        // Esc = pantalla de reposo. Persistido bajo "shortcuts" en el JSON
+        // existente — los lectores viejos lo IGNORAN (F2.01.8: campo nuevo
+        // ignorable hacia atrás) y este lector ignora acciones desconocidas.
+        private readonly Dictionary<string, string> _shortcuts =
+            new Dictionary<string, string>(StringComparer.Ordinal);
+
+        /// <summary>Catálogo FIJO de acciones de atajo (orden estable para la UI).</summary>
+        public static readonly string[] ShortcutActions = new string[]
+        {
+            "avanzar", "retroceder",
+            "avanzarElemento", "retrocederElemento",
+            "avanzarLinea", "retrocederLinea",
+            "reposo",
+            "favorito1", "favorito2", "favorito3", "favorito4", "favorito5",
+            "favorito6", "favorito7", "favorito8", "favorito9", "favorito10",
+            "favorito11", "favorito12",
+        };
+
+        /// <summary>
+        /// Defaults de fábrica (F1.05): Espacio avanza, flechas navegan
+        /// elemento/línea, Enter confirma el elemento elegido, Esc activa la
+        /// pantalla de reposo y F1-F12 disparan los favoritos.
+        /// </summary>
+        public static Dictionary<string, string> DefaultShortcuts()
+        {
+            Dictionary<string, string> d = new Dictionary<string, string>(StringComparer.Ordinal);
+            d["avanzar"] = "Espacio";
+            d["retroceder"] = "Izquierda";
+            d["avanzarElemento"] = "Derecha";
+            d["retrocederElemento"] = "Enter";
+            d["avanzarLinea"] = "Abajo";
+            d["retrocederLinea"] = "Arriba";
+            d["reposo"] = "Escape";
+            for (int i = 1; i <= 12; i++)
+                d["favorito" + i.ToString(CultureInfo.InvariantCulture)] =
+                    "F" + i.ToString(CultureInfo.InvariantCulture);
+            return d;
+        }
+
+        /// <summary>Tecla asignada a una acción ("" si la acción es desconocida
+        /// o no tiene tecla — p. ej. el usuario la desasignó).</summary>
+        public string GetShortcut(string action)
+        {
+            if (string.IsNullOrEmpty(action)) return string.Empty;
+            string key;
+            lock (_shortcuts)
+            {
+                if (!_shortcuts.TryGetValue(action, out key)) return string.Empty;
+            }
+            return key ?? string.Empty;
+        }
+
+        /// <summary>Asigna la tecla de una acción (acción/tecla vacías se
+        /// ignoran). Crea la entrada si la acción es del catálogo.</summary>
+        public void SetShortcut(string action, string key)
+        {
+            if (string.IsNullOrEmpty(action) || string.IsNullOrEmpty(key)) return;
+            lock (_shortcuts) { _shortcuts[action] = key; }
+        }
+
+        /// <summary>Restaura los defaults de fábrica (F1.05).</summary>
+        public void ResetShortcuts()
+        {
+            lock (_shortcuts)
+            {
+                _shortcuts.Clear();
+                foreach (KeyValuePair<string, string> kv in DefaultShortcuts())
+                    _shortcuts[kv.Key] = kv.Value;
+            }
+        }
+
+        /// <summary>Copia del mapa actual (para la UI y los tests).</summary>
+        public Dictionary<string, string> ShortcutsSnapshot()
+        {
+            lock (_shortcuts) { return new Dictionary<string, string>(_shortcuts, StringComparer.Ordinal); }
+        }
+
+        /// <summary>Rellena huecos con defaults y descarta acciones desconocidas
+        /// (F1.05: campo desconocido ignorado — el catálogo es el contrato).</summary>
+        internal void NormalizeShortcuts()
+        {
+            Dictionary<string, string> defaults = DefaultShortcuts();
+            lock (_shortcuts)
+            {
+                List<string> unknown = new List<string>();
+                foreach (KeyValuePair<string, string> kv in _shortcuts)
+                    if (!defaults.ContainsKey(kv.Key)) unknown.Add(kv.Key);
+                foreach (string u in unknown) _shortcuts.Remove(u);
+                foreach (KeyValuePair<string, string> kv in defaults)
+                    if (!_shortcuts.ContainsKey(kv.Key)) _shortcuts[kv.Key] = kv.Value;
+            }
+        }
+
         public string TriggersFile
         {
             get { return Path.Combine(Path.Combine(_dataDir, "triggers"), "triggers.json"); }
@@ -76,6 +175,7 @@ namespace lumina.core
         /// <summary>baseDirOverride: para tests (directorio temporal).</summary>
         public Settings(string baseDirOverride)
         {
+            ResetShortcuts();                          // F1.05: defaults de fábrica
             string baseDir = baseDirOverride;
             if (string.IsNullOrEmpty(baseDir))
             {
@@ -149,6 +249,7 @@ namespace lumina.core
             if (BackupFolder == null) BackupFolder = string.Empty;
             if (TransitionMs < 0) TransitionMs = 0;
             if (TransitionMs > 5000) TransitionMs = 5000;
+            NormalizeShortcuts();                          // F1.05
         }
 
         /// <summary>Carga desde el directorio dado (o default). Tolerante a errores: devuelve defaults.</summary>
@@ -190,6 +291,17 @@ namespace lumina.core
                 s.TransitionFade = MiniJson.GetBool(o, "transitionFade", true);
                 s.TransitionMs = (int)MiniJson.GetInt(o, "transitionMs", 220);
                 s.JsEnabled = MiniJson.GetBool(o, "jsEnabled", false);     // v6.1.0
+                // F1.05: atajos persistidos — entradas con tecla válida; la
+                // normalización descarta acciones desconocidas y rellena huecos.
+                Dictionary<string, object> sc = MiniJson.GetObject(o, "shortcuts");
+                if (sc != null)
+                {
+                    foreach (KeyValuePair<string, object> kv in sc)
+                    {
+                        string key = kv.Value as string;
+                        if (!string.IsNullOrEmpty(key)) s.SetShortcut(kv.Key, key);
+                    }
+                }
                 s.Normalize();
             }
             catch (Exception)
@@ -230,6 +342,15 @@ namespace lumina.core
             o["transitionFade"] = TransitionFade;                  // v6.0.0
             o["transitionMs"] = TransitionMs;
             o["jsEnabled"] = JsEnabled;                            // v6.1.0 «GUION»
+            // F1.05: mapa de atajos acción→tecla (SIEMPRE completo tras
+            // Normalize; los lectores antiguos ignoran el campo — F2.01.8).
+            Dictionary<string, object> sc = new Dictionary<string, object>();
+            lock (_shortcuts)
+            {
+                foreach (KeyValuePair<string, string> kv in _shortcuts)
+                    sc[kv.Key] = kv.Value;
+            }
+            o["shortcuts"] = sc;
             string dir = _dataDir;
             if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
             File.WriteAllText(FilePath, MiniJson.Serialize(o) + "\n", new UTF8Encoding(false));
