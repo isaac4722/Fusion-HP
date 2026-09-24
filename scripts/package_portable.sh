@@ -85,7 +85,7 @@ if [ -z "$VERSION" ]; then
   if [ -f version.props ]; then
     VERSION="$(sed -n 's/.*<AppVersionFull>\(.*\)<\/AppVersionFull>.*/\1/p' version.props | head -1 | tr -d '[:space:]')"
   fi
-  [ -z "$VERSION" ] && VERSION="1.0.0-beta.1" && \
+  [ -z "$VERSION" ] && VERSION="1.0.0-beta.2" && \\
     NOTE "version.props sin AppVersionFull — usando valor por defecto $VERSION"
 fi
 printf "${C_H}== Empaquetado portable LuminaPresentation Suite v%s ==${C_0}\n" "$VERSION"
