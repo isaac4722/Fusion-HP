@@ -13,7 +13,9 @@
 #include <ctime>
 #include <cctype>
 #include <algorithm>
+#ifndef _WIN32
 #include <mutex>
+#endif
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -30,7 +32,42 @@ namespace nlog {
 
 namespace {
 
-std::mutex g_logMutex;   // el logger es thread-safe (cola de render + IPC)
+// v7.0.0: sincronización Win32 pura en Windows — std::mutex arrastra el
+// objeto mtx.obj del STL de MSVC que importa GetSystemTimePreciseAsFileTime
+// (Win8+) como import ESTÁTICO en x86; el launcher compila este archivo por
+// inclusión directa y NO puede compilar el shim MASM (restricción del plan:
+// CMake intocable) — el exe dejaría de cargar en Win7 SP1. CRITICAL_SECTION
+// existe desde NT4 y el gate verify_win7_imports lo certifica. En Linux no
+// hay tabla de imports que vigilar: std::mutex sin costo alguno.
+#ifdef _WIN32
+struct LogMutex {
+    CRITICAL_SECTION cs;
+    LogMutex() { InitializeCriticalSection(&cs); }
+private:
+    LogMutex(const LogMutex&);
+    LogMutex& operator=(const LogMutex&);
+};
+struct LogLock {
+    LogMutex& m;
+    explicit LogLock(LogMutex& x) : m(x) { EnterCriticalSection(&m.cs); }
+    ~LogLock() { LeaveCriticalSection(&m.cs); }
+private:
+    LogLock(const LogLock&);
+    LogLock& operator=(const LogLock&);
+};
+#else
+struct LogMutex  { std::mutex mtx; };
+struct LogLock {
+    std::mutex* mtx;
+    explicit LogLock(LogMutex& x) : mtx(&x.mtx) { mtx->lock(); }
+    ~LogLock() { mtx->unlock(); }
+private:
+    LogLock(const LogLock&);
+    LogLock& operator=(const LogLock&);
+};
+#endif
+
+LogMutex g_logMutex;   // el logger es thread-safe (cola de render + IPC)
 
 bool EnsureDir(const std::string& dir) {
     if (dir.empty()) return false;
@@ -221,7 +258,7 @@ struct Log::State {
 };
 
 bool Log::Open(const Options& opt) {
-    std::lock_guard<std::mutex> lk(g_logMutex);
+    LogLock lk(g_logMutex);
     Close();
     opt_ = opt;
     if (!EnsureDir(opt_.dir)) return false;
@@ -247,7 +284,7 @@ bool Log::Open(const Options& opt) {
 }
 
 bool Log::Write(const Entry& e) {
-    std::lock_guard<std::mutex> lk(g_logMutex);
+    LogLock lk(g_logMutex);
     if (!state_) return false;
     if ((int)e.severity < (int)opt_.minLevel) { stats_.dropped++; return true; }
     // Rotación al cambiar el día (§10.3: un archivo por día).

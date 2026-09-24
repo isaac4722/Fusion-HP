@@ -26,10 +26,22 @@
 #include <climits>
 #include <chrono>
 #include <cmath>
-#include <condition_variable>
-#include <mutex>
 #include <string>
 #include <vector>
+
+// v7.0.0: sincronización Win32 pura (la crt std::mutex de x86 arrastra el
+// objeto mtx.obj del STL que importa GetSystemTimePreciseAsFileTime — Win8+
+// — como estático; diagnóstico v5.2.0; el launcher no compila MASM).
+namespace lumina {
+struct CsGuard {
+    CRITICAL_SECTION& cs;
+    explicit CsGuard(CRITICAL_SECTION& c) : cs(c) { EnterCriticalSection(&cs); }
+    ~CsGuard() { LeaveCriticalSection(&cs); }
+private:
+    CsGuard(const CsGuard&);
+    CsGuard& operator=(const CsGuard&);
+};
+} // namespace lumina
 
 namespace lumina {
 
@@ -55,7 +67,13 @@ std::string WideToUtf8(const std::wstring& w) {
 
 /* ------------------------------------------------------------ Projector -- */
 struct Projector::Impl {
-    std::mutex mx;
+    CRITICAL_SECTION mx;
+    // El ciclo de vida del cerrojo vive AQUÍ (no en Projector): Close()
+    // reinicia Impl (delete + new) y el nuevo Impl debe quedar con su
+    // CRITICAL_SECTION válida — si se inicializara solo en el ctor de
+    // Projector, todo uso tras Close() sería comportamiento indefinido.
+    Impl()  { InitializeCriticalSection(&mx); }
+    ~Impl() { DeleteCriticalSection(&mx); }
     std::vector<Slide> slides;
     std::vector<std::string> titles;
     Theme theme;
@@ -159,7 +177,7 @@ void Projector::SetContent(const std::vector<Slide>& slides,
                            const Theme& theme, int current, bool black) {
     Impl* p = impl_;
     {
-        std::lock_guard<std::mutex> lk(p->mx);
+        CsGuard lk(p->mx);
         p->slides = slides;
         p->titles = itemTitles;
         p->theme = theme;
@@ -201,7 +219,7 @@ void Projector::SetContent(const std::vector<Slide>& slides,
 
 void Projector::SetTransition(int mode, int durationMs) {
     Impl* p = impl_;
-    std::lock_guard<std::mutex> lk(p->mx);
+    CsGuard lk(p->mx);
     p->fadeOn = (mode != 0);
     p->fadeMs = std::max(0, std::min(5000, durationMs));
     if (!p->fadeOn || p->fadeMs == 0) p->fading = false;
@@ -210,7 +228,7 @@ void Projector::SetTransition(int mode, int durationMs) {
 void Projector::SetActiveLine(int lineIndex) {
     Impl* p = impl_;
     {
-        std::lock_guard<std::mutex> lk(p->mx);
+        CsGuard lk(p->mx);
         if (p->activeLine == lineIndex) return;
         p->activeLine = lineIndex;
     }
@@ -221,7 +239,7 @@ void Projector::SetActiveLine(int lineIndex) {
 
 std::string Projector::StatsJson() const {
     Impl* p = impl_;
-    std::lock_guard<std::mutex> lk(p->mx);
+    CsGuard lk(p->mx);
     if (p->d2dAvailable < 0) p->d2dAvailable = D2DAvailable() ? 1 : 0;
     char buf[256];
     _snprintf_s(buf, sizeof(buf), _TRUNCATE,
@@ -240,7 +258,7 @@ void Projector::SyncVideo() {
     Impl* p = impl_;
     const Slide* sl = nullptr;
     {
-        std::lock_guard<std::mutex> lk(p->mx);
+        CsGuard lk(p->mx);
         if (p->current >= 0 && p->current < (int)p->slides.size())
             sl = &p->slides[(size_t)p->current];
         const bool wantVideo = sl && sl->kind == SLIDE_VIDEO && !p->black &&
@@ -289,7 +307,7 @@ void Projector::SetLowerThird(const std::string& jsonStr) {
         return;
     }
     {
-        std::lock_guard<std::mutex> lk(p->mx);
+        CsGuard lk(p->mx);
         p->ltText = text;
         p->ltPosition = pos;
         p->ltDurationMs = dur;
@@ -310,7 +328,7 @@ void Projector::SetLowerThird(const std::string& jsonStr) {
 bool Projector::Show(int screenIndex, bool fullscreen) {
     Impl* p = impl_;
     {
-        std::lock_guard<std::mutex> lk(p->mx);
+        CsGuard lk(p->mx);
         p->screenIndex = screenIndex;
         p->fullscreen = fullscreen;
         p->showWindow = true;
@@ -330,7 +348,7 @@ bool Projector::Show(int screenIndex, bool fullscreen) {
 void Projector::Hide() {
     Impl* p = impl_;
     {
-        std::lock_guard<std::mutex> lk(p->mx);
+        CsGuard lk(p->mx);
         p->showWindow = false;
     }
     if (p->hwnd) PostMessageW(p->hwnd, WM_CLOSE, 0, 0);
@@ -339,7 +357,7 @@ void Projector::Hide() {
 void Projector::Close() {
     Impl* p = impl_;
     {
-        std::lock_guard<std::mutex> lk(p->mx);
+        CsGuard lk(p->mx);
         p->quit = true;
         p->showWindow = false;
     }
@@ -386,7 +404,7 @@ BOOL CALLBACK MonitorEnumProc(HMONITOR, HDC, LPRECT rc, LPARAM lp) {
 
 void Projector::PaintInto(HDC hdc, int w, int h) {
     Impl* p = impl_;
-    std::lock_guard<std::mutex> lk(p->mx);
+    CsGuard lk(p->mx);
     const Slide* slide = nullptr;
     if (p->current >= 0 && p->current < (int)p->slides.size())
         slide = &p->slides[(size_t)p->current];
@@ -543,7 +561,7 @@ void Projector::WindowLoop() {
         int screen;
         bool fs;
         {
-            std::lock_guard<std::mutex> lk(p->mx);
+            CsGuard lk(p->mx);
             quit = p->quit;
             show = p->showWindow;
             screen = p->screenIndex;
@@ -560,7 +578,7 @@ void Projector::WindowLoop() {
             // v6.0.0: el lienzo cambia de tamaño → el fotograma congelado y el
             // cached quedan inválidos (el fundido con tamaño mixto rompería).
             {
-                std::lock_guard<std::mutex> lk(p->mx);
+                CsGuard lk(p->mx);
                 p->fading = false;
                 if (p->fadeFrom)  { DeleteObject(p->fadeFrom);  p->fadeFrom  = nullptr; }
                 if (p->lastFrame) { DeleteObject(p->lastFrame); p->lastFrame = nullptr; }
@@ -620,7 +638,7 @@ void Projector::WindowLoop() {
         // v6.0.0: mientras corre el fundido se invalida el lienzo en cada paso
         // del bucle (~60 fps) — la animación avanza en PaintInto con el reloj.
         {
-            std::lock_guard<std::mutex> lk(p->mx);
+            CsGuard lk(p->mx);
             if (p->fading && p->hwnd) InvalidateRect(p->hwnd, nullptr, FALSE);
             // v7.0.0 (F3.01): sondeo de eventos DirectShow (EC_COMPLETE →
             // loop). Bajo mutex: PollEvents es barato y no bloquea.
@@ -687,7 +705,7 @@ LRESULT CALLBACK Projector::WndProcThunk(HWND hwnd, UINT m, WPARAM wp, LPARAM lp
                     std::chrono::steady_clock::now() - t0).count();
                 Impl* pi = self->impl_;
                 {
-                    std::lock_guard<std::mutex> lk(pi->mx);
+                    CsGuard lk(pi->mx);
                     pi->lastFrameMs = ms;
                     pi->maxFrameMs = std::max(pi->maxFrameMs, ms);
                     pi->frameCount++;
@@ -717,7 +735,7 @@ LRESULT CALLBACK Projector::WndProcThunk(HWND hwnd, UINT m, WPARAM wp, LPARAM lp
             if (wp == VK_ESCAPE) {
                 // ESC cierra la ventana de proyección (igual que la edición wx).
                 if (self) {
-                    std::lock_guard<std::mutex> lk(self->impl_->mx);
+                    CsGuard lk(self->impl_->mx);
                     self->impl_->showWindow = false;
                 }
                 DestroyWindow(hwnd);
