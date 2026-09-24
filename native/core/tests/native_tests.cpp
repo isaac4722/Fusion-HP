@@ -739,13 +739,15 @@ int main() {
         const Log::Stats st = log.StatsSnapshot();
         CHECK(st.written == 2);
         CHECK(st.dropped == 1);
-        CHECK(log.ActiveFile().find("lumina-") != std::string::npos);
+        const std::string activeFile = log.ActiveFile();
+        CHECK(activeFile.find("lumina-") != std::string::npos);
         // El archivo existe y tiene 2 líneas con formato. En Windows el
         // handle del logger aún está abierto (compartición del CRT): se
-        // cierra ANTES de reabrir para lectura.
+        // cierra ANTES de reabrir para lectura (la ruta se captura ANTES:
+        // Close() deja ActiveFile() vacío).
         log.Close();
         CHECK(!log.IsOpen());
-        std::FILE* f = std::fopen(log.ActiveFile().c_str(), "r");
+        std::FILE* f = std::fopen(activeFile.c_str(), "r");
         CHECK(f != nullptr);
         if (f) {
             char buf[2048];
