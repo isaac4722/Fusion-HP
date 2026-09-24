@@ -162,7 +162,7 @@ ButtonCancel=Cancelar
 [Types]
 ; First type listed is the default selection.
 Name: "full"; Description: "Instalación completa (recomendada)"
-Name: "custom"; Description: "Personalizada"; Flags: iscustom
+Name: "custom"; Description: "Personalizada"
 
 [Components]
 Name: "managed"; Description: "Capa gestionada C# — interfaz WPF (.NET 4.8) y baseline WinForms (.NET 3.5) con las DLL Lumina.*"; Types: full custom; Flags: fixed

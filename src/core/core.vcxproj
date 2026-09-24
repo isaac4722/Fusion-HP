@@ -46,10 +46,10 @@
     <ProjectGuid>{7E5B1C0A-1F2A-4D63-9C41-0A55100000F0}</ProjectGuid>
     <RootNamespace>lumina.core</RootNamespace>
     <ProjectName>LuminaCore</ProjectName>
-    <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
-    <!-- 8.1 = toolset mínimo que compila para Win7 con SDK moderno; el CI
-         windows-latest resuelve al SDK instalado. _WIN32_WINNT fija el suelo
-         real de API (0x0601), no el SDK. -->
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <!-- 10.0 = SDK más reciente instalado (los runners ya no traen el 8.1:
+         MSB8036). El SUELO de API lo fija _WIN32_WINNT=0x0601 (Win7 SP1),
+         no la versión del SDK. -->
   </PropertyGroup>
 
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
