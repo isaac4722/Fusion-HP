@@ -37,6 +37,7 @@ using System.Threading;
 using System.Windows.Forms;
 using lumina.api;
 using lumina.bridge;
+using System.Drawing.Imaging;
 using lumina.core;
 
 namespace lumina.ui
@@ -55,6 +56,7 @@ namespace lumina.ui
         private readonly Settings _settings;
         private LuminaEngine _engine;                 // null = modo limitado (sin núcleo)
         private ApiServer _api;
+        private Label _lblSysState;             // v7.0.0: Estado del sistema (F5.10)
         private RemoteServer _remote;                 // v5.0.0: mando móvil LAN
         private TriggerEngine _triggers;              // v5.0.0: activadores
         private MidiInput _midi;                      // v5.0.0: entrada MIDI
@@ -1875,6 +1877,35 @@ namespace lumina.ui
             dbForm.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
             dbForm.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             db.Controls.Add(dbForm);
+            RefreshSystemState();   // v7.0.0 (F5.10): estado visible al abrir Ajustes
+
+            // ---- v7.0.0 «ULTRA» (F5.10): Estado del sistema ----
+            ContentPanel sysPanel;
+            Panel sysCard = UiTheme.MkCard("Estado del sistema (Ayuda → Diagnóstico)", out sysPanel);
+            sysCard.Dock = DockStyle.Top;
+            sysCard.Height = 200;
+            sysCard.Margin = new Padding(0, 16, 0, 0);
+
+            _lblSysState = UiTheme.MkLabel("", UiTheme.TextSecondary, UiTheme.Small, false);
+            _lblSysState.Dock = DockStyle.Fill;
+            _lblSysState.Height = 120;
+            sysPanel.Controls.Add(_lblSysState);
+            _lblSysState.BringToFront();
+
+            FlowLayoutPanel sysBtns = new FlowLayoutPanel();
+            sysBtns.Dock = DockStyle.Bottom;
+            sysBtns.WrapContents = false;
+            sysBtns.Padding = new Padding(0, 6, 0, 0);
+            Button btnVerify = UiTheme.MkButton("Verificar entorno", "primary",
+                delegate { RunEnvironmentVerify(); });
+            Button btnSysRefresh = UiTheme.MkButton("Actualizar", "secondary",
+                delegate { RefreshSystemState(); });
+            Button btnQr = UiTheme.MkButton("QR del mando remoto", "secondary",
+                delegate { ShowQrDialog(); });
+            sysBtns.Controls.Add(btnVerify);
+            sysBtns.Controls.Add(btnSysRefresh);
+            sysBtns.Controls.Add(btnQr);
+            sysPanel.Controls.Add(sysBtns);
 
             // ---- v5.1.0: respaldo / sincronización por carpeta ----
             ContentPanel backup;
@@ -1980,6 +2011,216 @@ namespace lumina.ui
         }
 
         /// <summary>Respaldar data\ → ZIP con sello de tiempo en la carpeta elegida.</summary>
+        // ================= v7.0.0 «ULTRA»: F5.10/F5.03 =======================
+
+        /// <summary>F5.10: estado completo en la tarjeta de Ajustes.</summary>
+        private void RefreshSystemState()
+        {
+            if (_lblSysState == null) return;
+            try
+            {
+                StringBuilder sb = new StringBuilder();
+                try
+                {
+                    string env = LuminaEngine.DetectEnvironment(null);
+                    Dictionary<string, object> j = lumina.core.MiniJson.Parse(env);
+                    Dictionary<string, object> os = lumina.core.MiniJson.GetObject(j, "os");
+                    Dictionary<string, object> arch = lumina.core.MiniJson.GetObject(j, "arch");
+                    Dictionary<string, object> net = lumina.core.MiniJson.GetObject(j, "net");
+                    sb.Append("SO: ").Append(lumina.core.MiniJson.GetString(os, "class", "?"));
+                    sb.Append("   ·   Arquitectura: ")
+                      .Append(lumina.core.MiniJson.GetString(arch, "choice", "?"));
+                    sb.Append("   ·   Perfil: ")
+                      .Append(lumina.core.MiniJson.GetString(net, "profile", "?"))
+                      .Append(" (.NET ").Append(lumina.core.MiniJson.GetString(net, "label", "?"))
+                      .AppendLine(")");
+                }
+                catch (Exception)
+                {
+                    sb.AppendLine("SO/Arquitectura/Perfil: núcleo no disponible");
+                }
+                sb.Append("Monitores: ")
+                  .Append(Screen.AllScreens.Length).AppendLine(" conectados");
+                sb.Append("RAM (working set): ")
+                  .Append(lumina.core.diagnostics.MetricsCollector.WorkingSetMb().ToString("0.0"))
+                  .Append(" MB   ·   Pico: ")
+                  .Append(lumina.core.diagnostics.MetricsCollector.PeakMb().ToString("0.0"))
+                  .AppendLine(" MB");
+                if (_engine != null)
+                {
+                    try
+                    {
+                        Dictionary<string, object> st =
+                            lumina.core.MiniJson.Parse(_engine.StateJson());
+                        Dictionary<string, object> r = lumina.core.MiniJson.GetObject(st, "render");
+                        if (r != null)
+                            sb.Append("Render: ").Append(lumina.core.MiniJson.GetString(r, "lastMs", "0"))
+                              .Append(" ms/frame (máx ")
+                              .Append(lumina.core.MiniJson.GetString(r, "maxMs", "0"))
+                              .AppendLine(")   ·   D2D: ")
+                              .Append(lumina.core.MiniJson.GetString(r, "d2d", "0") == "1"
+                                  ? "disponible" : "no disponible");
+                        Dictionary<string, object> ipc = lumina.core.MiniJson.GetObject(st, "ipc");
+                        if (ipc != null)
+                            sb.Append("IPC ipc.v1: ")
+                              .AppendLine(lumina.core.MiniJson.GetInt(ipc, "running", 0) == 1
+                                  ? "activo" : "inactivo");
+                    }
+                    catch (Exception) { sb.AppendLine("Motor: estado no disponible"); }
+                }
+                sb.Append("API: ").AppendLine(_api != null && _api.IsRunning
+                    ? "activa (puerto " + _api.Port + ")" : "apagada");
+                sb.Append("Triggers/Drive/PCO/OBS/NDI/JSLib: ").AppendLine(
+                    "ver Comunicación (los estados por integración se muestran allí)");
+                _lblSysState.Text = sb.ToString();
+            }
+            catch (Exception ex)
+            {
+                _lblSysState.Text = "No se pudo leer el estado: " + ex.Message;
+            }
+        }
+
+        /// <summary>F5.10: botón «Verificar entorno» — 8 comprobaciones con
+        /// semáforo verde/ámbar/rojo y detalle accionable.</summary>
+        private void RunEnvironmentVerify()
+        {
+            string dataDir = lumina.core.Settings.DefaultBaseDir();
+            List<lumina.core.diagnostics.DiagCheck> checks =
+                lumina.core.diagnostics.EnvironmentVerifier.Verify(
+                    delegate
+                    {
+                        lumina.core.diagnostics.DiagCheck c = new lumina.core.diagnostics.DiagCheck();
+                        c.Name = "render";
+                        bool ok = _engine != null;
+                        c.Level = ok ? lumina.core.diagnostics.DiagLevel.Green
+                                     : lumina.core.diagnostics.DiagLevel.Amber;
+                        c.Detail = ok ? "Núcleo de proyección activo."
+                                      : "Núcleo nativo no cargado (reinstale el paquete).";
+                        return c;
+                    },
+                    delegate
+                    {
+                        lumina.core.diagnostics.DiagCheck c = new lumina.core.diagnostics.DiagCheck();
+                        c.Name = "multimedia";
+                        c.Level = lumina.core.diagnostics.DiagLevel.Green;
+                        c.Detail = "Los videos usan DirectShow del sistema (descodificadores " +
+                                   "instalados en Windows).";
+                        return c;
+                    },
+                    delegate
+                    {
+                        return lumina.core.diagnostics.EnvironmentVerifier.CheckLocalNetwork(
+                            delegate { return _api != null && _api.IsRunning; });
+                    },
+                    dataDir,
+                    delegate
+                    {
+                        lumina.core.diagnostics.DiagCheck c = new lumina.core.diagnostics.DiagCheck();
+                        c.Name = "API";
+                        c.Level = _api != null && _api.IsRunning
+                            ? lumina.core.diagnostics.DiagLevel.Green
+                            : lumina.core.diagnostics.DiagLevel.Amber;
+                        c.Detail = c.Level == lumina.core.diagnostics.DiagLevel.Green
+                            ? "API local activa en el puerto " + _api.Port + "."
+                            : "API apagada (ámbrelo si usará mando remoto).";
+                        return c;
+                    },
+                    delegate
+                    {
+                        lumina.core.diagnostics.DiagCheck c = new lumina.core.diagnostics.DiagCheck();
+                        c.Name = "pipes";
+                        c.Level = _engine != null
+                            ? lumina.core.diagnostics.DiagLevel.Green
+                            : lumina.core.diagnostics.DiagLevel.Amber;
+                        c.Detail = "ipc.v1 disponible en el núcleo.";
+                        return c;
+                    },
+                    delegate
+                    {
+                        lumina.core.diagnostics.DiagCheck c = new lumina.core.diagnostics.DiagCheck();
+                        c.Name = "runtime";
+                        c.Level = lumina.core.diagnostics.DiagLevel.Green;
+                        c.Detail = "Ejecutando .NET Framework " + Environment.Version.ToString();
+                        return c;
+                    },
+                    delegate
+                    {
+                        lumina.core.diagnostics.DiagCheck c = new lumina.core.diagnostics.DiagCheck();
+                        c.Name = "recursos";
+                        c.Level = string.IsNullOrEmpty(_txtDbPath.Text)
+                            ? lumina.core.diagnostics.DiagLevel.Amber
+                            : lumina.core.diagnostics.DiagLevel.Green;
+                        c.Detail = c.Level == lumina.core.diagnostics.DiagLevel.Green
+                            ? "Base de datos configurada."
+                            : "Sin base de datos (las biblias/canciones requieren BD).";
+                        return c;
+                    });
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine("Verificación del entorno:");
+            foreach (lumina.core.diagnostics.DiagCheck c in checks)
+            {
+                string color = c.Level == lumina.core.diagnostics.DiagLevel.Green ? "VERDE"
+                    : c.Level == lumina.core.diagnostics.DiagLevel.Amber ? "ÁMBAR" : "ROJO";
+                sb.Append("  [").Append(color).Append("] ").Append(c.Name)
+                  .Append(": ").AppendLine(c.Detail);
+            }
+            MessageBox.Show(this, sb.ToString(), "Verificar entorno",
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
+            RefreshSystemState();
+        }
+
+        /// <summary>F5.03.11: QR de emparejamiento del mando remoto.</summary>
+        private void ShowQrDialog()
+        {
+            try
+            {
+                int port = (int)_numPort.Value;
+                string token = _txtToken.Text;
+                string ip = "127.0.0.1";
+                try
+                {
+                    foreach (System.Net.IPAddress a in
+                        System.Net.Dns.GetHostAddresses(System.Net.Dns.GetHostName()))
+                        if (a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork &&
+                            !System.Net.IPAddress.IsLoopback(a)) { ip = a.ToString(); break; }
+                }
+                catch (Exception) { }
+                string url = "http://" + ip + ":" + port + "/remote.html#" + token;
+                lumina.api.QrMatrix qr = lumina.api.QrCode.Encode(url);
+                byte[] png = lumina.api.QrCode.ToPng(qr, 10, 4);
+                using (Form dlg = new Form())
+                using (System.IO.MemoryStream ms = new System.IO.MemoryStream(png))
+                using (Image img = Image.FromStream(ms))
+                {
+                    dlg.Text = "Mando remoto — escanee con el teléfono";
+                    dlg.FormBorderStyle = FormBorderStyle.FixedDialog;
+                    dlg.StartPosition = FormStartPosition.CenterParent;
+                    dlg.MaximizeBox = false; dlg.MinimizeBox = false;
+                    PictureBox pb = new PictureBox();
+                    pb.Image = img;
+                    pb.SizeMode = PictureBoxSizeMode.Zoom;
+                    pb.Dock = DockStyle.Fill;
+                    Label lbl = UiTheme.MkLabel(
+                        "Misma red Wi-Fi. El emparejamiento es por IP + token " +
+                        "(sin Internet ni cuentas).", UiTheme.TextSecondary, UiTheme.Small, false);
+                    lbl.Dock = DockStyle.Bottom;
+                    lbl.Height = 34;
+                    lbl.TextAlign = ContentAlignment.MiddleCenter;
+                    dlg.Controls.Add(pb);
+                    dlg.Controls.Add(lbl);
+                    dlg.ClientSize = new Size(Math.Max(360, img.Width),
+                        img.Height + lbl.Height);
+                    dlg.ShowDialog(this);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this,
+                    "No se pudo generar el QR: " + ex.Message, "Mando remoto",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+
         private void RunBackupNow()
         {
             _settings.BackupFolder = _txtBackupFolder.Text.Trim();

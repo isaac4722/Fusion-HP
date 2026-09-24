@@ -12,6 +12,7 @@
   <ItemGroup>
     <ProjectReference Include="../Lumina.Core/Lumina.Core.csproj" />
     <ProjectReference Include="../Lumina.Bridge/Lumina.Bridge.csproj" />
+    <ProjectReference Include="../Lumina.Api/Lumina.Api.csproj" />
   </ItemGroup>
 
   <!-- ZipFile/ZipArchive (validación del ZipBackup propio) y DeflateStream

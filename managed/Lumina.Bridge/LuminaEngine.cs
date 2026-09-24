@@ -305,6 +305,85 @@ namespace lumina.bridge
         /// 1=fundido (crossfade); durationMs 0..5000. Devuelve 0=OK,
         /// -5 (Limit) si el modo/duración están fuera de rango.
         /// </summary>
+        // ---------------- v7.0.0 «ULTRA» (F0.05/F1.03/F3.04) ----------------
+
+        /// <summary>F0.01-F0.03: entorno + decisión de arranque (SONDAS
+        /// REALES del sistema; probeJson vacío). JSON para «Estado del
+        /// sistema» y diagnósticos. SIN handle: usable antes de crear motor.</summary>
+        public static string DetectEnvironment(string probeJson)
+        {
+            byte[] probe = null;
+            if (!string.IsNullOrEmpty(probeJson))
+            {
+                probe = Encoding.UTF8.GetBytes(probeJson);
+                Array.Resize(ref probe, probe.Length + 1);
+                probe[probe.Length - 1] = 0;
+            }
+            return BufferHelper.InvokeText(delegate(byte[] buf, int cap, out int needed)
+            {
+                return NativeMethods.lumina_env_detect(probe, buf, cap, out needed);
+            });
+        }
+
+        /// <summary>F1.03: avanzar la LÍNEA activa (ERR si no hay más).</summary>
+        public int LineNext() { ThrowIfDisposed(); return NativeMethods.lumina_line_next(_handle); }
+
+        /// <summary>F1.03: retroceder la línea activa.</summary>
+        public int LinePrev() { ThrowIfDisposed(); return NativeMethods.lumina_line_prev(_handle); }
+
+        /// <summary>F1.03: fijar la línea activa (-1 = slide entera).</summary>
+        public int LineSet(int lineIndex) { ThrowIfDisposed(); return NativeMethods.lumina_line_set(_handle, lineIndex); }
+
+        /// <summary>F3.04: Lower Third nativo (json con text/position/durationMs/show).</summary>
+        public int LowerThird(string json)
+        {
+            ThrowIfDisposed();
+            byte[] b = Encoding.UTF8.GetBytes(json ?? "{}");
+            Array.Resize(ref b, b.Length + 1); b[b.Length - 1] = 0;
+            return NativeMethods.lumina_lower_third(_handle, b);
+        }
+
+        /// <summary>F0.09: abrir el log nativo (json con dir/retentionDays/level).</summary>
+        public int LogOpen(string optsJson)
+        {
+            ThrowIfDisposed();
+            byte[] b = Encoding.UTF8.GetBytes(optsJson ?? "{}");
+            Array.Resize(ref b, b.Length + 1); b[b.Length - 1] = 0;
+            return NativeMethods.lumina_log_open(_handle, b);
+        }
+
+        /// <summary>F0.05: arrancar el servidor IPC ipc.v1 (json con pipe/maxQueued/maxAgeMs).</summary>
+        public int IpcStart(string optsJson)
+        {
+            ThrowIfDisposed();
+            byte[] b = Encoding.UTF8.GetBytes(optsJson ?? "{}");
+            Array.Resize(ref b, b.Length + 1); b[b.Length - 1] = 0;
+            return NativeMethods.lumina_ipc_start(_handle, b);
+        }
+
+        /// <summary>F0.05: detener el servidor IPC.</summary>
+        public int IpcStop() { ThrowIfDisposed(); return NativeMethods.lumina_ipc_stop(_handle); }
+
+        /// <summary>F0.05: estadísticas del IPC (JSON).</summary>
+        public string IpcStats()
+        {
+            ThrowIfDisposed();
+            return BufferHelper.InvokeText(delegate(byte[] buf, int cap, out int needed)
+            {
+                return NativeMethods.lumina_ipc_stats(_handle, buf, cap, out needed);
+            });
+        }
+
+        /// <summary>F0.09: estadísticas del log (JSON).</summary>
+        public string LogStats()
+        {
+            ThrowIfDisposed();
+            return BufferHelper.InvokeText(delegate(byte[] buf, int cap, out int needed)
+            {
+                return NativeMethods.lumina_log_stats(_handle, buf, cap, out needed);
+            });
+        }
+
         public int SetTransition(int mode, int durationMs)
         {
             ThrowIfDisposed();

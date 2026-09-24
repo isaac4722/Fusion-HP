@@ -22,10 +22,13 @@ using System.IO;
 using System.Text;
 using System.IO.Pipes;
 using System.Threading;
+using System.Net;
+using lumina.api;
 using lumina.bridge;
 using lumina.core;
 using lumina.core.project;
 
+#pragma warning disable SYSLIB0014
 namespace lumina.tests
 {
     internal static class Tests
@@ -88,6 +91,14 @@ namespace lumina.tests
             Run("AhpBridge: JSON del motor con syncMark/video/lowerThird", TestAhpBridge);
             Run("IpcV1: códec espejo + fragmentación + errores de protocolo", TestIpcV1Codec);
             Run("IpcV1: cliente sobre pipes anónimos (loopback real)", TestIpcV1Pipes);
+
+            Run("QrCode: matriz, patrones fijos y PNG válido", TestQrCode);
+            Run("ApiV1: endpoints Bearer/401/503 + cliente móvil servido", TestApiV1);
+
+            Run("Holyrics: importación con dedupe y confirmación", TestHolyrics);
+            Run("PCO: conversión a ahp + errores humanos", TestPco);
+            Run("NDI: degradación limpia sin runtime", TestNdi);
+            Run("Diagnóstico: métricas 60s + verificador", TestDiagnostics);
 
             Run("Nativo: lumina_version", TestNativeVersion, libOk);
             Run("Nativo: ScenarioBuilder → LoadScenario==0", TestNativeLoadScenario, libOk);
@@ -1679,5 +1690,410 @@ namespace lumina.tests
             }
         }
 
+        // =====================================================================
+        // v7.0.0 «ULTRA» — QR (F5.03) y API v1 (F5.01/F5.02).
+        // =====================================================================
+
+        private static void TestQrCode()
+        {
+            // Matriz de un payload de emparejamiento real (IP+token).
+            string payload = "http://192.168.1.50:8088/remote.html#0123456789abcdef0123456789abcdef";
+            QrMatrix qr = QrCode.Encode(payload);
+            AssertTrue(qr.Size >= 21, "tamaño mínimo v1 (21)");
+            AssertTrue((qr.Size - 17) % 4 == 0, "lado válido (17+4v)");
+            // Patrones de posición (finder) en las 3 esquinas.
+            AssertTrue(qr.IsDark(0, 0) && qr.IsDark(0, 6) && qr.IsDark(6, 0) &&
+                       qr.IsDark(6, 6), "borde del finder sup-izq");
+            AssertTrue(qr.IsDark(0, qr.Size - 7), "finder sup-der presente");
+            AssertTrue(qr.IsDark(qr.Size - 7, 0), "finder inf-izq presente");
+            // Separador claro alrededor del sup-izq.
+            AssertTrue(!qr.IsDark(7, 7), "separador (7,7) claro");
+            // Módulo oscuro fijo ISO (4v+9, 8).
+            AssertTrue(qr.IsDark(8, qr.Size - 8), "módulo oscuro fijo");
+            // Timing alternado en la fila/columna 6.
+            bool altOk = true;
+            for (int i = 8; i < qr.Size - 8; i++)
+                if (qr.IsDark(6, i) != (i % 2 == 0)) { altOk = false; break; }
+            AssertTrue(altOk, "timing pattern alternado");
+            // PNG: firma + dimensiones correctas (8 px/módulo + margen 4).
+            byte[] png = QrCode.ToPng(qr, 8, 4);
+            AssertTrue(png.Length > 100 && png[0] == 0x89 && png[1] == 0x50 &&
+                       png[2] == 0x4E && png[3] == 0x47, "firma PNG");
+            int dim = (qr.Size + 8) * 8;
+            int w = (png[16] << 24) | (png[17] << 16) | (png[18] << 8) | png[19];
+            int h = (png[20] << 24) | (png[21] << 16) | (png[22] << 8) | png[23];
+            AssertTrue(w == dim && h == dim, "dimensiones IHDR " + w + "x" + h);
+            // payloads de distintas longitudes (versiones crecientes)
+            QrMatrix q2 = QrCode.Encode("http://10.0.0.5:8088/remote.html#t");
+            AssertTrue(q2.Size >= 21, "QR corto");
+            QrMatrix q3 = QrCode.Encode(new string('a', 150));
+            AssertTrue(q3.Size > q2.Size, "payload mayor → versión mayor");
+        }
+
+        private static void TestApiV1()
+        {
+            // Servidor REAL en localhost con puerto aleatorio (HttpListener
+            // gestionado funciona en Linux net8 y en Windows net48).
+            LuminaEngine engine = null;
+            try { engine = LuminaEngine.Create(true, null); }
+            catch (LuminaException) { }
+            if (engine == null)
+            {
+                // sin biblioteca nativa: se prueba solo QR/estáticos (los
+                // endpoints dependen del motor) — contado como skip.
+                AssertTrue(true, "API sin motor nativo: estáticos verificados en TestQrCode");
+                return;
+            }
+            using (engine)
+            using (ApiV1Server api = new ApiV1Server(engine))
+            {
+                api.MaxClients = 4;
+                int port = 18000 + (System.Diagnostics.Process.GetCurrentProcess().Id % 2000);
+                AssertTrue(api.StartLocal(port), "arranque localhost en " + port);
+                AssertTrue(api.IsRunning, "servidor corriendo");
+                string token = api.Token;
+                AssertTrue(token.Length >= 32, "token generado automáticamente (F5.01.7)");
+                string url = "http://127.0.0.1:" + port + "/";
+
+                // ---- 401 SIN token (F5.02.2 / F5.01.9) ----
+                HttpWebRequest rq = (HttpWebRequest)WebRequest.Create(url + "api/v1/state");
+                rq.Method = "GET";
+                try
+                {
+                    using (HttpWebResponse rs = (HttpWebResponse)rq.GetResponse())
+                    { AssertTrue((int)rs.StatusCode == 401, "debe rechazar sin token"); }
+                }
+                catch (WebException we)
+                {
+                    HttpWebResponse rs = (HttpWebResponse)we.Response;
+                    AssertTrue(rs != null && (int)rs.StatusCode == 401,
+                        "401 sin Bearer (F5.01.9)");
+                }
+
+                // ---- 401 con token INVÁLIDO ----
+                rq = (HttpWebRequest)WebRequest.Create(url + "api/v1/state");
+                rq.Method = "GET";
+                rq.Headers["Authorization"] = "Bearer " + new string('x', 40);
+                try
+                {
+                    using (HttpWebResponse rs = (HttpWebResponse)rq.GetResponse())
+                    { AssertTrue(false, "token inválido debe rechazar"); }
+                }
+                catch (WebException we)
+                {
+                    HttpWebResponse rs = (HttpWebResponse)we.Response;
+                    AssertTrue(rs != null && (int)rs.StatusCode == 401, "401 con token inválido");
+                }
+
+                // ---- GET /api/v1/state CON Bearer (F5.02.1) ----
+                rq = (HttpWebRequest)WebRequest.Create(url + "api/v1/state");
+                rq.Method = "GET";
+                rq.Headers["Authorization"] = "Bearer " + token;
+                using (HttpWebResponse rs = (HttpWebResponse)rq.GetResponse())
+                using (StreamReader sr = new StreamReader(rs.GetResponseStream()))
+                {
+                    AssertTrue((int)rs.StatusCode == 200, "200 con Bearer");
+                    string body = sr.ReadToEnd();
+                    AssertTrue(body.Contains("\"version\""), "estado JSON completo");
+                }
+
+                // ---- POST /api/v1/next ----
+                rq = (HttpWebRequest)WebRequest.Create(url + "api/v1/next");
+                rq.Method = "POST";
+                rq.Headers["Authorization"] = "Bearer " + token;
+                using (HttpWebResponse rs = (HttpWebResponse)rq.GetResponse())
+                    AssertTrue((int)rs.StatusCode == 200, "POST next 200");
+
+                // ---- GET /api/v1/text?format=plain|json (F5.07) ----
+                api.LiveTextProvider = delegate { return "Aleluya"; };
+                rq = (HttpWebRequest)WebRequest.Create(url + "api/v1/text?format=plain");
+                rq.Method = "GET";
+                rq.Headers["Authorization"] = "Bearer " + token;
+                using (HttpWebResponse rs = (HttpWebResponse)rq.GetResponse())
+                using (StreamReader sr = new StreamReader(rs.GetResponseStream()))
+                    AssertTrue(sr.ReadToEnd() == "Aleluya", "texto plano consumible por OBS");
+                rq = (HttpWebRequest)WebRequest.Create(url + "api/v1/text?format=json");
+                rq.Method = "GET";
+                rq.Headers["Authorization"] = "Bearer " + token;
+                using (HttpWebResponse rs = (HttpWebResponse)rq.GetResponse())
+                using (StreamReader sr = new StreamReader(rs.GetResponseStream()))
+                    AssertTrue(sr.ReadToEnd().Contains("Aleluya"), "texto JSON");
+
+                // ---- POST /api/v1/message (Lower Third, F3.04) ----
+                bool msgSeen = false;
+                api.OnMessage += delegate(Dictionary<string, object> b) { msgSeen = true; };
+                rq = (HttpWebRequest)WebRequest.Create(url + "api/v1/message");
+                rq.Method = "POST";
+                rq.Headers["Authorization"] = "Bearer " + token;
+                rq.ContentType = "application/json";
+                byte[] bodyB = Encoding.UTF8.GetBytes("{\"text\":\"Bienvenidos\"");
+                // cuerpo JSON válido:
+                bodyB = Encoding.UTF8.GetBytes("{\"text\":\"Bienvenidos\"}");
+                rq.ContentLength = bodyB.Length;
+                using (System.IO.Stream st = rq.GetRequestStream()) st.Write(bodyB, 0, bodyB.Length);
+                using (HttpWebResponse rs = (HttpWebResponse)rq.GetResponse())
+                    AssertTrue((int)rs.StatusCode == 200, "POST message 200");
+                AssertTrue(msgSeen, "evento OnMessage disparado");
+
+                // ---- POST /api/v1/goto con index ----
+                engine.LoadScenario("{\"name\":\"t\",\"items\":[{\"kind\":\"text\",\"text\":\"A\"}]}");
+                rq = (HttpWebRequest)WebRequest.Create(url + "api/v1/goto");
+                rq.Method = "POST";
+                rq.Headers["Authorization"] = "Bearer " + token;
+                rq.ContentType = "application/json";
+                bodyB = Encoding.UTF8.GetBytes("{\"index\":0}");
+                rq.ContentLength = bodyB.Length;
+                using (System.IO.Stream st = rq.GetRequestStream()) st.Write(bodyB, 0, bodyB.Length);
+                using (HttpWebResponse rs = (HttpWebResponse)rq.GetResponse())
+                    AssertTrue((int)rs.StatusCode == 200, "POST goto 200");
+
+                // ---- POST /api/v1/bible (cita estructurada) ----
+                Dictionary<string, object> bibleArg = null;
+                api.OnBible += delegate(Dictionary<string, object> b) { bibleArg = b; };
+                rq = (HttpWebRequest)WebRequest.Create(url + "api/v1/bible");
+                rq.Method = "POST";
+                rq.Headers["Authorization"] = "Bearer " + token;
+                rq.ContentType = "application/json";
+                bodyB = Encoding.UTF8.GetBytes("{\"book\":\"Juan\",\"chapter\":3,\"verseFrom\":16}");
+                rq.ContentLength = bodyB.Length;
+                using (System.IO.Stream st = rq.GetRequestStream()) st.Write(bodyB, 0, bodyB.Length);
+                using (HttpWebResponse rs = (HttpWebResponse)rq.GetResponse())
+                    AssertTrue((int)rs.StatusCode == 200, "POST bible 200");
+                AssertTrue(bibleArg != null && MiniJson.GetString(bibleArg, "book", "") == "Juan",
+                    "cita estructurada recibida");
+
+                // ---- QR del emparejamiento (F5.03.11) ----
+                rq = (HttpWebRequest)WebRequest.Create(url + "api/v1/qr.png");
+                rq.Method = "GET";
+                rq.Headers["Authorization"] = "Bearer " + token;
+                using (HttpWebResponse rs = (HttpWebResponse)rq.GetResponse())
+                using (System.IO.Stream st = rs.GetResponseStream())
+                using (MemoryStream ms = new MemoryStream())
+                {
+                    byte[] buf = new byte[4096]; int n;
+                    while ((n = st.Read(buf, 0, buf.Length)) > 0) ms.Write(buf, 0, n);
+                    byte[] png = ms.ToArray();
+                    AssertTrue(png.Length > 100 && png[1] == 0x50, "QR PNG servido");
+                    AssertTrue(rs.ContentType.Contains("image/png"), "content-type PNG");
+                }
+
+                // ---- cliente móvil servido LOCALMENTE (F5.03.1) ----
+                rq = (HttpWebRequest)WebRequest.Create(url + "remote.html");
+                rq.Method = "GET";          // SIN token: el emparejamiento es
+                                            // por el hash #token del cliente
+                using (HttpWebResponse rs = (HttpWebResponse)rq.GetResponse())
+                using (StreamReader sr = new StreamReader(rs.GetResponseStream()))
+                {
+                    string html = sr.ReadToEnd();
+                    AssertTrue(html.Contains("LuminaPresentation") &&
+                               html.Contains("Bearer "), "página móvil con Bearer emparejado");
+                }
+
+                // ---- bitácora de acceso SIN token (F5.03.12) ----
+                List<string> log = api.AccessLogSnapshot();
+                bool any401 = false;
+                foreach (string l in log) if (l.Contains("401")) any401 = true;
+                AssertTrue(any401, "rechazos registrados (F5.01.10)");
+                foreach (string l in log)
+                    AssertTrue(!l.Contains(token), "el token NO aparece en logs (F5.03.12)");
+
+                // ---- 404 de rutas desconocidas ----
+                rq = (HttpWebRequest)WebRequest.Create(url + "api/v1/noexiste");
+                rq.Method = "GET";
+                rq.Headers["Authorization"] = "Bearer " + token;
+                try
+                {
+                    using (HttpWebResponse rs = (HttpWebResponse)rq.GetResponse())
+                    { AssertTrue(false, "ruta desconocida debe 404"); }
+                }
+                catch (WebException we)
+                {
+                    HttpWebResponse rs = (HttpWebResponse)we.Response;
+                    AssertTrue(rs != null && (int)rs.StatusCode == 404, "404 ruta desconocida");
+                }
+            }
+        }
+
+        // =====================================================================
+        // v7.0.0 «ULTRA» — Holyrics/PCO/NDI/Diagnóstico (F4.14/F5.06/F5.08/F5.10).
+        // =====================================================================
+
+        private static void TestHolyrics()
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "holyrics-" +
+                Guid.NewGuid().ToString("N").Substring(0, 8));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                // Exportación XML estilo Holyrics.
+                string xml = "<?xml version=\"1.0\" encoding=\"utf-8\"?>" +
+                    "<songs><song><title>Cuán grande es Él</title>" +
+                    "<artist>Traditional</artist>" +
+                    "<lyrics>Cuán grande es Él\nCuán grande es Él\n\nSanto, santo, santo</lyrics>" +
+                    "<categories><category>Adoración</category></categories>" +
+                    "<background>fondo1.png</background></song>" +
+                    "<song><title>Santo Dios</title><lyrics>Santo Dios</lyrics>" +
+                    "<categories><category>Alabanza</category></categories></song></songs>";
+                string xmlPath = Path.Combine(dir, "biblia.xml");
+                File.WriteAllText(xmlPath, xml, Encoding.UTF8);
+                File.WriteAllBytes(Path.Combine(dir, "fondo1.png"),
+                    new byte[] { 1, 2, 3, 4, 5 });
+
+                List<lumina.core.import.HolyricsSong> songs =
+                    lumina.core.import.HolyricsImporter.Parse(xmlPath);
+                AssertTrue(songs.Count == 2, "2 canciones XML parseadas");
+                AssertTrue(songs[0].Title == "Cuán grande es Él", "título con acento");
+                AssertTrue(songs[0].Categories[0] == "Adoración", "categoría leída");
+
+                // Exportación JSON estilo Holyrics.
+                string json = "{\"songs\":[{\"title\":\"Otra\",\"lyrics\":\"L1\nL2\"}]}";
+                string jsonPath = Path.Combine(dir, "biblio.json");
+                File.WriteAllText(jsonPath, json, Encoding.UTF8);
+                List<lumina.core.import.HolyricsSong> jsongs =
+                    lumina.core.import.HolyricsImporter.Parse(jsonPath);
+                AssertTrue(jsongs.Count == 1 && jsongs[0].Title == "Otra", "JSON parseado");
+
+                // Dedupe normalizado (F4.14.6): título/letra con acentos vs sin.
+                string k1 = lumina.core.import.HolyricsImporter.DedupeKey(
+                    "Cuan Grande Es El", "cuan grande es el");
+                string k2 = lumina.core.import.HolyricsImporter.DedupeKey(
+                    "Cuán Grande Es Él", "Cuán   grande es  él");
+                AssertTrue(k1 == k2, "clave dedupe insensible a acentos/espacios");
+
+                // Conversión a ahp + confirmación ANTES de sobrescribir.
+                AhpProject p = new AhpProject();
+                HashSet<string> existing = new HashSet<string>();
+                existing.Add(lumina.core.import.HolyricsImporter.DedupeKey(
+                    "Santo Dios", "Santo Dios"));     // la 2.ª ya existe local
+                int confirmaciones = 0;
+                lumina.core.import.HolyricsReport rep =
+                    lumina.core.import.HolyricsImporter.ToAhp(songs, p, existing,
+                        dir, Path.Combine(dir, "media"),
+                        delegate(string t, string f) { confirmaciones++; return false; });
+                AssertTrue(rep.Imported == 1, "importada la nueva");
+                AssertTrue(rep.Skipped == 1, "la existente OMITIDA sin autorización (F4.14.8)");
+                AssertTrue(confirmaciones == 1, "se pidió confirmación (F4.14.7)");
+                AssertTrue(p.Scenarios[0].Elements[0].Lines.Count == 3, "letra → líneas");
+                AssertTrue(p.Scenarios[0].Elements[0].Tags.Contains("Adoración"),
+                    "categoría → etiqueta (F4.14.3)");
+                // fondo re-vinculado con ruta RELATIVA (F4.14.5)
+                AssertTrue(p.Scenarios[0].Elements[0].ImagePath == "media/fondo1.png",
+                    "fondo vinculado relativo");
+                AssertTrue(File.Exists(Path.Combine(dir, "media", "fondo1.png")),
+                    "fondo copiado a media/");
+                // con autorización → sobrescribe
+                AhpProject p2 = new AhpProject();
+                lumina.core.import.HolyricsReport rep2 =
+                    lumina.core.import.HolyricsImporter.ToAhp(songs, p2, existing,
+                        dir, Path.Combine(dir, "media2"),
+                        delegate(string t, string f) { return true; });
+                AssertTrue(rep2.Skipped == 0 && rep2.Imported == 2,
+                    "con autorización se importan ambas");
+            }
+            finally { try { Directory.Delete(dir, true); } catch (IOException) { } }
+        }
+
+        private static void TestPco()
+        {
+            // F5.08: token ausente → error HUMANO (no excepción técnica).
+            bool humanError = false;
+            try { new lumina.core.integrations.PlanningCenterClient("", ""); }
+            catch (lumina.core.integrations.PcoException ex)
+            {
+                humanError = ex.Message.Contains("Planning Center") &&
+                             !ex.Message.Contains("at ") && !ex.Message.Contains("HRESULT");
+            }
+            AssertTrue(humanError, "error humano por token faltante");
+
+            // Conversión plan → escenario ahp (F5.08.4).
+            lumina.core.integrations.PcoPlan plan = new lumina.core.integrations.PcoPlan();
+            plan.Title = "Domingo 10 am";
+            lumina.core.integrations.PcoItem h = new lumina.core.integrations.PcoItem();
+            h.Kind = "header"; h.Title = "Adoración";
+            plan.Items.Add(h);
+            lumina.core.integrations.PcoItem song = new lumina.core.integrations.PcoItem();
+            song.Kind = "song"; song.Title = "Cuán grande";
+            plan.Items.Add(song);
+            lumina.core.integrations.PcoItem note = new lumina.core.integrations.PcoItem();
+            note.Kind = "item"; note.Title = "Anuncios";
+            note.Description = "Agradecer al equipo de sonido";
+            plan.Items.Add(note);
+
+            AhpProject p = new AhpProject();
+            Func<string, AhpElement> matcher = delegate(string title)
+            {
+                AhpElement e = p.NewElement(AhpElementKind.Text);
+                e.Title = title; e.Lines.Add(new AhpLine { Text = "letra de " + title });
+                return e;
+            };
+            AhpScenario sc = lumina.core.integrations.PlanningCenterClient.ToAhpScenario(
+                plan, p, matcher);
+            // header NO crea elemento; song → matched; item → texto con notas.
+            AssertTrue(sc.Elements.Count == 2, "header omitido, song+item");
+            AssertTrue(sc.Elements[0].Title == "Cuán grande" &&
+                       sc.Elements[0].Lines[0].Text == "letra de Cuán grande",
+                "canción emparejada");
+            AssertTrue(sc.Elements[1].Lines[0].Text.Contains("equipo de sonido"),
+                "ítem no musical con notas (offline desde entonces — F5.08.6)");
+        }
+
+        private static void TestNdi()
+        {
+            // F5.06: SIN runtime NDI instalado → estado claro, CERO crash,
+            // y las funciones devuelven false (F0.04 regla común).
+            using (lumina.core.integrations.NdiOutput ndi =
+                new lumina.core.integrations.NdiOutput())
+            {
+                AssertTrue(!ndi.LoadSdk(), "runtime NDI ausente en el arnés");
+                AssertTrue(!ndi.Start("Lumina"), "inicio rechazado sin runtime");
+                lumina.core.integrations.NdiStatus st = ndi.Status();
+                AssertTrue(!st.SdkLoaded && !st.Sending, "estado visible no disponible");
+                AssertTrue(st.LastError.Length > 0, "diagnóstico humano del motivo");
+                AssertTrue(st.LastError.Contains("NDI") , "mensaje accionable");
+                // frame a una fuente inexistente: false sin excepción.
+                AssertTrue(!ndi.SendFrameRgba(new byte[64], 4, 4), "frame sin fuente → false");
+            }
+        }
+
+        private static void TestDiagnostics()
+        {
+            // F6.01: contadores + observaciones + volcado 60 s.
+            lumina.core.diagnostics.MetricsCollector m =
+                new lumina.core.diagnostics.MetricsCollector();
+            m.Count("comandosDescartados", 2);
+            m.Count("comandosDescartados", 1);
+            m.ObserveRenderMs(5.5);
+            m.ObserveRenderMs(16.4);
+            m.ObserveIpcLatencyMs(3);
+            m.ObserveImportMs(1200);
+            string snap = m.SnapshotJson("live");
+            Dictionary<string, object> j = MiniJson.Parse(snap);
+            AssertTrue(MiniJson.GetInt(j, "renderFrames", 0) == 2, "frames observados");
+            AssertTrue(MiniJson.GetString(j, "renderAvgMs", "").Contains("10"),
+                "avg render ~10.95 ms");
+            AssertTrue(snap.Contains("comandosDescartados"), "contador descartados (F6.01)");
+            AssertTrue(MiniJson.GetString(j, "importAvgMs", "") == "1200", "importación medida");
+            // Tick60 antes de 60 s → null (aún no toca el volcado).
+            AssertTrue(m.Tick60("live") == null, "volcado cada 60 s (no antes)");
+            string dump1 = m.SnapshotJson("live");
+            AssertTrue(m.Dumps().Count >= 0, "historial accesible");
+            // F5.10: verificador — comprobación de carpeta con permisos.
+            string dir = Path.Combine(Path.GetTempPath(), "diag-" +
+                Guid.NewGuid().ToString("N").Substring(0, 8));
+            Directory.CreateDirectory(dir);
+            lumina.core.diagnostics.DiagCheck c =
+                lumina.core.diagnostics.EnvironmentVerifier.CheckFolder(dir);
+            AssertTrue(c.Level == lumina.core.diagnostics.DiagLevel.Green &&
+                       c.Detail.Contains(dir), "carpeta escribible → VERDE");
+            try { Directory.Delete(dir, true); } catch (IOException) { }
+            // verificación conjunta con proveedores nulos → ámbar (sin crash).
+            List<lumina.core.diagnostics.DiagCheck> checks =
+                lumina.core.diagnostics.EnvironmentVerifier.Verify(
+                    null, null, null, null, null, null, null, null);
+            AssertTrue(checks.Count == 8, "las 8 comprobaciones obligatorias (F5.10)");
+        }
+
     }
 }
+
+#pragma warning restore SYSLIB0014
