@@ -50,6 +50,56 @@
           </StackPanel>
         </local:Card>
 
+        <!-- ======== leer la Biblia sin proyectar (v7.1.0 «OPERADOR») ======== -->
+        <local:Card Title="Leer la Biblia (navegación directa · sin proyectar)" Icon="{StaticResource IconList}"
+                    Margin="0,14,0,0">
+          <StackPanel>
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="130"/>
+              <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="38"/>
+              <RowDefinition Height="38"/>
+              <RowDefinition Height="38"/>
+              <RowDefinition Height="38"/>
+              <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="Libro" Style="{StaticResource TxtLabel}"
+                       VerticalAlignment="Center"/>
+            <ComboBox x:Name="cboBook" Grid.Row="0" Grid.Column="1"/>
+            <TextBlock Grid.Row="1" Grid.Column="0" Text="Capítulo" Style="{StaticResource TxtLabel}"
+                       VerticalAlignment="Center"/>
+            <local:LumNumeric x:Name="numChapter" Grid.Row="1" Grid.Column="1" Min="1" Max="150" Width="70"
+                              HorizontalAlignment="Left"/>
+            <TextBlock Grid.Row="2" Grid.Column="0" Text="Versión" Style="{StaticResource TxtLabel}"
+                       VerticalAlignment="Center"/>
+            <ComboBox x:Name="cboVersion" Grid.Row="2" Grid.Column="1"
+                      ToolTip="Versiones instaladas en la base de datos (se llena al abrir la BD)"/>
+            <TextBlock Grid.Row="3" Grid.Column="0" Text="Comparar con" Style="{StaticResource TxtLabel}"
+                       VerticalAlignment="Center"/>
+            <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal">
+              <ComboBox x:Name="cboVersion2" Width="180"
+                        ToolTip="Segunda versión para COMPARAR el mismo pasaje lado a lado (v7.1.0)"/>
+              <CheckBox x:Name="chkCompare" Content="Comparar las dos versiones" Margin="10,0,0,0"
+                        VerticalAlignment="Center" IsChecked="False"/>
+            </StackPanel>
+            <StackPanel Grid.Row="4" Grid.Column="1" Orientation="Horizontal" Margin="0,8,0,0">
+              <local:LumButton Variant="Secondary" Icon="{StaticResource IconEye}" Text="Leer capítulo"
+                               ToolTip="Muestra el capítulo completo en la lista de abajo — el operador lee SIN proyectar"
+                               Click="OnReadChapter"/>
+              <local:LumButton Variant="Primary" Icon="{StaticResource IconPlay}"
+                               Text="Cargar capítulo al escenario" Margin="8,0,0,0"
+                               ToolTip="Carga el capítulo (o la comparación de versiones) como ítems del escenario"
+                               Click="OnLoadChapterToStage"/>
+            </StackPanel>
+          </Grid>
+          <TextBlock Style="{StaticResource TxtCaption}" TextWrapping="Wrap" Margin="0,8,0,0"
+                     Text="Toda la Biblia está disponible por libro y capítulo, sin buscar: «Leer capítulo» la muestra completa aquí (el operador la lee sin proyectar; doble clic en un versículo lo carga al escenario). Con «Comparar», cada versículo muestra DOS versiones lado a lado y la proyección las lleva juntas."/>
+          </StackPanel>
+        </local:Card>
+
         <!-- ======== importar ======== -->
         <local:Card Title="Importar biblias" Icon="{StaticResource IconDownload}" Margin="0,14,0,0">
           <StackPanel>
@@ -87,6 +137,10 @@
                                Foreground="{StaticResource AccentBrush}"/>
                     <TextBlock Text="{Binding Text}" Style="{StaticResource TxtBody}"
                                TextWrapping="Wrap" Margin="0,2,0,0"/>
+                    <!-- v7.1.0: segunda versión al comparar (lado a lado) -->
+                    <TextBlock Text="{Binding TextB}" Style="{StaticResource TxtBody}"
+                               TextWrapping="Wrap" Margin="0,2,0,0" Opacity="0.85"
+                               Foreground="{StaticResource TextSecondaryBrush}"/>
                   </StackPanel>
                 </DataTemplate>
               </ListBox.ItemTemplate>

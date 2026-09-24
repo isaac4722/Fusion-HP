@@ -35,7 +35,7 @@ namespace lumina.wpf
     public partial class App : Application
     {
         private const string AppName = "LuminaPresentation Suite";
-        private const string AppVersion = "6.1.0";
+        private const string AppVersion = "7.1.0";
 
         private static string _logPath;
 

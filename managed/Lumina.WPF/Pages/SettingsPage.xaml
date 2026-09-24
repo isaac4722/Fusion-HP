@@ -14,33 +14,9 @@
     <ScrollViewer VerticalScrollBarVisibility="Auto">
       <StackPanel MaxWidth="760">
 
-        <!-- ======== API local ======== -->
-        <local:Card Title="API local (control remoto · OBS)" Icon="{StaticResource IconServer}">
-          <Grid>
-            <Grid.ColumnDefinitions>
-              <ColumnDefinition Width="130"/>
-              <ColumnDefinition Width="*"/>
-              <ColumnDefinition Width="180"/>
-            </Grid.ColumnDefinitions>
-            <Grid.RowDefinitions>
-              <RowDefinition Height="40"/>
-              <RowDefinition Height="40"/>
-            </Grid.RowDefinitions>
-            <TextBlock Grid.Row="0" Grid.Column="0" Text="Puerto API" Style="{StaticResource TxtLabel}"
-                       VerticalAlignment="Center"/>
-            <local:LumNumeric x:Name="numPort" Grid.Row="0" Grid.Column="1" Min="1024" Max="65535"
-                              Width="110" HorizontalAlignment="Left" Value="8069"/>
-            <local:LumButton x:Name="btnApiToggle" Grid.Row="0" Grid.Column="2" Variant="Primary"
-                             Icon="{StaticResource IconPower}" Text="Iniciar API"
-                             HorizontalAlignment="Stretch" Click="OnToggleApi"/>
-            <TextBlock Grid.Row="1" Grid.Column="0" Text="Token API" Style="{StaticResource TxtLabel}"
-                       VerticalAlignment="Center"/>
-            <TextBox x:Name="txtToken" Grid.Row="1" Grid.Column="1"/>
-            <TextBlock x:Name="lblApiState" Grid.Row="1" Grid.Column="2" Text="● DETENIDA"
-                       Style="{StaticResource TxtLabel}" Foreground="{StaticResource ErrBrush}"
-                       VerticalAlignment="Center"/>
-          </Grid>
-        </local:Card>
+        <!-- v7.1.0 «OPERADOR» (feedback #5): la «API local» (loopback, orientada
+             a OBS/control externo) se ELIMINÓ de Ajustes — no funcionaba. El
+             control remoto vive en Integraciones (mando móvil por LAN). -->
 
         <!-- ======== base de datos ======== -->
         <local:Card Title="Base de datos" Icon="{StaticResource IconDb}" Margin="0,14,0,0">

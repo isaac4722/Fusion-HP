@@ -18,11 +18,6 @@ namespace lumina.wpf
 
         public void Wire(MainWindow shell) { Shell = shell; }
 
-        private void OnObsConnect(object sender, RoutedEventArgs e)
-        {
-            if (Shell != null) Shell.ObsConnectClick();
-        }
-
         private void OnMidiAutoApply(object sender, RoutedEventArgs e)
         {
             if (Shell != null) Shell.MidiAutoApply();

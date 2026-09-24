@@ -1,6 +1,7 @@
 <!--
-  IntegrationsPage.xaml — «Integraciones»: OBS Studio (obs-websocket 5.x),
-  entrada MIDI (activadores) y mando remoto móvil por red local.
+  IntegrationsPage.xaml — «Integraciones»: mando remoto móvil (LAN),
+  entrada MIDI (activadores) y módulos JS (v7.1.0 «OPERADOR»: OBS eliminado
+  — feedback #5: el control local de OBS se retiró de la app).
 -->
 <UserControl x:Class="lumina.wpf.IntegrationsPage"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -8,50 +9,14 @@
              xmlns:local="clr-namespace:lumina.wpf">
   <DockPanel>
     <local:PageHeader DockPanel.Dock="Top" Title="Integraciones"
-                      Subtitle="OBS Studio · MIDI · Control remoto móvil (LAN)"
+                      Subtitle="Control remoto móvil (LAN) · MIDI · Módulos JS"
                       Icon="{StaticResource IconShare}"/>
 
     <ScrollViewer VerticalScrollBarVisibility="Auto">
       <StackPanel MaxWidth="780" HorizontalAlignment="Stretch">
 
-        <!-- ======== OBS ======== -->
-        <local:Card Title="OBS Studio (obs-websocket 5.x)" Icon="{StaticResource IconCast}">
-          <StackPanel>
-          <Grid>
-            <Grid.ColumnDefinitions>
-              <ColumnDefinition Width="150"/>
-              <ColumnDefinition Width="*"/>
-            </Grid.ColumnDefinitions>
-            <Grid.RowDefinitions>
-              <RowDefinition Height="40"/>
-              <RowDefinition Height="40"/>
-              <RowDefinition Height="40"/>
-              <RowDefinition Height="32"/>
-              <RowDefinition Height="Auto"/>
-            </Grid.RowDefinitions>
-            <TextBlock Grid.Row="0" Grid.Column="0" Text="Servidor WebSocket" Style="{StaticResource TxtLabel}"
-                       VerticalAlignment="Center"/>
-            <TextBox x:Name="txtObsUrl" Grid.Row="0" Grid.Column="1"/>
-            <TextBlock Grid.Row="1" Grid.Column="0" Text="Contraseña (opcional)" Style="{StaticResource TxtLabel}"
-                       VerticalAlignment="Center"/>
-            <PasswordBox x:Name="txtObsPassword" Grid.Row="1" Grid.Column="1"/>
-            <TextBlock Grid.Row="2" Grid.Column="0" Text="Fuente de texto en vivo" Style="{StaticResource TxtLabel}"
-                       VerticalAlignment="Center"/>
-            <TextBox x:Name="txtObsTextSource" Grid.Row="2" Grid.Column="1"/>
-            <CheckBox x:Name="chkObsAutoConnect" Grid.Row="3" Grid.Column="1"
-                      Content="Conectar automáticamente al abrir la aplicación" VerticalAlignment="Center"/>
-            <StackPanel Grid.Row="4" Grid.Column="1" Orientation="Horizontal" Margin="0,8,0,0">
-              <local:LumButton x:Name="btnObsConnect" Variant="Primary" Icon="{StaticResource IconLink}"
-                               Text="Conectar con OBS" Click="OnObsConnect"/>
-            </StackPanel>
-          </Grid>
-          <TextBlock x:Name="lblObsState" Text="● SIN CONECTAR" Style="{StaticResource TxtLabel}"
-                     Foreground="{StaticResource TextDisabledBrush}" Margin="0,8,0,0"/>
-          </StackPanel>
-        </local:Card>
-
         <!-- ======== MIDI ======== -->
-        <local:Card Title="Entrada MIDI (activadores)" Icon="{StaticResource IconMic}" Margin="0,14,0,0">
+        <local:Card Title="Entrada MIDI (activadores)" Icon="{StaticResource IconMic}">
           <StackPanel>
           <Grid>
             <Grid.ColumnDefinitions>

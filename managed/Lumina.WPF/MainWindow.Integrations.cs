@@ -26,57 +26,21 @@ namespace lumina.wpf
 {
     public partial class MainWindow : Window
     {
-        private lumina.ui.ObsClient _obs;
-
         /* v6.1.0 «GUION»: motor de scripts JSLib (IActiveScript) + temporizador
            de refresco del registro en la página Integraciones. */
         private JsEngine _js;
         private DispatcherTimer _jsLogTimer;
 
         /* ======================================================================
-         *  API LOCAL
-         * ==================================================================== */
-
-        internal void ToggleApi()
-        {
-            if (_api != null && _api.IsRunning)
-            {
-                _api.Stop();
-                Status("API detenida.");
-                UpdateApiStatus();
-                return;
-            }
-            if (!RequireEngine()) return;
-            try
-            {
-                if (_api != null) { try { _api.Dispose(); } catch (Exception) { } _api = null; }
-                int port = pageSettings.numPort.IntValue;
-                string token = pageSettings.txtToken.Text;
-                _api = new ApiServer(_engine, port, token);
-                _api.SetSlideCatalog(_slides);
-                _api.Start();
-                Status("API escuchando en http://127.0.0.1:" + port + "/" +
-                       (token.Length > 0 ? " (con token)" : " (sin token)"));
-            }
-            catch (Exception ex)
-            {
-                Status("No se pudo iniciar la API: " + ex.Message);
-            }
-            UpdateApiStatus();
-        }
-
-        private void UpdateApiStatus()
-        {
-            bool running = _api != null && _api.IsRunning;
-            pageSettings.btnApiToggle.Text = running ? "Parar API" : "Iniciar API";
-            pageSettings.lblApiState.Text = running
-                ? "● EN EJECUCIÓN (puerto " + _api.Port + ")"
-                : "● DETENIDA";
-            pageSettings.lblApiState.Foreground = running ? OkBrush : ErrBrush;
-            txtStApi.Text = running ? "API: 127.0.0.1:" + _api.Port : "API: detenida";
-            chipApi.SetState(running ? "API " + _api.Port : "API: detenida",
-                             running ? OkBrush : ErrBrush);
-        }
+         *  API LOCAL — ELIMINADA (v7.1.0 «OPERADOR», feedback #5)
+         * ====================================================================
+         * El «modo API» local (ApiServer loopback con /api/cmd, /api/obs y
+         * live.txt — orientado a OBS/control externo) NO funcionaba para el
+         * usuario y se retiró de la interfaz. El control remoto sigue siendo
+         * el MANDO MÓVIL por red local (RemoteServer, TcpListener — sin
+         * elevación), en la página Integraciones. La clase ApiServer
+         * permanece en Lumina.Api para la línea WinForms net35 (no se usa en
+         * la WPF) y ApiV1Server queda como biblioteca probada (tests). */
 
         /* ======================================================================
          *  BASE DE DATOS
@@ -111,6 +75,10 @@ namespace lumina.wpf
                 _dbOpen = true;
                 Status("BD abierta: " + path);
                 MaybeSeedFactoryBible();
+                // v7.1.0 «OPERADOR» (feedback #7): bibliotecas VISIBLES al abrir
+                // la BD — canciones completas + versiones bíblicas instaladas.
+                try { SearchSongs(); } catch (Exception) { }
+                try { RefreshBibleVersions(); } catch (Exception) { }
             }
             else
             {
@@ -165,8 +133,9 @@ namespace lumina.wpf
 
         internal void ApplySettingsToControls()
         {
-            pageSettings.numPort.Value = _settings.ApiPort;
-            pageSettings.txtToken.Text = _settings.ApiToken;
+            // v7.1.0 «OPERADOR» (feedback #5): sin «API local» en Ajustes — el
+            // control remoto vive en Integraciones (mando móvil por LAN);
+            // ApiPort/ApiToken se conservan en settings.json por compat.
             pageBible.txtVersion.Text = _settings.LastBibleVersion;
             pageSettings.txtDbPath.Text = Path.Combine(_settings.DataDir, "lumina.db");
             pageSettings.txtBackupFolder.Text = _settings.BackupFolder;
@@ -176,10 +145,6 @@ namespace lumina.wpf
             pageSettings.numFadeMs.Value = _settings.TransitionMs;
 
             // Integraciones
-            pageIntegrations.txtObsUrl.Text = _settings.ObsUrl;
-            pageIntegrations.txtObsPassword.Password = _settings.ObsPassword;
-            pageIntegrations.txtObsTextSource.Text = _settings.ObsTextSource;
-            pageIntegrations.chkObsAutoConnect.IsChecked = _settings.ObsAutoConnect;
             pageIntegrations.chkRemoteEnabled.IsChecked = _settings.RemoteEnabled;
             pageIntegrations.numRemotePort.Value = _settings.RemotePort;
             pageIntegrations.txtRemoteToken.Text = _settings.RemoteToken;
@@ -194,6 +159,11 @@ namespace lumina.wpf
 
             // Pantalla del proyector persistida.
             pageLive.ClampScreenIndex(_settings.ProjectionScreen);
+            // v7.1.0 «OPERADOR» (feedback #3): pantalla completa persistida
+            // (default true — la ventana nativa siempre es sin bordes).
+            pageLive.chkFullscreen.IsChecked = _settings.ProjectionFullscreen;
+            // Actualizar el interruptor del proyector con el estado real.
+            PollProjectorState();
 
             // Tema persistido (JSON completo en settings.json).
             if (_settings.ThemeJson.Length > 0)
@@ -208,8 +178,6 @@ namespace lumina.wpf
 
         internal void SaveSettings()
         {
-            _settings.ApiPort = pageSettings.numPort.IntValue;
-            _settings.ApiToken = pageSettings.txtToken.Text;
             _settings.Theme = _theme != null ? _theme.Name : "Predeterminado";
             _settings.LastBibleVersion = pageBible.txtVersion.Text.Trim();
             _settings.ThemeJson = _theme != null ? MiniJson.Serialize(_theme.ToDict()) : string.Empty;
@@ -239,10 +207,6 @@ namespace lumina.wpf
 
         internal void SaveIntegrationsFromControls()
         {
-            _settings.ObsUrl = pageIntegrations.txtObsUrl.Text.Trim();
-            _settings.ObsPassword = pageIntegrations.txtObsPassword.Password;
-            _settings.ObsTextSource = pageIntegrations.txtObsTextSource.Text.Trim();
-            _settings.ObsAutoConnect = pageIntegrations.chkObsAutoConnect.IsChecked == true;
             _settings.RemoteEnabled = pageIntegrations.chkRemoteEnabled.IsChecked == true;
             _settings.RemotePort = pageIntegrations.numRemotePort.IntValue;
             _settings.RemoteToken = pageIntegrations.txtRemoteToken.Text.Trim();
@@ -272,21 +236,8 @@ namespace lumina.wpf
             UpdateJsState();
             StartJsLogTimer();
             UpdateRemoteInfo();
-            UpdateObsState();
-            if (_settings.ObsAutoConnect && _settings.ObsUrl.Length > 0)
-            {
-                if (_obs == null) _obs = new lumina.ui.ObsClient();
-                ThreadPool.QueueUserWorkItem(delegate
-                {
-                    try { _obs.Connect(_settings.ObsUrl, _settings.ObsPassword, 5000); }
-                    catch (Exception) { }
-                    try
-                    {
-                        Dispatcher.BeginInvoke((Action)(delegate { UpdateObsState(); }));
-                    }
-                    catch (Exception) { }
-                });
-            }
+            // v7.1.0 «OPERADOR» (feedback #5): OBS eliminado de la WPF — sin
+            // auto-conexión, sin cliente local, sin envío de texto a OBS.
         }
 
         /* ------------------------------------------------ respaldo v5.1.0 */
@@ -357,55 +308,11 @@ namespace lumina.wpf
         }
 
         /* ======================================================================
-         *  OBS STUDIO (obs-websocket 5.x)
+         *  OBS STUDIO — ELIMINADO de la WPF (v7.1.0 «OPERADOR», feedback #5):
+         *  el cliente local obs-websocket se retiró (la fuente de texto en
+         *  vivo y las acciones obs_scene/obs_source_text con él). El códec de
+         *  mensajes ObsProtocol queda en Lumina.Api (probado por Tests).
          * ==================================================================== */
-
-        internal void ObsConnectClick()
-        {
-            SaveIntegrationsFromControls();
-            if (_obs != null && _obs.IsReady)
-            {
-                _obs.Disconnect();
-                UpdateObsState();
-                return;
-            }
-            if (_obs == null) _obs = new lumina.ui.ObsClient();
-            Status("Conectando con OBS…");
-            UpdateObsState();
-            ThreadPool.QueueUserWorkItem(delegate
-            {
-                bool ok = _obs.Connect(_settings.ObsUrl, _settings.ObsPassword, 5000);
-                try
-                {
-                    Dispatcher.BeginInvoke((Action)(delegate
-                    {
-                        Status(ok ? "OBS conectado (" + _settings.ObsUrl + ")."
-                                  : "OBS no conectado: " + _obs.LastError);
-                        UpdateObsState();
-                    }));
-                }
-                catch (Exception) { }
-            });
-        }
-
-        private void UpdateObsState()
-        {
-            bool ready = _obs != null && _obs.IsReady;
-            pageIntegrations.lblObsState.Text = ready ? "● CONECTADO Y AUTENTICADO" : "● SIN CONECTAR";
-            pageIntegrations.lblObsState.Foreground = ready ? OkBrush : TextDisabledBrush;
-            pageIntegrations.btnObsConnect.Text = ready ? "Desconectar de OBS" : "Conectar con OBS";
-        }
-
-        private void ObsSendLiveText(string text)
-        {
-            if (_obs == null || !_obs.IsReady) return;
-            if (_settings.ObsTextSource.Length == 0 || text == null) return;
-            ThreadPool.QueueUserWorkItem(delegate
-            {
-                try { _obs.SetInputText(_settings.ObsTextSource, text); }
-                catch (Exception) { }
-            });
-        }
 
         /* ======================================================================
          *  MIDI (entrada → activadores · salida como acción)
@@ -887,7 +794,6 @@ namespace lumina.wpf
 
             sp.Children.Add(new TextBlock { Text = "Acción:", Style = (Style)FindResource("TxtLabel"), Margin = new Thickness(0, 10, 0, 4) });
             ComboBox cmbAction = new ComboBox();
-            cmbAction.Items.Add("obs_scene"); cmbAction.Items.Add("obs_source_text");
             cmbAction.Items.Add("play_audio"); cmbAction.Items.Add("show_text");
             cmbAction.Items.Add("set_theme"); cmbAction.Items.Add("api_cmd");
             cmbAction.Items.Add("midi_out"); cmbAction.Items.Add("script");
@@ -1021,16 +927,6 @@ namespace lumina.wpf
         {
             switch (a.Type)
             {
-                case "obs_scene":
-                    if (_obs == null || !_obs.IsReady) return "OBS no está conectado";
-                    string scene = a.GetString("scene", a.GetString("value", string.Empty));
-                    return _obs.SetScene(scene) ? "Escena OBS: " + scene : "Fallo enviando a OBS";
-                case "obs_source_text":
-                    if (_obs == null || !_obs.IsReady) return "OBS no está conectado";
-                    string src = a.GetString("source", _settings.ObsTextSource);
-                    if (src.Length == 0) return "Fuente OBS sin configurar";
-                    return _obs.SetInputText(src, a.GetString("text", string.Empty))
-                        ? "Texto OBS enviado" : "Fallo enviando texto a OBS";
                 case "play_audio":
                     {
                         string path = a.GetString("path", string.Empty);

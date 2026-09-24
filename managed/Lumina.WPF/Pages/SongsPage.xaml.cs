@@ -63,6 +63,16 @@ namespace lumina.wpf
             if (Shell != null) Shell.SearchSongs();
         }
 
+        /// <summary>v7.1.0 «OPERADOR» (feedback #7): biblioteca COMPLETA sin filtro.</summary>
+        private void OnShowAllClick(object sender, RoutedEventArgs e)
+        {
+            if (Shell != null)
+            {
+                txtSearch.Text = string.Empty;
+                Shell.SearchSongs();
+            }
+        }
+
         private void OnSearchKeyDown(object sender, KeyEventArgs e)
         {
             if (e.Key == Key.Enter)

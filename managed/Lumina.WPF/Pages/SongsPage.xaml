@@ -8,7 +8,7 @@
              xmlns:local="clr-namespace:lumina.wpf">
   <DockPanel>
     <local:PageHeader DockPanel.Dock="Top" Title="Canciones"
-                      Subtitle="Editor de canciones con acordes y búsqueda en la biblioteca"
+                      Subtitle="Editor de canciones y biblioteca completa a un clic (v7.1.0)"
                       Icon="{StaticResource IconSong}"/>
 
     <Grid>
@@ -62,16 +62,17 @@
         </DockPanel>
       </local:Card>
 
-      <!-- ======== búsqueda ======== -->
-      <local:Card Grid.Column="1" Title="Buscar en la biblioteca" Icon="{StaticResource IconSearch}">
+      <!-- ======== biblioteca (v7.1.0: COMPLETA sin buscar) ======== -->
+      <local:Card Grid.Column="1" Title="Biblioteca de canciones" Icon="{StaticResource IconList}">
         <DockPanel>
-          <TextBlock x:Name="lblResultCount" DockPanel.Dock="Bottom" Text="Busca por título, autor o letra."
+          <TextBlock x:Name="lblResultCount" DockPanel.Dock="Bottom" Text="Toda la biblioteca aparece aquí al abrir la BD (v7.1.0)."
                      Style="{StaticResource TxtCaption}" Margin="0,8,0,0"/>
           <StackPanel DockPanel.Dock="Top" Orientation="Horizontal">
             <TextBox x:Name="txtSearch" Width="200" KeyDown="OnSearchKeyDown"
-                     ToolTip="Buscar en la biblioteca (FTS5) — Enter para ejecutar"/>
-            <local:LumButton Variant="Secondary" Icon="{StaticResource IconSearch}" Text="Buscar"
-                             Margin="8,0,0,0" Click="OnSearchClick"/>
+                     ToolTip="Filtro opcional por título, autor o letra (Enter) — déjalo vacío para ver TODA la biblioteca"/>
+            <local:LumButton Variant="Secondary" Icon="{StaticResource IconRefresh}" Text="Mostrar todo"
+                             Margin="8,0,0,0" Click="OnShowAllClick"
+                             ToolTip="Muestra la biblioteca COMPLETA (el cuadro queda como filtro opcional)"/>
           </StackPanel>
           <ListBox x:Name="lstResults" Margin="0,10,0,0" MouseDoubleClick="OnResultDoubleClick">
             <ListBox.ItemTemplate>

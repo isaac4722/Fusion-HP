@@ -24,6 +24,13 @@ namespace lumina.wpf
         /// <summary>Referencia canónica para «Cargar al escenario».</summary>
         public string LoadRef = string.Empty;
         public string Version = string.Empty;
+        /// <summary>
+        /// v7.1.0 «OPERADOR» (feedback #4): texto de la SEGUNDA versión al
+        /// comparar (vacío = sin comparación).
+        /// </summary>
+        public string TextB = string.Empty;
+        /// <summary>v7.1.0: nombre de la segunda versión (etiqueta de la fila).</summary>
+        public string VersionB = string.Empty;
     }
 
     /// <summary>Fila de regla de activadores.</summary>

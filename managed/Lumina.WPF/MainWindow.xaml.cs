@@ -33,7 +33,6 @@ namespace lumina.wpf
         /* ------------------------------------------------------------ servicios */
         internal readonly Settings _settings;
         internal LuminaEngine _engine;                 // null = modo limitado (sin núcleo)
-        private ApiServer _api;
         private RemoteServer _remote;
         private TriggerEngine _triggers;
         private lumina.ui.MidiInput _midi;
@@ -45,11 +44,22 @@ namespace lumina.wpf
         internal bool _black;
         internal bool _dbOpen;
         internal Theme _theme = new Theme();
+        /// <summary>
+        /// v7.1.0 «OPERADOR» (feedback #3): la ventana de proyección ¿está
+        /// visible? (interruptor del botón/F5 + sondeo del cierre con X/ESC).
+        /// </summary>
+        internal bool _projectorVisible;
+        /// <summary>v7.1.0: sondeo del estado del proyector (cierre con X/ESC).</summary>
+        private DispatcherTimer _projectorTimer;
 
         /* --------------------------------------------------------------- culto */
         internal readonly List<ScenarioItem> _serviceItems = new List<ScenarioItem>();
         internal IList<ScenarioItem> _lastScenarioItems;
         internal string _lastScenarioName = string.Empty;
+        /// <summary>v7.1.0 «OPERADOR»: true si el escenario EN VIVO proviene de
+        /// la lista del culto (ediciones de diapositivas Diseño recargan en
+        /// caliente sin reenviar a mano).</summary>
+        internal bool _serviceIsLive;
 
         /* -------- control de la página Biblia (lo usa el --flowcheck) ------- */
         internal System.Windows.Controls.TextBox _txtRef;
@@ -68,6 +78,9 @@ namespace lumina.wpf
         private lumina.ui.VideoPlayerForm _audioForm;
         private int _videoSlideIndex = -1;
         private int _lastItemIndex = -1;
+        /// <summary>v7.1.0 «OPERADOR»: reproductor de PPTX ORIGINAL (PowerPoint COM).</summary>
+        private PowerPointShow _pptxShow;
+        private int _pptxSlideIndex = -1;
 
         /* -------- navegación: índice de página activa + mapa sidebar→página -- */
         private int _activePage;
@@ -137,6 +150,13 @@ namespace lumina.wpf
             StartIntegrationsFromSettings();
             UpdateStatusBar();
             NavigateToIndex(0);
+
+            // v7.1.0 «OPERADOR» (feedback #3): sondeo del proyector (1,2 s):
+            // detecta el cierre con X/ESC de la ventana nativa para reflejarlo
+            // en el interruptor (ligero: un StateJson pequeño por tick).
+            _projectorTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1200) };
+            _projectorTimer.Tick += delegate { PollProjectorState(); };
+            _projectorTimer.Start();
         }
 
         /* ======================================================================
@@ -414,7 +434,6 @@ namespace lumina.wpf
             SetChipCore(_engine != null ? "Núcleo " + SafeCoreVersion() : "Núcleo: error",
                         _engine != null);
             UpdateSidebarCore();
-            UpdateApiStatus();
             pageSettings.lblAboutCore.Text = _engine != null
                 ? SafeCoreVersion() : "no disponible (modo limitado)";
         }
@@ -462,15 +481,15 @@ namespace lumina.wpf
             {
                 case Key.Right:
                 case Key.PageDown:
-                    if (_engine != null) { _engine.Next(); e.Handled = true; }
+                    LiveNext(); e.Handled = true;
                     break;
                 case Key.Space:
                     if (Keyboard.FocusedElement is Button) break;   // Espacio activa botones
-                    if (_engine != null) { _engine.Next(); e.Handled = true; }
+                    LiveNext(); e.Handled = true;
                     break;
                 case Key.Left:
                 case Key.PageUp:
-                    if (_engine != null) { _engine.Prev(); e.Handled = true; }
+                    LivePrev(); e.Handled = true;
                     break;
                 case Key.B:
                     if (_engine != null) { ToggleBlack(); e.Handled = true; }
@@ -501,6 +520,13 @@ namespace lumina.wpf
             if (!_closing)
             {
                 _closing = true;
+                try
+                {
+                    // v7.1.0: sondeo del proyector fuera durante el cierre.
+                    if (_projectorTimer != null) _projectorTimer.Stop();
+                    StopPowerPoint();
+                }
+                catch (Exception) { }
                 try { SaveSettings(); } catch (Exception) { }
                 StopVideo();
                 if (_videoForm != null) { try { _videoForm.Dispose(); } catch (Exception) { } _videoForm = null; }
@@ -512,8 +538,6 @@ namespace lumina.wpf
                 CloseMidiOut();
                 StopRemote();
                 StopJsForShutdown();          // v6.1.0 «GUION»: motor JSLib
-                if (_obs != null) { try { _obs.Dispose(); } catch (Exception) { } _obs = null; }
-                if (_api != null) { try { _api.Dispose(); } catch (Exception) { } _api = null; }
                 if (_engine != null) { try { _engine.Dispose(); } catch (Exception) { } _engine = null; }
                 if (_settings.AutoBackupOnExit && _settings.BackupFolder.Length > 0)
                 {
@@ -531,8 +555,6 @@ namespace lumina.wpf
             if (_remote != null) { try { _remote.Dispose(); } catch (Exception) { } _remote = null; }
             if (_midi != null) { try { _midi.Dispose(); } catch (Exception) { } _midi = null; }
             StopJsForShutdown();              // v6.1.0 «GUION»: motor JSLib
-            if (_obs != null) { try { _obs.Dispose(); } catch (Exception) { } _obs = null; }
-            if (_api != null) { try { _api.Dispose(); } catch (Exception) { } _api = null; }
             if (_engine != null) { try { _engine.Dispose(); } catch (Exception) { } _engine = null; }
         }
     }

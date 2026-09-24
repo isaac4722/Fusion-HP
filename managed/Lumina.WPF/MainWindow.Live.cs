@@ -177,13 +177,79 @@ namespace lumina.wpf
         internal void ShowProjector()
         {
             if (!RequireEngine()) return;
+            // v7.1.0 «OPERADOR» (feedback #3): el botón/F5 es un INTERRUPTOR:
+            // visible → oculta (ProjectorHide); oculto → abre. La ventana
+            // nativa es SIEMPRE sin bordes (WS_POPUP) y pantalla completa por
+            // defecto. Cerrar con X/ESC ya no duplica la ventana y se puede
+            // reabrir cuantas veces sea (el hilo sobrevive).
+            if (_projectorVisible)
+            {
+                int st = _engine.ProjectorHide();
+                if (st == LuminaStatus.Ok) Status("Proyector oculto (la proyección se reanuda al volver a abrir).");
+                else Status("El núcleo no pudo ocultar la salida (" + LuminaStatus.Name(st) + ").");
+                return;
+            }
             int screen = pageLive.SelectedScreenIndex();
             bool fullscreen = pageLive.IsFullscreenChecked();
-            int st = _engine.ProjectorShow(screen, fullscreen);
-            Status(st == LuminaStatus.Ok
-                ? "Proyector mostrado (pantalla " + screen + (fullscreen ? ", completa)." : ").")
-                : "El núcleo no puede proyectar (" + LuminaStatus.Name(st) + "). " +
-                  "La proyección nativa requiere el núcleo Windows (no headless).");
+            int st2 = _engine.ProjectorShow(screen, fullscreen);
+            if (st2 == LuminaStatus.Ok)
+            {
+                _projectorVisible = true;
+                UpdateProjectorUi();
+                Status("Proyector en pantalla " + screen +
+                       (fullscreen ? " (sin bordes, pantalla completa)." : " (sin bordes, 960×540)."));
+            }
+            else
+            {
+                Status("El núcleo no puede proyectar (" + LuminaStatus.Name(st2) + "). " +
+                      "La proyección nativa requiere el núcleo Windows (no headless).");
+            }
+        }
+
+        /// <summary>
+        /// v7.1.0 «OPERADOR» (feedback #4): al cambiar de monitor con la
+        /// proyección abierta, la MISMA ventana se recrea sobre el nuevo
+        /// monitor (sin abrir otra ventana).
+        /// </summary>
+        internal void ReopenProjectorOnScreenChange()
+        {
+            if (_engine == null || !_projectorVisible) return;
+            try
+            {
+                _engine.ProjectorShow(pageLive.SelectedScreenIndex(),
+                                      pageLive.IsFullscreenChecked());
+            }
+            catch (Exception) { }
+        }
+
+        /// <summary>
+        /// v7.1.0 «OPERADOR» (feedback #3): sondeo ligero del estado del
+        /// proyector — detecta el cierre con X/ESC del usuario (el núcleo
+        /// informa render.visible) y actualiza el interruptor.
+        /// </summary>
+        internal void PollProjectorState()
+        {
+            if (_engine == null || _engine.IsDisposed) return;
+            try
+            {
+                string json = _engine.StateJson();
+                if (string.IsNullOrEmpty(json)) return;
+                Dictionary<string, object> st = MiniJson.Parse(json);
+                Dictionary<string, object> render = MiniJson.GetObject(st, "render");
+                bool visible = render != null && MiniJson.GetInt(render, "visible", 0) == 1;
+                if (visible != _projectorVisible)
+                {
+                    _projectorVisible = visible;
+                    UpdateProjectorUi();
+                }
+            }
+            catch (Exception) { }
+        }
+
+        private void UpdateProjectorUi()
+        {
+            try { pageLive.SetProjectorVisible(_projectorVisible); }
+            catch (Exception) { }
         }
 
         /* ======================================================================
@@ -226,16 +292,34 @@ namespace lumina.wpf
             _slides.Clear();
             _slides.AddRange(ScenarioBuilder.FlattenScenario(json,
                 delegate(string songJson) { return LuminaEngine.SongParse(songJson); }));
-            if (_api != null) _api.SetSlideCatalog(_slides);
             if (_remote != null) _remote.SetSlideCatalog(_slides);
             StopVideo();
+            StopPowerPoint();
             _lastScenarioItems = new List<ScenarioItem>(items);
             _lastScenarioName = name;
+            // v7.1.0 «OPERADOR» (feedback #1): ¿el origen del escenario en vivo
+            // es la LISTA DEL CULTO? (para recargar en caliente al editar una
+            // diapositiva Diseño sin tener que reenviar a mano)
+            _serviceIsLive = (items != null && items == _serviceItems);
+            // v7.1.0 «OPERADOR» (feedback #2/#4): nombre del escenario e ítems
+            // visibles en la cabecera de En Vivo (modo Operador de dos niveles).
+            pageLive.SetScenarioName(name);
+            pageLive.SetItemsSource(_lastScenarioItems);
             RefreshLiveList();
             NavigateToIndex(0);
             pageExport.lblExportInfo.Text = "Escenario activo: «" + name + "» — " + _slides.Count +
                 " diapositiva(s) listas para exportar (página Exportar).";
             Status("Escenario «" + name + "» cargado: " + _slides.Count + " slide(s).");
+        }
+
+        /// <summary>
+        /// v7.1.0 «OPERADOR»: proyecta la slide por ÍNDICE GLOBAL (doble clic
+        /// en un ítem de la lista En Vivo → su primera slide).
+        /// </summary>
+        internal void ShowSlideIndex(int index)
+        {
+            if (!RequireEngine()) return;
+            if (index >= 0 && index < _slides.Count) _engine.ShowSlide(index);
         }
 
         internal void LoadSongToStage()
@@ -361,13 +445,35 @@ namespace lumina.wpf
                 StopVideo();
             }
 
+            // ---- PPTX ORIGINAL (v7.1.0 «OPERADOR», feedback #6) ----
+            // ítem pptx en vivo → PowerPoint proyecta el ARCHIVO ORIGINAL;
+            // salir del ítem → show cerrado (la ventana nativa reaparece).
+            if (curItem != null && curItem.Kind == "pptx" && curItem.PptxPath.Length > 0 &&
+                _currentIndex >= 0 && !_black && IsWindows())
+            {
+                if (_pptxShow == null) _pptxShow = new PowerPointShow();
+                if (!_pptxShow.IsPlaying || _pptxShow.CurrentPath != curItem.PptxPath)
+                {
+                    _pptxSlideIndex = _currentIndex;
+                    string err;
+                    bool ok = _pptxShow.Play(curItem.PptxPath, ProjectorScreenBounds(), out err);
+                    Status(ok
+                        ? "Proyectando presentación (PowerPoint): " + Path.GetFileName(curItem.PptxPath)
+                        : "La presentación no se pudo abrir: " + err +
+                          ". La slide del culto muestra el nombre del archivo.");
+                }
+                else
+                {
+                    _pptxShow.BringToFront();
+                }
+            }
+            else
+            {
+                StopPowerPoint();
+            }
+
             UpdateStageView(curItem);
             UpdateDirectorView(curItem, itemIndex);
-
-            if (_settings.ObsTextSource.Length > 0)
-            {
-                ObsSendLiveText(BuildLiveText());
-            }
 
             Dictionary<string, object> jsCtx = new Dictionary<string, object>();
             jsCtx["index"] = _currentIndex;
@@ -408,6 +514,38 @@ namespace lumina.wpf
                 _videoForm.StopAndHide();
                 _videoSlideIndex = -1;
             }
+        }
+
+        /* ======================================================================
+         *  PPTX ORIGINAL — PowerPoint COM (v7.1.0 «OPERADOR», feedback #6)
+         * ==================================================================== */
+
+        /// <summary>Cierra el show de PowerPoint (si había) — sin tumbar la app.</summary>
+        internal void StopPowerPoint()
+        {
+            if (_pptxShow != null && _pptxShow.IsPlaying)
+            {
+                _pptxShow.Stop();
+            }
+            _pptxSlideIndex = -1;
+        }
+
+        /// <summary>
+        /// v7.1.0: «siguiente» contextual — si el PPTX original está en
+        /// pantalla, avanza DENTRO de PowerPoint (View.Next); si no, el
+        /// motor de proyección nativo.
+        /// </summary>
+        internal void LiveNext()
+        {
+            if (_pptxShow != null && _pptxShow.IsPlaying && _pptxShow.NextSlide()) return;
+            if (RequireEngine()) _engine.Next();
+        }
+
+        /// <summary>v7.1.0: «anterior» contextual (PowerPoint o motor).</summary>
+        internal void LivePrev()
+        {
+            if (_pptxShow != null && _pptxShow.IsPlaying && _pptxShow.PrevSlide()) return;
+            if (RequireEngine()) _engine.Prev();
         }
 
         private void OnVideoEnded(object sender, EventArgs e)

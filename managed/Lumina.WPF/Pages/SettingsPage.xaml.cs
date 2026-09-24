@@ -25,10 +25,9 @@ namespace lumina.wpf
 
         public void Wire(MainWindow shell) { Shell = shell; }
 
-        private void OnToggleApi(object sender, RoutedEventArgs e)
-        {
-            if (Shell != null) Shell.ToggleApi();
-        }
+        // v7.1.0 «OPERADOR» (feedback #5): el «modo API» local se ELIMINÓ de
+        // Ajustes (no funcionaba y estaba orientado a OBS/control externo).
+        // El control remoto vive en Integraciones (mando móvil por LAN).
 
         private void OnBrowseDb(object sender, RoutedEventArgs e)
         {

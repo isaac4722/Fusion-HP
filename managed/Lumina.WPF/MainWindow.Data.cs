@@ -60,11 +60,15 @@ namespace lumina.wpf
         internal void SearchSongs()
         {
             if (!RequireEngine() || !RequireDb()) return;
+            // v7.1.0 «OPERADOR» (feedback #7): la biblioteca COMPLETA se ve SIN
+            // buscar — el cuadro de texto es un FILTRO opcional (como
+            // Holyrics: toda la biblioteca a un clic).
             string term = pageSongs.txtSearch.Text.Trim();
-            if (term.Length == 0) { Status("Escribe un término de búsqueda."); return; }
             try
             {
-                string res = _engine.DbExec(LuminaStorage.SearchSongsRequest(term, 50));
+                string res = term.Length == 0
+                    ? _engine.DbExec(LuminaStorage.ListAllSongsRequest(1000))
+                    : _engine.DbExec(LuminaStorage.SearchSongsRequest(term, 50));
                 List<List<object>> rows = LuminaStorage.Rows(res);
                 List<SongRowVm> vms = new List<SongRowVm>();
                 foreach (List<object> row in rows)
@@ -78,8 +82,12 @@ namespace lumina.wpf
                     vms.Add(vm);
                 }
                 pageSongs.FillResults(vms);
-                pageSongs.lblResultCount.Text = rows.Count + " resultado(s) · biblioteca local";
-                Status("Búsqueda «" + term + "»: " + rows.Count + " resultado(s).");
+                pageSongs.lblResultCount.Text = term.Length == 0
+                    ? rows.Count + " canciones en la biblioteca (completa — el cuadro filtra)"
+                    : rows.Count + " resultado(s) · filtro «" + term + "»";
+                Status(term.Length == 0
+                    ? "Biblioteca completa: " + rows.Count + " canción(es)."
+                    : "Búsqueda «" + term + "»: " + rows.Count + " resultado(s).");
             }
             catch (LuminaException ex)
             {
@@ -283,6 +291,184 @@ namespace lumina.wpf
             _txtRef.Text = vm.LoadRef;
             pageBible.txtVersion.Text = vm.Version;
             LoadScriptureToStage();
+        }
+
+        /* ------------------------------ Biblia directa (v7.1.0 «OPERADOR») -- */
+
+        /// <summary>
+        /// v7.1.0 (feedback #7): versiones bíblicas INSTALADAS en la BD para los
+        /// selectores de la página Biblia (con la última usada preseleccionada).
+        /// </summary>
+        internal void RefreshBibleVersions()
+        {
+            if (!RequireEngine() || !RequireDb()) return;
+            try
+            {
+                string res = _engine.DbExec(LuminaStorage.ListBibleVersionsRequest());
+                List<List<object>> rows = LuminaStorage.Rows(res);
+                List<string> versions = new List<string>(rows.Count);
+                foreach (List<object> row in rows)
+                {
+                    string v = Cell(row, 0);
+                    if (v.Length > 0) versions.Add(v);
+                }
+                pageBible.FillVersions(versions);
+                if (versions.Count > 0)
+                {
+                    string last = _settings.LastBibleVersion;
+                    if (last.Length > 0 && versions.Contains(last) && pageBible.txtVersion.Text.Trim().Length == 0)
+                        pageBible.txtVersion.Text = last;
+                    Status("Versiones bíblicas instaladas: " + string.Join(", ", versions.ToArray()) + ".");
+                }
+            }
+            catch (LuminaException ex)
+            {
+                Status("No se pudieron leer las versiones: " + ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// v7.1.0 (feedback #7/#4): muestra el CAPÍTULO completo en la lista de
+        /// resultados SIN proyectar (el operador lee; doble clic proyecta un
+        /// versículo). Con «Comparar»: cada versículo muestra DOS versiones
+        /// lado a lado.
+        /// </summary>
+        internal void ReadBibleChapter()
+        {
+            if (!RequireEngine() || !RequireDb()) return;
+            int book = pageBible.SelectedBook();
+            int chapter = pageBible.SelectedChapter();
+            if (book < 1 || chapter < 1) { Status("Elige libro y capítulo."); return; }
+            string version = pageBible.SelectedVersion();
+            if (version.Length == 0) { Status("Elige la versión (o abre la BD)."); return; }
+            string version2 = pageBible.IsCompareChecked() ? pageBible.SelectedVersion2() : string.Empty;
+
+            Dictionary<long, string> versesA = ReadVerses(version, book, chapter);
+            if (versesA.Count == 0)
+            {
+                Status("La versión «" + version + "» no trae " +
+                       BooksTable.NameOf(book) + " " + chapter + ".");
+                return;
+            }
+            Dictionary<long, string> versesB = version2.Length > 0
+                ? ReadVerses(version2, book, chapter)
+                : new Dictionary<long, string>();
+
+            List<BibleRowVm> vms = new List<BibleRowVm>();
+            List<long> numbers = new List<long>(versesA.Keys);
+            numbers.Sort();
+            foreach (long verse in numbers)
+            {
+                BibleRowVm vm = new BibleRowVm();
+                vm.Version = version;
+                vm.Ref = BooksTable.NameOf(book) + " " + chapter + ":" + verse +
+                         (version2.Length > 0 ? "  ·  " + version : string.Empty);
+                vm.Text = versesA[verse];
+                if (version2.Length > 0)
+                {
+                    vm.VersionB = version2;
+                    vm.TextB = versesB.ContainsKey(verse)
+                        ? versesB[verse]
+                        : "(sin este versículo en " + version2 + ")";
+                }
+                vm.LoadRef = BooksTable.Reference(book, chapter, (int)verse, (int)verse);
+                vms.Add(vm);
+            }
+            pageBible.FillResults(vms);
+            Status(BooksTable.NameOf(book) + " " + chapter + " (" + version + "): " +
+                   vms.Count + " versículos" +
+                   (version2.Length > 0 ? " · comparando con " + version2 : "") +
+                   " — sin proyectar.");
+        }
+
+        private Dictionary<long, string> ReadVerses(string version, int book, int chapter)
+        {
+            Dictionary<long, string> map = new Dictionary<long, string>();
+            if (version.Length == 0) return map;
+            try
+            {
+                string req = LuminaStorage.SelectVersesRequest(version, book, chapter, 1, 200);
+                List<List<object>> rows = LuminaStorage.Rows(_engine.DbExec(req));
+                foreach (List<object> row in rows)
+                {
+                    long verse;
+                    if (!long.TryParse(Cell(row, 0), out verse)) continue;
+                    map[verse] = Cell(row, 1);
+                }
+            }
+            catch (LuminaException) { }
+            return map;
+        }
+
+        /// <summary>
+        /// v7.1.0 (feedback #4): capítulo (o COMPARACIÓN de dos versiones) al
+        /// escenario. Sin comparar: ítem scripture del capítulo. Comparando:
+        /// un ítem de texto por GRUPO de versículos con ambas versiones
+        /// etiquetadas (como las «dos versiones al mismo tiempo» de Holyrics).
+        /// </summary>
+        internal void LoadBibleChapterToStage()
+        {
+            if (!RequireEngine() || !RequireDb()) return;
+            int book = pageBible.SelectedBook();
+            int chapter = pageBible.SelectedChapter();
+            if (book < 1 || chapter < 1) { Status("Elige libro y capítulo."); return; }
+            string version = pageBible.SelectedVersion();
+            if (version.Length == 0) { Status("Elige la versión (o abre la BD)."); return; }
+            string version2 = pageBible.IsCompareChecked() ? pageBible.SelectedVersion2() : string.Empty;
+            string bookName = BooksTable.NameOf(book);
+            // referencia del capítulo completo ("jn 3" — el núcleo resuelve
+            // capítulo sin versículo como 1..fin)
+            string chapterRef = BooksTable.AbbrOf(book) + " " + chapter.ToString(CultureInfo.InvariantCulture);
+
+            if (version2.Length == 0)
+            {
+                // ---- capítulo normal (scripture) ----
+                string versesText = ResolveScriptureText(chapterRef, version);
+                ScenarioItem it = ScenarioBuilder.ScriptureItem(
+                    chapterRef, version, pageBible.numVerses.IntValue, versesText);
+                // Título legible para las listas (el Ref lleva la referencia
+                // RESUELTA por si el núcleo no encuentra la versión — fail-safe)
+                it.Title = bookName + " " + chapter + " (" + version + ")";
+                it.Ref = chapterRef;
+                LoadScenarioFromItems(new ScenarioItem[] { it }, bookName + " " + chapter);
+                return;
+            }
+
+            // ---- comparación de dos versiones ----
+            Dictionary<long, string> versesA = ReadVerses(version, book, chapter);
+            Dictionary<long, string> versesB = ReadVerses(version2, book, chapter);
+            if (versesA.Count == 0 && versesB.Count == 0)
+            {
+                Status("Ninguna de las dos versiones trae " + bookName + " " + chapter + ".");
+                return;
+            }
+            List<long> numbers = new List<long>(versesA.Keys);
+            foreach (long v in versesB.Keys) if (!numbers.Contains(v)) numbers.Add(v);
+            numbers.Sort();
+            int per = pageBible.numVerses.IntValue;
+            if (per < 1) per = 1;
+            List<ScenarioItem> items = new List<ScenarioItem>();
+            for (int i = 0; i < numbers.Count; i += per)
+            {
+                StringBuilder sb = new StringBuilder();
+                for (int k = i; k < i + per && k < numbers.Count; k++)
+                {
+                    long verse = numbers[k];
+                    string va = versesA.ContainsKey(verse) ? versesA[verse] : "—";
+                    string vb = versesB.ContainsKey(verse) ? versesB[verse] : "—";
+                    if (sb.Length > 0) sb.Append('\n');
+                    sb.Append(bookName).Append(' ').Append(chapter).Append(':').Append(verse)
+                      .Append(" — ").Append(version).Append('\n').Append(va)
+                      .Append('\n').Append(version2).Append('\n').Append(vb);
+                }
+                ScenarioItem it = ScenarioBuilder.TextItem(
+                    bookName + " " + chapter + ":" + numbers[i] + " · " + version + " / " + version2,
+                    sb.ToString(), 6);
+                items.Add(it);
+            }
+            LoadScenarioFromItems(items, bookName + " " + chapter + " (comparación)");
+            Status("Comparación " + version + " / " + version2 + " de " + bookName +
+                   " " + chapter + ": " + items.Count + " slide(s).");
         }
 
         /* ------------------------------------------------ importadores de biblias */
@@ -547,17 +733,27 @@ namespace lumina.wpf
 
         internal void RefreshServiceList()
         {
-            List<string> labels = new List<string>();
+            // v7.1.0 «OPERADOR» (feedback #2): filas con nombre/tipo correctos
+            // — etiquetas en ESPAÑOL y detalle útil (antes: "1. [song] Título"
+            // con el kind interno en inglés).
+            List<ServiceItemVm> vms = new List<ServiceItemVm>(_serviceItems.Count);
             for (int i = 0; i < _serviceItems.Count; i++)
             {
                 ScenarioItem it = _serviceItems[i];
-                string label = (i + 1).ToString(CultureInfo.InvariantCulture) + ". [" +
-                    it.Kind + "] " + it.Title;
-                if (it.Kind == "song" && it.Song != null && it.Song.Artist.Length > 0)
-                    label += " — " + it.Song.Artist;
-                labels.Add(label);
+                ServiceItemVm vm = new ServiceItemVm();
+                vm.Number = (i + 1).ToString(CultureInfo.InvariantCulture);
+                vm.KindLabel = ServiceItemVm.KindLabelOf(it);
+                vm.Title = it.Title.Length > 0 ? it.Title : "(sin nombre)";
+                vm.Detail = ServiceItemVm.DetailOf(it);
+                vms.Add(vm);
             }
-            pageService.FillItems(labels);
+            pageService.FillItems(vms);
+        }
+
+        /// <summary>v7.1.0: selecciona el último ítem agregado (feedback UX).</summary>
+        private void SelectLastServiceItem()
+        {
+            pageService.SelectIndex(_serviceItems.Count - 1);
         }
 
         internal void MoveItem(int delta)
@@ -673,6 +869,40 @@ namespace lumina.wpf
                         added2 = ScenarioBuilder.TextItem(title,
                             MiniJson.GetString(io, "text", title), mx < 1 ? 4 : mx);
                     }
+                    else if (type == "pptx")
+                    {
+                        // v7.1.0 «OPERADOR» (feedback #6): PPTX ORIGINAL — solo la
+                        // ruta; PowerPoint lo proyecta al ponerlo en vivo.
+                        added2 = ScenarioBuilder.PptxItem(
+                            title.Length > 0 ? title : "Presentación",
+                            MiniJson.GetString(io, "pptxPath", string.Empty));
+                    }
+                    else if (type == "composed")
+                    {
+                        // v7.1.0 «OPERADOR» (feedback #1): slide COMPUESTA del
+                        // editor de lienzo libre (elementos posicionables).
+                        List<ComposedElement> els = new List<ComposedElement>();
+                        foreach (object eo in MiniJson.GetArray(io, "elements"))
+                        {
+                            ComposedElement el = ComposedElement.FromDict(eo as Dictionary<string, object>);
+                            if (el != null) els.Add(el);
+                        }
+                        added2 = ScenarioBuilder.ComposedItem(
+                            title.Length > 0 ? title : "Diapositiva", els);
+                    }
+                    else if (type == "image")
+                    {
+                        added2 = ScenarioBuilder.ImageItem(
+                            title.Length > 0 ? title : "Imagen",
+                            MiniJson.GetString(io, "imagePath", string.Empty),
+                            MiniJson.GetString(io, "text", string.Empty));
+                    }
+                    else if (type == "video")
+                    {
+                        added2 = ScenarioBuilder.VideoItem(
+                            title.Length > 0 ? title : "Video",
+                            MiniJson.GetString(io, "videoPath", string.Empty));
+                    }
                     else
                     {
                         added2 = ScenarioBuilder.BlankItem(
@@ -733,16 +963,63 @@ namespace lumina.wpf
             }
         }
 
-        /* --------------------------------------------------- PPTX v6.0.0 */
+        /* --------------------------------------------------- PPTX v7.1.0 «OPERADOR» */
         /// <summary>
-        /// Importa un PowerPoint a la cola del culto: cada diapositiva de TEXTO
-        /// se mapea a un ítem de texto (1 diapositiva = 1 ítem, fidelidad de
-        /// proyección); las diapositivas vacías se agregan «en blanco».
+        /// v7.1.0 «OPERADOR» (feedback #6): AGREGA la presentación PPTX
+        /// ORIGINAL al culto — SIN extracción. El archivo se conserva tal cual
+        /// (la ruta viaja en el plan JSON) y al ponerlo en vivo PowerPoint lo
+        /// proyecta completo vía COM (PowerPointShow). La importación de
+        /// SOLO-TEXTO de v6 sigue disponible como opción secundaria.
         /// </summary>
         internal void ImportPptxToService()
         {
             Microsoft.Win32.OpenFileDialog dlg = new Microsoft.Win32.OpenFileDialog();
-            dlg.Title = "Importar PPTX al culto";
+            dlg.Title = "Agregar presentación PowerPoint al culto";
+            dlg.Filter = "PowerPoint (*.pptx;*.pptm)|*.pptx;*.pptm|Todos los archivos (*.*)|*.*";
+            if (dlg.ShowDialog(this) != true) return;
+
+            string path = Path.GetFullPath(dlg.FileName);
+            if (!File.Exists(path))
+            {
+                MessageBox.Show(this, "El archivo no existe: " + path, "Agregar PPTX",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            if (path.EndsWith(".pptm", StringComparison.OrdinalIgnoreCase) &&
+                MessageBox.Show(this,
+                    "El archivo .pptm puede contener macros.\n\n" +
+                    "Se proyectará con PowerPoint tal como está (las macros NO se\n" +
+                    "ejecutan desde esta app; PowerPoint aplica su propia política).\n\n¿Agregarlo igual?",
+                    "Agregar PPTX", MessageBoxButton.YesNo, MessageBoxImage.Question)
+                    != MessageBoxResult.Yes) return;
+
+            // v7.1.0: el ítem conserva el archivo ORIGINAL (ruta absoluta). El
+            // nombre visible es el del archivo sin extensión.
+            string title = Path.GetFileNameWithoutExtension(path);
+            _serviceItems.Add(ScenarioBuilder.PptxItem(title.Length > 0 ? title : "Presentación", path));
+            RefreshServiceList();
+            SelectLastServiceItem();
+
+            if (!PowerPointShow.IsInstalled())
+            {
+                Status("Presentación agregada (PowerPoint NO está instalado: se " +
+                       "proyectará el marcador con el nombre del archivo).");
+            }
+            else
+            {
+                Status("Presentación agregada al culto (se proyectará con PowerPoint): " +
+                       Path.GetFileName(path));
+            }
+        }
+
+        /// <summary>
+        /// v7.1.0: importación de SOLO TEXTO de v6.0.0 conservada como opción
+        /// secundaria (cada diapositiva de texto → 1 ítem de texto).
+        /// </summary>
+        internal void ImportPptxTextToService()
+        {
+            Microsoft.Win32.OpenFileDialog dlg = new Microsoft.Win32.OpenFileDialog();
+            dlg.Title = "Importar PPTX (solo texto) al culto";
             dlg.Filter = "PowerPoint (*.pptx)|*.pptx|Todos los archivos (*.*)|*.*";
             if (dlg.ShowDialog(this) != true) return;
 
@@ -759,8 +1036,9 @@ namespace lumina.wpf
                 MessageBox.Show(this,
                     "No se encontraron diapositivas de texto en el archivo.\n\n" +
                     "La importación lee las CAJAS DE TEXTO de cada diapositiva " +
-                    "(imágenes, tablas y gráficos no se convierten).",
-                    "Importar PPTX", MessageBoxButton.OK, MessageBoxImage.Information);
+                    "(imágenes, tablas y gráficos no se convierten).\n\n" +
+                    "Para proyectar el PPTX COMPLETO use «Agregar PPTX…» (PowerPoint real).",
+                    "Importar PPTX (texto)", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
@@ -881,6 +1159,82 @@ namespace lumina.wpf
             _serviceItems.Add(ScenarioBuilder.BlankItem("En blanco"));
             RefreshServiceList();
             Status("Ítem en blanco agregado (" + _serviceItems.Count + " ítems).");
+        }
+
+        /* ------------------------------------------------ Diseño (v7.1.0) -- */
+
+        /// <summary>
+        /// v7.1.0 «OPERADOR» (feedback #1): NUEVA diapositiva con el editor de
+        /// LIENZO LIBRE estilo PowerPoint (arrastrar/redimensionar/editar in
+        /// situ). El resultado es un ítem «composed» (1 ítem = 1 slide con
+        /// TODOS sus elementos posicionables — WYSIWYG con la proyección).
+        /// </summary>
+        internal void NewComposedSlide()
+        {
+            EditComposedCore(-1, "Diapositiva " + (_serviceItems.Count + 1).ToString(
+                CultureInfo.InvariantCulture));
+        }
+
+        /// <summary>
+        /// v7.1.0: editar el ítem seleccionado del culto — los «Diseño»
+        /// (composed) reabren el editor con sus elementos; los pptx muestran
+        /// su información; el resto no hace nada (doble clic benigno).
+        /// </summary>
+        internal void EditSelectedServiceItem()
+        {
+            int idx = pageService.SelectedIndex();
+            if (idx < 0 || idx >= _serviceItems.Count) return;
+            ScenarioItem it = _serviceItems[idx];
+            if (it == null) return;
+            if (it.Kind == "composed")
+            {
+                EditComposedCore(idx, it.Title.Length > 0 ? it.Title : "Diapositiva");
+                return;
+            }
+            if (it.Kind == "pptx" && it.PptxPath.Length > 0)
+            {
+                MessageBox.Show(this, "Presentación PowerPoint (archivo ORIGINAL, sin extracción):\n" +
+                    it.PptxPath + "\n\nSe proyecta completa con PowerPoint al ponerla en vivo.",
+                    AppName, MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+        }
+
+        private void EditComposedCore(int editIndex, string suggestedTitle)
+        {
+            List<ComposedElement> existing = (editIndex >= 0 && editIndex < _serviceItems.Count &&
+                _serviceItems[editIndex].Composed != null)
+                ? _serviceItems[editIndex].Composed
+                : null;
+            SlideEditorWindow editor = new SlideEditorWindow(this, _theme,
+                suggestedTitle, existing);
+            if (editor.ShowDialog() != true) return;
+            ScenarioItem item = ScenarioBuilder.ComposedItem(
+                editor.SlideTitle.Length > 0 ? editor.SlideTitle : "Diapositiva",
+                editor.Elements);
+            if (editIndex >= 0 && editIndex < _serviceItems.Count)
+            {
+                _serviceItems[editIndex] = item;
+                RefreshServiceList();
+                pageService.SelectIndex(editIndex);
+                // edición en caliente: si el culto está EN VIVO, recargar
+                // CONSERVANDO la slide actual (no se reinicia el culto)
+                if (_serviceIsLive && _slides.Count > 0)
+                {
+                    int keep = _currentIndex;
+                    SendServiceToStage();
+                    if (keep >= 0 && keep < _slides.Count) NavigateToIndex(keep);
+                }
+                Status("Diapositiva «" + item.Title + "» editada (" +
+                       item.Composed.Count + " elementos).");
+            }
+            else
+            {
+                _serviceItems.Add(item);
+                RefreshServiceList();
+                SelectLastServiceItem();
+                Status("Diapositiva «" + item.Title + "» agregada al culto (" +
+                       _serviceItems.Count + " ítems).");
+            }
         }
 
         internal void AddVideoItemToService()
