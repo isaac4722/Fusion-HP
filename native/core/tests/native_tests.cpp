@@ -35,6 +35,8 @@
 
 #if !defined(_WIN32)
 #include <unistd.h>   // getpid() → nombre único de la BD temporal
+#else
+#include <direct.h>   // _mkdir (directorios temporales de pruebas)
 #endif
 
 using json = nlohmann::json;
@@ -52,6 +54,24 @@ static int g_checks = 0, g_failed = 0;
     } while (0)
 
 static void Section(const char* name) { std::printf("%s\n", name); }
+
+// v7.0.0: directorios temporales de pruebas multiplataforma (Windows no
+// tiene rm/mkdir -p).
+static bool MakeTempDir(const std::string& path) {
+#ifdef _WIN32
+    (void)system(("if exist \"" + path + "\" rmdir /s /q \"" + path + "\"").c_str());
+    return _mkdir(path.c_str()) == 0;
+#else
+    return system(("rm -rf '" + path + "' && mkdir -p '" + path + "'").c_str()) == 0;
+#endif
+}
+static void RemoveTempDir(const std::string& path) {
+#ifdef _WIN32
+    (void)system(("rmdir /s /q \"" + path + "\"").c_str());
+#else
+    (void)system(("rm -rf '" + path + "'").c_str());
+#endif
+}
 
 /* --------------------------- helpers de API C -------------------------- */
 
@@ -694,7 +714,7 @@ int main() {
         CHECK(Redact("token=sekret").find("sekret") == std::string::npos);
         // Escritura real a disco (rotación diaria, stats, re-apertura).
         std::string tmp = "/tmp/lumina-test-log";
-        (void)system(("rm -rf '" + tmp + "' && mkdir -p '" + tmp + "'").c_str());
+        CHECK(MakeTempDir(tmp));
         Log log;
         Log::Options o;
         o.dir = tmp;
@@ -730,7 +750,7 @@ int main() {
         }
         log.Close();
         CHECK(!log.IsOpen());
-        (void)system(("rm -rf '" + tmp + "'").c_str());
+        RemoveTempDir(tmp);
         // ABI del log ligado al handle.
         LuminaConfig cfg = {};
         cfg.structSize = (int32_t)sizeof(LuminaConfig);
@@ -738,7 +758,7 @@ int main() {
         LuminaHandle h = lumina_create(&cfg);
         CHECK(h != nullptr);
         std::string tmp2 = "/tmp/lumina-test-log2";
-        (void)system(("rm -rf '" + tmp2 + "' && mkdir -p '" + tmp2 + "'").c_str());
+        CHECK(MakeTempDir(tmp2));
         std::string opts = "{\"dir\":\"" + tmp2 + "\",\"retentionDays\":14}";
         CHECK(lumina_log_open(h, opts.c_str()) == LUMINA_OK);
         CHECK(lumina_log_write(h,
@@ -751,7 +771,7 @@ int main() {
         }, &apiOut));
         CHECK(apiOut.find("\"open\":1") != std::string::npos);
         lumina_destroy(h);
-        (void)system(("rm -rf '" + tmp2 + "'").c_str());
+        RemoveTempDir(tmp2);
     }
 
     /* ============================================================= F0.05
@@ -925,14 +945,25 @@ int main() {
         CHECK(apiOut.find("\"line\":0") != std::string::npos);
         // Línea fuera de rango → ERR_LIMIT (sin crash).
         CHECK(lumina_line_set(h, 99) == LUMINA_ERR_LIMIT);
-        // IPC headless: en Linux el transporte no existe y el núcleo SIGUE.
+        // IPC ipc.v1: en Windows el pipe REAL arranca (OK + stats con
+        // running=1 y se detiene limpio); en Linux no hay transporte Win32
+        // y el núcleo SIGUE EN PIE (UNSUPPORTED — F0.05.7). El pipe REAL
+        // con cliente se ejerce en el selfcheck del paquete.
+#ifdef _WIN32
+        CHECK(lumina_ipc_start(h, "{}") == LUMINA_OK);
+#else
         CHECK(lumina_ipc_start(h, "{}") == LUMINA_ERR_UNSUPPORTED);
+#endif
         CHECK(lumina_state_json(h, nullptr, 0, nullptr) != LUMINA_OK);
         apiOut.clear();
         CHECK(ApiCallOnce([&](char* o, int32_t c, int32_t* n) {
             return lumina_ipc_stats(h, o, c, n);
         }, &apiOut));
         CHECK(!apiOut.empty());
+#ifdef _WIN32
+        CHECK(apiOut.find("\"running\":1") != std::string::npos);
+        CHECK(lumina_ipc_stop(h) == LUMINA_OK);
+#endif
         lumina_destroy(h);
     }
 
