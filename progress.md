@@ -1187,3 +1187,30 @@ modular §1.2, teclado + foco visible §1.3, WCAG 2.2 §2, animaciones ≤ 160ms
   6.1.0 en esta línea), Tests 7.1, PoC.Managed 7.1, launcher «OPERADOR»,
   CI APP_VERSION 7.1.0-beta.1 + README.txt del paquete + release body.
 - Bloqueos: ninguno (los del propietario siguen: OAuth PCO/Drive, firma).
+
+## [v7.1.0-OPERADOR-CIERRE] CI 100% verde + release «OPERADOR» publicada · 2026-09-24 UTC
+
+- Primer push (e00133e): fallo REAL del selftest en los runners Windows —
+  diagnóstico forense: el exit 1 SIN NINGUNA salida (el búfer de bloque de
+  stdout se pierde en un crash) apuntaba a terminación anormal; el único
+  código nuevo solo-Windows en ruta de ejecución era el render de la sección
+  13. CAUSA RAÍZ: DrawComposedElements creaba objetos GDI+ (Graphics/Font/
+  Brush/MeasureString) SIN GdiplusStartup previo — el camino clásico de
+  texto es GDI puro (DrawTextW) y NUNCA inicia GDI+: una slide compuesta con
+  tema sin imagen de fondo producía comportamiento indefinido. El test era
+  el ÚNICO del suite que renderiza PNG → primera y única vez que la ruta se
+  ejercitaba. El crash también era LATENTE EN PRODUCCIÓN (proyectar una
+  compuesta con tema plano habría caído igual en la ventana real).
+- Fix (526fe36, rebaseado a bc0e02c): DrawComposedElements llama
+  GdiplusToken() PRIMERO (arranque perezoso; 0 = GDI+ no disponible → se
+  omite el dibujo sin tumbar la salida) + Graphics::GetLastStatus. El
+  selftest ahora hace FLUSH por sección (lección de diagnóstico permanente:
+  la última sección viva queda en el log si algo vuelve a caer).
+- Runs: main 36001576255 (fallo → diagnóstico) → main 36002852727 sobre
+  bc0e02c: **SUCCESS** (núcleo x86/x64 con el render compuesto EJERCITADO,
+  Linux, C#, interop, empaquetado completo; CLR hosting sigue
+  informativo-fallo pre-existente de v5.4.0, no bloqueante).
+- Tag v7.1.0-beta.1 sobre bc0e02c → run 36004360147 SUCCESS → RELEASE
+  PUBLICADA: zips win-x86 (3,4 MB) y win-x64 (3,8 MB) + SHA256SUMS.
+- Nota: el usuario editó AGENT.md durante el ciclo (6e3c9d9) — rebase
+  limpio, cero conflictos.
