@@ -494,7 +494,7 @@ jobs:
         with:
           name: installer
           path: |
-            installer/Output/*.exe
+            dist/installer/*.exe
           if-no-files-found: error
 
   interop:
