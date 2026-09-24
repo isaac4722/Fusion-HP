@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- v5.4.0 «ESTUDIO»: la interfaz principal pasa a WPF (.NET Framework 4.8).
+         Este exe SUSTITUYE a la variante WinForms net48 en el paquete portable
+         (net48\LuminaPresentation.exe); la baseline net35 (WinForms) se conserva
+         para Windows 7 SP1 sin .NET 4.8. WPF está integrado en .NET Framework
+         4.8 (Win10 1903+/Win11 de fábrica; Win7 SP1/8.x con el paquete 4.8). -->
+    <TargetFramework>net48</TargetFramework>
+    <OutputType>WinExe</OutputType>
+    <RootNamespace>lumina.wpf</RootNamespace>
+    <AssemblyName>LuminaPresentation</AssemblyName>
+    <Summary>Interfaz WPF de LuminaPresentation Suite (vía A: C# dueño del proceso).</Summary>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <AppConfig>app.net48.config</AppConfig>
+    <!-- WPF (caparazón y páginas) + WinForms (ventanas auxiliares heredadas:
+         video WMP, monitor de escenario, director y zócalo — HWND de nivel
+         superior, sin WindowsFormsHost) en el MISMO proceso. -->
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Lumina.Core/Lumina.Core.csproj" />
+    <ProjectReference Include="../Lumina.Bridge/Lumina.Bridge.csproj" />
+    <ProjectReference Include="../Lumina.Api/Lumina.Api.csproj" />
+  </ItemGroup>
+
+</Project>

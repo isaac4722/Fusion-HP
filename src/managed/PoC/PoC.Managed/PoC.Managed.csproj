@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net35;net48;net8.0</TargetFrameworks>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>lumina.poc</RootNamespace>
+    <AssemblyName>PoC.Managed</AssemblyName>
+    <Summary>Prueba de concepto formal del puente gestionado ↔ núcleo nativo (12 checks, PASS/FAIL).</Summary>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../Lumina.Core/Lumina.Core.csproj" />
+    <ProjectReference Include="../../Lumina.Bridge/Lumina.Bridge.csproj" />
+  </ItemGroup>
+
+</Project>

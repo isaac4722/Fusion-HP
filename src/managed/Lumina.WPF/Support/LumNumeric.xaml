@@ -1,0 +1,40 @@
+<!--
+  LumNumeric.xaml — campo numérico (WPF no trae NumericUpDown): TextBox con
+  validación + botones +/- compactos. DecimalPlaces admite 0 (entero) o 2.
+-->
+<UserControl x:Class="lumina.wpf.LumNumeric"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:lumina.wpf">
+  <UserControl.Resources>
+    <Style x:Key="StepBtn" TargetType="local:LumButton" BasedOn="{StaticResource {x:Type local:LumButton}}">
+      <Setter Property="Variant" Value="Ghost"/>
+      <Setter Property="MinHeight" Value="0"/>
+      <Setter Property="MinWidth" Value="22"/>
+      <Setter Property="Height" Value="13"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="Focusable" Value="False"/>
+    </Style>
+  </UserControl.Resources>
+  <Border CornerRadius="{StaticResource RadiusInput}"
+          Background="{StaticResource InputBrush}"
+          BorderBrush="{StaticResource InputBorderBrush}" BorderThickness="1"
+          MinWidth="64" Height="30">
+    <Grid>
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*"/>
+        <ColumnDefinition Width="24"/>
+      </Grid.ColumnDefinitions>
+      <TextBox x:Name="txt" Grid.Column="0" BorderThickness="0" Background="Transparent"
+               Padding="8,0,2,0" VerticalContentAlignment="Center" MinHeight="0" Height="28"
+               TextAlignment="Left" TextChanged="OnTxtChanged"
+               LostKeyboardFocus="OnTxtLostFocus" KeyDown="OnTxtKeyDown"/>
+      <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,1,4,1">
+        <local:LumButton Style="{StaticResource StepBtn}" Icon="{StaticResource IconUp}"
+                         Text="" Click="OnUpClick" ToolTip="Aumentar"/>
+        <local:LumButton Style="{StaticResource StepBtn}" Icon="{StaticResource IconDown}"
+                         Text="" Click="OnDownClick" ToolTip="Disminuir"/>
+      </StackPanel>
+    </Grid>
+  </Border>
+</UserControl>

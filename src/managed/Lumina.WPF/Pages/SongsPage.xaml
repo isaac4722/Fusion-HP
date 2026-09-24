@@ -1,0 +1,97 @@
+<!--
+  SongsPage.xaml — «Canciones»: editor (título/artista/letra con bloques y
+  acordes, modo hinario, transposición con tonalidad detectada) + búsqueda FTS.
+-->
+<UserControl x:Class="lumina.wpf.SongsPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:lumina.wpf">
+  <DockPanel>
+    <local:PageHeader DockPanel.Dock="Top" Title="Canciones"
+                      Subtitle="Editor de canciones y biblioteca completa a un clic (v7.1.0)"
+                      Icon="{StaticResource IconSong}"/>
+
+    <Grid>
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="6.2*"/>
+        <ColumnDefinition Width="3.8*"/>
+      </Grid.ColumnDefinitions>
+
+      <!-- ======== editor ======== -->
+      <local:Card Grid.Column="0" Title="Editor de canción" Icon="{StaticResource IconEdit}"
+                  Margin="0,0,14,0">
+        <DockPanel>
+          <!-- opciones abajo -->
+          <StackPanel DockPanel.Dock="Bottom">
+            <StackPanel Orientation="Horizontal">
+              <CheckBox x:Name="chkHymnMode" Content="Modo Hinario (coro intercalado)"
+                        VerticalAlignment="Center" Margin="0,0,16,0"/>
+              <TextBlock Text="Transponer:" Style="{StaticResource TxtLabel}"
+                         VerticalAlignment="Center" Margin="0,0,8,0"/>
+              <local:LumNumeric x:Name="numTranspose" Min="-11" Max="11" Width="76"
+                                ToolTip="Semitonos para «Transponer ahora» (notación latina)"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,7,0,0">
+              <TextBlock x:Name="lblSongKey" Text="Tono: —" Style="{StaticResource TxtLabel}"
+                         VerticalAlignment="Center" MinWidth="220"/>
+              <local:LumButton Variant="Secondary" Icon="{StaticResource IconRefresh}"
+                               Text="Transponer ahora" Click="OnTransposeNow"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,9,0,0">
+              <local:LumButton Variant="Primary" Icon="{StaticResource IconPlay}"
+                               Text="Cargar al escenario" Click="OnLoadToStage"/>
+              <local:LumButton Variant="Secondary" Icon="{StaticResource IconSave}"
+                               Text="Guardar en BD" Margin="8,0,0,0" Click="OnSaveToDb"/>
+            </StackPanel>
+          </StackPanel>
+
+          <!-- campos -->
+          <StackPanel DockPanel.Dock="Top">
+            <TextBlock Text="Título" Style="{StaticResource TxtLabel}" Margin="0,0,0,4"/>
+            <TextBox x:Name="txtTitle"/>
+            <TextBlock Text="Artista" Style="{StaticResource TxtLabel}" Margin="0,9,0,4"/>
+            <TextBox x:Name="txtArtist"/>
+            <TextBlock Text="Letras  (bloques: [Verso 1] · [Coro] — acordes sobre la línea anterior)"
+                       Style="{StaticResource TxtLabel}" Margin="0,9,0,4"/>
+          </StackPanel>
+          <TextBox x:Name="txtLyrics" Margin="0,8,0,10" AcceptsReturn="True"
+                   FontFamily="Consolas" VerticalContentAlignment="Top"
+                   VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                   TextWrapping="NoWrap" TextChanged="OnLyricsChanged"
+                   Text="[Verso 1]&#10;Primera línea de la letra&#10;segunda línea&#10;&#10;[Coro]&#10;Aleluya, aleluya&#10;"/>
+        </DockPanel>
+      </local:Card>
+
+      <!-- ======== biblioteca (v7.1.0: COMPLETA sin buscar) ======== -->
+      <local:Card Grid.Column="1" Title="Biblioteca de canciones" Icon="{StaticResource IconList}">
+        <DockPanel>
+          <TextBlock x:Name="lblResultCount" DockPanel.Dock="Bottom" Text="Toda la biblioteca aparece aquí al abrir la BD (v7.1.0)."
+                     Style="{StaticResource TxtCaption}" Margin="0,8,0,0"/>
+          <StackPanel DockPanel.Dock="Top" Orientation="Horizontal">
+            <TextBox x:Name="txtSearch" Width="200" KeyDown="OnSearchKeyDown"
+                     ToolTip="Filtro opcional por título, autor o letra (Enter) — déjalo vacío para ver TODA la biblioteca"/>
+            <local:LumButton Variant="Secondary" Icon="{StaticResource IconRefresh}" Text="Mostrar todo"
+                             Margin="8,0,0,0" Click="OnShowAllClick"
+                             ToolTip="Muestra la biblioteca COMPLETA (el cuadro queda como filtro opcional)"/>
+          </StackPanel>
+          <ListBox x:Name="lstResults" Margin="0,10,0,0" MouseDoubleClick="OnResultDoubleClick">
+            <ListBox.ItemTemplate>
+              <DataTemplate>
+                <StackPanel>
+                  <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="{Binding Title}" Style="{StaticResource TxtH2}" Margin="0,0,8,0"/>
+                    <TextBlock Text="{Binding Author}" Style="{StaticResource TxtSmall}"
+                               VerticalAlignment="Bottom"/>
+                  </StackPanel>
+                  <TextBlock Text="{Binding Snippet}" Style="{StaticResource TxtSmall}"
+                             Foreground="{StaticResource TextDisabledBrush}" Margin="0,2,0,0"
+                             TextTrimming="CharacterEllipsis"/>
+                </StackPanel>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </DockPanel>
+      </local:Card>
+    </Grid>
+  </DockPanel>
+</UserControl>
