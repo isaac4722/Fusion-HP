@@ -2054,6 +2054,10 @@ namespace lumina.tests
                 rq = (HttpWebRequest)WebRequest.Create(url + "api/v1/next");
                 rq.Method = "POST";
                 rq.Headers["Authorization"] = "Bearer " + token;
+                // net48 (HttpWebRequest): POST sin cuerpo DEBE declarar
+                // Content-Length: 0 — sin él HttpListener responde 411.
+                // (net8 lo envía solo; los clientes reales también.)
+                rq.ContentLength = 0;
                 using (HttpWebResponse rs = (HttpWebResponse)rq.GetResponse())
                     AssertTrue((int)rs.StatusCode == 200, "POST next 200");
 

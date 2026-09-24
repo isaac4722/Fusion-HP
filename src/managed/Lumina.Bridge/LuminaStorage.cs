@@ -231,7 +231,7 @@ namespace lumina.bridge
             return BuildExecJson(
                 "SELECT b.version, b.book, b.chapter, b.verse, b.text" +
                 " FROM bible_fts f JOIN bible b ON b.rowid = f.rowid" +
-                " WHERE bible_fts MATCH ?1 LIMIT ?2",
+                " WHERE f MATCH ?1 LIMIT ?2",
                 term ?? string.Empty, limit);
         }
 
