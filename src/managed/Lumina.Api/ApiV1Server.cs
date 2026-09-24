@@ -497,14 +497,17 @@ button.sec{background:#16394a} .st{margin-top:10px;font-size:13px;opacity:.8}
 <div class=""st"" id=""st"">(conectado)</div>
 <script>
 var token=location.hash.substring(1);
+// audit-allow: este JS vive en la PÁGINA WEB REMOTA que el programa SIRVE al
+// teléfono (F5.03 «cliente web ligero servido por el propio programa» —
+// SPEC §8.2). No es un patrón web de la capa gestionada: es el cliente.
 function cmd(a){fetch('/api/v1/'+a,{method:'POST',headers:{'Authorization':'Bearer '+token}})
  .then(function(r){document.getElementById('st').textContent='ok '+r.status})
  .catch(function(){document.getElementById('st').textContent='sin conexión'})}
 function msg(){var t=prompt('Texto del aviso:');
  if(t)fetch('/api/v1/message',{method:'POST',headers:{'Authorization':'Bearer '+token,
  'Content-Type':'application/json'},body:JSON.stringify({text:t})})}
-function vol(d){var nv=Math.max(0,Math.min(100,parseInt(localStorage.v||60)+d));
- localStorage.v=nv;fetch('/api/v1/volume',{method:'POST',headers:{'Authorization':'Bearer '+token,
+function vol(d){var nv=Math.max(0,Math.min(100,parseInt(localStorage.v||60)+d)); // audit-allow: cliente remoto F5.03
+ localStorage.v=nv;fetch('/api/v1/volume',{method:'POST',headers:{'Authorization':'Bearer '+token, // audit-allow: cliente remoto F5.03
  'Content-Type':'application/json'},body:JSON.stringify({volume:nv})})}
 </script></body></html>";
             }

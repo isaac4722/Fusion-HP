@@ -1,0 +1,49 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# LuminaPresentation Suite — solución raíz de la línea reestructurada v1.0.0
+# (norma AGENT.md «Comandos Ejecutables»: msbuild /t:Restore AppHibrida.sln).
+# La solución gestionada detallada vive en src/managed/Lumina.sln.
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "LuminaCore (núcleo nativo)", "src\core\core.vcxproj", "89877FAB-9539-5863-B57A-0C7BD6BF2556"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lumina.Core", "src\managed\Lumina.Core\Lumina.Core.csproj", "{6D4F7630-07ED-4C0F-8472-B7BC715A1073}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lumina.Bridge", "src\managed\Lumina.Bridge\Lumina.Bridge.csproj", "{A80464B1-B304-4021-8AF0-E0DC457DE70C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lumina.Api", "src\managed\Lumina.Api\Lumina.Api.csproj", "{76E49617-82A6-4EA3-8B60-D63401FAE151}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lumina.UI", "src\managed\Lumina.UI\Lumina.UI.csproj", "{EA49F17B-B579-4658-8A90-AC3A6BB77EC7}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lumina.WPF", "src\managed\Lumina.WPF\Lumina.WPF.csproj", "{8760EFF9-A103-457B-BDFA-049AD5213ED2}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tests", "src\managed\Tests\Tests.csproj", "{6ABE8E92-4631-4E3B-8701-39357CA62C20}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x86 = Debug|x86
+		Debug|x64 = Debug|x64
+		Debug| Any CPU = Debug| Any CPU
+		Release|x86 = Release|x86
+		Release|x64 = Release|x64
+		Release| Any CPU = Release| Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		89877FAB-9539-5863-B57A-0C7BD6BF2556.Debug.ActiveCfg = Debug|Any CPU
+		89877FAB-9539-5863-B57A-0C7BD6BF2556.Release.ActiveCfg = Release|Any CPU
+		{6D4F7630-07ED-4C0F-8472-B7BC715A1073}.Debug.ActiveCfg = Debug|Any CPU
+		{6D4F7630-07ED-4C0F-8472-B7BC715A1073}.Release.ActiveCfg = Release|Any CPU
+		{A80464B1-B304-4021-8AF0-E0DC457DE70C}.Debug.ActiveCfg = Debug|Any CPU
+		{A80464B1-B304-4021-8AF0-E0DC457DE70C}.Release.ActiveCfg = Release|Any CPU
+		{76E49617-82A6-4EA3-8B60-D63401FAE151}.Debug.ActiveCfg = Debug|Any CPU
+		{76E49617-82A6-4EA3-8B60-D63401FAE151}.Release.ActiveCfg = Release|Any CPU
+		{EA49F17B-B579-4658-8A90-AC3A6BB77EC7}.Debug.ActiveCfg = Debug|Any CPU
+		{EA49F17B-B579-4658-8A90-AC3A6BB77EC7}.Release.ActiveCfg = Release|Any CPU
+		{8760EFF9-A103-457B-BDFA-049AD5213ED2}.Debug.ActiveCfg = Debug|Any CPU
+		{8760EFF9-A103-457B-BDFA-049AD5213ED2}.Release.ActiveCfg = Release|Any CPU
+		{6ABE8E92-4631-4E3B-8701-39357CA62C20}.Debug.ActiveCfg = Debug|Any CPU
+		{6ABE8E92-4631-4E3B-8701-39357CA62C20}.Release.ActiveCfg = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
