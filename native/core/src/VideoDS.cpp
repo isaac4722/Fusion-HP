@@ -140,7 +140,7 @@ bool VideoPlayerDS::Start(void* hwndVoid, const Options& o) {
     }
     // startAt (unidades de 100 ns).
     if (seek && o.startAtMs > 0) {
-        const LONGLONG pos = (LONGLONG)o.startAtMs * 10000LL;
+        LONGLONG pos = (LONGLONG)o.startAtMs * 10000LL;
         seek->SetPositions(&pos, AM_SEEKING_AbsolutePositioning,
                            nullptr, AM_SEEKING_NoPositioning);
     }
