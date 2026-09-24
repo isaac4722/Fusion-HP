@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ============================================================================
+  LuminaPresentation Suite - Copyright (c) 2026 Isaac. Licencia View-Only.
+  ============================================================================
+  Directory.Build.props : propiedades comunes de la capa gestionada C#.
+  Objetivo: una única base de código multi-target (net35 = Win7 SP1 integrado,
+  net48 = Win10/11 integrado) con C# 7.3 (sintaxis moderna, runtime 2.0/4.x).
+  ============================================================================
+-->
+<Project>
+  <PropertyGroup>
+    <!-- C# 7.3: máxima sintaxis moderna compatible con el runtime de net35
+         (sin async/await en runtime 2.0: el código de estos proyectos no lo usa). -->
+    <LangVersion>7.3</LangVersion>
+    <!-- LUMINA_NET35: guardas de compilación para API exclusiva de net48/net8
+         (p. ej. ClientWebSocket en ObsClient de la UI). -->
+    <DefineConstants Condition="'$(TargetFramework)' == 'net35'">$(DefineConstants);LUMINA_NET35</DefineConstants>
+    <!-- Nullable desactivado: net35 no tiene atributos de nulabilidad y el
+         código multi-target se escribe con contratos explícitos. -->
+    <Nullable>disable</Nullable>
+    <Deterministic>true</Deterministic>
+    <!-- v5.1.0 «FUNDAMENTO»: la versión de ensamblado acompaña a la del
+         producto (antes quedó congelada en 3.0.0 desde la era wx). UI y capa
+         comparten este valor global → el binding por nombre+versión siempre
+         es coherente entre las builds net35/net48/net8. -->
+    <!-- v6.0.0 «REESTRUCTURA»: la línea reestructurada arranca en el esquema
+         normativo del documento técnico (1.x.y-beta+z): 1.0.0-beta.1. La
+         línea histórica v7.1.0 «OPERADOR» queda congelada como prototipo
+         anterior (núcleo CMake heredado). -->
+    <Version>1.0.0-beta.1</Version>
+    <Product>LuminaPresentation Suite</Product>
+    <Company>Isaac</Company>
+    <Authors>Isaac</Authors>
+    <Copyright>Copyright (c) 2026 Isaac</Copyright>
+    <NeutralLanguage>es-VE</NeutralLanguage>
+    <!-- Sin paquetes NuGet funcionales: solo los ref assemblies (PrivateAssets). -->
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
+    <!-- Rutas reproducibles (PDB deterministas entre máquina local y CI). -->
+    <PathMap>$(MSBuildProjectDirectory)=/managed/$(MSBuildProjectName)</PathMap>
+    <!--
+      NU1702: los proyectos net8.0 (PoC/Tests) referencian las bibliotecas
+      multi-target net35;net48 — el resolver elige net48 (más cercano) y avisa.
+      Es la resolución PRETENDIDA (IL puro idéntico, sin facades); se silencia
+      con aviso documentado en lugar de duplicar TFMs net8.0 fuera del alcance
+      del encargo.
+    -->
+    <NoWarn>$(NoWarn);NU1702</NoWarn>
+  </PropertyGroup>
+
+  <!--
+    Ref assemblies de .NET Framework: necesarias para compilar net35/net48 sin
+    el targeting pack de Windows (imprescindible en Linux/CI). El paquete
+    selecciona el pack correcto según $(TargetFramework). El encargo pedía
+    condicionarlo a net4*, pero net35 TAMBIÉN lo necesita en Linux
+    (TargetFrameworkIdentifier == '.NETFramework' cubre 3.5 y 4.x; en net8.0
+    la condición es falsa y el paquete se ignora). PrivateAssets: no viaja a
+    consumidores.
+  -->
+  <ItemGroup Condition="'$(TargetFrameworkIdentifier)' == '.NETFramework'">
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+</Project>

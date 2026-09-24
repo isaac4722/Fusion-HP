@@ -46,3 +46,8 @@ managed/**/obj/
 artifacts-managed/
 staging/
 dist/
+
+# Capa gestionada C# reestructurada (src/managed)
+src/managed/**/bin/
+src/managed/**/obj/
+export-samples/
