@@ -440,7 +440,18 @@ jobs:
         run: |
           $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path $iscc)) { throw 'ISCC.exe no encontrado tras choco install' }
-          & $iscc /DStagingX86="dist\portable\x86" /DStagingX64="dist\portable\x64" installer/AppHibrida.iss
+          # ISCC resuelve rutas relativas contra la carpeta del .iss (installer/)
+          # — el override se pasa ABSOLUTO (lección ronda 4: buscaba
+          # installer/dist/… y el staging real vive en la raíz del runner).
+          $sx = (Resolve-Path 'dist/portable/x86').Path
+          $sy = (Resolve-Path 'dist/portable/x64').Path
+          foreach ($d in @($sx, $sy)) {
+            if (-not (Test-Path (Join-Path $d 'LuminaPresentation.exe'))) {
+              $listing = (Get-ChildItem $d | Select-Object -First 8 | ForEach-Object Name) -join ', '
+              throw "staging sin LuminaPresentation.exe: $d -> $listing"
+            }
+          }
+          & $iscc /DStagingX86="$sx" /DStagingX64="$sy" installer/AppHibrida.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Subir artefacto instalador
