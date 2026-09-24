@@ -1,16 +1,30 @@
 # Verificación F6.08 — Sesión de servicio de 60 minutos
 
-## Estado de la campaña completa
+## RESULTADO de la campaña completa (CI, medición real)
 
-- **Versión corta (2 min) en el arnés local:** VERDE — `TESTS PASS 42/48`
-  incluye la prueba de sesión con `LUMINA_SESSION_MINUTES` (driver completo:
-  escenarios, líneas, temas, imágenes, Lower Third, Stage View, Triggers,
-  errores controlados → 0 errores no justificados, RAM ~71 MB, pico 71 MB,
-  render medio ~0.06 ms/frame medido).
-- **Campaña completa (60 min en tiempo real):** se ejecuta en el CI mediante
-  el job `sesion60` (windows-latest, `LUMINA_SESSION_MINUTES=60`,
-  `timeout-minutes: 90`, disparo manual y en tags; evidencia como artefacto
-  `sesion60`).
+**Ejecutada en el job `sesion60` del run 36040245651 (tag v1.0.0-beta.1) —
+concluded success.** Reporte del arnés (artefacto `sesion60`):
+
+```text
+[F6.08] REPORTE: duración=60.00 min · ops=33138 · líneas=9468 · elementos=23670
+        · temas=2760 · imágenes=1069 · LT=3314 · stage=33138 · api=0
+        · triggers=23670 · erroresControlados=1180 · NO justificados=0
+        · RAM=19 MB · pico=52 MB · dumps60=59
+[F6.08] renderAvgMs=0.054 · renderMaxMs=10.8
+```
+
+- 60.00 minutos de servicio simulado continuo (proyección, líneas, temas,
+  imágenes, Lower Thirds, Stage View, Triggers, fail-safes controlados).
+- **0 errores no justificados** (log limpio — criterio 12.3 F6).
+- **RAM pico 52 MB ≪ objetivo 300 MB** de la tabla 10.1 (condición: arnés
+  net8.0 del runner; la condición normativa Win7 x86/HDD queda declarada
+  como limitación de entorno).
+- 59 volcados de contadores a 60 s (F6.01) dentro del artefacto.
+
+## Versión corta (2 min) en el arnés local
+
+`TESTS PASS 42/48` incluye la prueba con `LUMINA_SESSION_MINUTES=2`
+(mismo driver) — verde en cada build local y en el job `managed` del CI.
 
 ## Limitación del anfitrión local (documentada — degradación controlada)
 
