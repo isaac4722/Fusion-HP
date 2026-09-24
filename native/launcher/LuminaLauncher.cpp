@@ -81,7 +81,7 @@ using namespace lumina;
 // ---------------------------------------------------------------------------
 // Constantes
 // ---------------------------------------------------------------------------
-static const wchar_t* kWindowTitle = L"LuminaLauncher v7.0.0 «ULTRA»";
+static const wchar_t* kWindowTitle = L"LuminaLauncher v7.1.0 «OPERADOR»";
 
 static const wchar_t* kTargetNet48 = L"net48\\LuminaPresentation.exe";
 static const wchar_t* kTargetNet35 = L"net35\\LuminaPresentation35.exe";
@@ -597,7 +597,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
     lo.minLevel = sw.logDebug ? nlog::SEV_DEBUG : nlog::SEV_INFO;
     g_bootLog.Open(lo);
     g_bootLog.Write(nlog::SEV_INFO, "bootstrap",
-                    "LuminaLauncher v7.0.0 «ULTRA» — arranque nativo");
+                    "LuminaLauncher v7.1.0 «OPERADOR» — arranque nativo");
 
     // ---- F0.01-F0.03: detección ANTES de cargar C# ----
     const bootstrap::EnvDecision d = bootstrap::DetectEnvironment(

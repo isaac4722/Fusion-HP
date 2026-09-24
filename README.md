@@ -1,4 +1,16 @@
-# LuminaPresentation Suite v7.0.0 «ULTRA» — BETA
+# LuminaPresentation Suite v7.1.0 «OPERADOR» — BETA
+
+> **v7.1.0 «OPERADOR»**: correcciones y ajustes de enfoque del prototipo
+> probado en campo — **enfoque Holyrics/PowerPoint**: **editor de
+> diapositivas de lienzo libre** (arrastrar/redimensionar/editar in situ,
+> WYSIWYG con la proyección), **ventana de proyección sin bordes** con
+> cierre sano (X/ESC sin duplicar, reabrible), **modo operador** de dos
+> niveles con texto completo sin proyectar, **Biblia por libro/capítulo sin
+> buscar + comparación de dos versiones lado a lado**, **biblioteca de
+> cantos completa sin búsqueda**, **PPTX original sin extracción**
+> (PowerPoint lo proyecta vía COM) y **cultos sin generar archivos pptx**
+> (solo-cargar: la lista del culto + la BD). La «API local» de OBS/control
+> se retiró de la interfaz; el control remoto es el **mando móvil** por LAN.
 
 > **v7.0.0 «ULTRA»**: aplica el **Plan de Ultra Implementación** completo
 > (80 ítems F0–F6): bootstrap nativo con perfiles A/B/C, **IPC ipc.v1** por
@@ -25,8 +37,8 @@
 
 1. Ir a **[Betas](https://github.com/isaac4722/Fusion-HP/releases)** (pre-releases de evaluación).
 2. Descargar el paquete para tu arquitectura:
-   - `LuminaPresentation-6.1.0-beta.1-win-x86.zip` — **Windows 7 SP1 … Windows 11 (32 bits)**
-   - `LuminaPresentation-6.1.0-beta.1-win-x64.zip` — **Windows 7 SP1 … Windows 11+ (64 bits)**
+   - `LuminaPresentation-7.1.0-beta.1-win-x86.zip` — **Windows 7 SP1 … Windows 11 (32 bits)**
+   - `LuminaPresentation-7.1.0-beta.1-win-x64.zip` — **Windows 7 SP1 … Windows 11+ (64 bits)**
 3. Descomprimir el ZIP **completo** y ejecutar **`LuminaLauncher.exe`**.
    **El usuario nunca instala nada**:
    - Windows 10 1903+ / Windows 11 → **.NET Framework 4.8** integrado en el SO
@@ -39,6 +51,54 @@
      + las 3 DLL gestionadas en la carpeta de la variante elegida) y explica con
      claridad qué hacer si falta algo.
    - Ambas variantes comparten la misma carpeta de datos `data\`.
+
+## 🌟 Novedades v7.1.0 «OPERADOR» — Enfoque Holyrics/PowerPoint
+
+> Correcciones del prototipo probado por el usuario: **menos generación de
+> archivos, más aplicación nativa**. La creación/edición de diapositivas se
+> siente como PowerPoint y la operación en vivo como Holyrics:
+
+> - **Editor de diapositivas de LIENZO LIBRE** («Culto › Diapositiva
+>   (lienzo)…»): elementos de texto/imagen que se **arrastran** por el
+>   lienzo 16:9, se **redimensionan por las esquinas**, se **editan con
+>   doble clic en el sitio** (Supr/Ctrl+D/flechas/snap a retícula y
+>   centros), propiedades (alineación, color, opacidad, tamaño fijo o
+>   auto) y capas reordenables. **WYSIWYG total**: el editor usa el mismo
+>   contrato de coordenadas que el motor nativo (cada elemento se dibuja
+>   en su rect en la proyección). Doble clic en un ítem «Diseño» del culto
+>   lo reabre; editar con el culto **en vivo recarga conservando la slide
+>   actual**.
+> - **Ventana de proyección SIEMPRE sin bordes** (`WS_POPUP`): a pantalla
+>   completa (por defecto) o 960×540 centrada. El botón/F5 es un
+>   **interruptor con estado real** (sondeo del núcleo — el cierre con X o
+>   ESC del usuario se refleja). **Cerrar con X/ESC ya no duplica la
+>   ventana** y se puede reabrir cuantas veces sea; cambiar de monitor
+>   **recoloca la misma ventana** sin abrir otra.
+> - **Modo OPERADOR (En Vivo) de dos niveles** estilo Holyrics: lista de
+>   ÍTEMS (canción/pasaje/texto/presentación/diseño…) con sus slides;
+>   **clic = leer sin proyectar**, doble clic = proyectar; seguimiento en
+>   vivo del ítem proyectado y panel de **texto completo** (la Biblia
+>   entera, la letra) para leer sin proyectar nada.
+> - **Biblia por libro y capítulo SIN buscar**: los 66 libros siempre
+>   visibles + selector de capítulo + versiones instaladas (cargadas al
+>   abrir la BD); «Leer capítulo» muestra los versículos sin proyectar.
+>   **Comparación de DOS versiones lado a lado** por versículo (y
+>   proyección de ambas juntas, etiquetadas).
+> - **Cantos sin búsqueda**: la biblioteca COMPLETA aparece al abrir la BD
+>   (ordenada por título); el cuadro queda como filtro opcional con
+>   «Mostrar todo».
+> - **PPTX ORIGINAL sin extracción**: «Agregar PPTX…» conserva el archivo
+>   tal cual y **PowerPoint lo proyecta completo** (COM en modo kiosco
+>   sobre el monitor del proyector) al ponerlo en vivo — sin PowerPoint,
+>   el ítem muestra el nombre del archivo. La extracción de solo-texto
+>   queda como opción secundaria.
+> - **API local retirada**: el «modo API» loopback orientado a OBS/control
+>   externo se eliminó de Ajustes (no funcionaba); el control remoto
+>   sigue siendo el **mando móvil por red local** (Integraciones).
+> - **Cultos/escenarios SIN generar pptx**: armar el culto se siente como
+>   crear un pptx (lista de ítems, editor de diapositivas, orden) pero
+>   todo vive en la app + la BD (**solo-cargar**, como Holyrics). La
+>   exportación a PPTX/PDF/imágenes queda como opción (Exportar).
 
 ## 🌟 Novedades v6.1.0 «GUION» — Motor de scripts JSLib
 

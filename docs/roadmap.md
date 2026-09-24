@@ -1,5 +1,15 @@
 # Hoja de ruta — diferido y evolución (post v5.1.0 «FUNDAMENTO»)
 
+> **v7.1.0 «OPERADOR» (2026-09-24)**: correcciones del prototipo probado por
+> el usuario — enfoque Holyrics/PowerPoint: editor de diapositivas de lienzo
+> libre (WYSIWYG con el motor nativo), ventana de proyección sin bordes con
+> cierre sano (X/ESC sin duplicar), modo operador de dos niveles con texto
+> completo sin proyectar, Biblia por libro/capítulo sin buscar + comparación
+> de 2 versiones, biblioteca de cantos completa sin búsqueda, PPTX original
+> sin extracción (PowerPoint vía COM) y cultos solo-cargar (sin generar
+> pptx). La «API local» OBS/control se retiró de la interfaz (el control
+> remoto es el mando móvil por LAN).
+
 > **v6.0.0 «HORIZONTE» (2026-09-24)**: los ítems factibles de esta hoja ya
 > están IMPLEMENTADOS y verificados — resaltado en PROYECCIÓN, transiciones
 > (fundido), OSIS XML, importación PPTX y notas persistentes del director.

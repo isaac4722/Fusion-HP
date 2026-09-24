@@ -1103,3 +1103,87 @@ modular §1.2, teclado + foco visible §1.3, WCAG 2.2 §2, animaciones ≤ 160ms
   bloqueados por credenciales del propietario (PCO/Drive OAuth, firma de
   código) y los diferidos de diseño (codecs mkv/webm, verificación visual de
   transiciones en GUI real).
+
+## [v7.1.0-OPERADOR] Correcciones del prototipo: enfoque Holyrics/PowerPoint · 2026-09-24 UTC
+
+- Contexto: el usuario probó el prototipo v7.0.0 y envió 8 correcciones de
+  enfoque: la app debe sentirse como PowerPoint/Holyrics, no como un
+  generador de pptx («Y mejor según lo que veas cámbialo por el sentido
+  común»). Implementadas TODAS + mejoras por sentido común.
+- F1 EDITOR DE DIAPOSITIVAS (lienzo libre): nuevo SlideEditorWindow.cs
+  (WPF puro, C# 7.3, cero referencias nuevas) — lienzo 16:9 con el TEMA
+  activo de fondo (color+imagen, WYSIWYG), elementos de texto/imagen que se
+  ARRASTRAN (captura de ratón, snap a retícula 1/24 + guías de centro,
+  clamp 0..1), se REDIMENSIONAN por las 4 esquinas, se EDITAN IN SITU con
+  doble clic (TextBox multilinea, Esc cancela), Supr/Ctrl+D/flechas
+  (nudge 0.5%/2%), propiedades (alineación, color del tema o fijo,
+  opacidad, tamaño fijo % o auto, contain/cover), capas reordenable,
+  duplicar/quitar. Motor nativo: SLIDE_COMPOSED + ComposedElement
+  (Models.h: rect fraccional + estilo, serialización normativa) +
+  DrawComposedElements (Renderer.cpp: GDI+ por elemento con shrink 10%
+  hasta caber, alineación, alfa por brush, imagen con cover/contain) — el
+  MISMO contrato de coordenadas del editor (WYSIWYG de punta a punta).
+  Engine.cpp aplana composed→1 slide con TODOS los elementos; el ítem
+  viaja en JSON/plan/ahp (ScenarioBuilder + Models.cs espejo). Entrada:
+  «Culto › Diapositiva (lienzo)…» y doble clic/Enter en un ítem «Diseño»
+  para REABRIRLO; edición en caliente: si el culto está en vivo, recarga
+  CONSERVANDO la slide actual (flag _serviceIsLive).
+- F3 VENTANA DE PROYECCIÓN: SIEMPRE WS_POPUP sin bordes (pantalla completa
+  = monitor elegido; modo ventana = 960×540 centrado sin bordes, TOPMOST);
+  WM_CLOSE destruye la ventana de VERDAD y apaga showWindow (antes: hwnd
+  =nullptr sin destruir → show && !hwnd → VENTANA DUPLICADA — bug de campo);
+  el hilo SOBREVIVE (solo Close() lo detiene) y Show() recicla el handle si
+  terminó (red de seguridad); StatsJson expone render.visible/screen/
+  fullscreen y la UI sondea (1,2 s) para reflejar el cierre con X/ESC del
+  usuario en el interruptor F5; cambio de monitor RECOLOCA (ProjectorShow
+  sobre estado actual, sin ventana nueva).
+- F4 MODO OPERADOR (En Vivo): lista de DOS NIVELES estilo Holyrics — ítems
+  del escenario (número, tipo en español, título, nº de slides) con sus
+  slides; clic = VER sin proyectar; doble clic = proyectar la primera;
+  seguimiento en vivo (la slide proyectada selecciona su ítem); panel de
+  TEXTO COMPLETO de la slide seleccionada (toda la Biblia/letra sin
+  proyectar). Biblia: COMPARACIÓN de 2 versiones (BiblePage: combos de
+  versiones instaladas + «Comparar» → cada versículo con ambas versiones
+  lado a lado; proyección: ítems de texto con ambas etiquetadas por grupo).
+- F2 NOMBRES: filas del culto con tipo en ESPAÑOL (Canción/Pasaje/Texto/
+  Imagen/Video/Presentación/Diseño) + detalle útil (artista·bloques,
+  ref·versión, nombre de archivo…) — ServiceItemVm; cabecera «Escenario
+  «nombre»» en En Vivo (SetScenarioName).
+- F5 API LOCAL RETIRADA: ApiServer loopback + tarjetas OBS eliminadas de
+  Ajustes/Integraciones (no funcionaba; orientada a OBS/control externo).
+  El control remoto sigue siendo el MANDO MÓVIL por LAN (RemoteServer,
+  Integraciones). ObsClient.cs permanece como biblioteca de la línea
+  WinForms net35 (no usada por la WPF). ApiV1Server permanece como
+  biblioteca probada (tests).
+- F6 PPTX ORIGINAL SIN EXTRACCIÓN: PowerPointShow.cs (late binding COM por
+  Type.GetTypeFromProgID — cero referencias nuevas): abre la presentación
+  OCULTA, lanza el modo KIOSCO y recoloca la ventana del show sobre el
+  monitor del proyector (SetWindowPos TOPMOST); ítem pptx = marcador con
+  el nombre del archivo (Engine.cpp); al ponerlo en vivo → Play(); al
+  salir del ítem → Stop() (la ventana nativa reaparece); LiveNext/LivePrev
+  reenvían View.Next/Previous DENTRO de PowerPoint; sin PowerPoint →
+  mensaje claro. Importación de solo-texto conservada como opción
+  secundaria («Importar PPTX (solo texto)…»).
+- F7 BIBLIOTECAS SIN BÚSQUEDA: canciones — ListAllSongsRequest (SELECT
+  ORDER BY title COLLATE NOCASE LIMIT 1000); la biblioteca COMPLETA se
+  llena al abrir la BD (hook en OpenDatabase) y el cuadro queda como
+  FILTRO opcional («Mostrar todo»); Biblia — 66 libros SIEMPRE visibles
+  (combo) + capítulo + versiones instaladas (SELECT DISTINCT version) al
+  abrir la BD; «Leer capítulo» = versículos sin proyectar; doble clic en
+  un versículo = al escenario.
+- F8 SOLO-CARGAR: el culto es la fuente de verdad (lista de ítems + BD) —
+  «Enviar a proyección» carga el escenario al motor (sin generar pptx);
+  composed/pptx viajan en el plan JSON; la exportación a PPTX/PDF/imágenes
+  queda como OPCión de la página Exportar (como «Guardar como»).
+- Fix de compilación de la sesión anterior (eliminación OBS/API incompleta):
+  referencias muertas en MainWindow.xaml.cs/Integrations/Live +
+  OnObsConnect en IntegrationsPage.xaml.cs + tarjeta API en SettingsPage
+  .xaml + using System.Text en LivePage + LumNumeric.ValueChangedByUser.
+- Gates: nativo 0 err/0 warn · selftest 479/479 (13: slides compuestas y
+  PPTX original) · poc 52/52 (7.1) · build solución 0/0 (net35+net48+net8+
+  WPF) · tests 43/43 CON núcleo · auditoría prohibiciones 0 violaciones.
+- Bump v7.1.0 «OPERADOR»: kVersion/lumina_api (7.1.0-operador), selftest
+  banner, PoC check, Directory.Build.props, AppVersion WPF (estaba stale
+  6.1.0 en esta línea), Tests 7.1, PoC.Managed 7.1, launcher «OPERADOR»,
+  CI APP_VERSION 7.1.0-beta.1 + README.txt del paquete + release body.
+- Bloqueos: ninguno (los del propietario siguen: OAuth PCO/Drive, firma).
