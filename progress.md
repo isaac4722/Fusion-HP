@@ -61,6 +61,39 @@
 - Siguiente: push → tag v7.0.0-beta.1 → CI (Windows valida launcher /
   emergencia / DirectShow / D2D compiles /W4 y el pipe REAL de ipc.v1)
 
+## [v7.0.0-ULTRA-CIERRE] CI 100% verde + release «ULTRA» publicada · 2026-09-24 UTC
+
+- Push de la oleada: 5 commits de onda + docs + **12 fixes de compilación
+  Windows** cazados por los gates del propio CI (C2227 punteros opacos de
+  VideoDS, C2664 IMediaSeeking mutable, C4005 macros del CMake, C4996
+  _wfopen_s, C4189, C2589 min/max del Renderer dentro del launcher, rutas
+  de pruebas relativas al cwd, handle CRT bloqueando la lectura del log,
+  PoC.Managed esperando LuminaCore 7.0, GetSystemTimePreciseAsFileTime,
+  std::thread→CreateThread) — cada uno con run identificado y veredicto.
+- **El último import Win8+ (3.ª parte, bb62f59)**: el launcher x86 seguía
+  importando `GetSystemTimePreciseAsFileTime` tras el fix de CreateThread —
+  causa raíz completa: DOS `std::mutex` en el enlace (Projector::Impl::mx y
+  nlog::g_logMutex) — el objeto mtx.obj del STL importa la API como estático
+  y el CMake autónomo del launcher no compila el shim MASM. Convertidos a
+  CRITICAL_SECTION con guardas RAII (Linux sin cambio: std::mutex). BUG del
+  parche corregido de paso: el ciclo de vida de la CS ahora vive en Impl
+  (Close() reinicia Impl y el nuevo Impl nacía con la CS sin inicializar).
+  Empaquetado x86 PASS por primera vez en el ciclo.
+- **Release y README del ZIP estaban stale en v6.1.0 «GUION»** (a69af34):
+  reescritos a «ULTRA» con el detalle real de F0–F6 de esta línea.
+- Gates finales de CI (runs 35987580608 main + 35988272320 tag, ambos
+  **SUCCESS**): núcleo x86/x64 /MT + Linux · gestionado net35/net48/tests
+  net8 · interop x86/x64 · auditoría F6.09 · **empaquetado dual PASS** ·
+  Win7-imports PASS (x86/x64) · clrhost sigue informativo-fallo
+  (continue-on-error, pre-existing v5.4.0, documentado y no bloquea).
+- **RELEASE PUBLICADA**: https://github.com/isaac4722/Fusion-HP/releases/
+  tag/v7.0.0-beta.1 (prerelease, zips x86/x64 + SHA256SUMS, notas «ULTRA»).
+- Tag movido al commit verde (a69af34) — el tag original apuntaba al commit
+  rojo 9ca695f y la release nunca llegó a publicarse.
+- Bloqueos: OAuth PCO/Drive (credenciales del propietario — clientes
+  implementados y visibles en diagnóstico) y hardware físico (campaña del
+  propietario). Nada bloquea el código.
+
 # Bitácora de turnos — LuminaPresentation Suite
 
 > Registro acumulativo de trabajo (append-only). Formato definido en `AGENT.md`.
