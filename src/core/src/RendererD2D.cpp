@@ -327,11 +327,6 @@ struct RendererD2D::Impl {
                 const bool active = ((int)i == fr.style.activeLine);
                 const std::wstring line = ToWide(fr.lines[i]);
                 if (line.empty()) { y += lh; continue; }
-                ComPtr<IDWriteTextLayout> layout;
-                HRESULT hr = g_dwrite->CreateTextLayout(
-                    line.c_str(), (UINT32)line.size(), format.Get(), fw, lh,
-                    &layout);
-                if (FAILED(hr)) { y += lh; continue; }
 
                 const D2D1_RECT_F lineRect = D2D1::RectF(0.0f, y, fw, y + lh);
                 if (active) {
@@ -342,16 +337,26 @@ struct RendererD2D::Impl {
                                                   &hl);
                     if (hl) target->FillRectangle(lineRect, hl.Get());
                 }
-                const float shadowDx = fr.style.fontSizePx * 0.03f;
-                const float shadowDy = fr.style.fontSizePx * 0.03f;
+                // D2D renderiza texto directamente con DrawTextW (el par
+                // TextLayout/TextRenderer de DWrite no es necesario para la
+                // línea plana del proyector — menos asignaciones, menos DPI
+                // edge cases, misma salida).
                 if (shadowBrush) {
-                    layout->Draw(nullptr, shadowBrush.Get(), shadowDx,
-                                 y + shadowDy);
+                    const float shadowDx = fr.style.fontSizePx * 0.03f;
+                    const float shadowDy = fr.style.fontSizePx * 0.03f;
+                    target->DrawTextW(line.c_str(), (UINT32)line.size(),
+                                      format.Get(),
+                                      D2D1::RectF(shadowDx, y + shadowDy,
+                                                  fw + shadowDx, y + lh + shadowDy),
+                                      shadowBrush.Get(),
+                                      D2D1_DRAW_TEXT_OPTIONS_NONE);
                 }
                 if (brush) {
                     if (active) brush->SetColor(activeColor);
                     else        brush->SetColor(mainColor);
-                    layout->Draw(nullptr, brush.Get(), 0.0f, y);
+                    target->DrawTextW(line.c_str(), (UINT32)line.size(),
+                                      format.Get(), lineRect, brush.Get(),
+                                      D2D1_DRAW_TEXT_OPTIONS_NONE);
                 }
                 y += lh;
             }

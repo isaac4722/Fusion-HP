@@ -168,7 +168,7 @@ Name: "custom"; Description: "Personalizada"
 Name: "managed"; Description: "Capa gestionada C# — interfaz WPF (.NET 4.8) y baseline WinForms (.NET 3.5) con las DLL Lumina.*"; Types: full custom; Flags: fixed
 Name: "native_x64"; Description: "Núcleo nativo C++ para Windows x64 (LuminaCore.dll)"; Types: full custom; Check: Is64BitInstallMode
 Name: "native_x86"; Description: "Núcleo nativo C++ para Windows x86 (LuminaCore.dll)"; Types: full custom; Check: not Is64BitInstallMode
-Name: "redist"; Description: "Instalador offline oficial de .NET Framework 4.8 (~111 MB, opcional — solo se ofrece si falta .NET)"; Types: full custom; Flags: unchecked; ExtraDiskSpaceRequired: 120000000; Check: DotNetMissing472
+Name: "redist"; Description: "Instalador offline oficial de .NET Framework 4.8 (~111 MB, opcional — solo se ofrece si falta .NET)"; Types: full custom; Flags: unchecked; Check: DotNetMissing472
 
 [Files]
 ; ============================================================================
