@@ -135,6 +135,10 @@ namespace lumina.ui
 
         // Canciones
         private TextBox _txtSongTitle, _txtSongArtist, _txtSongLyrics, _txtSearch;
+#if NET48
+        // F2.09: editor WPF incrustado (ElementHost) en la página de Canciones.
+        private WpfEditorHost _wpfHost;
+#endif
         private LuminaCheck _chkHymnMode;
         private NumericUpDown _numTranspose;
         private ListView _lvResults;
@@ -238,6 +242,156 @@ namespace lumina.ui
             ApplySettingsToControls();
             StartIntegrationsFromSettings();   // v5.0.0: activadores/remoto/MIDI/OBS
             UpdateStatusBar();
+
+#if NET48
+            // F2.09: editor WPF vía ElementHost (una sola aplicación). Se crea
+            // DESPUÉS de CreateEngine para conocer el perfil (A con núcleo,
+            // B sin él) y aplicar la norma de efectos acelerados.
+            InitWpfEditorHost();
+#endif
+
+            // F1.06 «Arranque en Presentación»: restaura el ÚLTIMO PROYECTO
+            // (silencioso, fail-safe) tras construir la ventana completa.
+            BeginInvoke(new Action(RestoreLastProjectAtStartup));
+        }
+
+#if NET48
+        /// <summary>
+        /// F2.09: incrusta el editor de canción WPF (ElementHost) en la página
+        /// de Canciones y lo sincroniza EN DOS VÍAS con los controles WinForms
+        /// (contenido editable completo también en perfil B).
+        /// </summary>
+        private void InitWpfEditorHost()
+        {
+            try
+            {
+                _wpfHost = new WpfEditorHost(profileB: _engine == null);
+                Panel hostPanel = new Panel { Dock = DockStyle.Bottom, Height = 170 };
+                hostPanel.Controls.Add(_wpfHost.Host);
+                // El panel vive en la tarjeta del editor de Canciones (el
+                // TextBox Dock=Fill cede el espacio automáticamente).
+                _txtSongLyrics.Parent.Controls.Add(hostPanel);
+                hostPanel.BringToFront();
+                _txtSongLyrics.BringToFront();
+
+                // WinForms → WPF (modelo hacia el editor incrustado).
+                Action push = delegate
+                {
+                    if (_wpfHost == null) return;
+                    _wpfHost.Editor.SetModel(_txtSongTitle.Text, _txtSongArtist.Text, _txtSongLyrics.Text);
+                };
+                _txtSongTitle.TextChanged += delegate { push(); };
+                _txtSongArtist.TextChanged += delegate { push(); };
+                _txtSongLyrics.TextChanged += delegate { push(); };
+
+                // WPF → WinForms (las ediciones del usuario vuelven al modelo).
+                _wpfHost.Editor.EditedByUser += delegate
+                {
+                    string t, a, l;
+                    _wpfHost.Editor.GetModel(out t, out a, out l);
+                    if (_txtSongTitle.Text != t) _txtSongTitle.Text = t;
+                    if (_txtSongArtist.Text != a) _txtSongArtist.Text = a;
+                    if (_txtSongLyrics.Text != l) _txtSongLyrics.Text = l;
+                };
+                Program.LogLine("F2.09: editor WPF incrustado vía ElementHost (efectos "
+                    + (_wpfHost.EffectsEnabled ? "activos, perfil A)" : "DESACTIVADOS, perfil B)"));
+            }
+            catch (Exception ex)
+            {
+                // Fail-safe: si el hosting WPF no está disponible (p. ej. CLR4
+                // sin WPF), la página sigue siendo 100% funcional en WinForms.
+                try { Program.LogLine("F2.09: ElementHost no disponible: " + ex.Message); }
+                catch (Exception) { }
+                if (_wpfHost != null) { _wpfHost.Dispose(); _wpfHost = null; }
+            }
+        }
+#endif
+
+        /// <summary>
+        /// F1.06: guarda la ruta del último plan (settings.json, disponible
+        /// sin BD abierta). Ruta absoluta; fallos van al log sin molestar.
+        /// </summary>
+        private void RememberProjectPath(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return;
+            try
+            {
+                _settings.LastProjectPath = Path.GetFullPath(path);
+                _settings.Save();
+            }
+            catch (Exception ex)
+            {
+                try { Program.LogLine("RememberProjectPath FALLO: " + ex.Message); } catch (Exception) { }
+            }
+        }
+
+        /// <summary>
+        /// F1.06: restauración silenciosa del último plan al arrancar (la
+        /// ventana abre en el flujo de presentación con el proyecto ya
+        /// cargado). Nunca lanza ni bloquea: fallos solo al log.
+        /// </summary>
+        private void RestoreLastProjectAtStartup()
+        {
+            string path = _settings.LastProjectPath;
+            if (string.IsNullOrEmpty(path) || !File.Exists(path)) return;
+            try
+            {
+                Dictionary<string, object> plan = MiniJson.Parse(
+                    File.ReadAllText(path, new UTF8Encoding(false)));
+                List<object> items = MiniJson.GetArray(plan, "items");
+                if (items == null || items.Count == 0) return;
+                int added = 0;
+                foreach (object ro in items)
+                {
+                    Dictionary<string, object> io = ro as Dictionary<string, object>;
+                    if (io == null) continue;
+                    string type = MiniJson.GetString(io, "type", "blank").ToLowerInvariant();
+                    string title = MiniJson.GetString(io, "title", string.Empty);
+                    if (type == "song")
+                    {
+                        Song s = new Song();
+                        s.Title = title.Length > 0 ? title : "Canción";
+                        s.Artist = MiniJson.GetString(io, "artist", string.Empty);
+                        s.Lyrics = MiniJson.GetString(io, "lyrics", string.Empty);
+                        List<SongBlock> blocks = ScenarioBuilder.ParseLyricsBlocks(s.Lyrics);
+                        if (blocks.Count > 0) s.Blocks = blocks;
+                        _serviceItems.Add(ScenarioBuilder.FromSong(s));
+                    }
+                    else if (type == "scripture")
+                    {
+                        string refr = MiniJson.GetString(io, "ref", string.Empty);
+                        if (refr.Length == 0) refr = title;
+                        _serviceItems.Add(ScenarioBuilder.ScriptureItem(refr,
+                            MiniJson.GetString(io, "version", _settings.LastBibleVersion),
+                            1, MiniJson.GetString(io, "text", string.Empty)));
+                    }
+                    else if (type == "text")
+                    {
+                        _serviceItems.Add(ScenarioBuilder.TextItem(title,
+                            MiniJson.GetString(io, "text", title), 4));
+                    }
+                    else
+                    {
+                        _serviceItems.Add(ScenarioBuilder.BlankItem(
+                            title.Length > 0 ? title : "En blanco"));
+                    }
+                    added++;
+                }
+                if (added > 0)
+                {
+                    string planName = MiniJson.GetString(plan, "name", string.Empty);
+                    if (planName.Length > 0) _txtServiceName.Text = planName;
+                    RefreshServiceList();
+                    Status("Último proyecto restaurado: " + Path.GetFileName(path)
+                        + " (" + added + " ítems).");
+                    Program.LogLine("F1.06: último proyecto restaurado (" + added + " ítems).");
+                }
+            }
+            catch (Exception ex)
+            {
+                try { Program.LogLine("F1.06: no se pudo restaurar el último proyecto: " + ex.Message); }
+                catch (Exception) { }
+            }
         }
 
         /* ======================================================================
@@ -4711,7 +4865,9 @@ namespace lumina.ui
                 _txtSongTitle.Text = row.Count > 1 ? Cell(row, 1) : string.Empty;
                 _txtSongArtist.Text = row.Count > 2 ? Cell(row, 2) : string.Empty;
                 _txtSongLyrics.Text = row.Count > 6 ? Cell(row, 6) : string.Empty;
-                Status("Canción #" + id + " cargada al editor.");
+                // F2.12: historial de uso (frecuencia y popularidad de la biblioteca).
+                try { _engine.DbExec(LuminaStorage.RecordSongUseRequest(id)); } catch (Exception) { }
+                Status("Canción #" + id + " cargada al editor (uso registrado).");
             }
             catch (LuminaException ex)
             {
@@ -5269,6 +5425,8 @@ namespace lumina.ui
                     string planName = MiniJson.GetString(plan, "name", string.Empty);
                     if (planName.Length > 0) _txtServiceName.Text = planName;
                     RefreshServiceList();
+                    // F1.06: el plan importado queda como «último proyecto».
+                    RememberProjectPath(dlg.FileName);
                     Status("Plan importado: " + added + " ítems agregados al culto.");
                 }
                 catch (Exception ex)

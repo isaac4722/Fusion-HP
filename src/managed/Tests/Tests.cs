@@ -115,6 +115,16 @@ namespace lumina.tests
             Run("Drive: offline-first, cola y conflictos con historial (F6.04)", TestDriveOfflineQueue);
             Run("F6.08: sesión de servicio simulada (LUMINA_SESSION_MINUTES)", TestSession60);
 
+            // --- v1.0.0-beta.3 — cierre de brechas F1.06/F1.07/F2.12/F2.14/F4.13
+            Run("FtsQuery: saneamiento MATCH de FTS5 (F1.07)", TestFtsQuery);
+            Run("Settings: lastProjectPath persistido (F1.06)", TestSettingsLastProject);
+            Run("Nativo: canción uso/anotaciones + popularidad (F2.12)", TestSongUseAndAnnotations, libOk);
+            Run("Nativo: biblioteca de recursos + re-vinculación (F2.14)", TestResourcesCrud, libOk);
+            Run("Nativo: búsqueda en caliente canciones+versículos (F1.07)", TestHotSearchQueries, libOk);
+#if NETFRAMEWORK
+            Run("ImageExporter: 5 formatos y mínimo 1920×1080 (F4.13)", TestImageExporter, s_windowsGdi);
+#endif
+
             int failed = Failures.Count;
             int total = _pass + _skip + failed;
             if (failed == 0)
@@ -521,6 +531,241 @@ namespace lumina.tests
             try { File.Delete(dbPath); } catch (Exception) { }
             try { File.Delete(dbPath + "-journal"); } catch (Exception) { }
         }
+
+        /* ============================ v1.0.0-beta.3 — brechas F1.06/F1.07/F2.12/F2.14/F4.13 */
+
+        /// <summary>¿Plataforma Windows con GDI+ real? (para el test F4.13).</summary>
+        private static readonly bool s_windowsGdi =
+            Environment.OSVersion.Platform == PlatformID.Win32NT ||
+            Environment.OSVersion.Platform == PlatformID.Win32Windows;
+
+        private static void TestFtsQuery()
+        {
+            // El usuario escribe referencias («juan 3:16») — los dos puntos NO
+            // pueden llegar a MATCH (filtro de columna de FTS5).
+            AssertTrue(FtsQuery.Sanitize("juan 3:16") == "\"juan\" \"3\" \"16\"",
+                "sanitize «juan 3:16» → " + FtsQuery.Sanitize("juan 3:16"));
+            // Comillas y operadores del usuario se eliminan (evita inyección
+            // de sintaxis FTS5 — frase/columna/_prefijo).
+            AssertTrue(FtsQuery.Sanitize("gloria \"dios\" *aleluya*") ==
+                "\"gloria\" \"dios\" \"aleluya\"",
+                "sin comillas/asteriscos → " + FtsQuery.Sanitize("gloria \"dios\" *aleluya*"));
+            AssertTrue(FtsQuery.Sanitize("   ") == string.Empty, "vacío → vacío");
+            AssertTrue(!FtsQuery.IsUseful(FtsQuery.Sanitize("  ((  ")), "solo ruido → no útil");
+        }
+
+        private static void TestSettingsLastProject()
+        {
+            string dir = Path.Combine(Path.GetTempPath(),
+                "lumina_tests_" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                Settings written = new Settings(dir);
+                written.LastProjectPath = "C:\\cultos\\domingo.json";
+                written.Save();
+                Settings read = Settings.Load(dir);
+                AssertTrue(read.LastProjectPath == "C:\\cultos\\domingo.json", "lastProjectPath");
+                // Lectores viejos ignoran el campo nuevo (F2.01.8) y los
+                // defaults no lo rellenan (cadena vacía, nunca null).
+                Settings defaults = Settings.Load(Path.Combine(dir, "vacía"));
+                AssertTrue(defaults.LastProjectPath.Length == 0, "default vacío");
+            }
+            finally
+            {
+                try { Directory.Delete(dir, true); } catch (Exception) { }
+            }
+        }
+
+        private static void TestSongUseAndAnnotations()
+        {
+            string dbPath = Path.Combine(Path.GetTempPath(),
+                "lumina_tests_" + Guid.NewGuid().ToString("N") + ".db");
+            using (LuminaEngine engine = LuminaEngine.Create(true, null))
+            {
+                try
+                {
+                    AssertTrue(engine.DbOpen(dbPath) == LuminaStatus.Ok, "DbOpen");
+                    engine.DbExec(LuminaStorage.BuildExecJson(
+                        "INSERT INTO songs(title, lyrics) VALUES(?,?)",
+                        "Uso frecuente", "santo es el señor"));
+                    string res = engine.DbExec(LuminaStorage.BuildExecJson(
+                        "SELECT id FROM songs WHERE title=?", "Uso frecuente"));
+                    long id = Convert.ToInt64(LuminaStorage.Rows(res)[0][0],
+                        CultureInfo.InvariantCulture);
+                    // Historial de uso: dos usos → usage_count=2 (F2.12).
+                    engine.DbExec(LuminaStorage.RecordSongUseRequest(id));
+                    engine.DbExec(LuminaStorage.RecordSongUseRequest(id));
+                    res = engine.DbExec(LuminaStorage.BuildExecJson(
+                        "SELECT usage_count, COALESCE(last_used_at,'x') FROM songs WHERE id=?", id));
+                    List<List<object>> rows = LuminaStorage.Rows(res);
+                    AssertTrue(rows.Count == 1 && rows[0][0].ToString() == "2", "usage_count=2");
+                    AssertTrue(rows[0][1].ToString() != "x", "last_used_at registrada");
+                    // Anotación del operador persistida (F2.12).
+                    engine.DbExec(LuminaStorage.UpdateSongAnnotationsRequest(id, "tono bajo"));
+                    res = engine.DbExec(LuminaStorage.BuildExecJson(
+                        "SELECT annotations FROM songs WHERE id=?", id));
+                    AssertTrue(LuminaStorage.Rows(res)[0][0].ToString() == "tono bajo", "annotations");
+                    // Popularidad: la más usada queda primera en TopSongs.
+                    engine.DbExec(LuminaStorage.BuildExecJson(
+                        "INSERT INTO songs(title, lyrics) VALUES(?,?)", "Otra", "x"));
+                    res = engine.DbExec(LuminaStorage.TopSongsRequest(10));
+                    rows = LuminaStorage.Rows(res);
+                    AssertTrue(rows.Count >= 2 && rows[0][1].ToString() == "Uso frecuente",
+                        "TopSongs ordena por uso");
+                }
+                finally
+                {
+                    try { engine.DbClose(); } catch (Exception) { }
+                }
+            }
+            try { File.Delete(dbPath); } catch (Exception) { }
+            try { File.Delete(dbPath + "-journal"); } catch (Exception) { }
+        }
+
+        private static void TestResourcesCrud()
+        {
+            string dbPath = Path.Combine(Path.GetTempPath(),
+                "lumina_tests_" + Guid.NewGuid().ToString("N") + ".db");
+            using (LuminaEngine engine = LuminaEngine.Create(true, null))
+            {
+                try
+                {
+                    AssertTrue(engine.DbOpen(dbPath) == LuminaStatus.Ok, "DbOpen");
+                    // Alta con ruta RELATIVA (portable, F2.14).
+                    engine.DbExec(LuminaStorage.InsertResourceRequest(
+                        "image", "Fondo cruz", "resources/img/cruz.jpg", "adoracion fondo"));
+                    engine.DbExec(LuminaStorage.InsertResourceRequest(
+                        "video", "Entrada pastoral", "resources/video/entrada.mp4", "entrada"));
+                    // Listado.
+                    List<List<object>> rows = LuminaStorage.Rows(
+                        engine.DbExec(LuminaStorage.ListResourcesRequest(100)));
+                    AssertTrue(rows.Count == 2, "listado=2");
+                    // FTS por etiqueta.
+                    rows = LuminaStorage.Rows(engine.DbExec(
+                        LuminaStorage.SearchResourcesRequest("adoracion", 100)));
+                    AssertTrue(rows.Count == 1 && rows[0][2].ToString() == "Fondo cruz",
+                        "FTS por etiqueta");
+                    // Edición de nombre/etiquetas.
+                    long id = Convert.ToInt64(rows[0][0], CultureInfo.InvariantCulture);
+                    engine.DbExec(LuminaStorage.UpdateResourceRequest(id, "Cruz del fondo", "cruz adorno"));
+                    rows = LuminaStorage.Rows(engine.DbExec(
+                        LuminaStorage.SearchResourcesRequest("adorno", 100)));
+                    AssertTrue(rows.Count == 1 && rows[0][2].ToString() == "Cruz del fondo",
+                        "edición persistida");
+                    // Re-vinculación portable (prefijo viejo→nuevo, una UPDATE).
+                    engine.DbExec(LuminaStorage.RelinkResourcesRequest("resources", "datos/recursos"));
+                    rows = LuminaStorage.Rows(engine.DbExec(LuminaStorage.ListResourcesRequest(100)));
+                    AssertTrue(rows[0][3].ToString().StartsWith("datos/recursos/", StringComparison.Ordinal),
+                        "relink prefijo → " + rows[0][3]);
+                    // Baja del registro (el archivo físico no lo toca nadie).
+                    engine.DbExec(LuminaStorage.DeleteResourceRequest(id));
+                    rows = LuminaStorage.Rows(engine.DbExec(LuminaStorage.ListResourcesRequest(100)));
+                    AssertTrue(rows.Count == 1, "delete deja 1");
+                }
+                finally
+                {
+                    try { engine.DbClose(); } catch (Exception) { }
+                }
+            }
+            try { File.Delete(dbPath); } catch (Exception) { }
+            try { File.Delete(dbPath + "-journal"); } catch (Exception) { }
+        }
+
+        private static void TestHotSearchQueries()
+        {
+            string dbPath = Path.Combine(Path.GetTempPath(),
+                "lumina_tests_" + Guid.NewGuid().ToString("N") + ".db");
+            using (LuminaEngine engine = LuminaEngine.Create(true, null))
+            {
+                try
+                {
+                    AssertTrue(engine.DbOpen(dbPath) == LuminaStatus.Ok, "DbOpen");
+                    engine.DbExec(LuminaStorage.InsertSongRequest(
+                        "Aleluya interior", "Autor", "Do", 72, "adoracion",
+                        "con mi Dios yo quiero estar"));
+                    // Búsqueda en caliente de CANCIONES vía el saneador (F1.07):
+                    // el término con dos puntos no rompe MATCH.
+                    string fts = FtsQuery.Sanitize("aleluya :");
+                    List<List<object>> rows = LuminaStorage.Rows(
+                        engine.DbExec(LuminaStorage.SearchSongsRequest(fts, 8)));
+                    AssertTrue(rows.Count == 1 && rows[0][1].ToString() == "Aleluya interior",
+                        "hot-search canción");
+                    // Búsqueda de VERSÍCULOS por palabra (bible_fts).
+                    engine.DbExec(LuminaStorage.InsertBibleVerseRequest(
+                        "RVR1909", 43, 3, 16, "Porque de tal manera amó Dios al mundo"));
+                    rows = LuminaStorage.Rows(engine.DbExec(
+                        LuminaStorage.SearchVersesRequest(FtsQuery.Sanitize("amó dios"), 8)));
+                    AssertTrue(rows.Count == 1 && rows[0][3].ToString() == "16"
+                        && rows[0][0].ToString() == "RVR1909", "hot-search versículo");
+                }
+                finally
+                {
+                    try { engine.DbClose(); } catch (Exception) { }
+                }
+            }
+            try { File.Delete(dbPath); } catch (Exception) { }
+            try { File.Delete(dbPath + "-journal"); } catch (Exception) { }
+        }
+
+#if NETFRAMEWORK
+        private static void TestImageExporter()
+        {
+            // PNG de origen pequeño (el render real del núcleo puede ser 960×540):
+            // el exportador debe REESCALAR al mínimo normativo 1920×1080 (F4.13).
+            string dir = Path.Combine(Path.GetTempPath(),
+                "lumina_tests_img_" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                byte[] png;
+                using (System.Drawing.Bitmap b = new System.Drawing.Bitmap(64, 36))
+                using (System.IO.MemoryStream ms = new System.IO.MemoryStream())
+                {
+                    using (System.Drawing.Graphics g =
+                        System.Drawing.Graphics.FromImage(b))
+                    {
+                        g.Clear(System.Drawing.Color.SteelBlue);
+                    }
+                    b.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                    png = ms.ToArray();
+                }
+                string[] expected = { "jpg", "png", "gif", "bmp", "tif" };
+                ImageExportOptions[] opts = new ImageExportOptions[]
+                {
+                    new ImageExportOptions { Format = ImageExportFormat.Jpg },
+                    new ImageExportOptions { Format = ImageExportFormat.Png },
+                    new ImageExportOptions { Format = ImageExportFormat.Gif },
+                    new ImageExportOptions { Format = ImageExportFormat.Bmp },
+                    new ImageExportOptions { Format = ImageExportFormat.Tif },
+                };
+                for (int i = 0; i < opts.Length; i++)
+                {
+                    ImageExportResult res = ImageExporter.Export(2,
+                        delegate (int slide) { return png; },
+                        dir, "muestra" + i, opts[i]);
+                    AssertTrue(res.Files.Count == 2 && res.Errors.Count == 0,
+                        expected[i] + ": 2 archivos, sin errores");
+                    foreach (string f in res.Files)
+                    {
+                        AssertTrue(File.Exists(f), "existe " + Path.GetFileName(f));
+                        using (System.Drawing.Bitmap check = new System.Drawing.Bitmap(f))
+                        {
+                            AssertTrue(check.Width >= 1920 && check.Height >= 1080,
+                                Path.GetFileName(f) + " " + check.Width + "×" + check.Height +
+                                " ≥ 1920×1080");
+                        }
+                    }
+                }
+                // Sin slides → informe con error, sin excepción (fail-safe).
+                ImageExportResult empty = ImageExporter.Export(0, delegate (int s) { return png; },
+                    dir, "vacío", null);
+                AssertTrue(empty.Files.Count == 0 && empty.Errors.Count > 0, "0 slides → error informado");
+            }
+            finally
+            {
+                try { Directory.Delete(dir, true); } catch (Exception) { }
+            }
+        }
+#endif // NETFRAMEWORK
 
         /* ============================================== v5.0.0 «SINERGIA» == */
 

@@ -22,6 +22,67 @@
       <local:Card Grid.Column="0" Title="Escenario" Icon="{StaticResource IconList}"
                   Margin="0,0,14,0">
         <DockPanel>
+          <!-- F1.07: búsqueda EN CALIENTE — visible durante la proyección;
+               buscar/añadir NO interrumpe la salida (solo agrega al escenario
+               pendiente; proyectar sigue siendo una acción explícita). -->
+          <Border DockPanel.Dock="Top" CornerRadius="8" BorderThickness="1"
+                  BorderBrush="{StaticResource CardBorderBrush}"
+                  Background="{StaticResource RowEvenBrush}" Margin="0,0,0,8"
+                  FocusManager.FocusedElement="{Binding ElementName=txtHotSearch}">
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+              </Grid.ColumnDefinitions>
+              <TextBox x:Name="txtHotSearch" MinHeight="30" Margin="8,6,0,6" VerticalContentAlignment="Center"
+                       KeyDown="OnHotSearchKeyDown" TextChanged="OnHotSearchTextChanged"
+                       ToolTip="Búsqueda en caliente (Ctrl+K): canciones y versículos sin interrumpir la proyección — Enter agrega el resultado seleccionado al escenario"/>
+              <TextBlock Grid.Column="0" Text=" Buscar canción o versículo…   (Ctrl+K)" IsHitTestVisible="False"
+                         Foreground="{StaticResource TextDisabledBrush}"
+                         VerticalAlignment="Center" Margin="14,0,0,0">
+                <TextBlock.Style>
+                  <Style TargetType="TextBlock" BasedOn="{StaticResource TxtSmall}">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                      <DataTrigger Binding="{Binding Text, ElementName=txtHotSearch}" Value="">
+                        <Setter Property="Visibility" Value="Visible"/>
+                      </DataTrigger>
+                    </Style.Triggers>
+                  </Style>
+                </TextBlock.Style>
+              </TextBlock>
+              <TextBlock Grid.Column="1" Text="Ctrl+K" Style="{StaticResource TxtCaption}"
+                         Foreground="{StaticResource TextDisabledBrush}" Margin="8,0,12,0"
+                         VerticalAlignment="Center"/>
+              <Popup x:Name="popHotSearch" Grid.Column="0" PlacementTarget="{Binding ElementName=txtHotSearch}"
+                     Placement="Bottom" StaysOpen="False" AllowsTransparency="True" Width="560">
+                <Border CornerRadius="8" BorderThickness="1.2" Background="{StaticResource PageBrush}"
+                        BorderBrush="{StaticResource CardBorderBrush}" Padding="4" MaxHeight="340">
+                  <ListBox x:Name="lstHotResults" BorderThickness="0" Background="Transparent"
+                           KeyDown="OnHotResultKeyDown" MouseDoubleClick="OnHotResultDoubleClick">
+                    <ListBox.ItemTemplate>
+                      <DataTemplate>
+                        <Grid Margin="2,3,2,3">
+                          <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="64"/>
+                            <ColumnDefinition Width="120"/>
+                            <ColumnDefinition Width="*"/>
+                          </Grid.ColumnDefinitions>
+                          <TextBlock Grid.Column="0" Text="{Binding KindLabel}" Style="{StaticResource TxtSmall}"
+                                     Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold"/>
+                          <TextBlock Grid.Column="1" Text="{Binding RefLabel}" Style="{StaticResource TxtSmall}"
+                                     TextTrimming="CharacterEllipsis" Margin="4,0,6,0"/>
+                          <TextBlock Grid.Column="2" Text="{Binding Detail}" Style="{StaticResource TxtSmall}"
+                                     TextTrimming="CharacterEllipsis"/>
+                        </Grid>
+                      </DataTemplate>
+                    </ListBox.ItemTemplate>
+                  </ListBox>
+                </Border>
+              </Popup>
+            </Grid>
+          </Border>
+
           <!-- fila 3: salida (pantalla + proyección) -->
           <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,8,0,0">
             <ComboBox x:Name="cmbScreen" Width="150" MinHeight="30"

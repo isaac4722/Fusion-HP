@@ -26,6 +26,10 @@
     -->
     <UseWindowsForms>true</UseWindowsForms>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <!-- F2.09: el editor incrustado (ElementHost) necesita WPF SOLO en la
+         variante net48 (WindowsFormsIntegration + Presentation*). La baseline
+         net35 compila sin él y conserva el editor 100% WinForms. -->
+    <UseWPF Condition="'$(TargetFramework)' == 'net48'">true</UseWPF>
   </PropertyGroup>
 
   <ItemGroup>

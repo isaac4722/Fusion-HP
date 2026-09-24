@@ -153,6 +153,12 @@ namespace lumina.wpf
             if (Shell != null) Shell.NewComposedSlide();
         }
 
+        /// <summary>F2.14: biblioteca de recursos (imágenes/videos + etiquetas + re-vinculación).</summary>
+        private void OnResourceLibrary(object sender, RoutedEventArgs e)
+        {
+            if (Shell != null) Shell.OpenResourceLibrary();
+        }
+
         /// <summary>v7.1.0: doble clic en un ítem «Diseño» → reabrir el editor con sus elementos.</summary>
         private void OnItemDoubleClick(object sender, MouseButtonEventArgs e)
         {

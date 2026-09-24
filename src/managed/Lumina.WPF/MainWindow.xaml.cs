@@ -151,6 +151,12 @@ namespace lumina.wpf
             UpdateStatusBar();
             NavigateToIndex(0);
 
+            // F1.06 «Arranque en Presentación»: tras abrir en En Vivo, se
+            // restaura el ÚLTIMO PROYECTO (silencioso, fail-safe). Defer con
+            // BeginInvoke para no retrasar el primer render de la ventana.
+            Dispatcher.BeginInvoke(new Action(RestoreLastProjectAtStartup),
+                System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+
             // v7.1.0 «OPERADOR» (feedback #3): sondeo del proyector (1,2 s):
             // detecta el cierre con X/ESC de la ventana nativa para reflejarlo
             // en el interruptor (ligero: un StateJson pequeño por tick).
@@ -464,6 +470,15 @@ namespace lumina.wpf
             // Ctrl+1…9 salta a la página indicada (no interfiere con la edición).
             if (Keyboard.Modifiers == ModifierKeys.Control)
             {
+                // F1.07: Ctrl+K → búsqueda en caliente (desde cualquier página;
+                // salta a En Vivo y enfoca la caja sin tocar la proyección).
+                if (e.Key == Key.K)
+                {
+                    NavigateToIndex(0);
+                    pageLive.FocusHotSearch();
+                    e.Handled = true;
+                    return;
+                }
                 int d = DigitFromKey(e.Key);
                 if (d >= 1 && d <= 9)
                 {

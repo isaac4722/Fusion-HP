@@ -441,5 +441,80 @@ namespace lumina.wpf
             chipLive.Visibility = live ? Visibility.Visible : Visibility.Collapsed;
             txtNoPreview.Visibility = live ? Visibility.Collapsed : Visibility.Visible;
         }
+
+        /* ============================== F1.07: búsqueda en caliente ======= */
+
+        /// <summary>Muestra (o cierra y vacía) el popup de resultados.</summary>
+        internal void ShowHotResults(List<MainWindow.HotResultVm> results, bool open)
+        {
+            lstHotResults.ItemsSource = results;
+            if (open && results != null && results.Count > 0)
+            {
+                popHotSearch.IsOpen = true;
+                lstHotResults.SelectedIndex = 0;
+            }
+            else
+            {
+                popHotSearch.IsOpen = false;
+            }
+        }
+
+        /// <summary>Resultado seleccionado en el popup (o null).</summary>
+        internal MainWindow.HotResultVm SelectedHotResult()
+        {
+            return lstHotResults.SelectedItem as MainWindow.HotResultVm;
+        }
+
+        /// <summary>Enfoca la caja de búsqueda (atajo global Ctrl+K, F1.05/F1.07).</summary>
+        internal void FocusHotSearch()
+        {
+            NavigateVisible();
+            txtHotSearch.Focus();
+            txtHotSearch.SelectAll();
+        }
+
+        private void NavigateVisible()
+        {
+            Visibility v = Visibility.Visible;
+            if (txtHotSearch.Visibility != v) txtHotSearch.Visibility = v;
+        }
+
+        private void OnHotSearchTextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (Shell == null) return;
+            // F1.07: sin cargar bibliotecas completas — cada pulsación consulta
+            // los índices FTS con límite (ligero incluso durante proyección).
+            try { Shell.HotSearchRun(txtHotSearch.Text); } catch (Exception) { }
+        }
+
+        private void OnHotSearchKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Escape)
+            {
+                popHotSearch.IsOpen = false;
+                e.Handled = true;
+                return;
+            }
+            if (e.Key != Key.Enter && e.Key != Key.Return) return;
+            if (Shell != null) Shell.HotSearchAddSelected();
+            popHotSearch.IsOpen = false;
+            e.Handled = true;
+        }
+
+        private void OnHotResultKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter || e.Key == Key.Return)
+            {
+                if (Shell != null) Shell.HotSearchAddSelected();
+                popHotSearch.IsOpen = false;
+                e.Handled = true;
+            }
+        }
+
+        private void OnHotResultDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            if (Shell != null) Shell.HotSearchAddSelected();
+            popHotSearch.IsOpen = false;
+        }
     }
 }

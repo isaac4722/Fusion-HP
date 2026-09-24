@@ -58,12 +58,12 @@
 ;
 ;  Requires: Inno Setup 6.3 or later (x86compatible/x64compatible and {autopf}).
 ;  Compile:  iscc installer\AppHibrida.iss   (from the repository root)
-;            -> dist\installer\LuminaPresentation-1.0.0-beta.2-setup.exe
+;            -> dist\installer\LuminaPresentation-1.0.0-beta.3-setup.exe
 ; ============================================================================
 
 #define AppName "LuminaPresentation Suite"
-#define AppVersion "1.0.0-beta.2"
-#define AppVersionNumeric "1.0.0.2"
+#define AppVersion "1.0.0-beta.3"
+#define AppVersionNumeric "1.0.0.3"
 #define AppPublisher "Isaac"
 #define AppUrl "https://github.com/isaac4722/Fusion-HP"
 
