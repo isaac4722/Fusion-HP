@@ -50,9 +50,20 @@ concurrency:
 
 env:
   DOTNET_VERSION: '8.0.x'
-  APP_VERSION: '6.1.0-beta.1'
+  APP_VERSION: '7.0.0-beta.1'
 
 jobs:
+  # ---------------------------------------------------------------------------
+  # 0) Auditoría de prohibiciones (F6.09): cero Java/registro/elevación/...
+  # ---------------------------------------------------------------------------
+  prohibitions-audit:
+    name: Auditoría F6.09
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Auditoría de prohibiciones (F6.09)
+        run: python3 tools/audit_prohibitions.py
+
   # ---------------------------------------------------------------------------
   # 1) Núcleo C++ en Windows: LuminaCore.dll (/MT) + selftest + PoC nativo
   # ---------------------------------------------------------------------------

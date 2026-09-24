@@ -1,3 +1,66 @@
+---
+## [v7.0.0-ULTRA] Plan de Ultra Implementación aplicado: los 80 ítems F0-F6 · 2026-09-24 UTC
+- Agente: Super Z (GLM) — ciclo completo contra plan-ultra-implementacion.md
+- Hecho:
+  - **F0 (bootstrap/IPC/log)**: Bootstrap.cpp (RtlGetVersion+IsWow64Process2+
+    NDP solo lectura → perfiles A/B/C con límites exactos 4.7.2=461808,
+    Win11=build 22000, Win7 sin SP1 con sugerencia), NativeLog.cpp (formato
+    §10.1 con 12 campos, rotación 14 días, redacción de credenciales,
+    tolerante a disco), IpcV1.cpp (protocolo ipc.v1: frames LMIP
+    longitud-prefijada, servidor Win32 OVERLAPPED con reconexión — la
+    proyección sobrevive a la desconexión de C# —, cola no bloqueante con
+    límite de latencia maxAgeMs, validación de mensajes sin tumbar el núcleo)
+    + cliente espejo IpcV1Client.cs (handshake, RESULT correlacionado, push
+    STATE/EVENT, PING de latencia). ABI aditiva completa (lumina_env_detect,
+    log_*, ipc_*, line_*, lower_third).
+  - **F0.08 emergencia**: el launcher compila el MISMO Projector/Renderer/
+    VideoDS del núcleo → perfil C proyecta texto/imagen/VIDEO nativo con
+    sesión plana .txt (@img:/@video:/@volumen:/@inicio:/@loop), negro/logo/
+    fondo, leyenda y teclado; conmutadores /arch /profile /emergency /open
+    /log; bitácora de arranque §10.1; installed.marker → %APPDATA%.
+  - **F1/F3 (motor)**: syncMark por línea con navegación por GRUPOS (fondo y
+    video intactos), estilo de línea activa por tema en el Renderer, video
+    DirectShow VMR9 windowless con fail-safe humano, Lower Third nativo
+    (banda semitransparente con fundido, ABI + trigger/API), medición por
+    frame, cursor oculto, ruta D2D sondeada con decisión documentada de
+    WS_EX_NOREDIRECTIONBITMAP (GDI lo exige).
+  - **F2 (ahp.v1)**: modelo completo (exactamente 5 Elementos, IDs estables
+    con semilla, manifiesto media, ZIP, campos desconocidos ignorados),
+    cascada Tema→Plantilla→Escenario→Elemento con origen efectivo, guardado
+    atómico + autoguardado + recuperación, puente al motor nativo.
+  - **F5 (API/integraciones)**: ApiV1Server con tabla completa de endpoints
+    + Bearer + 401 + 503 por límite de clientes + registro sin token + QR
+    PURO (Reed-Solomon GF(256), 8 máscaras, PNG propio) + cliente móvil
+    servido localmente; Holyrics (dedupe normalizado + confirmación antes de
+    sobrescribir + fondos re-vinculados); PlanningCenter (PAT + errores
+    humanos + plan→ahp offline); NDI (carga dinámica del SDK con degradación
+    limpia); Google Drive (OAuth loopback + conflicto por versión ahp.v1 sin
+    pérdida silenciosa).
+  - **F6 (consolidación)**: MetricsCollector (60 s), Ajustes→Estado del
+    sistema + Verificar entorno (8 semáforos), tools/audit_prohibitions.py
+    (9 prohibiciones, 0 violaciones, GATE nuevo en CI), tools/install.cmd
+    (instalador dual sin elevación).
+  - **Restricción CMake**: ningún archivo CMake tocado — inclusión directa
+    en las unidades existentes (documentado en cada archivo).
+  - **Trazabilidad completa**: docs/plan-ultra-trazabilidad.md con los 80
+    ítems F mapeados a código+pruebas.
+- Decisiones:
+  - WS_EX_NOREDIRECTIONBITMAP no se aplica: la ruta de texto es GDI
+    (DrawTextW); sin superficie de redirección la salida quedaría NEGRA y
+    el plan PROHÍBE frames negros (F1.04). Informado en stats.noRedirection
+    con la razón, para la auditoría.
+  - El TFM net8.0 se mantiene SOLO como arnés de pruebas (decisión v5.0.0);
+    la auditoría F6.09 lo clasifica correctamente (paquete distribuido =
+    net35/net48).
+  - Pruebas en hardware físico (Win7 x86 real, 60 min, LAN real, credenciales
+    OAuth/PCO) quedan como campaña del propietario — instrumentado todo.
+- Gates: build 0 err/0 warn (net35+net48+net8+WPF) · selftest **458/458** ·
+  poc 52/52 (7.0) · tests **37/43** (6 skips LUMINA_SKIP_NATIVE) ·
+  auditoría F6.09 **0 violaciones**
+- Bloqueos: ninguno
+- Siguiente: push → tag v7.0.0-beta.1 → CI (Windows valida launcher /
+  emergencia / DirectShow / D2D compiles /W4 y el pipe REAL de ipc.v1)
+
 # Bitácora de turnos — LuminaPresentation Suite
 
 > Registro acumulativo de trabajo (append-only). Formato definido en `AGENT.md`.

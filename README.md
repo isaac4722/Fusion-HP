@@ -1,4 +1,15 @@
-# LuminaPresentation Suite v6.1.0 «GUION» — BETA
+# LuminaPresentation Suite v7.0.0 «ULTRA» — BETA
+
+> **v7.0.0 «ULTRA»**: aplica el **Plan de Ultra Implementación** completo
+> (80 ítems F0–F6): bootstrap nativo con perfiles A/B/C, **IPC ipc.v1** por
+> pipes con nombre, **modo emergencia nativo** (perfil C proyecta texto/
+> imagen/video SIN .NET), proyecto **ahp.v1** con IDs estables y autoguardado,
+> sincronización por línea con **syncMark**, video **DirectShow** desde el
+> núcleo, **Lower Third** nativo, **API v1 con Bearer + QR + mando móvil**,
+> **Holyrics/Planning Center/NDI/Drive**, diagnóstico integrado y auditoría
+> automática de prohibiciones — trazabilidad íntegra en
+> `docs/plan-ultra-trazabilidad.md`. **Ningún CMake fue modificado**
+> (restricción del plan).
 
 **Proyección para iglesias con arquitectura híbrida: núcleo C++17 nativo + interfaz WPF (.NET 4.8) con baseline WinForms (.NET mínimo 3.5)**
 — motor de proyección en tiempo real con la agilidad de desarrollo de .NET,
