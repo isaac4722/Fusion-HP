@@ -14,12 +14,12 @@
 #    release        : GitHub Release solo en tags v*
 #
 #  CONTRATOS de rutas entre jobs (respetar al mover proyectos):
-#    managed/Lumina.sln                          (solución gestionada)
-#    managed/Lumina.Core                         (net35;net48;net8.0)
-#    managed/Lumina.UI                           (WinExe net35;net48)
-#    managed/PoC/PoC.Managed                       (net35;net48)
-#    managed/PoC/PocFacade                         (net48;net35) — COM-visible
-#    managed/Tests                                 (net8.0;net48)
+#    src/managed/Lumina.sln                          (solución gestionada)
+#    src/managed/Lumina.Core                         (net35;net48;net8.0)
+#    src/managed/Lumina.UI                           (WinExe net35;net48)
+#    src/managed/PoC/PoC.Managed                       (net35;net48)
+#    src/managed/PoC/PocFacade                         (net48;net35) — COM-visible
+#    src/managed/Tests                                 (net8.0;net48)
 #    Salidas: <proj>/bin/Release/<tfm>/... (SDK-style estándar de dotnet build)
 #    PoC.Managed debe imprimir "POC PASS 12/12" y salir 0 cuando todo pasa.
 #    Tests debe imprimir "TESTS PASS n/n" y (v5.0.0) con LUMINA_EXPORT_SAMPLES
@@ -173,14 +173,14 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.nuget/packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('managed/**/*.csproj') }}
+          key: nuget-${{ runner.os }}-${{ hashFiles('src/managed/**/*.csproj') }}
           restore-keys: |
             nuget-${{ runner.os }}-
 
       - name: Compilar solución (net35+net48 con ref assemblies)
         shell: pwsh
         run: |
-          dotnet build managed/Lumina.sln -c Release
+          dotnet build src/managed/Lumina.sln -c Release
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Tests net8.0 (arnés propio; LUMINA_SKIP_NATIVE=1 + muestras)
@@ -189,7 +189,7 @@ jobs:
           LUMINA_SKIP_NATIVE: '1'
           LUMINA_EXPORT_SAMPLES: 'export-samples'
         run: |
-          dotnet run --project managed/Tests --configuration Release --framework net8.0
+          dotnet run --project src/managed/Tests --configuration Release --framework net8.0
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: 'GATE exportadores: python-pptx + pypdf (PPTX/PDF válidos)'
@@ -256,10 +256,10 @@ jobs:
           # del runner deriva RuntimeIdentifier del PlatformTarget (NETSDK1047).
           # El bin del build YA trae exe + .exe.config + DLLs dependientes.
           function Publish-Ui([string]$tfm, [string]$platform, [string]$destName) {
-            dotnet clean managed/Lumina.UI -f $tfm -c Release | Out-Null
-            dotnet build managed/Lumina.UI -f $tfm -c Release -p:PlatformTarget=$platform
+            dotnet clean src/managed/Lumina.UI -f $tfm -c Release | Out-Null
+            dotnet build src/managed/Lumina.UI -f $tfm -c Release -p:PlatformTarget=$platform
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            $bin = "managed/Lumina.UI/bin/Release/$tfm"
+            $bin = "src/managed/Lumina.UI/bin/Release/$tfm"
             $exe = Get-ChildItem "$bin/*.exe" | Select-Object -First 1
             Assert-PeBitness $exe.FullName $platform
             New-Item -ItemType Directory -Force -Path "$bin/$destName" | Out-Null
@@ -273,10 +273,10 @@ jobs:
           # (LuminaPresentation.exe). Mismas lecciones v5.1.0: clean ANTES DE
           # cada publish + aserción dura del bitness del PE.
           function Publish-Wpf([string]$platform, [string]$destName) {
-            dotnet clean managed/Lumina.WPF -f net48 -c Release | Out-Null
-            dotnet build managed/Lumina.WPF -f net48 -c Release -p:PlatformTarget=$platform
+            dotnet clean src/managed/Lumina.WPF -f net48 -c Release | Out-Null
+            dotnet build src/managed/Lumina.WPF -f net48 -c Release -p:PlatformTarget=$platform
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            $bin = "managed/Lumina.WPF/bin/Release/net48"
+            $bin = "src/managed/Lumina.WPF/bin/Release/net48"
             $exe = Get-ChildItem "$bin/*.exe" | Select-Object -First 1
             Assert-PeBitness $exe.FullName $platform
             New-Item -ItemType Directory -Force -Path "$bin/$destName" | Out-Null
@@ -303,24 +303,24 @@ jobs:
           # (para el paquete portable). El publish lleva TODAS las DLL
           # gestionadas dependientes (Lumina.Core/Bridge/Api) — el paquete las
           # copia COMPLETAS.
-          Copy-Item managed/Lumina.WPF/bin/Release/net48/publish-x86/* "$stage/ui-publish-x86/"
-          Copy-Item managed/Lumina.WPF/bin/Release/net48/publish-x64/* "$stage/ui-publish-x64/"
-          Copy-Item managed/Lumina.UI/bin/Release/net35/publish35-x86/* "$stage/ui-publish35-x86/"
-          Copy-Item managed/Lumina.UI/bin/Release/net35/publish35-x64/* "$stage/ui-publish35-x64/"
+          Copy-Item src/managed/Lumina.WPF/bin/Release/net48/publish-x86/* "$stage/ui-publish-x86/"
+          Copy-Item src/managed/Lumina.WPF/bin/Release/net48/publish-x64/* "$stage/ui-publish-x64/"
+          Copy-Item src/managed/Lumina.UI/bin/Release/net35/publish35-x86/* "$stage/ui-publish35-x86/"
+          Copy-Item src/managed/Lumina.UI/bin/Release/net35/publish35-x64/* "$stage/ui-publish35-x64/"
           # Respaldo: si un publish dejó el exe en otra carpeta, copiar del build
           if (-not (Test-Path "$stage/ui-publish-x86/LuminaPresentation.exe")) {
-            Copy-Item managed/Lumina.WPF/bin/Release/net48/LuminaPresentation.exe "$stage/ui-publish-x86/"
+            Copy-Item src/managed/Lumina.WPF/bin/Release/net48/LuminaPresentation.exe "$stage/ui-publish-x86/"
           }
           if (-not (Test-Path "$stage/ui-publish-x64/LuminaPresentation.exe")) {
-            Copy-Item managed/Lumina.WPF/bin/Release/net48/LuminaPresentation.exe "$stage/ui-publish-x64/"
+            Copy-Item src/managed/Lumina.WPF/bin/Release/net48/LuminaPresentation.exe "$stage/ui-publish-x64/"
           }
           # PoC.Managed (binarios net48 y net35)
-          Copy-Item managed/PoC/PoC.Managed/bin/Release/net48/* "$stage/poc-net48/"
-          Copy-Item managed/PoC/PoC.Managed/bin/Release/net35/* "$stage/poc-net35/"
+          Copy-Item src/managed/PoC/PoC.Managed/bin/Release/net48/* "$stage/poc-net48/"
+          Copy-Item src/managed/PoC/PoC.Managed/bin/Release/net35/* "$stage/poc-net35/"
           # Facade COM-visible (para el PoC de CLR hosting)
-          Copy-Item managed/PoC/PocFacade/bin/Release/net48/Lumina.PocFacade.dll "$stage/pocfacade-net48/"
+          Copy-Item src/managed/PoC/PocFacade/bin/Release/net48/Lumina.PocFacade.dll "$stage/pocfacade-net48/"
           # Tests net48 (informativo)
-          Copy-Item managed/Tests/bin/Release/net48/* "$stage/tests-net48/"
+          Copy-Item src/managed/Tests/bin/Release/net48/* "$stage/tests-net48/"
 
       - name: Subir artefacto managed
         uses: actions/upload-artifact@v4
@@ -357,7 +357,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.nuget/packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('managed/**/*.csproj') }}
+          key: nuget-${{ runner.os }}-${{ hashFiles('src/managed/**/*.csproj') }}
           restore-keys: |
             nuget-${{ runner.os }}-
 
@@ -372,18 +372,18 @@ jobs:
       - name: Compilar PoC.Managed net48 (${{ matrix.arch }})
         shell: pwsh
         run: |
-          dotnet build managed/PoC/PoC.Managed -f net48 -c Release -p:PlatformTarget=${{ matrix.arch }}
+          dotnet build src/managed/PoC/PoC.Managed -f net48 -c Release -p:PlatformTarget=${{ matrix.arch }}
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Colocar LuminaCore.dll (${{ matrix.arch }}) junto al PoC
         shell: pwsh
         run: |
           Copy-Item "artifacts/native-${{ matrix.arch }}/LuminaCore.dll" `
-                    "managed/PoC/PoC.Managed/bin/Release/net48/"
+                    "src/managed/PoC/PoC.Managed/bin/Release/net48/"
 
       - name: 'GATE PoC net48 ${{ matrix.arch }}: «POC PASS 12/12» + exit 0'
         shell: pwsh
-        working-directory: managed/PoC/PoC.Managed/bin/Release/net48
+        working-directory: src/managed/PoC/PoC.Managed/bin/Release/net48
         run: |
           $out = & ./PoC.Managed.exe 2>&1
           $code = $LASTEXITCODE
@@ -404,11 +404,11 @@ jobs:
             Write-Host 'Runtime 3.5 no disponible en el runner: paso omitido (informativo).'
             exit 0
           }
-          dotnet build managed/PoC/PoC.Managed -f net35 -c Release -p:PlatformTarget=${{ matrix.arch }}
+          dotnet build src/managed/PoC/PoC.Managed -f net35 -c Release -p:PlatformTarget=${{ matrix.arch }}
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Copy-Item "artifacts/native-${{ matrix.arch }}/LuminaCore.dll" `
-                    "managed/PoC/PoC.Managed/bin/Release/net35/"
-          Set-Location managed/PoC/PoC.Managed/bin/Release/net35
+                    "src/managed/PoC/PoC.Managed/bin/Release/net35/"
+          Set-Location src/managed/PoC/PoC.Managed/bin/Release/net35
           $out = & ./PoC.Managed.exe 2>&1
           $out | ForEach-Object { Write-Host "$_" }
           Write-Host "EXIT CODE (informativo): $LASTEXITCODE"
@@ -446,7 +446,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.nuget/packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('managed/**/*.csproj') }}
+          key: nuget-${{ runner.os }}-${{ hashFiles('src/managed/**/*.csproj') }}
           restore-keys: |
             nuget-${{ runner.os }}-
 
@@ -467,13 +467,13 @@ jobs:
       - name: Compilar PocFacade net48
         shell: pwsh
         run: |
-          dotnet build managed/PoC/PocFacade -f net48 -c Release
+          dotnet build src/managed/PoC/PocFacade -f net48 -c Release
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Preparar carpeta de ejecución
         shell: pwsh
         run: |
-          Copy-Item managed/PoC/PocFacade/bin/Release/net48/Lumina.PocFacade.dll bch/Release/
+          Copy-Item src/managed/PoC/PocFacade/bin/Release/net48/Lumina.PocFacade.dll bch/Release/
           Copy-Item "artifacts/native-${{ matrix.arch }}/LuminaCore.dll" bch/Release/
 
       - name: 'GATE CLRHOST (${{ matrix.arch }}): «CLRHOST PASS» + exit 0'

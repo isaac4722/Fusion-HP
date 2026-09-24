@@ -24,7 +24,11 @@
          producto (antes quedó congelada en 3.0.0 desde la era wx). UI y capa
          comparten este valor global → el binding por nombre+versión siempre
          es coherente entre las builds net35/net48/net8. -->
-    <Version>7.1.0</Version>
+    <!-- v6.0.0 «REESTRUCTURA»: la línea reestructurada arranca en el esquema
+         normativo del documento técnico (1.x.y-beta+z): 1.0.0-beta.1. La
+         línea histórica v7.1.0 «OPERADOR» queda congelada como prototipo
+         anterior (núcleo CMake heredado). -->
+    <Version>1.0.0-beta.1</Version>
     <Product>LuminaPresentation Suite</Product>
     <Company>Isaac</Company>
     <Authors>Isaac</Authors>

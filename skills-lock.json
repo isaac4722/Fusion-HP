@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "skills": {
+    "cpp-core-guidelines": {
+      "source": "ariaszzzhc/cpp-core-guidelines",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "0f050fe815bec91f2da09ced759faf8e3fe26d1e0490a7e4a6c8d78b433d0fdc"
+    },
+    "cpp-core-guidelines-review": {
+      "source": "openharmonyinsight/openharmony-skills",
+      "sourceType": "github",
+      "skillPath": "skills/cpp-core-guidelines-review/SKILL.md",
+      "computedHash": "b0532608ae7cfa2a061adbdbe40ba6cae5ce89755c732448040c64df9f4d4613"
+    },
+    "dotnet-accessibility": {
+      "source": "wshaddix/dotnet-skills",
+      "sourceType": "github",
+      "skillPath": "skills/dotnet-accessibility/SKILL.md",
+      "computedHash": "dbf6857ad0d0b39d1dcd600d967ba360e960938435f5a2a44a8f0a164060d94b"
+    },
+    "dotnet-testing-strategy": {
+      "source": "wshaddix/dotnet-skills",
+      "sourceType": "github",
+      "skillPath": "skills/dotnet-testing-strategy/SKILL.md",
+      "computedHash": "a26ed4f36de98d1662a6408c9209a6444218c77cb5eb80ba4cc73462a3bb9b26"
+    },
+    "dotnet-wpf-modern": {
+      "source": "wshaddix/dotnet-skills",
+      "sourceType": "github",
+      "skillPath": "skills/dotnet-wpf-modern/SKILL.md",
+      "computedHash": "e5ea6ece0d5e10f6f1311e3c91f53c48556b0321b12bd9c14d7f948b2b6ec827"
+    },
+    "rtk-tdd": {
+      "source": "rtk-ai/rtk",
+      "sourceType": "github",
+      "skillPath": ".claude/skills/rtk-tdd/SKILL.md",
+      "computedHash": "c645ff2265dfb42dde06a77e0d28fe5e247dfb60679708e0c6c0989068fc231c"
+    }
+  }
+}
