@@ -213,6 +213,41 @@ jobs:
         run: |
           bash tests/core.Tests/build_and_run.sh
 
+  sesion60:
+    # v1.0.0 (F6.08): campaña COMPLETA de 60 minutos en tiempo real — el
+    # anfitrión local mata procesos largos entre turnos (limitación del
+    # sandbox documentada en docs/verification/), así que la campaña completa
+    # se ejecuta aquí (runners permiten hasta 6 h). El arnés local valida la
+    # versión corta (2 min) en cada PR. Disparo manual o en tags.
+    name: Sesión de servicio 60 min (F6.08 campaña completa)
+    runs-on: windows-latest
+    timeout-minutes: 90
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Campaña de 60 minutos (arnés gestionado, sin núcleo — justificado)
+        env:
+          LUMINA_SKIP_NATIVE: '1'
+          LUMINA_SESSION_MINUTES: '60'
+        shell: pwsh
+        run: |
+          dotnet build src/managed/Tests -c Release -f net8.0
+          dotnet run --project src/managed/Tests -c Release -f net8.0 --no-build 2>&1 | Tee-Object -FilePath sesion60-ci.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Subir evidencia de la campaña
+        uses: actions/upload-artifact@v4
+        with:
+          name: sesion60
+          path: sesion60-ci.log
+
   managed:
     name: Capa C# (net35+net48) + tests net8.0
     runs-on: windows-latest
