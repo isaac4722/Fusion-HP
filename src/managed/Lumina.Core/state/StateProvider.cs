@@ -67,7 +67,7 @@ namespace lumina.core
                     } },
                 { "profile", Profile },
             };
-            return MiniJson.Encode(o);
+            return MiniJson.Serialize(o);
         }
     }
 
