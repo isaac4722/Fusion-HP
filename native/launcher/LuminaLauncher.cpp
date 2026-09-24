@@ -66,9 +66,21 @@
 #include "../core/src/Bootstrap.cpp"
 #include "../core/src/NativeLog.cpp"
 #define LUMINA_HAS_WIN32 1
+#include "../core/src/Win7Compat.cpp"  // shim Win7 SP1 (import Win8+ del STL)
 #include "../core/src/Highlight.cpp"
 #include "../core/src/Renderer.cpp"
 #include "../core/src/Projector.cpp"   // incluye VideoDS.cpp (DirectShow)
+
+// v7.0.0: en x86 el CRT referencia el símbolo DECORADO
+// __imp__GetSystemTimePreciseAsFileTime@4 (WinAPI stdcall). El núcleo lo
+// define con MASM (Win7CompatX86.asm); el CMake autónomo del launcher no
+// compila .asm → /alternatename del enlazador resuelve el decorado al
+// símbolo SIN decorar que Win7Compat.cpp define como DATO de objeto
+// (las definiciones de objeto ganan a los stubs de kernel32.lib → el
+// import estático Win8+ NO se genera y el exe carga en Win7 SP1).
+#if defined(_M_IX86)
+#pragma comment(linker, "/alternatename:__imp__GetSystemTimePreciseAsFileTime@4=__imp_GetSystemTimePreciseAsFileTime")
+#endif
 
 using namespace lumina;
 

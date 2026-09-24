@@ -82,9 +82,6 @@ struct Projector::Impl {
     std::thread worker;
     HWND hwnd = nullptr;
     ATOM cls = 0;
-    // Para repintar tras SetContent (señal al hilo de ventana).
-    std::condition_variable cv;
-    bool dirty = false;
 
     // v7.0.0 «ULTRA» (F1.03): línea activa de la slide en proyección.
     int activeLine = -1;
