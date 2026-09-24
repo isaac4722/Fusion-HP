@@ -259,16 +259,16 @@ Filename: "{app}\LuminaPresentation.exe"; Description: "Ejecutar LuminaPresentat
 ; Inno Setup's standard uninstaller.
 
 [Code]
-; ============================================================================
-;  .NET Framework verification — READ-ONLY registry inspection.
-;  Checks the standard NDP v4 key: HKLM\SOFTWARE\Microsoft\NET Framework
-;  Setup\NDP\v4\Full  ("Release" DWORD >= 461808 == .NET Framework 4.7.2).
-;  NOTE: 528040 would be the exact .NET 4.8 release value; 461808 is the
-;  normative minimum fixed by the spec/task. If the check fails, the app
-;  still runs (degradation profiles B/C, spec section 4.2) — nothing blocks.
-;  The application NEVER touches the registry itself (F6.05.5); this is the
-;  only registry access in the product lifecycle and it never writes.
-; ============================================================================
+//============================================================================
+//.NET Framework verification — READ-ONLY registry inspection.
+//Checks the standard NDP v4 key: HKLM\SOFTWARE\Microsoft\NET Framework
+//Setup\NDP\v4\Full  ("Release" DWORD >= 461808 == .NET Framework 4.7.2).
+//NOTE: 528040 would be the exact .NET 4.8 release value; 461808 is the
+//normative minimum fixed by the spec/task. If the check fails, the app
+//still runs (degradation profiles B/C, spec section 4.2) — nothing blocks.
+//The application NEVER touches the registry itself (F6.05.5); this is the
+//only registry access in the product lifecycle and it never writes.
+//============================================================================
 const
   NdpV4FullKey = 'SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full';
   NdpReleaseValue = 'Release';
