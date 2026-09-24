@@ -72,6 +72,10 @@ public:
     LuminaStatus LinePrev();
     LuminaStatus LineSet(int32_t lineIndex);
 
+    // v7.0.0 «ULTRA» (F3.04): Lower Third del pipeline nativo.
+    // json: {"text":"...","position":"bottom|top","durationMs":N,"show":bool}
+    LuminaStatus LowerThird(const std::string& json);
+
     // v7.0.0 «ULTRA» — F0.05: servidor IPC ipc.v1 (pipes con nombre).
     // optsJson: {"pipe":"lumina-ipc-v1","maxPayload":N,
     //            "maxQueued":N,"maxAgeMs":N}

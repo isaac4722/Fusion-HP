@@ -51,6 +51,12 @@ public:
     // Renderer::DrawSlide usa para el estilo activo/inactivo.
     void SetActiveLine(int lineIndex);
 
+    // v7.0.0 «ULTRA» (F3.04): Lower Third en el PIPELINE NATIVO.
+    // json: {"text":"...","position":"bottom|top","durationMs":N,"show":bool}
+    // Banda semitransparente con fundido de entrada/salida (300 ms, sin
+    // frames negros); auto-oculta tras durationMs (0 = manual: hide explícito).
+    void SetLowerThird(const std::string& json);
+
     // v7.0.0 «ULTRA» (F0.06.7 / F6.01): métricas de render por frame.
     // JSON: {"lastMs":N,"avgMs":N,"maxMs":N,"frames":N,"d2d":0|1,
     //        "noRedirection":0|1,"video":0|1}

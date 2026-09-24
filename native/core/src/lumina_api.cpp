@@ -366,6 +366,15 @@ int32_t lumina_line_set(LuminaHandle h, int32_t lineIndex) {
     return reinterpret_cast<Engine*>(h)->LineSet(lineIndex);
 }
 
+/* F3.04: Lower Third nativo. */
+int32_t lumina_lower_third(LuminaHandle h, const char* json) {
+    return Api([&]() -> LuminaStatus {
+        if (!h) return LUMINA_ERR_ARG;
+        if (!json) return LUMINA_ERR_ARG;
+        return reinterpret_cast<Engine*>(h)->LowerThird(std::string(json));
+    });
+}
+
 /* ------------------------------------------------------- almacenamiento */
 int32_t lumina_db_open(LuminaHandle h, const char* pathUtf8) {
     return Api([&]() -> LuminaStatus {

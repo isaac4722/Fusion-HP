@@ -152,6 +152,10 @@ LUMINA_EXPORT int32_t lumina_line_next(LuminaHandle h);
 LUMINA_EXPORT int32_t lumina_line_prev(LuminaHandle h);
 LUMINA_EXPORT int32_t lumina_line_set(LuminaHandle h, int32_t lineIndex);
 
+/* F3.04: Lower Third nativo. json: {"text":"...","position":"bottom|top",
+   "durationMs":N,"show":bool} (show=false lo oculta con fundido). */
+LUMINA_EXPORT int32_t lumina_lower_third(LuminaHandle h, const char* json);
+
 /* ------------------------------------------------------- almacenamiento */
 LUMINA_EXPORT int32_t lumina_db_open(LuminaHandle h, const char* pathUtf8);
 LUMINA_EXPORT int32_t lumina_db_close(LuminaHandle h);

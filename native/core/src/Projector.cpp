@@ -98,6 +98,15 @@ struct Projector::Impl {
     int64_t frameCount = 0;
     // Detección de la ruta Direct2D (F0.06.1) — sondeo una sola vez.
     int d2dAvailable = -1;      // -1 = sin sondear
+
+    // v7.0.0 «ULTRA» (F3.04): Lower Third activo (banda semitransparente).
+    bool  ltShow = false;         // solicitado (con auto-ocultar por duración)
+    bool  ltVisible = false;      // en pantalla (fundido aplicado)
+    std::string ltText;
+    int   ltPosition = 0;         // 0=bottom 1=top
+    int64_t ltDurationMs = 0;     // 0 = manual (sin auto-ocultar)
+    std::chrono::steady_clock::time_point ltStart;   // inicio de visibilidad
+    double ltAlpha = 0.0;         // 0..1 (animación de fundido)
 };
 
 // v7.0.0 «ULTRA» (F0.06.8/F3.02.4): sumidero de reportes del proyector.
@@ -262,6 +271,43 @@ void Projector::SyncVideo() {
     }
 }
 
+void Projector::SetLowerThird(const std::string& jsonStr) {
+    Impl* p = impl_;
+    std::string text;
+    int pos = 0;
+    int64_t dur = 0;
+    bool show = false;
+    try {
+        json j = json::parse(jsonStr);
+        if (j.contains("text") && j["text"].is_string()) text = j["text"].get<std::string>();
+        if (j.contains("position") && j["position"].is_string())
+            pos = j["position"].get<std::string>() == "top" ? 1 : 0;
+        if (j.contains("durationMs") && j["durationMs"].is_number())
+            dur = j["durationMs"].get<int64_t>();
+        if (j.contains("show")) show = j["show"].get<bool>();
+    } catch (...) {
+        // Mensaje inválido: NO se tumba el pipeline (F0.05.7 aplica aquí).
+        return;
+    }
+    {
+        std::lock_guard<std::mutex> lk(p->mx);
+        p->ltText = text;
+        p->ltPosition = pos;
+        p->ltDurationMs = dur;
+        if (show) {
+            p->ltShow = true;
+            if (!p->ltVisible) {           // aparición: fundido desde 0
+                p->ltAlpha = 0.0;
+                p->ltStart = std::chrono::steady_clock::now();
+                p->ltVisible = true;
+            }
+        } else {
+            p->ltShow = false;             // desaparición: fundido a 0 y ocultar
+        }
+    }
+    if (p->hwnd) InvalidateRect(p->hwnd, nullptr, FALSE);
+}
+
 bool Projector::Show(int screenIndex, bool fullscreen) {
     Impl* p = impl_;
     {
@@ -421,6 +467,47 @@ void Projector::PaintInto(HDC hdc, int w, int h) {
         }
     }
     (void)stillFading;   // el progreso lo impulsa WindowLoop (invalidaciones)
+
+    // v7.0.0 «ULTRA» (F3.04): Lower Third — banda semitransparente SOBRE el
+    // contenido (orden de composición §6.4: fondo → contenido → Lower Third).
+    if (p->ltVisible && p->ltAlpha > 0.0 && !p->black) {
+        const int bandH = std::max(48, (int)std::lround(h * 0.11));
+        const int bandY = p->ltPosition == 1 ? (int)std::lround(h * 0.10)
+                                             : h - bandH - (int)std::lround(h * 0.06);
+        const BYTE a = (BYTE)std::lround(p->ltAlpha * 185.0);   // semitransparente
+        // Rectángulo negro con alfa: BLENDFUNCTION sobre DC de memoria.
+        HDC lt = CreateCompatibleDC(hdc);
+        HBITMAP lb = CreateCompatibleBitmap(hdc, w, bandH);
+        HGDIOBJ ol = SelectObject(lt, lb);
+        RECT rc = {0, 0, w, bandH};
+        HBRUSH b = CreateSolidBrush(RGB(0, 0, 0));
+        FillRect(lt, &rc, b);
+        DeleteObject(b);
+        // texto de la banda (blanco, 2 % de margen).
+        const std::wstring txt = Utf8ToWide(p->ltText);
+        if (!txt.empty()) {
+            const int fpx = std::max(18, (int)std::lround(h * 0.032));
+            HFONT f = CreateFontW(fpx, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
+                                  DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
+                                  CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+                                  DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
+            HGDIOBJ of = SelectObject(lt, f);
+            SetBkMode(lt, TRANSPARENT);
+            SetTextColor(lt, RGB(255, 255, 255));
+            RECT tr = {(int)std::lround(w * 0.03), 0, w, bandH};
+            DrawTextW(lt, txt.c_str(), (int)txt.size(), &tr,
+                      DT_SINGLELINE | DT_LEFT | DT_VCENTER | DT_END_ELLIPSIS);
+            SelectObject(lt, of);
+            DeleteObject(f);
+        }
+        SelectObject(lt, ol);
+        DeleteObject(lb);
+        BLENDFUNCTION bf;
+        bf.BlendOp = AC_SRC_OVER; bf.BlendFlags = 0;
+        bf.SourceConstantAlpha = a; bf.AlphaFormat = 0;
+        AlphaBlend(hdc, 0, bandY, w, bandH, lt, 0, 0, w, bandH, bf);
+        DeleteDC(lt);
+    }
 }
 
 void Projector::WindowLoop() {
@@ -530,6 +617,25 @@ void Projector::WindowLoop() {
             // v7.0.0 (F3.01): sondeo de eventos DirectShow (EC_COMPLETE →
             // loop). Bajo mutex: PollEvents es barato y no bloquea.
             if (p->video.Playing()) p->video.PollEvents();
+            // v7.0.0 (F3.04): animación del Lower Third (300 ms de fundido) y
+            // auto-ocultado por duración — invalidaciones a ~60 fps.
+            if (p->ltVisible && p->hwnd) {
+                const auto now = std::chrono::steady_clock::now();
+                const double kFadeMs = 300.0;
+                if (p->ltShow) {
+                    p->ltAlpha = std::min(1.0, std::chrono::duration<double, std::milli>(
+                        now - p->ltStart).count() / kFadeMs);
+                    if (p->ltDurationMs > 0 &&
+                        std::chrono::duration_cast<std::chrono::milliseconds>(
+                            now - p->ltStart).count() > p->ltDurationMs)
+                        p->ltShow = false;             // expiró la duración
+                } else {
+                    p->ltAlpha = std::max(0.0, p->ltAlpha - 16.0 / kFadeMs);
+                    if (p->ltAlpha <= 0.0) p->ltVisible = false;
+                }
+                if (p->ltAlpha > 0.0) InvalidateRect(p->hwnd, nullptr, FALSE);
+                else if (!p->ltVisible) InvalidateRect(p->hwnd, nullptr, FALSE);
+            }
         }
         // v7.0.0 (F3.01): reintento de arranque diferido — SetContent puede
         // llegar ANTES de que la ventana exista (carrera Show→SetContent);

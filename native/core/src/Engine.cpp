@@ -790,6 +790,23 @@ LuminaStatus Engine::LinePrev() {
     return LUMINA_OK;
 }
 
+/* ---------------------------------------------- v7.0.0: LowerThird (F3.04) */
+
+LuminaStatus Engine::LowerThird(const std::string& json) {
+#ifdef LUMINA_HAS_WIN32
+    {
+        std::lock_guard<std::mutex> lk(mx_);
+        if (!projector_) return LUMINA_ERR_UNSUPPORTED;
+        projector_->SetLowerThird(json);
+    }
+    PostStateEvent();
+    return LUMINA_OK;
+#else
+    (void)json;
+    return LUMINA_ERR_UNSUPPORTED;
+#endif
+}
+
 /* ------------------------------------------------- v7.0.0: IPC (F0.05) -- */
 
 LuminaStatus Engine::IpcStart(const std::string& optsJson) {
@@ -822,6 +839,7 @@ LuminaStatus Engine::IpcStart(const std::string& optsJson) {
                                      : json::parse(payload);
                                      return Black(j.value("on", true)); }
         if (action == "clear")       return Clear();
+        if (action == "lowerThird") { return LowerThird(payload); }
         if (action == "lineNext")    return LineNext();
         if (action == "linePrev")    return LinePrev();
         if (action == "lineSet") {   json j = payload.empty() ? json::object()

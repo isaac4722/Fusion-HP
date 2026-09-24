@@ -20,8 +20,11 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text;
+using System.IO.Pipes;
+using System.Threading;
 using lumina.bridge;
 using lumina.core;
+using lumina.core.project;
 
 namespace lumina.tests
 {
@@ -75,6 +78,16 @@ namespace lumina.tests
             Run("BooksTable: 66 libros y referencias legibles", TestBooksTable);
             Run("BibleJson: lector streaming de biblias JSON", TestBibleJson);
             Run("ZipBackup: ZIP válido y extraíble", TestZipBackup);
+
+            // --- v7.0.0 «ULTRA» (F0.05/F2) — siempre corren --------------------
+            Run("ahp.v1: roundtrip de los 5 Elementos + IDs estables", TestAhpRoundtrip);
+            Run("ahp.v1: validación de formato + campos desconocidos ignorados", TestAhpFormatValidation);
+            Run("ahp.v1: empaquetado ZIP con manifiesto media/", TestAhpZip);
+            Run("ahp.v1: guardado atómico, autoguardado y recuperación", TestAhpAutosave);
+            Run("StyleCascade: Tema→Plantilla→Escenario→Elemento con origen", TestStyleCascade);
+            Run("AhpBridge: JSON del motor con syncMark/video/lowerThird", TestAhpBridge);
+            Run("IpcV1: códec espejo + fragmentación + errores de protocolo", TestIpcV1Codec);
+            Run("IpcV1: cliente sobre pipes anónimos (loopback real)", TestIpcV1Pipes);
 
             Run("Nativo: lumina_version", TestNativeVersion, libOk);
             Run("Nativo: ScenarioBuilder → LoadScenario==0", TestNativeLoadScenario, libOk);
@@ -1300,5 +1313,371 @@ namespace lumina.tests
                        evType == "CurrentProgramSceneChanged", "evento parseado");
             AssertTrue(ObsProtocol.IsIdentified("{\"op\":2,\"d\":{\"negotiatedRpcVersion\":1}}"), "IsIdentified");
         }
+        // =====================================================================
+        // v7.0.0 «ULTRA» — ahp.v1, cascada, puente e IPC (F0.05/F2).
+        // =====================================================================
+
+        private static AhpProject BuildSampleProject()
+        {
+            AhpProject p = new AhpProject();
+            p.Name = "Culto Domingo 10am";
+            p.ThemeRef = "theme-calma";
+            AhpScenario s = p.NewScenario("Adoración");
+            // 1) Texto con syncMarks (F1.03/F2.03)
+            AhpElement t = p.NewElement(AhpElementKind.Text);
+            t.Title = "Himno 34";
+            t.Lines.Add(new AhpLine { Text = "L1", SyncMark = 1 });
+            t.Lines.Add(new AhpLine { Text = "L2", SyncMark = 1 });
+            t.Lines.Add(new AhpLine { Text = "L3", SyncMark = 2 });
+            s.Elements.Add(t);
+            // 2) Versículo (F2.04)
+            AhpElement v = p.NewElement(AhpElementKind.Verse);
+            v.Book = "Juan"; v.Chapter = 3; v.VerseFrom = 16; v.VerseTo = 18;
+            v.Translation = "RV1960"; v.QuoteFormat = "cita";
+            v.HighlightedWords.Add("amó"); v.HighlightedWords.Add("Dios");
+            s.Elements.Add(v);
+            // 3) Imagen (F2.05)
+            AhpElement im = p.NewElement(AhpElementKind.Image);
+            im.ImagePath = "media/logo.png"; im.Fit = "cover"; im.Opacity = 0.85;
+            im.CropX = 10; im.CropY = 20; im.CropW = 640; im.CropH = 480;
+            im.Tags.Add("entrada");
+            s.Elements.Add(im);
+            // 4) Video (F2.06)
+            AhpElement vd = p.NewElement(AhpElementKind.Video);
+            vd.VideoPath = "media/clip.mp4"; vd.VideoVolume = 80; vd.StartAtMs = 1500;
+            vd.Loop = true; vd.PositionLeftPct = 0.1; vd.Tags.Add("fondo");
+            s.Elements.Add(vd);
+            // 5) Lower Third (F2.07)
+            AhpElement lt = p.NewElement(AhpElementKind.LowerThird);
+            lt.LtText = "Pastor Isaac"; lt.LtDurationSec = 8; lt.LtPosition = "bottom";
+            lt.LtManualActivation = false; lt.LtOverlayElementId = t.Id;
+            s.Elements.Add(lt);
+            p.Scenarios.Add(s);
+            // manifiesto media (F2.01.5)
+            AhpMediaEntry m = new AhpMediaEntry();
+            m.Path = "media/logo.png"; m.Kind = "image"; m.Sha256 = "abc123"; m.Size = 1024;
+            p.Media.Add(m);
+            return p;
+        }
+
+        private static void TestAhpRoundtrip()
+        {
+            AhpProject p = BuildSampleProject();
+            string json = AhpProjectIO.ToJson(p);
+            AssertTrue(json.Contains("\"format\":\"ahp.v1\""), "format ahp.v1");
+            AhpLoadReport rep = new AhpLoadReport();
+            AhpProject q = AhpProjectIO.FromJson(json, rep);
+            AssertTrue(rep.Ok, "informe de carga OK");
+            AssertTrue(q != null && q.Name == "Culto Domingo 10am", "nombre");
+            AssertTrue(q.Scenarios.Count == 1 && q.Scenarios[0].Elements.Count == 5,
+                "1 escenario, 5 elementos (EXACTAMENTE cinco tipos)");
+            AhpElement t = q.Scenarios[0].Elements[0];
+            AssertTrue(t.Kind == AhpElementKind.Text && t.Lines.Count == 3, "texto 3 líneas");
+            AssertTrue(t.Lines[1].SyncMark == 1 && t.Lines[2].SyncMark == 2, "syncMark persistido");
+            AhpElement v = q.Scenarios[0].Elements[1];
+            AssertTrue(v.Book == "Juan" && v.VerseFrom == 16 && v.VerseTo == 18 &&
+                       v.Translation == "RV1960" && v.HighlightedWords.Count == 2,
+                "versículo completo (F2.04)");
+            AhpElement im = q.Scenarios[0].Elements[2];
+            AssertTrue(im.ImagePath == "media/logo.png" && im.Opacity == 0.85 &&
+                       im.CropW == 640 && im.Tags[0] == "entrada", "imagen (F2.05)");
+            AhpElement vd = q.Scenarios[0].Elements[3];
+            AssertTrue(vd.VideoVolume == 80 && vd.StartAtMs == 1500 && vd.Loop &&
+                       vd.PositionLeftPct == 0.1, "video (F2.06)");
+            AhpElement lt = q.Scenarios[0].Elements[4];
+            AssertTrue(lt.LtText == "Pastor Isaac" && lt.LtDurationSec == 8.0 &&
+                       !lt.LtManualActivation && lt.LtOverlayElementId == t.Id,
+                "lower third (F2.07)");
+            // IDs ESTABLES (F2.01.4): al re-guardar, los ID no cambian.
+            string json2 = AhpProjectIO.ToJson(q);
+            AssertTrue(json2.Contains(t.Id) && json2.Contains(lt.Id), "IDs estables");
+            // nuevo elemento: ID monotónico SIN colisión (semilla persistida)
+            AhpElement ne = q.NewElement(AhpElementKind.Text);
+            bool collision = false;
+            foreach (AhpScenario sc in q.Scenarios)
+                foreach (AhpElement ee in sc.Elements)
+                    if (ee.Id == ne.Id) collision = true;
+            AssertTrue(!collision, "ID nuevo sin colisión (semilla monotónica)");
+            AssertTrue(q.NextId > 6, "semilla nextId persistida");
+            // media manifiesto
+            AssertTrue(q.Media.Count == 1 && q.Media[0].Sha256 == "abc123", "manifiesto media");
+        }
+
+        private static void TestAhpFormatValidation()
+        {
+            // Formato incorrecto → rechazo explícito (F2.01.9)
+            AhpLoadReport rep = new AhpLoadReport();
+            AhpProject bad = AhpProjectIO.FromJson(
+                "{\"format\":\"otro.v9\",\"project\":{}}", rep);
+            AssertTrue(bad == null && !rep.Ok && rep.Warnings.Count > 0,
+                "formato incompatible rechazado con informe");
+            // Campos desconocidos IGNORADOS (F2.01.8) y reportados
+            rep = new AhpLoadReport();
+            AhpProject p = AhpProjectIO.FromJson(
+                "{\"format\":\"ahp.v1\",\"futuroCampo\":123," +
+                "\"project\":{\"name\":\"X\",\"nuevoCampo\":true,\"scenarios\":[]}}", rep);
+            AssertTrue(p != null && rep.Ok && p.Name == "X", "carga con campo futuro");
+            AssertTrue(rep.IgnoredFields.Contains("futuroCampo") &&
+                       rep.IgnoredFields.Contains("nuevoCampo"),
+                "campos desconocidos ignorados e informados");
+        }
+
+        private static void TestAhpZip()
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "ahp-zip-" +
+                Guid.NewGuid().ToString("N").Substring(0, 8));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                string mediaDir = Path.Combine(dir, "media");
+                Directory.CreateDirectory(mediaDir);
+                File.WriteAllBytes(Path.Combine(mediaDir, "logo.png"),
+                    new byte[] { 0x89, 0x50, 0x4E, 0x47, 1, 2, 3, 4 });
+                AhpProject p = BuildSampleProject();
+                byte[] zip = AhpProjectIO.ToZip(p, dir);
+                AssertTrue(zip != null && zip.Length > 100, "zip generado");
+                // reabrir en otra carpeta (F2.01.10: mismo contenido)
+                string dir2 = dir + "-in";
+                Directory.CreateDirectory(dir2);
+                AhpLoadReport rep = new AhpLoadReport();
+                AhpProject q = AhpProjectIO.FromZip(zip, dir2, rep);
+                AssertTrue(q != null && rep.Ok && q.Scenarios.Count == 1,
+                    "proyecto reabierto desde zip");
+                AssertTrue(File.Exists(Path.Combine(dir2, "media", "logo.png")),
+                    "media extraída");
+                AssertTrue(File.ReadAllBytes(Path.Combine(dir2, "media", "logo.png")).Length == 8,
+                    "contenido del recurso intacto");
+            }
+            finally { try { Directory.Delete(dir, true); } catch (IOException) { } }
+        }
+
+        private static void TestAhpAutosave()
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "ahp-auto-" +
+                Guid.NewGuid().ToString("N").Substring(0, 8));
+            Directory.CreateDirectory(dir);
+            string path = Path.Combine(dir, "culto.ahp");
+            try
+            {
+                ProjectStore store = new ProjectStore();
+                AhpProject p = BuildSampleProject();
+                store.SaveAtomic(path, p);
+                AssertTrue(File.Exists(path) && !File.Exists(path + ".tmp"),
+                    "guardado atómico sin temporales");
+                // F2.15: recuperación — el autoguardado más nuevo gana.
+                ProjectStore fast = new ProjectStore { IntervalSec = 1 };
+                AhpProject p2 = BuildSampleProject();
+                p2.Name = "EDITADO";
+                bool armed = false;
+                fast.ArmAutosave(path, delegate
+                {
+                    if (armed) return null;   // solo una emisión
+                    armed = true;
+                    return p2;
+                });
+                Thread.Sleep(1600);
+                fast.DisarmAutosave();
+                AhpProject rec; bool newer;
+                AssertTrue(fast.TryRecover(path, out rec, out newer),
+                    "autoguardado recuperable");
+                AssertTrue(newer, "autoguardado más reciente que el proyecto");
+                AssertTrue(rec != null && rec.Name == "EDITADO", "contenido recuperado");
+            }
+            finally { try { Directory.Delete(dir, true); } catch (IOException) { } }
+        }
+
+        private static void TestStyleCascade()
+        {
+            Dictionary<string, string> tema = new Dictionary<string, string>();
+            tema["fontFace"] = "Segoe UI"; tema["fontSize"] = "48"; tema["fgColor"] = "#FFFFFF";
+            Dictionary<string, string> plantilla = new Dictionary<string, string>();
+            plantilla["fontSize"] = "54";           // hereda lo demás
+            Dictionary<string, string> escenario = new Dictionary<string, string>();
+            escenario["fgColor"] = "#FFDDDDDD";     // nivel escenario
+            Dictionary<string, string> elemento = new Dictionary<string, string>();
+            elemento["fontSize"] = "60";            // el más específico gana
+
+            // F2.08.1: propiedad nula se resuelve desde el nivel inferior.
+            AssertTrue(StyleCascade.Resolve("fontFace", "Arial", elemento, escenario, plantilla, tema)
+                == "Segoe UI", "fontFace resuelto desde el TEMA (nadie lo pisa)");
+            AssertTrue(StyleCascade.Resolve("fontSize", "40", elemento, escenario, plantilla, tema)
+                == "60", "fontSize: ELEMENTO gana (más específico)");
+            // sin override de elemento: plantilla (54)
+            Dictionary<string, string> vacio = new Dictionary<string, string>();
+            AssertTrue(StyleCascade.Resolve("fontSize", "40", vacio, escenario, plantilla, tema)
+                == "54", "fontSize heredado desde PLANTILLA");
+            AssertTrue(StyleCascade.Resolve("fgColor", "#FFF", vacio, vacio, vacio, tema)
+                == "#FFFFFF", "fgColor desde TEMA");
+            AssertTrue(StyleCascade.Resolve("fgColor", "#FFF", vacio, escenario, vacio, vacio)
+                == "#FFDDDDDD", "fgColor desde ESCENARIO");
+            // nadie la define → default
+            AssertTrue(StyleCascade.Resolve("lineSpacing", "1.2", vacio, vacio, vacio, vacio)
+                == "1.2", "sin definir → predeterminado");
+            // F2.08.5: origen efectivo visible
+            AhpStyleValue o = StyleCascade.ResolveWithOrigin("fontSize", "40",
+                elemento, escenario, plantilla, tema);
+            AssertTrue(o.Origin == AhpStyleOrigin.Elemento && o.OriginLabel == "elemento",
+                "origen: elemento");
+            o = StyleCascade.ResolveWithOrigin("fontSize", "40", vacio, escenario, plantilla, tema);
+            AssertTrue(o.Origin == AhpStyleOrigin.Plantilla, "origen: plantilla");
+            o = StyleCascade.ResolveWithOrigin("fontFace", "Arial", vacio, vacio, vacio, tema);
+            AssertTrue(o.Origin == AhpStyleOrigin.Tema, "origen: tema");
+            // F2.08.6: vista completa para la UI/exportador
+            List<string> props = new List<string> { "fontFace", "fontSize", "fgColor" };
+            List<AhpStyleValue> view = StyleCascade.EffectiveView(props, tema, plantilla,
+                escenario, elemento);
+            AssertTrue(view.Count == 3, "vista efectiva 3 propiedades");
+            // "" = heredar explícito (F2.08.2)
+            elemento["fontSize"] = "";
+            AssertTrue(StyleCascade.Resolve("fontSize", "40", elemento, escenario, plantilla, tema)
+                == "54", "override VACÍO = heredar (null significa heredar)");
+        }
+
+        private static void TestAhpBridge()
+        {
+            AhpProject p = BuildSampleProject();
+            string json = AhpBridge.ToEngineScenario(p.Scenarios[0], "C:\\base");
+            AssertTrue(json.Contains("\"kind\":\"text\""), "ítem texto");
+            AssertTrue(json.Contains("\"syncMark\":1"), "syncMark al motor (F1.03)");
+            AssertTrue(json.Contains("\"kind\":\"scripture\"") &&
+                       json.Contains("\"ref\":\"Juan 3:16-18\""),
+                "versículo con referencia tipada");
+            AssertTrue(json.Contains("amó"), "palabras destacadas → highlight");
+            AssertTrue(json.Contains("\"kind\":\"image\"") &&
+                       json.Contains("C:\\\\base\\\\media\\\\logo.png"),
+                "imagen con ruta resuelta");
+            AssertTrue(json.Contains("\"kind\":\"video\"") &&
+                       json.Contains("\"videoVolume\":80") &&
+                       json.Contains("\"videoLoop\":true"),
+                "video con volumen/loop (F3.01)");
+            AssertTrue(json.Contains("\"lowerThird\""), "LT mapeado (F3.04)");
+            // JSON de activación del LT
+            AhpElement lt = p.Scenarios[0].Elements[4];
+            string ltj = AhpBridge.LtJson(lt);
+            AssertTrue(ltj.Contains("\"durationMs\":8000") && ltj.Contains("\"show\":true"),
+                "LtJson duración+activación");
+        }
+
+        private static void TestIpcV1Codec()
+        {
+            // Espejo del códec NATIVO: mismas cabeceras, mismos números.
+            byte[] fr = IpcV1Codec.Encode(IpcV1.MsgCommand, "{\"id\":1}");
+            AssertTrue(fr.Length == 12 + 8, "longitud del frame (payload 8 bytes)");
+            AssertTrue(fr[0] == 0x50 && fr[1] == 0x49 && fr[2] == 0x4D && fr[3] == 0x4C,
+                "magic LMIP little-endian");
+            AssertTrue(fr[4] == 1 && fr[5] == 0, "versión 1");
+            IpcV1Decoder dec = new IpcV1Decoder(IpcV1.DefaultMaxPayload);
+            int type; string payload;
+            // FRAGMENTACIÓN: 1 byte por llamada (F0.05.9)
+            bool got = false;
+            for (int i = 0; i < fr.Length; i++)
+            {
+                int rc = dec.Feed(fr, i, 1, out type, out payload);
+                if (rc == 1) { got = true; AssertTrue(payload == "{\"id\":1}", "payload"); }
+                else AssertTrue(rc == 0, "incompleto mientras llega");
+            }
+            AssertTrue(got, "frame reensamblado de a 1 byte");
+            // dos frames en una tanda
+            IpcV1Decoder d2 = new IpcV1Decoder(1024);
+            byte[] two = IpcV1Codec.Encode(IpcV1.MsgPing, "abc");
+            byte[] fr2 = IpcV1Codec.Encode(IpcV1.MsgPong, "d");
+            byte[] both = new byte[two.Length + fr2.Length];
+            Buffer.BlockCopy(two, 0, both, 0, two.Length);
+            Buffer.BlockCopy(fr2, 0, both, two.Length, fr2.Length);
+            AssertTrue(d2.Feed(both, 0, both.Length, out type, out payload) == 1 &&
+                       type == IpcV1.MsgPing && payload == "abc", "frame 1 de 2");
+            AssertTrue(d2.Feed(new byte[0], 0, 0, out type, out payload) == 1 &&
+                       type == IpcV1.MsgPong && payload == "d", "frame 2 de 2");
+            // magic inválido → -1 y recuperación
+            IpcV1Decoder d3 = new IpcV1Decoder(1024);
+            byte[] bad = new byte[20];
+            for (int i = 0; i < bad.Length; i++) bad[i] = 0xAB;
+            AssertTrue(d3.Feed(bad, 0, bad.Length, out type, out payload) == -1, "magic inválido");
+            AssertTrue(d3.Feed(fr, 0, fr.Length, out type, out payload) == 1, "recuperación");
+            // versión desconocida → -2
+            byte[] v99 = (byte[])fr.Clone();
+            v99[4] = 99;
+            IpcV1Decoder d4 = new IpcV1Decoder(1024);
+            AssertTrue(d4.Feed(v99, 0, v99.Length, out type, out payload) == -2,
+                "versión desconocida");
+            // oversized → -3
+            IpcV1Decoder d5 = new IpcV1Decoder(64);
+            byte[] big = IpcV1Codec.Encode(IpcV1.MsgState, new string('x', 256));
+            AssertTrue(d5.Feed(big, 0, big.Length, out type, out payload) == -3, "oversized");
+        }
+
+        private static void TestIpcV1Pipes()
+        {
+            // LOOPBACK REAL con pipes anónimos (net8/Linux y net48/Windows):
+            // códec ↔ códec cruzando E/S de streams reales. El extremo de
+            // ESCRITURA se cierra tras enviar → el Read del otro lado
+            // despierta con 0 (los pipes anónimos no tienen timeout).
+            AnonymousPipeServerStream srvIn = new AnonymousPipeServerStream(
+                PipeDirection.In, HandleInheritability.None);
+            AnonymousPipeClientStream cliOut = new AnonymousPipeClientStream(
+                PipeDirection.Out, srvIn.ClientSafePipeHandle);
+            AnonymousPipeServerStream srvOut = new AnonymousPipeServerStream(
+                PipeDirection.Out, HandleInheritability.None);
+            AnonymousPipeClientStream cliIn = new AnonymousPipeClientStream(
+                PipeDirection.In, srvOut.ClientSafePipeHandle);
+            try
+            {
+                byte[] f1 = IpcV1Codec.Encode(IpcV1.MsgHello,
+                    "{\"proto\":\"ipc.v1\",\"client\":\"test\"}");
+                byte[] f2 = IpcV1Codec.Encode(IpcV1.MsgCommand, "{\"id\":7}");
+                byte[] f3 = IpcV1Codec.Encode(IpcV1.MsgPing, "eco");
+                byte[] all = new byte[f1.Length + f2.Length + f3.Length];
+                Buffer.BlockCopy(f1, 0, all, 0, f1.Length);
+                Buffer.BlockCopy(f2, 0, all, f1.Length, f2.Length);
+                Buffer.BlockCopy(f3, 0, all, f1.Length + f2.Length, f3.Length);
+                // escritura FRAGMENTADA (el decoder del otro lado reensambla).
+                for (int i = 0; i < all.Length; i += 7)
+                {
+                    int n = Math.Min(7, all.Length - i);
+                    cliOut.Write(all, i, n);
+                    cliOut.Flush();
+                }
+                cliOut.Dispose();            // cierra la escritura → fin de datos
+
+                IpcV1Decoder dec = new IpcV1Decoder(IpcV1.DefaultMaxPayload);
+                byte[] buf = new byte[4096];
+                int type; string payload;
+                List<int> types = new List<int>();
+                int nread;
+                while ((nread = srvIn.Read(buf, 0, buf.Length)) > 0)
+                {
+                    if (dec.Feed(buf, 0, nread, out type, out payload) == 1)
+                        types.Add(type);
+                    while (dec.Feed(new byte[0], 0, 0, out type, out payload) == 1)
+                        types.Add(type);
+                }
+                AssertTrue(types.Count == 3, "3 frames reensamblados (" + types.Count + ")");
+                AssertTrue(types.Contains(IpcV1.MsgHello) &&
+                           types.Contains(IpcV1.MsgCommand) &&
+                           types.Contains(IpcV1.MsgPing), "tipos correctos");
+
+                // servidor → cliente: WELCOME de vuelta.
+                byte[] w = IpcV1Codec.Encode(IpcV1.MsgWelcome,
+                    "{\"proto\":\"ipc.v1\",\"server\":\"test\"}");
+                srvOut.Write(w, 0, w.Length);
+                srvOut.Flush();
+                srvOut.Dispose();            // fin de datos del servidor
+
+                IpcV1Decoder dec2 = new IpcV1Decoder(IpcV1.DefaultMaxPayload);
+                int rn = cliIn.Read(buf, 0, buf.Length);
+                AssertTrue(rn == w.Length, "frame completo al cliente");
+                int rc2 = dec2.Feed(buf, 0, rn, out type, out payload);
+                AssertTrue(rc2 == 1 && type == IpcV1.MsgWelcome &&
+                           payload.Contains("ipc.v1"), "WELCOME decodificado");
+            }
+            finally
+            {
+                try { cliOut.Dispose(); } catch (Exception) { }
+                try { cliIn.Dispose(); } catch (Exception) { }
+                try { srvIn.Dispose(); } catch (Exception) { }
+                try { srvOut.Dispose(); } catch (Exception) { }
+            }
+        }
+
     }
 }

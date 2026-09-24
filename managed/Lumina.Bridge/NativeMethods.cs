@@ -201,6 +201,41 @@ namespace lumina.bridge
 
         /* -------------------------------------------------------- almacenamiento */
 
+        // ---------------- v7.0.0 «ULTRA»: F0/F1/F3 (aditivas) ----------------
+
+        [DllImport(LibraryName, EntryPoint = "lumina_env_detect", CallingConvention = CallConv, SetLastError = false, ExactSpelling = true)]
+        internal static extern int lumina_env_detect(byte[] probeJson, byte[] outBuf, int cap, out int needed);
+
+        [DllImport(LibraryName, EntryPoint = "lumina_log_open", CallingConvention = CallConv, SetLastError = false, ExactSpelling = true)]
+        internal static extern int lumina_log_open(IntPtr handle, byte[] optsJson);
+
+        [DllImport(LibraryName, EntryPoint = "lumina_log_write", CallingConvention = CallConv, SetLastError = false, ExactSpelling = true)]
+        internal static extern int lumina_log_write(IntPtr handle, byte[] entryJson);
+
+        [DllImport(LibraryName, EntryPoint = "lumina_log_stats", CallingConvention = CallConv, SetLastError = false, ExactSpelling = true)]
+        internal static extern int lumina_log_stats(IntPtr handle, byte[] outBuf, int cap, out int needed);
+
+        [DllImport(LibraryName, EntryPoint = "lumina_ipc_start", CallingConvention = CallConv, SetLastError = false, ExactSpelling = true)]
+        internal static extern int lumina_ipc_start(IntPtr handle, byte[] optsJson);
+
+        [DllImport(LibraryName, EntryPoint = "lumina_ipc_stop", CallingConvention = CallConv, SetLastError = false, ExactSpelling = true)]
+        internal static extern int lumina_ipc_stop(IntPtr handle);
+
+        [DllImport(LibraryName, EntryPoint = "lumina_ipc_stats", CallingConvention = CallConv, SetLastError = false, ExactSpelling = true)]
+        internal static extern int lumina_ipc_stats(IntPtr handle, byte[] outBuf, int cap, out int needed);
+
+        [DllImport(LibraryName, EntryPoint = "lumina_line_next", CallingConvention = CallConv, SetLastError = false, ExactSpelling = true)]
+        internal static extern int lumina_line_next(IntPtr handle);
+
+        [DllImport(LibraryName, EntryPoint = "lumina_line_prev", CallingConvention = CallConv, SetLastError = false, ExactSpelling = true)]
+        internal static extern int lumina_line_prev(IntPtr handle);
+
+        [DllImport(LibraryName, EntryPoint = "lumina_line_set", CallingConvention = CallConv, SetLastError = false, ExactSpelling = true)]
+        internal static extern int lumina_line_set(IntPtr handle, int lineIndex);
+
+        [DllImport(LibraryName, EntryPoint = "lumina_lower_third", CallingConvention = CallConv, SetLastError = false, ExactSpelling = true)]
+        internal static extern int lumina_lower_third(IntPtr handle, byte[] json);
+
         [DllImport(LibraryName, EntryPoint = "lumina_db_open", CallingConvention = CallConv, SetLastError = false, ExactSpelling = true)]
         internal static extern int lumina_db_open(IntPtr handle, byte[] pathUtf8);
 
