@@ -217,5 +217,95 @@ namespace lumina.core
         // Reservado (el núcleo hoy fija 1 verso por slide en escritura vía
         // Scripture::BuildSlides; se emite para compatibilidad futura).
         public int VersesPerSlide = 1;
+        /// <summary>
+        /// v7.1.0 «OPERADOR» (feedback #6): ruta del PPTX ORIGINAL (kind=pptx).
+        /// SIN extracción: el archivo se conserva tal cual y la proyección la
+        /// entrega PowerPoint vía COM (la slide del motor es el marcador).
+        /// </summary>
+        public string PptxPath = string.Empty;
+        /// <summary>
+        /// v7.1.0 «OPERADOR» (feedback #1/#8): elementos del LIENZO LIBRE
+        /// (kind=composed). Cada slide del editor tipo PowerPoint es un ítem
+        /// compuesto con elementos posicionables (rect en fracción del lienzo).
+        /// </summary>
+        public List<ComposedElement> Composed;
+    }
+
+    /// <summary>
+    /// v7.1.0 «OPERADOR»: elemento de una slide compuesta (lienzo libre).
+    /// Réplica C# del contrato del núcleo (native/core/src/Models.h):
+    /// kind text/image + rect (x,y,w,h en fracción 0..1) + opacidad + estilo.
+    /// </summary>
+    public sealed class ComposedElement
+    {
+        public const int KindText = 0;
+        public const int KindImage = 1;
+
+        public int Kind = KindText;
+        public double X = 0.1, Y = 0.1;      // esquina superior-izquierda (0..1)
+        public double W = 0.8, H = 0.3;      // tamaño (0..1)
+        public double Opacity = 1.0;         // 0..1
+        // --- texto ---
+        public List<string> Lines = new List<string>();
+        public int FontSizePct;              // % de la altura del lienzo (0 = auto)
+        public int Align = 1;                // 0=izquierda · 1=centro · 2=derecha
+        public string Color = string.Empty;  // "" = fg del tema · "#AARRGGBB"
+        // --- imagen ---
+        public string ImagePath = string.Empty;
+        public bool Cover;                   // false = contain · true = cover
+
+        public Dictionary<string, object> ToDict()
+        {
+            Dictionary<string, object> o = new Dictionary<string, object>();
+            o["kind"] = Kind == KindImage ? "image" : "text";
+            o["x"] = X; o["y"] = Y; o["w"] = W; o["h"] = H;
+            o["opacity"] = Opacity;
+            if (Kind == KindText)
+            {
+                o["lines"] = new List<object>(Lines.ToArray());
+                if (FontSizePct > 0) o["fontSizePct"] = FontSizePct;
+                o["align"] = Align;
+                if (Color.Length > 0) o["color"] = Color;
+            }
+            else
+            {
+                o["imagePath"] = ImagePath;
+                o["fit"] = Cover ? "cover" : "contain";
+            }
+            return o;
+        }
+
+        public static ComposedElement FromDict(Dictionary<string, object> o)
+        {
+            ComposedElement e = new ComposedElement();
+            if (o == null) return e;
+            e.Kind = MiniJson.GetString(o, "kind", "text") == "image" ? KindImage : KindText;
+            e.X = Clamp01(MiniJson.GetDouble(o, "x", 0.1));
+            e.Y = Clamp01(MiniJson.GetDouble(o, "y", 0.1));
+            e.W = Clamp01(MiniJson.GetDouble(o, "w", 0.8));
+            e.H = Clamp01(MiniJson.GetDouble(o, "h", 0.3));
+            e.Opacity = Math.Max(0.0, Math.Min(1.0, MiniJson.GetDouble(o, "opacity", 1.0)));
+            if (e.Kind == KindText)
+            {
+                foreach (object lo in MiniJson.GetArray(o, "lines"))
+                    e.Lines.Add(lo is string ? (string)lo : string.Empty);
+                e.FontSizePct = (int)MiniJson.GetInt(o, "fontSizePct", 0);
+                e.Align = Math.Max(0, Math.Min(2, (int)MiniJson.GetInt(o, "align", 1)));
+                e.Color = MiniJson.GetString(o, "color", string.Empty);
+            }
+            else
+            {
+                e.ImagePath = MiniJson.GetString(o, "imagePath", string.Empty);
+                e.Cover = MiniJson.GetString(o, "fit", "contain") == "cover";
+            }
+            return e;
+        }
+
+        private static double Clamp01(double v)
+        {
+            if (double.IsNaN(v) || v < 0) return 0;
+            if (v > 1) return 1;
+            return v;
+        }
     }
 }

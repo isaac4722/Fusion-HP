@@ -45,6 +45,12 @@ namespace lumina.core
 
         // ---- v5.1.0 «FUNDAMENTO» ----
         public int ProjectionScreen = 0;              // pantalla del proyector (combo En Vivo)
+        /// <summary>
+        /// v7.1.0 «OPERADOR» (feedback #3): proyección a PANTALLA COMPLETA por
+        /// defecto (la ventana nativa es SIEMPRE sin bordes; este ajuste decide
+        /// si cubre el monitor o se muestra 960×540 centrada).
+        /// </summary>
+        public bool ProjectionFullscreen = true;
         public int DirectorScreen = 2;                // pantalla del Director (3ª salida)
         public string BackupFolder = string.Empty;    // carpeta de respaldo (Drive/OneDrive local)
         public bool AutoBackupOnExit = false;         // respaldar data\ al cerrar
@@ -138,6 +144,7 @@ namespace lumina.core
             if (MidiDevice < 0) MidiDevice = 0;
             if (StageScreen < 0) StageScreen = 0;
             if (ProjectionScreen < 0) ProjectionScreen = 0;
+            if (ProjectionScreen > 32) ProjectionScreen = 32;
             if (DirectorScreen < 0) DirectorScreen = 0;
             if (BackupFolder == null) BackupFolder = string.Empty;
             if (TransitionMs < 0) TransitionMs = 0;
@@ -175,6 +182,8 @@ namespace lumina.core
                 s.AutoAdvanceVideo = MiniJson.GetBool(o, "autoAdvanceVideo", true);
                 s.TriggersEnabled = MiniJson.GetBool(o, "triggersEnabled", true);
                 s.ProjectionScreen = (int)MiniJson.GetInt(o, "projectionScreen", 0);
+                // v7.1.0 «OPERADOR»: pantalla completa persistida (default true).
+                s.ProjectionFullscreen = MiniJson.GetBool(o, "projectionFullscreen", true);
                 s.DirectorScreen = (int)MiniJson.GetInt(o, "directorScreen", 2);
                 s.BackupFolder = MiniJson.GetString(o, "backupFolder", string.Empty);
                 s.AutoBackupOnExit = MiniJson.GetBool(o, "autoBackupOnExit", false);
@@ -214,6 +223,7 @@ namespace lumina.core
             o["autoAdvanceVideo"] = AutoAdvanceVideo;
             o["triggersEnabled"] = TriggersEnabled;
             o["projectionScreen"] = ProjectionScreen;              // v5.1.0
+            o["projectionFullscreen"] = ProjectionFullscreen;      // v7.1.0
             o["directorScreen"] = DirectorScreen;
             if (BackupFolder.Length > 0) o["backupFolder"] = BackupFolder;
             o["autoBackupOnExit"] = AutoBackupOnExit;

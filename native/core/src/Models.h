@@ -28,7 +28,79 @@ enum SlideKind {
     SLIDE_BLANK = 2,     // en blanco
     SLIDE_SCRIPTURE = 3, // texto bíblico con referencia
     SLIDE_IMAGE = 4,     // imagen con texto opcional
-    SLIDE_VIDEO = 5      // video DirectShow (v7.0.0 — F3.01)
+    SLIDE_VIDEO = 5,     // video DirectShow (v7.0.0 — F3.01)
+    // v7.1.0 «OPERADOR» (feedback #1/#8): slide COMPUESTA — lienzo libre con
+    // elementos posicionables (texto/imagen) creados en el editor tipo
+    // PowerPoint. Cada elemento trae su rect (fracción del lienzo), estilo
+    // y contenido; el Renderer los dibuja en sus posiciones (WYSIWYG con el
+    // editor y la vista previa, MISMO motor de dibujo).
+    SLIDE_COMPOSED = 6
+};
+
+// v7.1.0 «OPERADOR»: elemento de una slide compuesta (lienzo libre).
+struct ComposedElement {
+    int    kind = 0;          // 0 = texto · 1 = imagen
+    double x = 0.1, y = 0.1; // esquina SUPERIOR-IZQUIERDA (fracción 0..1)
+    double w = 0.8, h = 0.3; // tamaño (fracción 0..1)
+    double opacity = 1.0;    // 0..1
+    // --- texto ---
+    std::vector<std::string> lines;
+    int    fontSizePct = 0;  // % de la ALTURA del lienzo (0 = auto-ajuste)
+    int    align = 1;        // 0=izquierda · 1=centro · 2=derecha
+    std::string color;       // "" = fg del tema · "#AARRGGBB"
+    // --- imagen ---
+    std::string imagePath;   // UTF-8 (relativa al proyecto o absoluta)
+    int    imageFit = 0;     // 0 = contain · 1 = cover (dentro del rect)
+    // --- serialización (elemento completo, campos normativos) ---
+    json ToJson() const {
+        json o;
+        o["kind"] = kind == 1 ? "image" : "text";
+        o["x"] = x; o["y"] = y; o["w"] = w; o["h"] = h;
+        o["opacity"] = opacity;
+        if (kind == 0) {
+            json arr = json::array();
+            for (const std::string& l : lines) arr.push_back(l);
+            o["lines"] = arr;
+            if (fontSizePct > 0) o["fontSizePct"] = fontSizePct;
+            o["align"] = align;
+            if (!color.empty()) o["color"] = color;
+        } else {
+            o["imagePath"] = imagePath;
+            o["fit"] = imageFit == 1 ? "cover" : "contain";
+        }
+        return o;
+    }
+    static ComposedElement FromJson(const json& o) {
+        ComposedElement e;
+        const std::string k = o.value("kind", std::string("text"));
+        e.kind = (k == "image") ? 1 : 0;
+        e.x  = o.value("x", 0.1);  e.y = o.value("y", 0.1);
+        e.w  = o.value("w", 0.8);  e.h = o.value("h", 0.3);
+        if (e.x < 0) e.x = 0;
+        if (e.y < 0) e.y = 0;
+        if (e.w <= 0) e.w = 0.8;
+        if (e.h <= 0) e.h = 0.3;
+        if (e.x + e.w > 1.0) e.w = 1.0 - e.x;
+        if (e.y + e.h > 1.0) e.h = 1.0 - e.y;
+        e.opacity = o.value("opacity", 1.0);
+        if (e.opacity < 0) e.opacity = 0;
+        if (e.opacity > 1) e.opacity = 1;
+        if (e.kind == 0) {
+            if (o.contains("lines") && o["lines"].is_array())
+                for (const auto& l : o["lines"])
+                    if (l.is_string()) e.lines.push_back(l.get<std::string>());
+            e.fontSizePct = o.value("fontSizePct", 0);
+            e.align = o.value("align", 1);
+            if (e.align < 0) e.align = 0;
+            if (e.align > 2) e.align = 2;
+            e.color = o.value("color", std::string());
+        } else {
+            e.imagePath = o.value("imagePath", std::string());
+            const std::string fit = o.value("fit", std::string("contain"));
+            e.imageFit = (fit == "cover") ? 1 : 0;
+        }
+        return e;
+    }
 };
 
 struct SlideLine {
@@ -50,6 +122,9 @@ struct Slide {
     std::string refLabel;   // etiqueta de referencia ("Verso 1", "Juan 3:16")
     std::vector<SlideLine> lines;
     std::string imagePath;  // solo SLIDE_IMAGE
+    // v7.1.0 «OPERADOR» (feedback #1): elementos del lienzo libre — SOLO para
+    // SLIDE_COMPOSED (vacío en el resto). Vacía = slide clásica.
+    std::vector<ComposedElement> elements;
     // v6.0.0 «HORIZONTE»: palabra/frase a resaltar en PROYECCIÓN (color de
     // acento, coincidencia insensible a mayúsculas/acento — ver Highlight.h).
     // Cadena vacía = sin resaltado. Evolución ADITIVA del contrato de slide.
@@ -135,6 +210,13 @@ struct ScenarioItem {
     // v7.0.0 «ULTRA» (F2.03): líneas estructuradas con syncMark (formato
     // ahp.v1). Vacío = se usa 'text' plano (compatibilidad clásica).
     std::vector<SlideLine> structuredLines;
+    // v7.1.0 «OPERADOR» (feedback #1/#8): lienzo libre — elementos de la
+    // slide compuesta (kind="composed"). Vacío = no es compuesta.
+    std::vector<ComposedElement> composed;
+    // v7.1.0 «OPERADOR» (feedback #6): presentación PPTX ORIGINAL (sin
+    // extracción): la ruta del archivo; la proyección la entrega PowerPoint
+    // vía COM desde la UI. La slide del motor es el marcador de transición.
+    std::string pptxPath;
 };
 
 struct Scenario {

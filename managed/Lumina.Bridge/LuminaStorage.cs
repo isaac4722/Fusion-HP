@@ -111,6 +111,30 @@ namespace lumina.bridge
                 term ?? string.Empty, limit);
         }
 
+        /// <summary>
+        /// v7.1.0 «OPERADOR» (feedback #7): TODA la biblioteca de canciones
+        /// SIN buscar — ordenada por título (la lista completa se muestra al
+        /// abrir la BD; el cuadro de texto queda como FILTRO opcional).
+        /// </summary>
+        public static string ListAllSongsRequest(int limit)
+        {
+            if (limit <= 0) limit = 1000;
+            return BuildExecJson(
+                "SELECT id, title, author, lyrics FROM songs" +
+                " ORDER BY title COLLATE NOCASE LIMIT ?1",
+                limit);
+        }
+
+        /// <summary>
+        /// v7.1.0 «OPERADOR» (feedback #7): versiones bíblicas INSTALADAS en
+        /// la BD (para los selectores de la página Biblia).
+        /// </summary>
+        public static string ListBibleVersionsRequest()
+        {
+            return BuildExecJson(
+                "SELECT DISTINCT version FROM bible ORDER BY version");
+        }
+
         /// <summary>SELECT de una canción por id (para cargarla al editor).</summary>
         public static string SelectSongByIdRequest(long id)
         {

@@ -241,13 +241,19 @@ std::string Projector::StatsJson() const {
     Impl* p = impl_;
     CsGuard lk(p->mx);
     if (p->d2dAvailable < 0) p->d2dAvailable = D2DAvailable() ? 1 : 0;
-    char buf[256];
+    // v7.1.0 «OPERADOR» (feedback #3): estado VISIBLE de la salida en el
+    // estado del motor (visible = showWindow && hwnd) para que la UI sepa si
+    // el proyector está abierto (incluido el cierre con X/ESC del usuario).
+    const int visible = (p->showWindow && p->hwnd) ? 1 : 0;
+    char buf[320];
     _snprintf_s(buf, sizeof(buf), _TRUNCATE,
         "{\"lastMs\":%.3f,\"avgMs\":%.3f,\"maxMs\":%.3f,"
-        "\"frames\":%lld,\"d2d\":%d,\"noRedirection\":0,\"video\":%d}",
+        "\"frames\":%lld,\"d2d\":%d,\"noRedirection\":0,\"video\":%d,"
+        "\"visible\":%d,\"screen\":%d,\"fullscreen\":%d}",
         p->lastFrameMs, p->avgFrameMs, p->maxFrameMs,
         (long long)p->frameCount, p->d2dAvailable,
-        p->video.Playing() ? 1 : 0);
+        p->video.Playing() ? 1 : 0, visible, p->screenIndex,
+        p->fullscreen ? 1 : 0);
     return std::string(buf);
 }
 
@@ -327,6 +333,17 @@ void Projector::SetLowerThird(const std::string& jsonStr) {
 
 bool Projector::Show(int screenIndex, bool fullscreen) {
     Impl* p = impl_;
+    // v7.1.0 «OPERADOR» (feedback #3): si el hilo de ventana terminó (p. ej.
+    // cierre de emergencia), se recicla el handle y se relanza — F5/Proyector
+    // JAMÁS queda mudo tras un cierre. El hilo NUNCA muere por WM_QUIT del
+    // usuario (solo Close() lo detiene con quit=true), pero esto es la red
+    // de seguridad para cualquier salida no prevista del bucle.
+    if (p->workerThread != nullptr) {
+        if (WaitForSingleObject(p->workerThread, 0) == WAIT_OBJECT_0) {
+            CloseHandle(p->workerThread);
+            p->workerThread = nullptr;
+        }
+    }
     {
         CsGuard lk(p->mx);
         p->screenIndex = screenIndex;
@@ -584,23 +601,31 @@ void Projector::WindowLoop() {
                 if (p->lastFrame) { DeleteObject(p->lastFrame); p->lastFrame = nullptr; }
                 p->lastW = p->lastH = 0;
             }
+            // v7.1.0 «OPERADOR» (feedback #3): la salida SIEMPRE es una
+            // ventana SIN BORDES (WS_POPUP). Pantalla completa: cubre el
+            // monitor elegido. Modo ventana: 960×540 centrado en el monitor
+            // elegido (también sin bordes — el título solo vive en la barra
+            // de tareas). El rect del monitor se calcula UNA vez para ambos.
             RECT rc = {0, 0, 960, 540};
-            if (fs) {
+            {
                 MonitorCtx ctx;
                 ctx.index = screen > 0 ? screen : 0;
                 EnumDisplayMonitors(nullptr, nullptr, MonitorEnumProc, (LPARAM)&ctx);
                 if (ctx.found) rc = ctx.rect;
                 else { rc.left = 0; rc.top = 0; rc.right = GetSystemMetrics(SM_CXSCREEN); rc.bottom = GetSystemMetrics(SM_CYSCREEN); }
-                p->hwnd = CreateWindowExW(WS_EX_TOPMOST, kProjClassName, L"LuminaPresentation",
-                                          WS_POPUP, rc.left, rc.top,
-                                          rc.right - rc.left, rc.bottom - rc.top,
-                                          nullptr, nullptr, GetModuleHandleW(nullptr), this);
-            } else {
-                p->hwnd = CreateWindowExW(0, kProjClassName, L"LuminaPresentation (prueba)",
-                                          WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
-                                          960, 540, nullptr, nullptr,
-                                          GetModuleHandleW(nullptr), this);
             }
+            if (!fs) {
+                // Ventana 960×540 SIN BORDES centrada en el monitor objetivo.
+                const int ww = 960, wh = 540;
+                rc.left   += (rc.right  - rc.left) / 2 - ww / 2;
+                rc.top    += (rc.bottom - rc.top) / 2 - wh / 2;
+                rc.right   = rc.left + ww;
+                rc.bottom  = rc.top  + wh;
+            }
+            p->hwnd = CreateWindowExW(WS_EX_TOPMOST, kProjClassName, L"LuminaPresentation",
+                                      WS_POPUP, rc.left, rc.top,
+                                      rc.right - rc.left, rc.bottom - rc.top,
+                                      nullptr, nullptr, GetModuleHandleW(nullptr), this);
             if (p->hwnd) {
                 SetWindowLongPtrW(p->hwnd, GWLP_USERDATA, (LONG_PTR)this);
                 lastScreen = screen;
@@ -745,9 +770,24 @@ LRESULT CALLBACK Projector::WndProcThunk(HWND hwnd, UINT m, WPARAM wp, LPARAM lp
         default:
             break;
     }
-    if (m == WM_CLOSE || m == WM_DESTROY) {
+    if (m == WM_CLOSE) {
+        // v7.1.0 «OPERADOR» (feedback #3): la X destruye la ventana de VERDAD
+        // y apaga showWindow — el bucle NO la recrea (antes: hwnd=nullptr sin
+        // destruir → show && !hwnd → segunda ventana: DUPLICACIÓN). El hilo
+        // SOBREVIVE: Show() vuelve a abrir la salida sin reiniciar nada.
+        if (self) {
+            CsGuard lk(self->impl_->mx);
+            self->impl_->showWindow = false;
+            self->impl_->hwnd = nullptr;
+        }
+        DestroyWindow(hwnd);
+        return 0;
+    }
+    if (m == WM_DESTROY) {
+        // v7.1.0: SIN PostQuitMessage — el hilo del proyector vive mientras
+        // viva el Engine (Close() lo detiene con quit=true). Así F5/Proyector
+        // reabre la ventana cuantas veces el usuario la cierre (feedback #3).
         if (self) self->impl_->hwnd = nullptr;
-        if (m == WM_DESTROY) PostQuitMessage(0);
         return 0;
     }
     return DefWindowProcW(hwnd, m, wp, lp);

@@ -13,6 +13,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using lumina.core;
 
 namespace lumina.core
@@ -29,6 +30,18 @@ namespace lumina.core
         public string VideoPath = string.Empty;
         /// <summary>v5.0.0: true si esta vista es un ítem de video.</summary>
         public bool IsVideo;
+        /// <summary>
+        /// v7.1.0 «OPERADOR»: índice del ScenarioItem que originó esta slide
+        /// (para el modo Operador: lista de ítems + slides por ítem, estilo
+        /// Holyrics). -1 si no se conoce.
+        /// </summary>
+        public int ItemIndex = -1;
+        /// <summary>v7.1.0: true si esta vista es un ítem PPTX original.</summary>
+        public bool IsPptx;
+        /// <summary>v7.1.0: ruta del PPTX original (si IsPptx).</summary>
+        public string PptxPath = string.Empty;
+        /// <summary>v7.1.0: elementos del lienzo libre (slide compuesta).</summary>
+        public List<ComposedElement> Composed;
     }
 
     public static class ScenarioBuilder
@@ -180,6 +193,17 @@ namespace lumina.core
                 o["videoLoop"] = it.VideoLoop;
                 o["videoVolume"] = it.VideoVolume;
             }
+            // v7.1.0 «OPERADOR» (feedback #6): PPTX ORIGINAL sin extracción —
+            // solo la ruta del archivo (la proyección la entrega PowerPoint).
+            if (it.Kind == "pptx") o["pptxPath"] = it.PptxPath;
+            // v7.1.0 «OPERADOR» (feedback #1/#8): slide COMPUESTA del lienzo
+            // libre — elementos posicionables 1:1 (el núcleo los dibuja).
+            if (it.Kind == "composed" && it.Composed != null && it.Composed.Count > 0)
+            {
+                List<object> els = new List<object>(it.Composed.Count);
+                foreach (ComposedElement el in it.Composed) els.Add(el.ToDict());
+                o["elements"] = els;
+            }
             // "blank": solo kind+title
             return o;
         }
@@ -266,6 +290,32 @@ namespace lumina.core
             return it;
         }
 
+        /// <summary>
+        /// v7.1.0 «OPERADOR» (feedback #1/#8): ítem COMPUESTO — una slide del
+        /// editor de lienzo libre con sus elementos posicionables.
+        /// </summary>
+        public static ScenarioItem ComposedItem(string title, List<ComposedElement> elements)
+        {
+            ScenarioItem it = new ScenarioItem();
+            it.Kind = "composed";
+            it.Title = title ?? string.Empty;
+            it.Composed = elements ?? new List<ComposedElement>();
+            return it;
+        }
+
+        /// <summary>
+        /// v7.1.0 «OPERADOR» (feedback #6): ítem PPTX ORIGINAL — el archivo se
+        /// proyecta vía PowerPoint COM, SIN extracción previa.
+        /// </summary>
+        public static ScenarioItem PptxItem(string title, string path)
+        {
+            ScenarioItem it = new ScenarioItem();
+            it.Kind = "pptx";
+            it.Title = title ?? string.Empty;
+            it.PptxPath = path ?? string.Empty;
+            return it;
+        }
+
         /* ---------------------------------------- aplanado para UI/live.txt -- */
 
         /// <summary>
@@ -283,10 +333,11 @@ namespace lumina.core
             try { root = MiniJson.Parse(scenarioJson); }
             catch (FormatException) { return views; }
 
+            int itemNumber = 0;
             foreach (object io in MiniJson.GetArray(root, "items"))
             {
                 Dictionary<string, object> item = io as Dictionary<string, object>;
-                if (item == null) continue;
+                if (item == null) { itemNumber++; continue; }
                 string kind = MiniJson.GetString(item, "kind", "blank");
                 string title = MiniJson.GetString(item, "title", string.Empty);
                 List<string> lines = new List<string>();
@@ -314,7 +365,7 @@ namespace lumina.core
                             {
                                 Slide sl = Slide.FromDict(so as Dictionary<string, object>);
                                 if (sl == null) continue;
-                                views.Add(MakeView(views.Count, title, sl.RefLabel, LinesToTexts(sl.Lines)));
+                                views.Add(MakeView(views.Count, itemNumber, title, sl.RefLabel, LinesToTexts(sl.Lines)));
                             }
                             resolved = true;
                         }
@@ -327,8 +378,9 @@ namespace lumina.core
                             lines.AddRange(b.Lines);
                         if (lines.Count == 0 && s.Lyrics.Length > 0)
                             lines.AddRange(s.Lyrics.Replace("\r\n", "\n").Split('\n'));
-                        views.Add(MakeView(views.Count, title, string.Empty, lines));
+                        views.Add(MakeView(views.Count, itemNumber, title, string.Empty, lines));
                     }
+                    itemNumber++;
                     continue;
                 }
 
@@ -346,7 +398,7 @@ namespace lumina.core
                     if (lines.Count == 0)
                     {
                         // sin texto (sin BD): una entrada informativa con la referencia
-                        views.Add(MakeView(views.Count, title, refLabel, lines));
+                        views.Add(MakeView(views.Count, itemNumber, title, refLabel, lines));
                     }
                     else
                     {
@@ -355,9 +407,10 @@ namespace lumina.core
                             List<string> group = new List<string>(per);
                             for (int k = i; k < i + per && k < lines.Count; k++)
                                 group.Add(lines[k]);
-                            views.Add(MakeView(views.Count, title, refLabel, group));
+                            views.Add(MakeView(views.Count, itemNumber, title, refLabel, group));
                         }
                     }
+                    itemNumber++;
                     continue;
                 }
 
@@ -372,7 +425,8 @@ namespace lumina.core
                     }
                     else lines.AddRange(text.Replace("\r\n", "\n").Split('\n'));
                     refLabel = "texto";
-                    views.Add(MakeView(views.Count, title, refLabel, lines));
+                    views.Add(MakeView(views.Count, itemNumber, title, refLabel, lines));
+                    itemNumber++;
                     continue;
                 }
 
@@ -380,7 +434,8 @@ namespace lumina.core
                 {
                     string text = MiniJson.GetString(item, "text", string.Empty);
                     if (text.Length > 0) lines.AddRange(text.Replace("\r\n", "\n").Split('\n'));
-                    views.Add(MakeView(views.Count, title, "imagen", lines));
+                    views.Add(MakeView(views.Count, itemNumber, title, "imagen", lines));
+                    itemNumber++;
                     continue;
                 }
 
@@ -388,15 +443,60 @@ namespace lumina.core
                 {
                     // v5.0.0: slide única representando el video (el núcleo la
                     // proyecta en blanco; la UI reproduce el archivo encima).
-                    SlideView v = MakeView(views.Count, title, "video", lines);
+                    SlideView v = MakeView(views.Count, itemNumber, title, "video", lines);
                     v.VideoPath = MiniJson.GetString(item, "videoPath", string.Empty);
                     v.IsVideo = true;
                     views.Add(v);
+                    itemNumber++;
+                    continue;
+                }
+
+                if (kind == "pptx")
+                {
+                    // v7.1.0 «OPERADOR» (feedback #6): PPTX ORIGINAL — slide
+                    // marcador; la proyección real la entrega PowerPoint COM.
+                    SlideView v = MakeView(views.Count, itemNumber, title,
+                        "presentación", lines);
+                    v.PptxPath = MiniJson.GetString(item, "pptxPath", string.Empty);
+                    v.IsPptx = true;
+                    if (v.PptxPath.Length > 0)
+                    {
+                        v.Lines.Add(Path.GetFileName(v.PptxPath));
+                        v.FirstLine = Path.GetFileName(v.PptxPath);
+                    }
+                    views.Add(v);
+                    itemNumber++;
+                    continue;
+                }
+
+                if (kind == "composed")
+                {
+                    // v7.1.0 «OPERADOR» (feedback #1): slide COMPUESTA del lienzo
+                    // libre — los elementos viajan completos para la vista de
+                    // texto del operador (mini-preview sin render PNG).
+                    List<ComposedElement> els = new List<ComposedElement>();
+                    foreach (object eo in MiniJson.GetArray(item, "elements"))
+                    {
+                        ComposedElement el = ComposedElement.FromDict(eo as Dictionary<string, object>);
+                        if (el != null) els.Add(el);
+                    }
+                    SlideView v = MakeView(views.Count, itemNumber, title,
+                        "compuesta", lines);
+                    v.Composed = els;
+                    // Vista de texto del operador: líneas de los elementos de texto.
+                    foreach (ComposedElement el in els)
+                        if (el.Kind == ComposedElement.KindText)
+                            foreach (string l in el.Lines) v.Lines.Add(l);
+                    if (v.Lines.Count > 0 && v.FirstLine.Length == 0)
+                        v.FirstLine = v.Lines[0];
+                    views.Add(v);
+                    itemNumber++;
                     continue;
                 }
 
                 // blank
-                views.Add(MakeView(views.Count, title, "en blanco", lines));
+                views.Add(MakeView(views.Count, itemNumber, title, "en blanco", lines));
+                itemNumber++;
             }
             return views;
         }
@@ -409,10 +509,11 @@ namespace lumina.core
             return texts;
         }
 
-        private static SlideView MakeView(int index, string title, string refLabel, List<string> lines)
+        private static SlideView MakeView(int index, int itemIndex, string title, string refLabel, List<string> lines)
         {
             SlideView v = new SlideView();
             v.Index = index;
+            v.ItemIndex = itemIndex;
             v.Title = title ?? string.Empty;
             v.RefLabel = refLabel ?? string.Empty;
             if (lines != null)

@@ -120,7 +120,7 @@ static std::string TempDbPath() {
 /* ------------------------------------------------------------------ main */
 
 int main() {
-    std::printf("== Selftest del nucleo nativo - LuminaPresentation v6.1.0 ==\n");
+    std::printf("== Selftest del nucleo nativo - LuminaPresentation v7.1.0 «OPERADOR» ==\n");
 
     /* ================================================================ 1 == */
     Section("[1] Chords (port wx 1:1)");
@@ -977,6 +977,86 @@ int main() {
         CHECK(apiOut.find("\"running\":1") != std::string::npos);
         CHECK(lumina_ipc_stop(h) == LUMINA_OK);
 #endif
+        lumina_destroy(h);
+    }
+
+    /* ============================================================= v7.1.0
+       «OPERADOR» — feedback del prototipo: slides COMPUESTAS (lienzo libre
+       con elementos posicionables) y PPTX original (sin extracción).
+       ============================================================= */
+    Section("[13] v7.1.0 slides compuestas y PPTX original");
+    {
+        LuminaConfig cfg = {};
+        cfg.structSize = (int32_t)sizeof(LuminaConfig);
+        cfg.headless = 1;
+        LuminaHandle h = lumina_create(&cfg);
+        CHECK(h != nullptr);
+        // Dos slides compuestas (elementos texto+imagen con rect/alfa) y un
+        // ítem PPTX original (solo la ruta del archivo).
+        const std::string scen =
+            "{\"name\":\"diseno\",\"items\":["
+            "{\"kind\":\"composed\",\"title\":\"Portada\","
+            "\"elements\":["
+            "{\"kind\":\"text\",\"x\":0.1,\"y\":0.3,\"w\":0.8,\"h\":0.25,"
+            "\"lines\":[\"Bienvenidos\"],\"align\":1,\"opacity\":1.0,"
+            "\"fontSizePct\":8},"
+            "{\"kind\":\"image\",\"x\":0.0,\"y\":0.0,\"w\":1.0,\"h\":1.0,"
+            "\"imagePath\":\"\\\\\\\\inexistente.png\",\"fit\":\"cover\","
+            "\"opacity\":0.5}]},"
+            "{\"kind\":\"composed\",\"title\":\"Cierre\","
+            "\"elements\":["
+            "{\"kind\":\"text\",\"x\":0.2,\"y\":0.4,\"w\":0.6,\"h\":0.2,"
+            "\"lines\":[\"Gracias\"],\"align\":2,\"color\":\"#FFFFD54F\","
+            "\"fontSizePct\":6,\"opacity\":0.85}]},"
+            "{\"kind\":\"pptx\",\"title\":\"Sermón visual\","
+            "\"pptxPath\":\"C:\\\\Temp\\\\sermon.pptx\"}]}";
+        CHECK(lumina_load_scenario(h, scen.c_str(), -1) == LUMINA_OK);
+        // 2 compuestas + 1 marcador PPTX = 3 slides.
+        apiOut.clear();
+        CHECK(ApiCallOnce([&](char* o, int32_t c, int32_t* n) {
+            return lumina_state_json(h, o, c, n);
+        }, &apiOut));
+        CHECK(apiOut.find("\"slideCount\":3") != std::string::npos);
+        CHECK(apiOut.find("\"itemCount\":3") != std::string::npos);
+        CHECK(apiOut.find("\"kind\":\"composed\"") != std::string::npos);
+        CHECK(apiOut.find("\"kind\":\"pptx\"") != std::string::npos);
+        CHECK(apiOut.find("Sermón visual") != std::string::npos);
+        // Navegación completa sobre slides compuestas (sin crash, sin líneas).
+        CHECK(lumina_show_slide(h, 0) == LUMINA_OK);
+        CHECK(lumina_next(h) == LUMINA_OK);
+        CHECK(lumina_next(h) == LUMINA_OK);       // marcador PPTX en vivo
+        apiOut.clear();
+        CHECK(ApiCallOnce([&](char* o, int32_t c, int32_t* n) {
+            return lumina_state_json(h, o, c, n);
+        }, &apiOut));
+        CHECK(apiOut.find("\"current\":2") != std::string::npos);
+        CHECK(apiOut.find("\"line\":-1") != std::string::npos);
+        CHECK(lumina_prev(h) == LUMINA_OK);
+        CHECK(lumina_prev(h) == LUMINA_OK);
+#ifdef _WIN32
+        // Solo Windows: la MISMA ruta de render del proyector dibuja la slide
+        // compuesta (WYSIWYG del editor). PNG no vacío = elementos pintados.
+        {
+            char pngBuf[64];
+            int32_t need2 = 0;
+            CHECK(lumina_render_preview_png(h, 0, pngBuf, (int32_t)sizeof(pngBuf),
+                                            &need2) == LUMINA_ERR_LIMIT);
+            std::vector<uint8_t> png((size_t)need2 > 0 ? (size_t)need2 : 0);
+            CHECK(lumina_render_preview_png(h, 0, (char*)png.data(),
+                                            (int32_t)png.size(), &need2) == 0);
+            CHECK(png.size() > 8);                 // firma PNG presente
+            CHECK(png[0] == 0x89 && png[1] == 'P' && png[2] == 'N' && png[3] == 'G');
+        }
+#endif
+        // Composed SIN elementos → marcador blank (contrato: no cae).
+        const std::string vacio =
+            "{\"name\":\"v\",\"items\":[{\"kind\":\"composed\",\"title\":\"X\"}]}";
+        CHECK(lumina_load_scenario(h, vacio.c_str(), -1) == LUMINA_OK);
+        apiOut.clear();
+        CHECK(ApiCallOnce([&](char* o, int32_t c, int32_t* n) {
+            return lumina_state_json(h, o, c, n);
+        }, &apiOut));
+        CHECK(apiOut.find("\"slideCount\":1") != std::string::npos);
         lumina_destroy(h);
     }
 

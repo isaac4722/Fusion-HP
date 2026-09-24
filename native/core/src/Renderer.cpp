@@ -209,9 +209,137 @@ HFONT MakeFont(const Theme& theme, int pxHeight, bool bold) {
                        face.c_str());
 }
 
-} // namespace
+/* ------------------------------------------------- v7.1.0 «OPERADOR» ---- */
+/* Slide COMPUESTA (lienzo libre, feedback #1): dibuja los elementos en sus
+ * rects. Texto: GDI+ DrawString con ajuste de línea, alineación y alfa por
+ * brush (+ sombra discreta); tamaño auto-ajustable como el camino clásico
+ * (shrink 10% hasta caber en el rect). Imagen: GDI+ con ColorMatrix para
+ * opacidad y cover/contain DENTRO del rect del elemento. El fondo y el
+ * negro de salida corren por el camino clásico (DrawBackground/black). */
+void DrawComposedElements(HDC hdc, int w, int h,
+                           const Slide* slide, const Theme& theme) {
+    Gdiplus::Graphics g(hdc);
+    g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+    g.SetTextRenderingHint(Gdiplus::TextRenderingHintClearTypeGridFit);
+    const std::wstring face = Utf8ToWide(theme.fontFace.empty()
+                                             ? std::string("Segoe UI")
+                                             : theme.fontFace);
+    const Gdiplus::REAL shadowOffset = (Gdiplus::REAL)std::max(2, h / 540);
 
-/* --------------------------------------------------------- DrawSlide ---- */
+    for (const ComposedElement& e : slide->elements) {
+        Gdiplus::RectF rc((Gdiplus::REAL)(e.x * w), (Gdiplus::REAL)(e.y * h),
+                          (Gdiplus::REAL)(e.w * w), (Gdiplus::REAL)(e.h * h));
+        if (rc.Width <= 1 || rc.Height <= 1) continue;
+
+        if (e.kind == 0) {                    // ---- elemento de TEXTO ----
+            if (e.lines.empty()) continue;
+            // Color: del elemento o del tema (fg), con alfa de opacidad.
+            const RGBA base = e.color.empty()
+                ? ParseColor(theme.fgColor, RGBA{255, 255, 255, 255})
+                : ParseColor(e.color, RGBA{255, 255, 255, 255});
+            const int alpha = (int)std::lround(std::min(1.0, e.opacity) * 255.0);
+
+            // Líneas visibles (uppercase del tema, solo ASCII — determinista).
+            std::vector<std::wstring> texts;
+            for (const std::string& raw : e.lines) {
+                std::string t = raw;
+                if (theme.uppercase) {
+                    for (size_t ci = 0; ci < t.size(); ++ci)
+                        if (t[ci] >= 'a' && t[ci] <= 'z')
+                            t[ci] = (char)(t[ci] - 'a' + 'A');
+                }
+                texts.push_back(Utf8ToWide(t));
+            }
+
+            // Alineación horizontal + centrado vertical del bloque.
+            Gdiplus::StringFormat sf(Gdiplus::StringFormat::GenericTypographic());
+            sf.SetFormatFlags(Gdiplus::StringFormatFlagsNoClip);
+            const Gdiplus::StringAlignment sa = e.align == 0
+                ? Gdiplus::StringAlignmentNear
+                : (e.align == 2 ? Gdiplus::StringAlignmentFar
+                                : Gdiplus::StringAlignmentCenter);
+            sf.SetAlignment(sa);
+            sf.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+            sf.SetTrimming(Gdiplus::StringTrimmingNone);
+
+            // Tamaño: fijo (fontSizePct de la altura) o auto-ajustado al rect.
+            const Gdiplus::FontStyle style = theme.bold
+                ? Gdiplus::FontStyleBold : Gdiplus::FontStyleRegular;
+            double fontPx = e.fontSizePct > 0
+                ? (double)e.fontSizePct * (h / 100.0)
+                : (double)rc.Height / (double)std::max((size_t)1, texts.size()) * 0.82;
+            if (fontPx < 10) fontPx = 10;
+
+            // Ajuste tipográfico: shrink 10% hasta caber (máx. 24 pasos).
+            // Font de SONDEO por iteración (se libera sola); la definitiva se
+            // construye UNA vez al final con el tamaño que quedó.
+            Gdiplus::RectF box;
+            for (int iter = 0; iter < 24; ++iter) {
+                Gdiplus::Font probe(face.c_str(), (Gdiplus::REAL)fontPx, style,
+                                    Gdiplus::UnitPixel);
+                if (probe.GetLastStatus() != Gdiplus::Ok) break;
+                double totalH = 0;
+                Gdiplus::REAL maxW = 0;
+                for (const std::wstring& ln : texts) {
+                    g.MeasureString(ln.c_str(), (int)ln.size(), &probe, rc, &sf, &box);
+                    totalH += (double)box.Height;
+                    if (box.Width > maxW) maxW = box.Width;
+                }
+                if (totalH <= (double)rc.Height + 0.5 &&
+                    (double)maxW <= (double)rc.Width + 0.5) break;
+                fontPx *= 0.9;
+                if (fontPx < 10) { fontPx = 10; break; }
+            }
+            Gdiplus::Font font(face.c_str(), (Gdiplus::REAL)fontPx, style,
+                               Gdiplus::UnitPixel);
+            if (font.GetLastStatus() != Gdiplus::Ok) continue;
+
+            // Sombra + relleno (misma alfa del elemento; sombra al 60%).
+            const int shAlpha = (int)std::lround(alpha * 0.6);
+            Gdiplus::SolidBrush shadow(Gdiplus::Color((BYTE)shAlpha, 0, 0, 0));
+            Gdiplus::SolidBrush fill(Gdiplus::Color((BYTE)alpha,
+                (BYTE)base.r, (BYTE)base.g, (BYTE)base.b));
+            Gdiplus::RectF sh = rc;
+            sh.X += shadowOffset; sh.Y += shadowOffset;
+            for (size_t li = 0; li < texts.size(); ++li) {
+                g.DrawString(texts[li].c_str(), (int)texts[li].size(),
+                             &font, sh, &sf, &shadow);
+                g.DrawString(texts[li].c_str(), (int)texts[li].size(),
+                             &font, rc, &sf, &fill);
+            }
+        } else {                               // ---- elemento de IMAGEN ----
+            ImageGuard guard;
+            guard.img = LoadImageUtf8(e.imagePath);
+            if (!guard.img) continue;
+            const double iw = (double)guard.img->GetWidth();
+            const double ih = (double)guard.img->GetHeight();
+            if (iw <= 0 || ih <= 0) continue;
+            // Opacidad por ColorMatrix (canal alfa escalado).
+            Gdiplus::ImageAttributes attr;
+            Gdiplus::ColorMatrix mx = {{
+                {1.0f, 0, 0, 0, 0},
+                {0, 1.0f, 0, 0, 0},
+                {0, 0, 1.0f, 0, 0},
+                {0, 0, 0, (Gdiplus::REAL)std::max(0.0, std::min(1.0, e.opacity)), 0},
+                {0, 0, 0, 0, 1.0f}
+            }};
+            attr.SetColorMatrix(&mx);
+            // cover/contain DENTRO del rect del elemento.
+            const double scale = (e.imageFit == 1)
+                ? std::max((double)rc.Width / iw, (double)rc.Height / ih)
+                : std::min((double)rc.Width / iw, (double)rc.Height / ih);
+            const double dw = iw * scale, dh = ih * scale;
+            Gdiplus::RectF dest(rc.X + (rc.Width - (Gdiplus::REAL)dw) / 2.0f,
+                                rc.Y + (rc.Height - (Gdiplus::REAL)dh) / 2.0f,
+                                (Gdiplus::REAL)dw, (Gdiplus::REAL)dh);
+            g.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
+            g.DrawImage(guard.img, dest, 0.0f, 0.0f, (Gdiplus::REAL)iw,
+                        (Gdiplus::REAL)ih, Gdiplus::UnitPixel, &attr, nullptr, nullptr);
+        }
+    }
+}
+
+} // namespace
 
 void Renderer::DrawBackground(HDC hdc, int w, int h, const Theme& theme) {
     const RGBA bg = ParseColor(theme.bgColor, RGBA{255, 11, 31, 42});
@@ -250,6 +378,13 @@ void Renderer::DrawSlide(HDC hdc, int w, int h,
         return;
     }
     DrawBackground(hdc, w, h, theme);
+    // v7.1.0 «OPERADOR» (feedback #1): slide COMPUESTA — el lienzo libre se
+    // dibuja por POSICIONES de sus elementos (antes del camino clásico de
+    // líneas centradas, que no aplica). El negro de salida ya regresó arriba.
+    if (slide && slide->kind == SLIDE_COMPOSED && !slide->elements.empty()) {
+        DrawComposedElements(hdc, w, h, slide, theme);
+        return;
+    }
     if (!slide || slide->kind == SLIDE_BLANK || slide->lines.empty())
         return;
 

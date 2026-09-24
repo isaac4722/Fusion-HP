@@ -24,7 +24,7 @@
 
 namespace lumina {
 
-static const char* kVersion = "7.0.0-ultra";
+static const char* kVersion = "7.1.0-operador";
 
 /* ------------------------------------------------------------- helpers -- */
 // (H-a: SlideToJson no usado fue retirado — warning -Wunused-function;
@@ -275,6 +275,27 @@ void Engine::Flatten(std::vector<Slide>* out, std::vector<std::string>* titles,
             s.videoStartAtMs = it.videoStartAtMs;
             s.videoLoop  = it.videoLoop;
             itemSlides.push_back(s);
+        } else if (it.kind == "composed" && !it.composed.empty()) {
+            // v7.1.0 «OPERADOR» (feedback #1/#8): slide COMPUESTA del editor
+            // de lienzo libre — 1 ítem = 1 slide con TODOS sus elementos
+            // posicionables (el Renderer los dibuja en sus rects: WYSIWYG).
+            Slide s; s.kind = SLIDE_COMPOSED; s.title = it.title;
+            s.refLabel = "compuesta";
+            s.elements = it.composed;
+            itemSlides.push_back(s);
+        } else if (it.kind == "pptx") {
+            // v7.1.0 «OPERADOR» (feedback #6): PPTX ORIGINAL sin extracción.
+            // Slide marcador: título + nombre del archivo; la proyección real
+            // la entrega PowerPoint vía COM desde la UI al ponerla en vivo
+            // (la ventana nativa queda debajo y reaparece al salir).
+            Slide s; s.kind = SLIDE_TITLE; s.title = it.title;
+            s.refLabel = "presentación";
+            const std::string base = it.pptxPath.empty()
+                ? it.title
+                // nombre del archivo sin directorio (portable: '/' y '\\')
+                : it.pptxPath.substr(it.pptxPath.find_last_of("/\\") + 1);
+            s.lines.push_back(SlideLine(base));
+            itemSlides.push_back(s);
         } else { // blank
             Slide s; s.kind = SLIDE_BLANK; s.title = it.title;
             itemSlides.push_back(s);
@@ -366,6 +387,20 @@ LuminaStatus Engine::LoadScenario(const std::string& jsonText) {
                     it.videoVolume   = io.value("videoVolume", 100);
                     it.videoStartAtMs= (int64_t)io.value("videoStartAtMs", (int64_t)0);
                     it.videoLoop     = io.value("videoLoop", false);
+                }
+                // v7.1.0 «OPERADOR» (feedback #1/#8): slide COMPUESTA — el
+                // ítem trae "elements":[{kind,x,y,w,h,opacity,…}] del editor
+                // de lienzo libre (se aplanan 1:1, sin re-agrupar).
+                if (it.kind == "composed" && io.contains("elements") &&
+                    io["elements"].is_array()) {
+                    for (const auto& eo : io["elements"])
+                        if (eo.is_object())
+                            it.composed.push_back(ComposedElement::FromJson(eo));
+                }
+                // v7.1.0 «OPERADOR» (feedback #6): PPTX original (sin
+                // extracción): solo la ruta del archivo.
+                if (it.kind == "pptx") {
+                    it.pptxPath = io.value("pptxPath", std::string());
                 }
                 sc.items.push_back(it);
             }
