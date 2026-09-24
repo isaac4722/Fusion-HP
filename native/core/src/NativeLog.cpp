@@ -16,8 +16,12 @@
 #include <mutex>
 
 #ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif
 #include <windows.h>
 #endif
 
@@ -233,7 +237,8 @@ bool Log::Open(const Options& opt) {
     std::wstring w((size_t)(n > 0 ? n : 1), L'\0');
     if (n > 0)
         MultiByteToWideChar(CP_UTF8, 0, p.c_str(), (int)p.size(), &w[0], n);
-    state_->f = _wfopen(w.c_str(), L"a");
+    FILE* f = nullptr;
+    if (_wfopen_s(&f, w.c_str(), L"a") == 0 && f) state_->f = f;
 #else
     state_->f = std::fopen(p.c_str(), "a");
 #endif

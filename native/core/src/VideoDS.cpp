@@ -20,12 +20,17 @@
 
 #ifdef LUMINA_HAS_WIN32
 
+#ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif
 #include <windows.h>
-#include <dshow.h>
-#include <vmr9.h>
 #include <objbase.h>
+#include <dshow.h>
+#include <d3d9.h>      // vmr9.h usa IDirect3DSurface9 (requiere d3d9 ANTES)
+#include <vmr9.h>
 
 #include <mutex>
 

@@ -345,8 +345,6 @@ void Renderer::DrawSlide(HDC hdc, int w, int h,
         // dimInactive o sin línea activa: conducta clásica.
         const bool isLineActive =
             (activeLine >= 0 && (int)li == activeLine);
-        const bool lineDimmed =
-            (activeLine >= 0 && theme.dimInactive && !isLineActive);
         COLORREF lineFill   = fill;
         COLORREF lineOutl   = outline;
         if (activeLine >= 0 && theme.dimInactive) {
