@@ -53,7 +53,13 @@ static int g_checks = 0, g_failed = 0;
         }                                                                      \
     } while (0)
 
-static void Section(const char* name) { std::printf("%s\n", name); }
+static void Section(const char* name) {
+    std::printf("%s\n", name);
+    // v7.1.0 (lección del run 36001576255): con stdout redirigido a tubería
+    // el búfer es de BLOQUE — un crash perdía TODA la salida y el diagnóstico
+    // quedaba ciego. Flush por sección: el log muestra la última sección viva.
+    std::fflush(stdout);
+}
 
 // v7.0.0: directorios temporales de pruebas multiplataforma (Windows no
 // tiene rm/mkdir -p).

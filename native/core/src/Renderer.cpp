@@ -218,7 +218,16 @@ HFONT MakeFont(const Theme& theme, int pxHeight, bool bold) {
  * negro de salida corren por el camino clásico (DrawBackground/black). */
 void DrawComposedElements(HDC hdc, int w, int h,
                            const Slide* slide, const Theme& theme) {
+    // v7.1.1 (lección del run 36001576255): GDI+ debe estar ARRANCADO antes
+    // de crear CUALQUIER objeto (Graphics/Font/Brush/MeasureString). El
+    // camino clásico de texto es GDI puro (DrawTextW) y JAMÁS inicia GDI+:
+    // una slide compuesta sin imagen de fondo en el tema creaba Graphics
+    // sin GdiplusStartup → comportamiento indefinido/crash (el selftest del
+    // runner Windows lo demostró: única ruta de render PNG del suite).
+    // GdiplusToken() lo inicia perezosamente y devuelve 0 si no se pudo.
+    if (GdiplusToken() == 0) return;
     Gdiplus::Graphics g(hdc);
+    if (g.GetLastStatus() != Gdiplus::Ok) return;
     g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
     g.SetTextRenderingHint(Gdiplus::TextRenderingHintClearTypeGridFit);
     const std::wstring face = Utf8ToWide(theme.fontFace.empty()
