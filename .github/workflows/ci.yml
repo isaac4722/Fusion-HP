@@ -1,5 +1,5 @@
 # ============================================================================
-#  LuminaPresentation / LuminaPresentation Suite — CI/CD híbrido v6.1.0 «GUION»
+#  LuminaPresentation / LuminaPresentation Suite — CI/CD híbrido v7.0.0 «ULTRA»
 #  Copyright (c) 2026 Isaac. Licencia View-Only.
 # ----------------------------------------------------------------------------
 #  Pipeline de la arquitectura híbrida (docs/architecture-hybrid.md §6):
@@ -549,7 +549,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path "$stage/data" | Out-Null
 
           @'
-          LuminaPresentation v6.1.0 «GUION» BETA — núcleo C++ + interfaz WPF
+          LuminaPresentation v7.0.0 «ULTRA» BETA — núcleo C++ + interfaz WPF
           =====================================================
 
           PROGRAMA PORTABLE — BETA. No requiere instalación ni permisos de
@@ -573,7 +573,9 @@ jobs:
 
           Contenido:
             LuminaLauncher.exe  — detecta el runtime .NET y lanza la variante
-                                  correcta; verifica el paquete completo antes.
+                                  correcta; verifica el paquete completo antes;
+                                  sin .NET utilizable abre el MODO EMERGENCIA
+                                  nativo (proyección C++ de proyectos .ahp).
             net48\              — interfaz WPF optimizada (.NET 4.8).
             net35\              — interfaz WinForms baseline (.NET 3.5, Win7 SP1).
             LuminaCore.dll      — motor C++ nativo (/MT, sin dependencias),
@@ -581,6 +583,44 @@ jobs:
             resources\data\     — Biblia Reina-Valera 1909 completa incluida:
                                   al abrir la base de datos, la app ofrece
                                   instalarla (~31.000 versículos).
+
+          v7.0.0 «ULTRA» (BETA): Plan de Ultra Implementación (F0-F6):
+            * Bootstrap con perfiles A/B/C: detección de SO/arquitectura/
+              .NET en modo SOLO LECTURA (nunca instala ni activa nada);
+              sin .NET utilizable, el launcher abre el MODO EMERGENCIA
+              nativo: proyección C++ de proyectos .ahp (texto/imagen/
+              video, negro/logo/fondo, teclado completo). Conmutadores:
+              /arch:x86 /arch:x64 /profile:a|b|c /emergency /log:debug.
+            * ipc.v1: canal normativo C++<->C# por pipes con nombre (trama
+              binaria versionada, servidor OVERLAPPED, cola no
+              bloqueante — la proyección sobrevive a la desconexión de
+              la capa gestionada).
+            * Proyecto ahp.v1: 5 tipos de Elemento, escenarios ordenados
+              con IDs estables, syncMark, notas del director, empaquetado
+              .ahpz (ZIP), guardado atómico + auto-guardado recuperable y
+              herencia de estilos Tema->Plantilla->Escenario->Elemento.
+            * Sincronización por LINEA: la línea activa se destaca en
+              proyección y next/prev navegan por grupos sin tocar
+              fondo/video.
+            * Video DirectShow desde el núcleo (VMR9 windowless con
+              volumen/inicio/loop, fail-safe con aviso legible que NO
+              cierra la salida, carga diferida).
+            * Interoperabilidad: .BIB e-Sword con inserción real (fila a
+              fila), Holyrics JSON/XML con deduplicación, informe de
+              carga/compatibilidad ahp y XML endurecido (XXE/bomba ZIP).
+            * API v1 con Authorization: Bearer (401/503) + mando móvil
+              servido local (remote.html) + QR de emparejamiento (codec
+              propio validado con zxing-cpp y OpenCV).
+            * NDI / Planning Center / Google Drive con degradación limpia
+              (carga dinámica / PAT / OAuth loopback — sin credenciales
+              nada se rompe: todo queda visible en el diagnóstico).
+            * Diagnóstico integrado (Estado del sistema con semáforos +
+              Verificar entorno con pruebas reales) y métricas continuas
+              (RAM/render/latencia IPC, volcado cada 60 s).
+            * Instalador dual SIN elevación: tools\install.cmd (per-user +
+              marcador + acceso directo; portable equivalente, cero
+              Registro) y auditoría automatizada de prohibiciones como
+              gate de CI (cero Java, cero Registro, cero elevación).
 
           v6.1.0 «GUION» (BETA): motor de scripts JSLib (spec §3.3) sobre
             IActiveScript/JScript del propio Windows — ES3, CERO despliegue:
@@ -854,18 +894,79 @@ jobs:
       - name: Publicar BETA
         uses: softprops/action-gh-release@v2
         with:
-          name: "LuminaPresentation ${{ github.ref_name }} «GUION» — BETA"
+          name: "LuminaPresentation ${{ github.ref_name }} «ULTRA» — BETA"
           body: |
-            **LuminaPresentation v6.1.0-beta.1 «GUION» — BETA · núcleo C++ + interfaz WPF (.NET 4.8) + baseline WinForms (.NET 3.5)**
+            **LuminaPresentation v7.0.0-beta.1 «ULTRA» — BETA · núcleo C++ + interfaz WPF (.NET 4.8) + baseline WinForms (.NET 3.5)**
 
             > ⚠ **ESTA PUBLICACIÓN ES UNA BETA** (pre-release de evaluación):
             > funcionalidad completa y gates de CI en verde, pero sujeta a
             > cambios. Reporte de fallos bienvenido.
 
             ## Descargas
-            - `LuminaPresentation-6.1.0-beta.1-win-x86.zip` — **Windows 7 SP1 a Windows 11 (32 bits)**
-            - `LuminaPresentation-6.1.0-beta.1-win-x64.zip` — **Windows 7 SP1 a Windows 11+ (64 bits)**
+            - `LuminaPresentation-7.0.0-beta.1-win-x86.zip` — **Windows 7 SP1 a Windows 11 (32 bits)**
+            - `LuminaPresentation-7.0.0-beta.1-win-x64.zip` — **Windows 7 SP1 a Windows 11+ (64 bits)**
             - `SHA256SUMS.txt` — integridad de los paquetes
+
+            ## ✨ v7.0.0 «ULTRA» — Plan de Ultra Implementación (F0–F6)
+            - **Bootstrap con perfiles A/B/C (F0)**: detección de
+              SO/arquitectura/.NET (solo lectura, nunca instala ni activa)
+              con clasificación Win7-SP1/8.1/10/11 y sugerencia de SP1;
+              selección A→net48, B→net35, C→emergencia. Conmutadores
+              `/arch:x86` `/arch:x64` `/profile:a|b|c` `/emergency`
+              `/log:debug` `/open:`.
+            - **Perfil C con UI de emergencia NATIVA (F0.08)**: sin .NET
+              utilizable, el launcher proyecta directamente con el motor
+              C++ (texto/imagen/video, negro/logo/fondo, teclado completo,
+              sesión plana .txt) — la app NUNCA queda sin proyección.
+            - **ipc.v1 (F0.05)**: canal normativo C++↔C# por pipes con
+              nombre — trama binaria longitud-prefijada versionada,
+              servidor OVERLAPPED con reconexión, cola no bloqueante: la
+              proyección sobrevive a la desconexión de C#. Cliente espejo
+              `IpcV1Client` para automatización externa.
+            - **Proyecto ahp.v1 (F2)**: contenedor normativo con 5 tipos de
+              Elemento (texto/versículo/imagen/video/zócalo), escenarios
+              ordenados con IDs estables, syncMark por línea, notas del
+              director, manifiesto media, empaquetado `.ahpz` (ZIP),
+              guardado atómico + auto-guardado recuperable y herencia de
+              estilos Tema→Plantilla→Escenario→Elemento (StyleCascade con
+              origen efectivo por propiedad).
+            - **Sincronización por línea (F1.03)**: grupos syncMark en el
+              motor; la línea activa se destaca en proyección (estilo por
+              tema) y `next/prev` navegan por grupos sin tocar
+              fondo/video; ABI `lumina_line_next/prev/set`.
+            - **Video DirectShow desde el núcleo (F3.01/F3.02)**:
+              reproducción nativa VMR9 windowless con volumen/inicio/loop,
+              liberación determinista, carga diferida (solo la slide
+              activa monta el grafo) y fail-safe con aviso humano (Hresult
+              legible) que NO cierra la salida.
+            - **Interoperabilidad (F4)**: `.bib` e-Sword con inserción REAL
+              (wantRows fila a fila, tapa 100k), Holyrics JSON/XML con
+              deduplicación normalizada y fondos re-vinculados, informe de
+              carga/compatibilidad (AhpLoadReport) y XML endurecido
+              (entidades externas NUNCA resueltas, límite de entradas ZIP).
+            - **API v1 + QR (F5.01–F5.03)**: `/api/v1/{state,next,prev,
+              goto,text,bible,message}` con `Authorization: Bearer`
+              (401/503, bitácora sin token completo), `text?format=plain`
+              para OBS sin scripting, mando móvil servido local
+              (`/remote.html`) y **QR de emparejamiento** (codec propio
+              ISO/IEC 18004 validado contra zxing-cpp y OpenCV).
+            - **Integraciones con degradación limpia (F5.06/F5.08/F6.04)**:
+              NDI por carga dinámica del runtime del usuario (cero
+              dependencias propias), Planning Center con PAT (plan→ahp,
+              errores humanos, offline) y Google Drive OAuth loopback
+              (conflicto por versión, sin pérdida silenciosa) — sin
+              credenciales todo queda visible en diagnóstico, nunca rompe.
+            - **Diagnóstico + límites sandbox (F5.09/F5.10)**: «Estado del
+              sistema» con subsistemas en semáforo y «Verificar entorno»
+              con pruebas reales (red/permisos/API/pipes/DirectShow);
+              sandbox JSLib con topes de conexiones/temporizadores/módulos.
+            - **Consolidación (F6)**: métricas continuas
+              (MetricsCollector: RAM/render/import/latencia IPC, volcado
+              60 s), instalador dual SIN elevación (`tools/install.cmd`:
+              per-user + marcador + acceso directo, portable equivalente)
+              y **auditoría automatizada de prohibiciones** como gate de
+              CI (cero Java/JRE, cero .NET moderno obligatorio, cero
+              escrituras de Registro, cero elevación, log no desactivable).
 
             ## ✨ v6.1.0 «GUION» — Motor de scripts JSLib (spec §3.3)
             - **IActiveScript/JScript del propio Windows** (ES3, cero
@@ -881,25 +982,22 @@ jobs:
               que los activadores (`slide_changed`, `item_changed`,
               `song_started`, `video_ended`, `midi_note/cc/program`) con
               payload JSON (helper `jsonParse` del preámbulo).
-            - **Activadores → scripts**: nueva acción `script`
+            - **Activadores → scripts**: acción `script`
               (`function=nombre · data={"k":v}`) invoca funciones globales
               de los módulos.
             - **UI**: tarjeta «Módulos JS» en Integraciones (activar,
-              recargar, carpeta y registro en vivo de 60 líneas) y gate REAL
-              de CI: el `--selfcheck` crea el motor COM en el runner de
-              Windows y ejercita módulos, funciones, eventos, `cmd`,
-              `showText` y un `setTimeout` asíncrono real.
+              recargar, carpeta y registro en vivo) y gate REAL de CI: el
+              `--selfcheck` crea el motor COM en el runner de Windows.
 
             ## ✨ v6.0.0 «HORIZONTE» — Las funciones diferidas del spec llegan al motor
             - **Transiciones**: fundido entre diapositivas en la salida del
               proyector (crossfade AlphaBlend desde el último fotograma
               proyectado — cero destello de escritorio), configurable en
-              Ajustes › Proyección (corte / fundido 0..5000 ms) y por la nueva
-              API `lumina_set_transition`.
+              Ajustes › Proyección y por la API `lumina_set_transition`.
             - **Resaltado en proyección**: la palabra buscada en la Biblia viaja
-              con el pasaje («highlight») y el motor la pinta en color de acento
-              en pantalla — coincidencia insensible a mayúsculas y acentos
-              latinos, con frontera de palabra.
+              con el pasaje («highlight») y el motor la pinta en color de
+              acento en pantalla — coincidencia insensible a mayúsculas y
+              acentos latinos, con frontera de palabra.
             - **OSIS XML**: importador de biblias en el formato académico OSIS
               (streaming, códigos de libro 1..66, notas editoriales descartadas).
             - **PPTX**: importación de PowerPoint (.pptx) a la cola del culto —
@@ -915,8 +1013,7 @@ jobs:
             instalable en Win7 SP1/8.x). Misma arquitectura híbrida probada
             (núcleo C++17 /MT), mismas funciones y MISMOS GATES de CI:
             - **Diseño «Lumina Studio» en XAML**: tokens semánticos de color,
-              tarjetas redondeadas, botones con variantes (primary/secondary/
-              danger/ghost) y estados (hover/pulsado/foco/deshabilitado/toggle),
+              tarjetas redondeadas, botones con variantes y estados,
               navegación lateral con píldora ámbar y barra de estado con punto
               de severidad.
             - **94 iconos vectoriales** Feather (licencia MIT) convertidos a
@@ -930,23 +1027,29 @@ jobs:
               para Windows 7 SP1 sin .NET 4.8 — mismo paquete, cero regresión.
 
             ## Verificación CI (todas las gates verdes ANTES de publicar)
-            - Núcleo: selftest nativo + PoC API headless (x86/x64, Win y Linux).
+            - Núcleo: selftest nativo 460/460 + PoC API headless (x86/x64, Win
+              y Linux), Linux port compilado con -Wall -Wextra.
             - Gestionado: build net35+net48+WPF (0 err/0 warn) + tests n/n.
-            - GATE exportadores: python-pptx + pypdf abren los archivos generados.
-            - Interop real: PoC C# ↔ DLL nativa «POC PASS 12/12» (x86/x64).
-            - GATE humo: `--selfcheck` de ambas variantes (WPF y WinForms) —
-              incluye el motor JSLib REAL (IActiveScript) del runner Windows.
-            - GATE UI: `--uicheck` — la ventana WPF completa se construye
-              headless (XAML incluido) antes de empaquetar.
-            - GATE flujos: `--flowcheck` — Biblia→Escenario completo y en modo
-              limitado simulado, sin excepciones.
-            - GATE Win7: `verify_win7_imports.py` — sin imports estáticos Win8+.
+            - Interop real: PoC C# ↔ DLL nativa (x86/x64).
+            - GATE humo: `--selfcheck` de ambas variantes — incluye el motor
+              JSLib REAL (IActiveScript) del runner Windows.
+            - GATE UI: `--uicheck` — la ventana completa se construye
+              headless antes de empaquetar.
+            - GATE flujos: `--flowcheck` — Biblia→Escenario completo, sin
+              excepciones.
+            - GATE Win7: `verify_win7_imports.py` — sin imports estáticos
+              Win8+ (compatible Win7 SP1 x86/x64).
+            - GATE auditoría F6.09: cero Java, cero .NET moderno obligatorio,
+              cero escrituras de Registro, cero elevación.
             - Empaquetado: `verify_portable` (layout completo) + SHA256.
 
             ## Instalación
             Descomprimir el ZIP **completo** en una carpeta propia y ejecutar
             `LuminaLauncher.exe`. En Win10 1903+/Win11 usa .NET 4.8 integrado
             (GUI WPF); en Win7 SP1 usa .NET 3.5 integrado (GUI WinForms).
+            Sin .NET: modo emergencia nativo (`/emergency` o detección
+            automática). Instalación clásica opcional: `tools/install.cmd`
+            (per-user, sin elevación, sin Registro).
           draft: false
           prerelease: true
           files: |
