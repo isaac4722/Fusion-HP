@@ -104,10 +104,14 @@ namespace lumina.bridge
         public static string SearchSongsRequest(string term, int limit)
         {
             if (limit <= 0) limit = 50;
+            // NOTA FTS5: el objetivo de MATCH debe ser el nombre REAL de la
+            // tabla virtual — con alias («f MATCH») SQLite responde
+            // «no such column: f». Bug latente hallado por el arnés net48
+            // con núcleo (v1.0.0-beta.3); los tests nativos lo cubren.
             return BuildExecJson(
-                "SELECT s.id, s.title, s.author, s.lyrics FROM songs_fts f" +
-                " JOIN songs s ON s.id = f.rowid" +
-                " WHERE f MATCH ?1 LIMIT ?2",
+                "SELECT s.id, s.title, s.author, s.lyrics FROM songs_fts" +
+                " JOIN songs s ON s.id = songs_fts.rowid" +
+                " WHERE songs_fts MATCH ?1 LIMIT ?2",
                 term ?? string.Empty, limit);
         }
 
@@ -230,8 +234,8 @@ namespace lumina.bridge
             if (limit <= 0) limit = 20;
             return BuildExecJson(
                 "SELECT b.version, b.book, b.chapter, b.verse, b.text" +
-                " FROM bible_fts f JOIN bible b ON b.rowid = f.rowid" +
-                " WHERE f MATCH ?1 LIMIT ?2",
+                " FROM bible_fts JOIN bible b ON b.rowid = bible_fts.rowid" +
+                " WHERE bible_fts MATCH ?1 LIMIT ?2",
                 term ?? string.Empty, limit);
         }
 
