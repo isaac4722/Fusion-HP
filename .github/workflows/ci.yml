@@ -50,7 +50,7 @@ concurrency:
 
 env:
   DOTNET_VERSION: '8.0.x'
-  APP_VERSION: '1.0.0-beta.1'
+  APP_VERSION: '1.0.0-beta.2'
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -1092,214 +1092,47 @@ jobs:
         with:
           name: "LuminaPresentation ${{ github.ref_name }} «REESTRUCTURA» — BETA"
           body: |
-            **LuminaPresentation v1.0.0-beta.1 «REESTRUCTURA» — BETA · línea normativa del doc técnico v1.1 · núcleo C++ (vcxproj MSVC /MT, ruta Direct2D) + WPF (.NET 4.8) + WinForms (.NET 3.5)**
+            **LuminaPresentation v1.0.0-beta.2 «REESTRUCTURA» — PRERELEASE · línea normativa del doc técnico v1.1 · núcleo C++ (vcxproj MSVC /MT, ruta Direct2D) + WPF (.NET 4.8) + WinForms (.NET 3.5)**
 
+            > Reestructuración completa al mapa normativo de AGENT.md (`src/core` · `src/managed` con
+            > `core|data|services|state|features` · `tests` · `installer` · `spec` · `skills`) y cierre
+            > de brechas F1.05 (atajos JSON) · F4.15 (informe de fidelidad generalizado) · F5.09
+            > (presupuesto sandbox JSLib) · F6.04 (Drive offline-first con historial de conflictos) ·
+            > F6.08 (sesión de servicio simulada). Evidencias reales: `docs/verification/`.
+            > Trazabilidad: `spec/`, `docs/research/`, `.agents/skills/`.
+            > ⚠ **ESTA PUBLICACIÓN ES UNA PRERELEASE (beta)**: funcionalidad completa y gates de CI
+            > en verde, pero sujeta a cambios. Reporte de fallos bienvenido.
 
-            > Reestructuración completa al mapa normativo de AGENT.md (src/core · src/managed con
-            > core|data|services|state|features · tests · installer · spec · skills) y cierre de brechas
-            > F1.05 (atajos JSON) · F4.15 (informe de fidelidad generalizado) · F5.09 (presupuesto sandbox JSLib)
-            > · F6.04 (Drive offline-first con historial de conflictos) · F6.08 (sesión de servicio simulada).
-            > Evidencias: `docs/verification/`. Skill y trazabilidad: `.agents/skills/`, `spec/`, `docs/research/`.
-            > ⚠ **ESTA PUBLICACIÓN ES UNA BETA** (pre-release de evaluación):
-            > funcionalidad completa y gates de CI en verde, pero sujeta a
-            > cambios. Reporte de fallos bienvenido.
+            ## Novedades respecto a v1.0.0-beta.1
+            - Evidencia F6.08 completa (campaña de 60 min en runner CI): 60,00 min · 33.138 ops ·
+              0 errores no justificados · RAM pico 52 MB (objetivo ≤ 300 MB) · 59 dumps de métricas
+              (F6.01) — `docs/verification/sesion60.md`.
+            - Bitácora HOT rotada a WARM conforme a la norma AGENT.md (≤ 10 líneas).
+            - Cuerpo de la release corregido: nombres de descarga reales de esta línea (las betas
+              anteriores arrastraban la plantilla de la línea histórica v7.x).
 
             ## Descargas
-            - `LuminaPresentation-7.1.0-beta.1-win-x86.zip` — **Windows 7 SP1 a Windows 11 (32 bits)**
-            - `LuminaPresentation-7.1.0-beta.1-win-x64.zip` — **Windows 7 SP1 a Windows 11+ (64 bits)**
+            - `LuminaPresentation-${{ env.APP_VERSION }}-win-x86.zip` — **Windows 7 SP1 a Windows 11 (32 bits)**
+            - `LuminaPresentation-${{ env.APP_VERSION }}-win-x64.zip` — **Windows 7 SP1 a Windows 11+ (64 bits)**
+            - `LuminaPresentation-${{ env.APP_VERSION }}-setup.exe` — **instalador dual x86/x64** (per-user, sin elevación ni Registro)
             - `SHA256SUMS.txt` — integridad de los paquetes
 
-            ## ✨ v7.1.0 «OPERADOR» — Correcciones del prototipo (enfoque Holyrics/PowerPoint)
-            - **Editor de diapositivas estilo PowerPoint (lienzo libre)**:
-              «Culto › Diapositiva (lienzo)…» — elementos de texto/imagen que
-              se **arrastran** por el lienzo, se **redimensionan por las
-              esquinas**, se **editan con doble clic en el sitio** (Supr
-              elimina, Ctrl+D duplica, flechas ajustan a mano, snap a
-              retícula y centros), panel de propiedades (alineación, color,
-              opacidad, tamaño fijo/auto, ajuste de imagen) y lista de capas
-              reordenable. WYSIWYG total: el editor y la proyección usan el
-              mismo contrato de coordenadas (el motor nativo dibuja cada
-              elemento en su rect). Doble clic en un ítem «Diseño» del culto
-              lo reabre; la edición en caliente recarga el culto EN VIVO
-              conservando la slide actual.
-            - **Proyección sin bordes, pantalla completa y cierre sano**:
-              la ventana nativa SIEMPRE es `WS_POPUP` (a pantalla completa o
-              960×540 centrada, sin bordes); el botón/F5 es un interruptor
-              con estado REAL (sondeo del núcleo): cerrar con **X o ESC ya no
-              duplica la ventana** y se puede reabrir cuantas veces sea
-              (el hilo sobrevive); cambiar de monitor RECOLOCA la misma
-              ventana sin abrir otra.
-            - **Modo OPERADOR estilo Holyrics (En Vivo)**: lista de dos
-              niveles — ítems del escenario (canción/pasaje/texto/
-              presentación…) con sus slides; **clic = leer sin proyectar**,
-              doble clic = proyectar; seguimiento en vivo del ítem/slide
-              proyectados; panel de **texto completo** (la Biblia entera, la
-              letra) que el operador lee sin proyectar nada.
-            - **Biblia por libro y capítulo SIN buscar + comparación de 2
-              versiones**: los 66 libros siempre visibles con selector de
-              capítulo y versiones instaladas (al abrir la BD); «Leer
-              capítulo» muestra los versículos sin proyectar; «Comparar»
-              muestra DOS versiones lado a lado por versículo y las
-              proyecta juntas.
-            - **Cantos sin búsqueda**: la biblioteca COMPLETA aparece al
-              abrir la BD (hasta 1000, ordenadas por título); el cuadro de
-              texto queda como filtro opcional («Mostrar todo»).
-            - **PPTX ORIGINAL sin extracción**: «Agregar PPTX…» conserva el
-              archivo tal cual y **PowerPoint lo proyecta completo**
-              (automatización COM en modo kiosco sobre el monitor del
-              proyector) al poner el ítem en vivo — la extracción de texto
-              queda como opción secundaria.
-            - **API local retirada**: el «modo API» loopback orientado a
-              OBS/control externo se eliminó de Ajustes (no funcionaba); el
-              control remoto sigue siendo el MANDO MÓVIL por red local.
-            - **Cultos sin generar archivos**: crear el culto se siente como
-              armar un pptx (lista de ítems, editor de diapositivas, orden)
-              pero todo vive en la app + la BD — SOLO-CARGAR como Holyrics;
-              la exportación a PPTX/PDF/imágenes queda como opción.
-
-            ## ✨ v7.0.0 «ULTRA» — Plan de Ultra Implementación (F0–F6)
-            - **Bootstrap con perfiles A/B/C (F0)**: detección de
-              SO/arquitectura/.NET (solo lectura, nunca instala ni activa)
-              con clasificación Win7-SP1/8.1/10/11 y sugerencia de SP1;
-              selección A→net48, B→net35, C→emergencia. Conmutadores
-              `/arch:x86` `/arch:x64` `/profile:a|b|c` `/emergency`
-              `/log:debug` `/open:`.
-            - **Perfil C con UI de emergencia NATIVA (F0.08)**: sin .NET
-              utilizable, el launcher proyecta directamente con el motor
-              C++ (texto/imagen/video, negro/logo/fondo, teclado completo,
-              sesión plana .txt) — la app NUNCA queda sin proyección.
-            - **ipc.v1 (F0.05)**: canal normativo C++↔C# por pipes con
-              nombre — trama binaria longitud-prefijada versionada,
-              servidor OVERLAPPED con reconexión, cola no bloqueante: la
-              proyección sobrevive a la desconexión de C#. Cliente espejo
-              `IpcV1Client` para automatización externa.
-            - **Proyecto ahp.v1 (F2)**: contenedor normativo con 5 tipos de
-              Elemento (texto/versículo/imagen/video/zócalo), escenarios
-              ordenados con IDs estables, syncMark por línea, notas del
-              director, manifiesto media, empaquetado `.ahpz` (ZIP),
-              guardado atómico + auto-guardado recuperable y herencia de
-              estilos Tema→Plantilla→Escenario→Elemento (StyleCascade con
-              origen efectivo por propiedad).
-            - **Sincronización por línea (F1.03)**: grupos syncMark en el
-              motor; la línea activa se destaca en proyección (estilo por
-              tema) y `next/prev` navegan por grupos sin tocar
-              fondo/video; ABI `lumina_line_next/prev/set`.
-            - **Video DirectShow desde el núcleo (F3.01/F3.02)**:
-              reproducción nativa VMR9 windowless con volumen/inicio/loop,
-              liberación determinista, carga diferida (solo la slide
-              activa monta el grafo) y fail-safe con aviso humano (Hresult
-              legible) que NO cierra la salida.
-            - **Interoperabilidad (F4)**: `.bib` e-Sword con inserción REAL
-              (wantRows fila a fila, tapa 100k), Holyrics JSON/XML con
-              deduplicación normalizada y fondos re-vinculados, informe de
-              carga/compatibilidad (AhpLoadReport) y XML endurecido
-              (entidades externas NUNCA resueltas, límite de entradas ZIP).
-            - **API v1 + QR (F5.01–F5.03)**: `/api/v1/{state,next,prev,
-              goto,text,bible,message}` con `Authorization: Bearer`
-              (401/503, bitácora sin token completo), `text?format=plain`
-              para OBS sin scripting, mando móvil servido local
-              (`/remote.html`) y **QR de emparejamiento** (codec propio
-              ISO/IEC 18004 validado contra zxing-cpp y OpenCV).
-            - **Integraciones con degradación limpia (F5.06/F5.08/F6.04)**:
-              NDI por carga dinámica del runtime del usuario (cero
-              dependencias propias), Planning Center con PAT (plan→ahp,
-              errores humanos, offline) y Google Drive OAuth loopback
-              (conflicto por versión, sin pérdida silenciosa) — sin
-              credenciales todo queda visible en diagnóstico, nunca rompe.
-            - **Diagnóstico + límites sandbox (F5.09/F5.10)**: «Estado del
-              sistema» con subsistemas en semáforo y «Verificar entorno»
-              con pruebas reales (red/permisos/API/pipes/DirectShow);
-              sandbox JSLib con topes de conexiones/temporizadores/módulos.
-            - **Consolidación (F6)**: métricas continuas
-              (MetricsCollector: RAM/render/import/latencia IPC, volcado
-              60 s), instalador dual SIN elevación (`tools/install.cmd`:
-              per-user + marcador + acceso directo, portable equivalente)
-              y **auditoría automatizada de prohibiciones** como gate de
-              CI (cero Java/JRE, cero .NET moderno obligatorio, cero
-              escrituras de Registro, cero elevación, log no desactivable).
-
-            ## ✨ v6.1.0 «GUION» — Motor de scripts JSLib (spec §3.3)
-            - **IActiveScript/JScript del propio Windows** (ES3, cero
-              despliegue, Win7 SP1 → Win11): módulos `.js` del usuario en
-              `data\modules\` cargados al activar o con «Recargar» — sin
-              recompilar ni instalar nada.
-            - **API `jslib`** (la del spec): `log/notify`, `httpGet(url, cb)`
-              (15 s), `tcp(id, host, puerto, onLine)` + `tcpSend/tcpClose`,
-              `ws(id, url, onMessage)` + `wsSend/wsClose`,
-              `cmd('next'|'prev'|'black'|'clear'|'show')`, `showText(texto)`,
-              `onEvent(nombre, cb)` y `setTimeout/clearTimeout`.
-            - **Eventos en tiempo real**: los módulos ven los mismos eventos
-              que los activadores (`slide_changed`, `item_changed`,
-              `song_started`, `video_ended`, `midi_note/cc/program`) con
-              payload JSON (helper `jsonParse` del preámbulo).
-            - **Activadores → scripts**: acción `script`
-              (`function=nombre · data={"k":v}`) invoca funciones globales
-              de los módulos.
-            - **UI**: tarjeta «Módulos JS» en Integraciones (activar,
-              recargar, carpeta y registro en vivo) y gate REAL de CI: el
-              `--selfcheck` crea el motor COM en el runner de Windows.
-
-            ## ✨ v6.0.0 «HORIZONTE» — Las funciones diferidas del spec llegan al motor
-            - **Transiciones**: fundido entre diapositivas en la salida del
-              proyector (crossfade AlphaBlend desde el último fotograma
-              proyectado — cero destello de escritorio), configurable en
-              Ajustes › Proyección y por la API `lumina_set_transition`.
-            - **Resaltado en proyección**: la palabra buscada en la Biblia viaja
-              con el pasaje («highlight») y el motor la pinta en color de
-              acento en pantalla — coincidencia insensible a mayúsculas y
-              acentos latinos, con frontera de palabra.
-            - **OSIS XML**: importador de biblias en el formato académico OSIS
-              (streaming, códigos de libro 1..66, notas editoriales descartadas).
-            - **PPTX**: importación de PowerPoint (.pptx) a la cola del culto —
-              1 diapositiva de texto = 1 ítem, con lector ZIP/OPC propio (sin
-              dependencias del GAC, Win7 SP1 → Win11).
-            - **Notas del director persistentes**: el panel de notas de la
-              tercera pantalla se guarda por ítem del culto y viaja en el plan
-              JSON (nuevo «Guardar plan JSON…»).
-
-            ## ✨ v5.4.0 «ESTUDIO» — La GUI pasa a WPF (Windows Presentation Foundation)
-            La interfaz principal del paquete (net48) se reescribió en **WPF
-            sobre .NET Framework 4.8** (integrado en Win10 1903+/Win11;
-            instalable en Win7 SP1/8.x). Misma arquitectura híbrida probada
-            (núcleo C++17 /MT), mismas funciones y MISMOS GATES de CI:
-            - **Diseño «Lumina Studio» en XAML**: tokens semánticos de color,
-              tarjetas redondeadas, botones con variantes y estados,
-              navegación lateral con píldora ámbar y barra de estado con punto
-              de severidad.
-            - **94 iconos vectoriales** Feather (licencia MIT) convertidos a
-              geometrías XAML — nitidez idéntica en Win7 y Win11, sin archivos
-              externos.
-            - **Vista previa del tema** con contorno por silueta y sombra real
-              (FormattedText.BuildGeometry — la MISMA técnica del motor).
-            - **UX transversal**: F1 atajos · Ctrl+1…9 páginas · foco visible
-              por teclado · tooltips con atajos · estados vacíos explicativos.
-            - **Baseline intacta**: la variante net35 (WinForms) se conserva
-              para Windows 7 SP1 sin .NET 4.8 — mismo paquete, cero regresión.
-
-            ## Verificación CI (todas las gates verdes ANTES de publicar)
-            - Núcleo: selftest nativo 479/479 + PoC API headless (x86/x64, Win
-              y Linux), Linux port compilado con -Wall -Wextra.
-            - Gestionado: build net35+net48+WPF (0 err/0 warn) + tests n/n.
-            - Interop real: PoC C# ↔ DLL nativa (x86/x64).
-            - GATE humo: `--selfcheck` de ambas variantes — incluye el motor
-              JSLib REAL (IActiveScript) del runner Windows.
-            - GATE UI: `--uicheck` — la ventana completa se construye
-              headless antes de empaquetar.
-            - GATE flujos: `--flowcheck` — Biblia→Escenario completo, sin
-              excepciones.
-            - GATE Win7: `verify_win7_imports.py` — sin imports estáticos
-              Win8+ (compatible Win7 SP1 x86/x64).
-            - GATE auditoría F6.09: cero Java, cero .NET moderno obligatorio,
-              cero escrituras de Registro, cero elevación.
-            - Empaquetado: `verify_portable` (layout completo) + SHA256.
+            ## Verificación CI (gates verdes antes de publicar)
+            - Núcleo C++: arnés portable g++ 13/13 (ipc.v1, bootstrap, FTS5) + job MSVC del
+              vcxproj x86/x64.
+            - Gestionado: build net35 + net48 + net8.0 (0 errores) + tests 42/48 locales (6 skips =
+              DLL nativa, gated en el job windows-latest del CI).
+            - Instalador: `iscc installer/AppHibrida.iss` con staging plano verificado (x86/x64).
+            - F6.08: campaña completa de 60 min (job `sesion60`) disparada sobre el tag.
+            - Empaquetado: layout portable completo + SHA256 verificado.
 
             ## Instalación
             Descomprimir el ZIP **completo** en una carpeta propia y ejecutar
             `LuminaLauncher.exe`. En Win10 1903+/Win11 usa .NET 4.8 integrado
             (GUI WPF); en Win7 SP1 usa .NET 3.5 integrado (GUI WinForms).
             Sin .NET: modo emergencia nativo (`/emergency` o detección
-            automática). Instalación clásica opcional: `tools/install.cmd`
-            (per-user, sin elevación, sin Registro).
+            automática). Instalación clásica opcional: `tools/install.cmd` y
+            `installer/AppHibrida.iss` (per-user, sin elevación, sin Registro).
           draft: false
           prerelease: true
           files: |

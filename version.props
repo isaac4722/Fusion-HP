@@ -2,13 +2,14 @@
 //  version.props — Versión única del producto (importado por los proyectos).
 //  Norma: esquema `1.x.y-beta+z` del documento técnico v1.1 [SPEC §12.4]
 //  y AGENT.md («Prohibido cambiarla fuera de este esquema»).
-//  Línea reestructurada: 1.0.0-beta.1 (la histórica v7.1.0 «OPERADOR» queda
+//  Línea reestructurada: 1.0.0-beta.2 (beta.1 fue el primer corte; la histórica
+//  v7.1.0 «OPERADOR» queda
 //  congelada como prototipo anterior).
 // ============================================================================
 <Project>
   <PropertyGroup>
     <AppVersion>1.0.0</AppVersion>
-    <AppVersionSuffix>beta.1</AppVersionSuffix>
-    <AppVersionFull>1.0.0-beta.1</AppVersionFull>
+    <AppVersionSuffix>beta.2</AppVersionSuffix>
+    <AppVersionFull>1.0.0-beta.2</AppVersionFull>
   </PropertyGroup>
 </Project>
