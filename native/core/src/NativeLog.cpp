@@ -114,7 +114,7 @@ std::string Redact(const std::string& s) {
 }
 
 std::string TodayUtcStamp() {
-    char buf[16];
+    char buf[48];
     time_t t = time(nullptr);
     tm utc{};
 #ifdef _WIN32
@@ -128,7 +128,7 @@ std::string TodayUtcStamp() {
 }
 
 std::string TimestampUtcIso() {
-    char buf[32];
+    char buf[64];
     time_t t = time(nullptr);
     tm utc{};
 #ifdef _WIN32
@@ -143,7 +143,7 @@ std::string TimestampUtcIso() {
 }
 
 std::string TimestampLocalIso() {
-    char buf[40];
+    char buf[96];
     time_t t = time(nullptr);
     tm lt{};
     tm* ok = nullptr;
@@ -263,7 +263,7 @@ bool Log::Write(const Entry& e) {
 #else
                 gmtime_r(&t, &utc);
 #endif
-                char day[16];
+                char day[48];
                 std::snprintf(day, sizeof(day), "%04d%02d%02d",
                               utc.tm_year + 1900, utc.tm_mon + 1, utc.tm_mday);
                 std::string old = opt_.dir;

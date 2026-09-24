@@ -531,6 +531,10 @@ void Projector::WindowLoop() {
             // loop). Bajo mutex: PollEvents es barato y no bloquea.
             if (p->video.Playing()) p->video.PollEvents();
         }
+        // v7.0.0 (F3.01): reintento de arranque diferido — SetContent puede
+        // llegar ANTES de que la ventana exista (carrera Show→SetContent);
+        // el bucle de ventana reintenta hasta 2 s tras cada cambio.
+        SyncVideo();
         Sleep(16);
     }
     if (p->hwnd) { DestroyWindow(p->hwnd); p->hwnd = nullptr; }

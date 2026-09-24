@@ -10,7 +10,12 @@
 #include <string>
 #include <vector>
 
-#include <nlohmann/json.hpp>
+// v7.0.0 «ULTRA»: ruta RELATIVA al amalgamado — el launcher compila el
+// Projector/Renderer para el MODO EMERGENCIA (F0.08) con sus propios CMake
+// (sin los include_dirs del núcleo) y resuelve nlohmann por esta vía; el
+// núcleo sigue encontrando el mismo archivo (la ruta relativa parte de
+// core/src/ en ambos casos).
+#include "../../../third_party/nlohmann/json.hpp"
 
 namespace lumina {
 
