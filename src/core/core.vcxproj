@@ -98,6 +98,7 @@
       <PreprocessorDefinitions Condition="'$(EnableD2D)'=='true'">%(PreprocessorDefinitions);LUMINA_HAS_D2D=1</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>$(ProjectDir)..\..\native\core\include;$(ProjectDir)..\..\native\core\src;$(ProjectDir)..\..\third_party\sqlite3;$(ProjectDir)..\..\third_party\nlohmann;$(ProjectDir)src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <TreatWarningAsError>false</TreatWarningAsError>
     </ClCompile>
@@ -153,6 +154,8 @@
     <ClCompile Include="..\..\third_party\sqlite3\sqlite3.c">
       <CompileAs>CompileAsC</CompileAs>
       <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <SDLCheck>false</SDLCheck>
+      <DisableSpecificWarnings>4996;%(DisableSpecificWarnings)</DisableSpecificWarnings>
     </ClCompile>
   </ItemGroup>
 
