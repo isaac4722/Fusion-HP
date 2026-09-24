@@ -202,9 +202,9 @@ void VideoPlayerDS::PollEvents() {
             if (code == EC_COMPLETE) {
                 if (wantLoop_ && seek_) {
                     LONGLONG z = 0;
-                    seek_->SetPositions(&z, AM_SEEKING_AbsolutePositioning,
-                                        nullptr, AM_SEEKING_NoPositioning);
-                    if (control_) control_->Run();
+                    ((IMediaSeeking*)seek_)->SetPositions(&z, AM_SEEKING_AbsolutePositioning,
+                                                          nullptr, AM_SEEKING_NoPositioning);
+                    if (control_) ((IMediaControl*)control_)->Run();
                 }
             }
         }
