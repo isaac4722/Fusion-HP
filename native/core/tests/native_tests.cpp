@@ -19,6 +19,10 @@
 #include "BibleBib.h"
 #include "Scripture.h"
 #include "Highlight.h"
+// v7.0.0 «ULTRA» (F0/F1): bootstrap, log e IPC.
+#include "Bootstrap.h"
+#include "NativeLog.h"
+#include "IpcV1.h"
 
 #include <nlohmann/json.hpp>
 
@@ -26,6 +30,8 @@
 #include <cstring>
 #include <string>
 #include <vector>
+#include <thread>
+#include <chrono>
 
 #if !defined(_WIN32)
 #include <unistd.h>   // getpid() → nombre único de la BD temporal
@@ -582,6 +588,353 @@ int main() {
     CHECK(lumina_db_close(h) == LUMINA_OK);
     lumina_destroy(h);
     std::remove(dbPath.c_str());
+
+    /* ============================================================= v7.0
+       F0.01-F0.03: clasificación de SO/arquitectura/.NET (capa pura).
+       ============================================================= */
+    Section("[9] F0.01-F0.04 Bootstrap: SO, arquitectura, .NET, perfiles");
+    {
+        using namespace bootstrap;
+        // Frontera Win11: build 22000.
+        CHECK(ClassifyOs(10, 0, 21999, true)  == OsClass::Win10);
+        CHECK(ClassifyOs(10, 0, 22000, true)  == OsClass::Win11);
+        CHECK(ClassifyOs(10, 0, 26100, true)  == OsClass::Win11);
+        // Win7 con y sin SP1 (mensaje de incompatibilidad + sugerir SP1).
+        CHECK(ClassifyOs(6, 1, 7601, true)    == OsClass::Win7Sp1);
+        CHECK(ClassifyOs(6, 1, 7600, false)   == OsClass::Win7NoSp1);
+        CHECK(!OsSupported(OsClass::Win7NoSp1));
+        CHECK(OsSupported(OsClass::Win7Sp1));
+        CHECK(ClassifyOs(6, 3, 9600, true)    == OsClass::Win81);
+        CHECK(ClassifyOs(6, 2, 9200, true)    == OsClass::Win8);
+        CHECK(ClassifyOs(6, 0, 6002, true)    == OsClass::Older);   // Vista
+        // Arquitectura: política x86/x64 + conmutadores.
+        ArchFacts af64; af64.processBitness = 64; af64.osBitness = 64;
+        CHECK(ChooseArch(af64, false, false) == ArchChoice::X64);
+        CHECK(ChooseArch(af64, true,  false) == ArchChoice::X86);
+        ArchFacts afW; afW.processBitness = 32; afW.osBitness = 64; afW.wow64 = true;
+        CHECK(ChooseArch(afW, false, false) == ArchChoice::X86);
+        CHECK(std::string(ArchChoiceLabel(ArchChoice::X64)) == "x64");
+        // Perfiles: A=4.7.2+ (461808) y 4.8 (528040+); B=3.5..4.6.x; C=nada.
+        DotnetFacts fA;  fA.net35 = true;  fA.v4Full = true; fA.v4Release = 528040;
+        CHECK(ClassifyProfile(fA) == RuntimeProfile::A);
+        DotnetFacts fA2; fA2.net35 = false; fA2.v4Full = true; fA2.v4Release = 461808;
+        CHECK(ClassifyProfile(fA2) == RuntimeProfile::A);
+        DotnetFacts fB;  fB.net35 = true;  fB.v4Full = false; fB.v4Release = 0;
+        CHECK(ClassifyProfile(fB) == RuntimeProfile::B);
+        DotnetFacts fB2; fB2.net35 = true; fB2.v4Full = true; fB2.v4Release = 394802;
+        CHECK(ClassifyProfile(fB2) == RuntimeProfile::B);      // 4.6.2 → B
+        DotnetFacts fB3; fB3.net35 = false; fB3.v4Full = true; fB3.v4Release = 461310;
+        CHECK(ClassifyProfile(fB3) == RuntimeProfile::B);      // 4.7.1 → B
+        DotnetFacts fC;  fC.net35 = false; fC.v4Full = false; fC.v4Release = 0;
+        CHECK(ClassifyProfile(fC) == RuntimeProfile::C);
+        CHECK(DotnetReleaseLabel(fA) == "4.8+");
+        CHECK(DotnetReleaseLabel(fB) == "3.5");
+        // Cadena completa por inyección (la MISMA que usa el launcher).
+        EnvDecision d = DetectEnvironment(
+            "{\"osMajor\":10,\"osMinor\":0,\"osBuild\":19045,\"osSp1\":true,"
+            "\"procBitness\":64,\"osBitness\":64,\"wow64\":false,"
+            "\"net35\":true,\"net4Full\":true,\"net4Release\":528040}",
+            false, false, false, false, false);
+        CHECK(d.osClass == OsClass::Win10 && d.profile == RuntimeProfile::A);
+        CHECK(d.archChoice == ArchChoice::X64);
+        // Perfil C: nota de modo emergencia (F0.08/F0.03.7).
+        EnvDecision dC = DetectEnvironment(
+            "{\"osMajor\":6,\"osMinor\":1,\"osBuild\":7601,\"osSp1\":true,"
+            "\"procBitness\":32,\"osBitness\":64,\"wow64\":true,"
+            "\"net35\":false,\"net4Full\":false,\"net4Release\":0}",
+            false, false, false, false, false);
+        CHECK(dC.profile == RuntimeProfile::C);
+        CHECK(dC.notes.find("EMERGENCIA") != std::string::npos);
+        // Win7 sin SP1: sugerencia explícita de SP1 (F0.01.5).
+        EnvDecision d7 = DetectEnvironment(
+            "{\"osMajor\":6,\"osMinor\":1,\"osBuild\":7600,\"osSp1\":false,"
+            "\"procBitness\":32,\"osBitness\":32,\"wow64\":false,"
+            "\"net35\":true,\"net4Full\":false,\"net4Release\":0}",
+            false, false, false, false, false);
+        CHECK(d7.osClass == OsClass::Win7NoSp1);
+        CHECK(d7.notes.find("SP1") != std::string::npos);
+        // JSON serializable con todos los campos (F0.09 lo registra tal cual).
+        const std::string js = EnvDecisionToJson(d);
+        CHECK(js.find("\"profile\":\"A\"") != std::string::npos);
+        CHECK(js.find("\"class\":\"win10\"") != std::string::npos);
+        // ABI: lumina_env_detect con sonda inyectada.
+        std::string apiOut;
+        CHECK(ApiCallOnce([&](char* o, int32_t c, int32_t* n) {
+            return lumina_env_detect(
+                "{\"osMajor\":10,\"osMinor\":0,\"osBuild\":22000,\"osSp1\":false,"
+                "\"procBitness\":64,\"osBitness\":64,\"wow64\":false,"
+                "\"net35\":false,\"net4Full\":true,\"net4Release\":528040}",
+                o, c, n);
+        }, &apiOut));
+        CHECK(apiOut.find("win11") != std::string::npos);
+        CHECK(apiOut.find("\"profile\":\"A\"") != std::string::npos);
+    }
+
+    /* ============================================================= F0.09
+       Log nativo: formato §10.1, redacción §10.4, rotación §10.3.
+       ============================================================= */
+    Section("[10] F0.09 Log nativo estructurado");
+    {
+        using namespace nlog;
+        // Formato: los 5 campos obligatorios en orden.
+        Entry e;
+        e.severity = SEV_WARN;
+        e.module = "bootstrap";
+        e.message = "perfil B seleccionado";
+        const std::string line = FormatEntry(e);
+        CHECK(line.find("WARN") != std::string::npos);
+        CHECK(line.find("|bootstrap|") != std::string::npos);
+        CHECK(line.find("Z|") != std::string::npos);       // ts_utc ISO
+        // Sanitización: saltos de línea → \n (una línea = un registro).
+        CHECK(SanitizeLine("a\nb").find("\\n") != std::string::npos);
+        // Redacción §10.4: nunca credenciales/tokens.
+        const std::string red = Redact("Authorization: Bearer abc123xyz");
+        CHECK(red.find("abc123xyz") == std::string::npos);
+        CHECK(red.find("REDACTED") != std::string::npos);
+        CHECK(Redact("token=sekret").find("sekret") == std::string::npos);
+        // Escritura real a disco (rotación diaria, stats, re-apertura).
+        std::string tmp = "/tmp/lumina-test-log";
+        (void)system(("rm -rf '" + tmp + "' && mkdir -p '" + tmp + "'").c_str());
+        Log log;
+        Log::Options o;
+        o.dir = tmp;
+        o.retentionDays = 14;
+        CHECK(log.Open(o));
+        CHECK(log.IsOpen());
+        CHECK(log.Write(SEV_INFO, "core", "arranque del núcleo"));
+        Entry e2;
+        e2.severity = SEV_ERROR;
+        e2.module = "render";
+        e2.message = "fallo al crear el búfer";
+        e2.lineIndex = 3;
+        e2.scenarioId = "sc-1";
+        CHECK(log.Write(e2));
+        // nivel mínimo: DEBUG se descarta y cuenta (§10.1 Live ⇒ INFO).
+        CHECK(log.Write(SEV_DEBUG, "core", "detalle interno"));
+        const Log::Stats st = log.StatsSnapshot();
+        CHECK(st.written == 2);
+        CHECK(st.dropped == 1);
+        CHECK(log.ActiveFile().find("lumina-") != std::string::npos);
+        // El archivo existe y tiene 2 líneas con formato.
+        std::FILE* f = std::fopen(log.ActiveFile().c_str(), "r");
+        CHECK(f != nullptr);
+        if (f) {
+            char buf[2048];
+            int lines = 0;
+            while (std::fgets(buf, sizeof(buf), f)) {
+                ++lines;
+                CHECK(std::strchr(buf, '\n') != nullptr);
+            }
+            CHECK(lines == 2);
+            std::fclose(f);
+        }
+        log.Close();
+        CHECK(!log.IsOpen());
+        (void)system(("rm -rf '" + tmp + "'").c_str());
+        // ABI del log ligado al handle.
+        LuminaConfig cfg = {};
+        cfg.structSize = (int32_t)sizeof(LuminaConfig);
+        cfg.headless = 1;
+        LuminaHandle h = lumina_create(&cfg);
+        CHECK(h != nullptr);
+        std::string tmp2 = "/tmp/lumina-test-log2";
+        (void)system(("rm -rf '" + tmp2 + "' && mkdir -p '" + tmp2 + "'").c_str());
+        std::string opts = "{\"dir\":\"" + tmp2 + "\",\"retentionDays\":14}";
+        CHECK(lumina_log_open(h, opts.c_str()) == LUMINA_OK);
+        CHECK(lumina_log_write(h,
+            "{\"severity\":\"ERROR\",\"module\":\"ipc\","
+            "\"message\":\"cliente desconectado (se conserva la proyección)\"}"
+        ) == LUMINA_OK);
+        apiOut.clear();
+        CHECK(ApiCallOnce([&](char* o, int32_t c, int32_t* n) {
+            return lumina_log_stats(h, o, c, n);
+        }, &apiOut));
+        CHECK(apiOut.find("\"open\":1") != std::string::npos);
+        lumina_destroy(h);
+        (void)system(("rm -rf '" + tmp2 + "'").c_str());
+    }
+
+    /* ============================================================= F0.05
+       IPC ipc.v1: códec (fragmentación, magic, versión, oversized),
+       cola (capacidad, expiración) y ABI.
+       ============================================================= */
+    Section("[11] F0.05 IPC ipc.v1: códec y cola");
+    {
+        using namespace ipc;
+        // Roundtrip completo.
+        const std::string payload = "{\"proto\":\"ipc.v1\",\"client\":\"test\"}";
+        std::vector<uint8_t> fr = EncodeFrame(MSG_HELLO, payload);
+        CHECK(fr.size() == kHeaderSize + payload.size());
+        FrameDecoder dec;
+        uint16_t ty = 0; std::string out; size_t used = 0;
+        CHECK(dec.Feed(fr.data(), fr.size(), &ty, &out, &used) == 1);
+        CHECK(ty == MSG_HELLO);
+        CHECK(out == payload);
+        CHECK(used == fr.size());
+        CHECK(dec.Buffered() == 0);
+        // FRAGMENTACIÓN: alimentar de a 1 byte (F0.05.9).
+        FrameDecoder dec2;
+        bool got = false;
+        for (size_t i = 0; i < fr.size(); ++i) {
+            int rc = dec2.Feed(fr.data() + i, 1, &ty, &out, &used);
+            if (rc == 1) { got = true; CHECK(out == payload); }
+            else CHECK(rc == 0);
+        }
+        CHECK(got);
+        // Dos frames pegados en una sola tanda.
+        std::vector<uint8_t> two = EncodeFrame(MSG_PING, "abc");
+        const auto fr2 = EncodeFrame(MSG_PONG, "de");
+        two.insert(two.end(), fr2.begin(), fr2.end());
+        FrameDecoder dec3;
+        CHECK(dec3.Feed(two.data(), two.size(), &ty, &out, &used) == 1);
+        CHECK(ty == MSG_PING && out == "abc");
+        CHECK(dec3.Feed(nullptr, 0, &ty, &out, &used) == 1);
+        CHECK(ty == MSG_PONG && out == "de");
+        // Magic inválido → -1 y el decoder SOBREVIVE (sesión continúa).
+        FrameDecoder dec4;
+        std::vector<uint8_t> bad(20, 0xAB);
+        CHECK(dec4.Feed(bad.data(), bad.size(), &ty, &out, &used) == -1);
+        CHECK(dec4.Buffered() == 0);
+        CHECK(dec4.Feed(fr.data(), fr.size(), &ty, &out, &used) == 1); // recupera
+        // Versión desconocida → -2.
+        FrameDecoder dec5;
+        std::vector<uint8_t> v99 = fr;
+        v99[4] = 99;
+        CHECK(dec5.Feed(v99.data(), v99.size(), &ty, &out, &used) == -2);
+        // Oversized → -3 (capa de protocolo, sin crash).
+        FrameDecoder dec6(1024);
+        std::vector<uint8_t> big = EncodeFrame(MSG_STATE, std::string(4096, 'x'));
+        CHECK(dec6.Feed(big.data(), big.size(), &ty, &out, &used) == -3);
+        // PAYLOAD GRANDE (8 MB) — fragmentado en trozos de 64 KB.
+        const std::string bigPayload(8u * 1024 * 1024, 'z');
+        const auto bigFr = EncodeFrame(MSG_COMMAND, bigPayload);
+        FrameDecoder dec7;
+        bool bigOk = false;
+        for (size_t off = 0; off < bigFr.size() && !bigOk; off += 65536) {
+            const size_t n = std::min((size_t)65536, bigFr.size() - off);
+            const int rc = dec7.Feed(bigFr.data() + off, n, &ty, &out, &used);
+            if (rc == 1) {
+                bigOk = (out == bigPayload);
+                CHECK(ty == MSG_COMMAND);
+            } else CHECK(rc == 0);
+        }
+        CHECK(bigOk);
+        // Cola: capacidad (backpressure visible) y expiración.
+        CommandQueue::Options qo;
+        qo.maxQueued = 3;
+        qo.maxAgeMs = 1;          // 1 ms: expira casi de inmediato
+        CommandQueue q(qo);
+        CHECK(q.TryPush(1, "next", "{}"));
+        CHECK(q.TryPush(2, "prev", "{}"));
+        CHECK(q.TryPush(3, "next", "{}"));
+        CHECK(!q.TryPush(4, "next", "{}"));          // llena → rechazo
+        auto stq = q.StatsSnapshot();
+        CHECK(stq.rejectedFull == 1);
+        std::this_thread::sleep_for(std::chrono::milliseconds(30));
+        CommandQueue::Item it;
+        CHECK(!q.TryPop(&it));                        // todo vencido
+        stq = q.StatsSnapshot();
+        CHECK(stq.expiredDropped == 3);
+        CHECK(stq.executed == 0);
+        // ABI del códec.
+        void* dh = lumina_ipc_decoder_new();
+        CHECK(dh != nullptr);
+        int32_t outType = 0, needed = 0, consumed = 0;
+        std::vector<uint8_t> enc;
+        int32_t need1 = 0;
+        CHECK(lumina_ipc_frame_encode(MSG_COMMAND, "ping-data", -1, nullptr, 0,
+                                      &need1) == LUMINA_ERR_LIMIT);
+        enc.resize((size_t)need1);
+        CHECK(lumina_ipc_frame_encode(MSG_COMMAND, "ping-data", -1, enc.data(),
+                                      (int32_t)enc.size(), &need1) == LUMINA_OK);
+        CHECK(lumina_ipc_decoder_feed(dh, enc.data(), (int32_t)enc.size(),
+                                      &outType, (char*)nullptr, 0, &needed,
+                                      &consumed) == LUMINA_ERR_LIMIT);
+        std::vector<char> pb((size_t)needed);
+        CHECK(lumina_ipc_decoder_feed(dh, enc.data(), (int32_t)enc.size(),
+                                      &outType, pb.data(), (int32_t)pb.size(),
+                                      &needed, &consumed) == LUMINA_OK);
+        CHECK(outType == MSG_COMMAND);
+        CHECK(std::string(pb.data(), (size_t)needed - 1) == "ping-data");
+        lumina_ipc_decoder_free(dh);
+    }
+
+    /* ============================================================= F1.03
+       Sincronización por línea: syncMark, navegación, estado.
+       ============================================================= */
+    Section("[12] F1.03/F2.03 syncMark y navegación por línea");
+    {
+        LuminaConfig cfg = {};
+        cfg.structSize = (int32_t)sizeof(LuminaConfig);
+        cfg.headless = 1;
+        LuminaHandle h = lumina_create(&cfg);
+        CHECK(h != nullptr);
+        // Escenario ahp.v1-style: ítem text con líneas estructuradas y
+        // syncMark (dos grupos: 1 y 2) + segundo ítem.
+        const std::string scen =
+            "{\"name\":\"sync\",\"items\":["
+            "{\"kind\":\"text\",\"title\":\"Himno\",\"lines\":["
+            "{\"text\":\"L1\",\"syncMark\":1},"
+            "{\"text\":\"L2\",\"syncMark\":1},"
+            "{\"text\":\"L3\",\"syncMark\":2},"
+            "{\"text\":\"L4\",\"syncMark\":2}]},"
+            "{\"kind\":\"text\",\"title\":\"Segundo\",\"text\":\"Otra\"}]}";
+        CHECK(lumina_load_scenario(h, scen.c_str(), -1) == LUMINA_OK);
+        CHECK(lumina_show_slide(h, 0) == LUMINA_OK);
+        apiOut.clear();
+        CHECK(ApiCallOnce([&](char* o, int32_t c, int32_t* n) {
+            return lumina_state_json(h, o, c, n);
+        }, &apiOut));
+        CHECK(apiOut.find("\"line\":0") != std::string::npos);
+        // next: L0→L2 (grupo 2), luego → slide 2 (agotados los grupos).
+        CHECK(lumina_next(h) == LUMINA_OK);
+        apiOut.clear();
+        CHECK(ApiCallOnce([&](char* o, int32_t c, int32_t* n) {
+            return lumina_state_json(h, o, c, n);
+        }, &apiOut));
+        CHECK(apiOut.find("\"line\":2") != std::string::npos);
+        CHECK(apiOut.find("\"current\":0") != std::string::npos);
+        CHECK(lumina_next(h) == LUMINA_OK);          // agota grupos → slide 2
+        apiOut.clear();
+        CHECK(ApiCallOnce([&](char* o, int32_t c, int32_t* n) {
+            return lumina_state_json(h, o, c, n);
+        }, &apiOut));
+        CHECK(apiOut.find("\"current\":1") != std::string::npos);
+        CHECK(apiOut.find("\"line\":-1") != std::string::npos); // sin marcas
+        // prev: vuelve a la slide 1 con línea activa 0.
+        CHECK(lumina_prev(h) == LUMINA_OK);
+        apiOut.clear();
+        CHECK(ApiCallOnce([&](char* o, int32_t c, int32_t* n) {
+            return lumina_state_json(h, o, c, n);
+        }, &apiOut));
+        CHECK(apiOut.find("\"current\":0") != std::string::npos);
+        CHECK(apiOut.find("\"line\":0") != std::string::npos);
+        // Navegación explícita por línea (API/móvil/trigger).
+        CHECK(lumina_line_set(h, 1) == LUMINA_OK);
+        CHECK(lumina_line_next(h) == LUMINA_OK);
+        apiOut.clear();
+        CHECK(ApiCallOnce([&](char* o, int32_t c, int32_t* n) {
+            return lumina_state_json(h, o, c, n);
+        }, &apiOut));
+        CHECK(apiOut.find("\"line\":2") != std::string::npos);
+        CHECK(lumina_line_prev(h) == LUMINA_OK);
+        apiOut.clear();
+        CHECK(ApiCallOnce([&](char* o, int32_t c, int32_t* n) {
+            return lumina_state_json(h, o, c, n);
+        }, &apiOut));
+        CHECK(apiOut.find("\"line\":0") != std::string::npos);
+        // Línea fuera de rango → ERR_LIMIT (sin crash).
+        CHECK(lumina_line_set(h, 99) == LUMINA_ERR_LIMIT);
+        // IPC headless: en Linux el transporte no existe y el núcleo SIGUE.
+        CHECK(lumina_ipc_start(h, "{}") == LUMINA_ERR_UNSUPPORTED);
+        CHECK(lumina_state_json(h, nullptr, 0, nullptr) != LUMINA_OK);
+        apiOut.clear();
+        CHECK(ApiCallOnce([&](char* o, int32_t c, int32_t* n) {
+            return lumina_ipc_stats(h, o, c, n);
+        }, &apiOut));
+        CHECK(!apiOut.empty());
+        lumina_destroy(h);
+    }
 
     /* ------------------------------------------------------------- fin -- */
     std::printf("== OK %d/%d ==%s\n", g_checks - g_failed, g_checks,

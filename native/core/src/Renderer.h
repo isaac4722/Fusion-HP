@@ -21,9 +21,13 @@ class Renderer {
 public:
     // Dibuja una slide completa en hdc (w x h = píxeles físicos del destino).
     // slide.kind == SLIDE_BLANK o sin líneas → solo fondo (clear).
+    // v7.0.0 «ULTRA» (F1.01): activeLine >= 0 activa el estilo de línea
+    // activa del tema (dimInactive/activeLineColor/activeLineBold); -1 =
+    // comportamiento clásico (todas las líneas iguales).
     static void DrawSlide(HDC hdc, int w, int h,
                           const Slide* slide, const Theme& theme,
-                          bool black, bool showCounter = false, int counter = 0);
+                          bool black, bool showCounter = false, int counter = 0,
+                          int activeLine = -1);
 
     // Fondo puro (tema): color sólido o imagen (cover/contain).
     static void DrawBackground(HDC hdc, int w, int h, const Theme& theme);

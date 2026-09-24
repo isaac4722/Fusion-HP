@@ -111,6 +111,47 @@ LUMINA_EXPORT int32_t lumina_bible_ref_resolve(const char* refUtf8,
 LUMINA_EXPORT int32_t lumina_chords_transpose(const char* line, int32_t semitones, int32_t latin,
                                               char* out, int32_t cap, int32_t* needed);
 
+/* -------------------------------------------------- v7.0.0 «ULTRA» (ADITIVA)
+   F0.01-F0.03: detección de entorno y decisión de arranque (JSON). probeJson
+   vacío = sondas reales del sistema; con hechos inyectados = clasificación
+   pura (arnés Linux). Devuelve SO, arquitectura, .NET, perfil y notas. */
+LUMINA_EXPORT int32_t lumina_env_detect(const char* probeJson,
+                                        char* out, int32_t cap, int32_t* needed);
+
+/* F0.09: log nativo estructurado (§10.1). optsJson:
+   {"dir":"...","retentionDays":14,"level":"INFO"}; entryJson:
+   {"severity":"INFO","module":"render","message":"...","scenarioId":"",
+    "elementId":"","lineIndex":-1,"filePath":"","exception":"","callStack":""} */
+LUMINA_EXPORT int32_t lumina_log_open(LuminaHandle h, const char* optsJson);
+LUMINA_EXPORT int32_t lumina_log_write(LuminaHandle h, const char* entryJson);
+LUMINA_EXPORT int32_t lumina_log_stats(LuminaHandle h, char* out, int32_t cap, int32_t* needed);
+
+/* F0.05: IPC ipc.v1 (pipes con nombre, mensajes binarios longitud-prefijada,
+   versión ipc.v1, cola no bloqueante con límite de latencia explícito).
+   optsJson: {"pipe":"lumina-ipc-v1","maxPayload":N,"maxQueued":N,"maxAgeMs":N} */
+LUMINA_EXPORT int32_t lumina_ipc_start(LuminaHandle h, const char* optsJson);
+LUMINA_EXPORT int32_t lumina_ipc_stop(LuminaHandle h);
+LUMINA_EXPORT int32_t lumina_ipc_stats(LuminaHandle h, char* out, int32_t cap, int32_t* needed);
+
+/* Códec ipc.v1 puro (pruebas de fragmentación/payload/versión + clientes):
+   encode produce el frame completo; decoder mantiene estado entre Feed's. */
+LUMINA_EXPORT int32_t lumina_ipc_frame_encode(int32_t type, const char* payloadUtf8,
+                                              int32_t len, uint8_t* out, int32_t cap,
+                                              int32_t* needed);
+LUMINA_EXPORT void*    lumina_ipc_decoder_new(void);
+LUMINA_EXPORT void     lumina_ipc_decoder_free(void* dec);
+/* Feed devuelve: 0=falta, 1=frame (outType/out/needed), <0=código de error
+   de protocolo (-1 magic, -2 versión, -3 oversized). consumed = bytes usados. */
+LUMINA_EXPORT int32_t  lumina_ipc_decoder_feed(void* dec, const uint8_t* bytes, int32_t len,
+                                               int32_t* outType, char* out, int32_t cap,
+                                               int32_t* needed, int32_t* consumed);
+
+/* F1.03: sincronización por línea (syncMark). LineNext/LinePrev navegan las
+   líneas de la slide activa; LineSet fija el índice (-1 = slide entera). */
+LUMINA_EXPORT int32_t lumina_line_next(LuminaHandle h);
+LUMINA_EXPORT int32_t lumina_line_prev(LuminaHandle h);
+LUMINA_EXPORT int32_t lumina_line_set(LuminaHandle h, int32_t lineIndex);
+
 /* ------------------------------------------------------- almacenamiento */
 LUMINA_EXPORT int32_t lumina_db_open(LuminaHandle h, const char* pathUtf8);
 LUMINA_EXPORT int32_t lumina_db_close(LuminaHandle h);

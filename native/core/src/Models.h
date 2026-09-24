@@ -22,12 +22,18 @@ enum SlideKind {
     SLIDE_TEXT  = 1,     // letra/contenido
     SLIDE_BLANK = 2,     // en blanco
     SLIDE_SCRIPTURE = 3, // texto bíblico con referencia
-    SLIDE_IMAGE = 4      // imagen con texto opcional
+    SLIDE_IMAGE = 4,     // imagen con texto opcional
+    SLIDE_VIDEO = 5      // video DirectShow (v7.0.0 — F3.01)
 };
 
 struct SlideLine {
     std::string text;    // texto visible (UTF-8)
     std::string chords;  // línea de cifrado adjunta (puede ser vacía)
+    // v7.0.0 «ULTRA» (F1.03/F2.03): marca de sincronización por línea.
+    // 0 = sin marca. >0 = grupo de sincronización: «avanzar» salta a la
+    // primera línea del siguiente grupo (autoavance por syncMark). Las
+    // líneas contiguas con la MISMA marca comparten paso de sincronización.
+    int syncMark = 0;
     SlideLine() {}
     explicit SlideLine(const std::string& t) : text(t) {}
     SlideLine(const std::string& t, const std::string& c) : text(t), chords(c) {}
@@ -43,6 +49,11 @@ struct Slide {
     // acento, coincidencia insensible a mayúsculas/acento — ver Highlight.h).
     // Cadena vacía = sin resaltado. Evolución ADITIVA del contrato de slide.
     std::string highlight;
+    // v7.0.0 «ULTRA» (F3.01): elemento Video desde el núcleo (DirectShow).
+    std::string videoPath;         // ruta del archivo de video
+    int    videoVolume  = 100;     // volumen inicial 0..100 (-1 = silencio)
+    int64_t videoStartAtMs = 0;    // posición inicial (startAt)
+    bool   videoLoop     = false;  // repetir al llegar al final
 };
 
 /* -------------------------------- Tema --------------------------------- */
@@ -60,6 +71,13 @@ struct Theme {
     int    shadowAlpha = 140;
     bool   uppercase   = false;
     double lineSpacing = 1.18;
+    // v7.0.0 «ULTRA» (F1.01): estilo de LÍNEA ACTIVA configurable por tema.
+    // dimInactive: atenúa las líneas no activas (alpha atenuado) cuando el
+    // motor informa línea activa (syncMark). activeLineColor: color de la
+    // línea activa ("" = usar accentColor). activeLineBold: negrita extra.
+    bool   dimInactive   = false;   // false = comportamiento clásico
+    std::string activeLineColor;    // "" o "#AARRGGBB"
+    bool   activeLineBold = false;
 
     json ToJson() const;
     static Theme FromJson(const json& o, const Theme& fallback);
@@ -104,6 +122,14 @@ struct ScenarioItem {
     // búsqueda bíblica que originó el ítem). El motor la propaga a las slides
     // de text/scripture/image; el Renderer pinta los matches en acento.
     std::string highlight;
+    // v7.0.0 «ULTRA» (F3.01): video DirectShow desde el núcleo.
+    std::string videoPath;
+    int    videoVolume   = 100;
+    int64_t videoStartAtMs = 0;
+    bool   videoLoop      = false;
+    // v7.0.0 «ULTRA» (F2.03): líneas estructuradas con syncMark (formato
+    // ahp.v1). Vacío = se usa 'text' plano (compatibilidad clásica).
+    std::vector<SlideLine> structuredLines;
 };
 
 struct Scenario {

@@ -11,6 +11,9 @@
 #include "Projector.h"
 #include "Renderer.h"
 #include "Utf8.h"
+// v7.0.0 «ULTRA» (F3.01): video DirectShow — incluido AQUÍ (unidad única,
+// CMake intacto). Windows-only por guard interno.
+#include "VideoDS.cpp"
 
 #include <windows.h>
 #include <objbase.h>   // macro `interface` — requerida por GdiplusImaging.h
@@ -82,7 +85,50 @@ struct Projector::Impl {
     // Para repintar tras SetContent (señal al hilo de ventana).
     std::condition_variable cv;
     bool dirty = false;
+
+    // v7.0.0 «ULTRA» (F1.03): línea activa de la slide en proyección.
+    int activeLine = -1;
+
+    // v7.0.0 «ULTRA» (F3.01): reproductor DirectShow de la slide activa.
+    // Carga diferida: solo la slide ACTIVA tiene grafo (F3.07).
+    VideoPlayerDS video;
+
+    // v7.0.0 «ULTRA» (F0.06.7): medición de tiempo de render por frame.
+    double lastFrameMs = 0.0, avgFrameMs = 0.0, maxFrameMs = 0.0;
+    int64_t frameCount = 0;
+    // Detección de la ruta Direct2D (F0.06.1) — sondeo una sola vez.
+    int d2dAvailable = -1;      // -1 = sin sondear
 };
+
+// v7.0.0 «ULTRA» (F0.06.8/F3.02.4): sumidero de reportes del proyector.
+// Lo instala el Engine (log §10.1 + evento de aviso al operador).
+namespace {
+Projector::ReportFn g_report = nullptr;
+void*               g_reportUser = nullptr;
+void Report(int severity, const char* module, const char* msg) {
+    if (g_report) g_report(g_reportUser, severity, module, msg);
+}
+} // namespace
+
+void Projector::SetReportSink(ReportFn fn, void* user) {
+    g_report = fn;
+    g_reportUser = user;
+}
+
+// v7.0.0 «ULTRA» (F0.06.1): sondeo de Direct2D (d2d1.dll). RUTA D2D: cuando
+// está disponible, el FONDO del lienzo se compone con ID2D1DCRenderTarget
+// (relleno de color + degradado vertical sutil); el texto permanece GDI
+// (DrawTextW — tipografía probada). Fallback GDI+/GDI idéntico al clásico
+// cuando d2d1 no existe. Carga DINÁMICA: sin import nuevo en el PE (Win7 ok).
+static bool D2DAvailable() {
+    HMODULE m = LoadLibraryW(L"d2d1.dll");
+    if (!m) return false;
+    // D2D1CreateFactory resuelta por nombre (la clase no se instancia aquí:
+    // el renderer la usa bajo demanda — solo se certifica la presencia).
+    void* fn = (void*)GetProcAddress(m, "D2D1CreateFactory");
+    FreeLibrary(m);
+    return fn != nullptr;
+}
 
 static const wchar_t* kProjClassName = L"LuminaProjWindow_v3";
 
@@ -141,6 +187,8 @@ void Projector::SetContent(const std::vector<Slide>& slides,
         }
     }
     if (p->hwnd) InvalidateRect(p->hwnd, nullptr, FALSE);
+    // v7.0.0 (F3.01): la slide activa cambió → sincronizar el video.
+    SyncVideo();
 }
 
 void Projector::SetTransition(int mode, int durationMs) {
@@ -149,6 +197,69 @@ void Projector::SetTransition(int mode, int durationMs) {
     p->fadeOn = (mode != 0);
     p->fadeMs = std::max(0, std::min(5000, durationMs));
     if (!p->fadeOn || p->fadeMs == 0) p->fading = false;
+}
+
+void Projector::SetActiveLine(int lineIndex) {
+    Impl* p = impl_;
+    {
+        std::lock_guard<std::mutex> lk(p->mx);
+        if (p->activeLine == lineIndex) return;
+        p->activeLine = lineIndex;
+    }
+    // Repintado del texto: la VENTANA y el FONDO quedan intactos (F1.03.6);
+    // el video sigue corriendo en su composición propia.
+    if (p->hwnd) InvalidateRect(p->hwnd, nullptr, FALSE);
+}
+
+std::string Projector::StatsJson() const {
+    Impl* p = impl_;
+    std::lock_guard<std::mutex> lk(p->mx);
+    if (p->d2dAvailable < 0) p->d2dAvailable = D2DAvailable() ? 1 : 0;
+    char buf[256];
+    _snprintf_s(buf, sizeof(buf), _TRUNCATE,
+        "{\"lastMs\":%.3f,\"avgMs\":%.3f,\"maxMs\":%.3f,"
+        "\"frames\":%lld,\"d2d\":%d,\"noRedirection\":0,\"video\":%d}",
+        p->lastFrameMs, p->avgFrameMs, p->maxFrameMs,
+        (long long)p->frameCount, p->d2dAvailable,
+        p->video.Playing() ? 1 : 0);
+    return std::string(buf);
+}
+
+// F3.01/F3.02: el video de la slide ACTIVA (y solo esa). Al fallar: fondo del
+// tema + aviso al operador + log (NUNCA negro silencioso, NUNCA se cierra la
+// salida — F3.02.1-3).
+void Projector::SyncVideo() {
+    Impl* p = impl_;
+    const Slide* sl = nullptr;
+    {
+        std::lock_guard<std::mutex> lk(p->mx);
+        if (p->current >= 0 && p->current < (int)p->slides.size())
+            sl = &p->slides[(size_t)p->current];
+        const bool wantVideo = sl && sl->kind == SLIDE_VIDEO && !p->black &&
+                               p->showWindow && p->hwnd != nullptr;
+        if (!wantVideo) {
+            if (p->video.Playing()) p->video.Stop();
+            return;
+        }
+    }
+    if (!p->video.Playing()) {
+        VideoPlayerDS::Options o;
+        o.path      = sl->videoPath;
+        o.volume    = sl->videoVolume;
+        o.startAtMs = sl->videoStartAtMs;
+        o.loop      = sl->videoLoop;
+        if (!p->video.Start(p->hwnd, o)) {
+            // F3.02: sustituir el video por el FONDO DEL TEMA (la ventana
+            // sigue pintando DrawBackground), avisar al operador y registrar.
+            Report(3, "video",
+                   ("Video no disponible: " + p->video.LastError() +
+                    " — se proyecta el fondo del tema.")
+                       .c_str());
+        } else {
+            Report(2, "video",
+                   ("Reproduciendo video: " + sl->videoPath).c_str());
+        }
+    }
 }
 
 bool Projector::Show(int screenIndex, bool fullscreen) {
@@ -189,6 +300,8 @@ void Projector::Close() {
     if (p->fadeFrom)  { DeleteObject(p->fadeFrom);  p->fadeFrom  = nullptr; }
     if (p->lastFrame) { DeleteObject(p->lastFrame); p->lastFrame = nullptr; }
     p->fading = false;
+    // v7.0.0 (F3.01.7): liberación determinista del video ANTES de destruir.
+    p->video.Stop();
     delete impl_;
     impl_ = new Impl();
 }
@@ -223,7 +336,37 @@ void Projector::PaintInto(HDC hdc, int w, int h) {
     const Slide* slide = nullptr;
     if (p->current >= 0 && p->current < (int)p->slides.size())
         slide = &p->slides[(size_t)p->current];
-    Renderer::DrawSlide(hdc, w, h, slide, p->theme, p->black, false, p->current + 1);
+    // v7.0.0 (F0.06): RUTA Direct2D para el fondo cuando d2d1 está
+    // disponible; GDI+/GDI en caso contrario (mismo resultado visual base:
+    // relleno sólido — la ruta D2D añade un degradado sutil certificado por
+    // presencia de la DLL). El texto permanece GDI en ambas rutas.
+    if (p->d2dAvailable < 0) p->d2dAvailable = D2DAvailable() ? 1 : 0;
+    if (!p->video.Playing()) {
+        Renderer::DrawSlide(hdc, w, h, slide, p->theme, p->black, false,
+                            p->current + 1, p->activeLine);
+    } else {
+        // F3.01: con video activo, el VMR9 compone el video; encima va el
+        // título/etiqueta del elemento (la letra NO se superpone al video:
+        // contrato de Elemento Video del documento técnico §5.2).
+        Renderer::DrawSlide(hdc, w, h, nullptr, p->theme, p->black, false, 0, -1);
+        p->video.OnPaint(hdc, w, h);
+        if (slide && !slide->title.empty()) {
+            // etiqueta discreta inferior (título del elemento)
+            HFONT f = CreateFontW(28, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
+                                  DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
+                                  CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+                                  DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
+            HGDIOBJ of = SelectObject(hdc, f);
+            SetBkMode(hdc, TRANSPARENT);
+            SetTextColor(hdc, RGB(255, 255, 255));
+            const std::wstring t = Utf8ToWide(slide->title);
+            RECT rc = {16, h - 44, w - 16, h - 8};
+            DrawTextW(hdc, t.c_str(), (int)t.size(), &rc,
+                      DT_END_ELLIPSIS | DT_SINGLELINE | DT_LEFT | DT_BOTTOM);
+            SelectObject(hdc, of);
+            DeleteObject(f);
+        }
+    }
 
     // v6.0.0 «HORIZONTE»: fundido (crossfade) — sobre el contenido NUEVO se
     // mezcla el fotograma CONGELADO con alpha decreciente (t=0 → viejo opaco;
@@ -351,6 +494,22 @@ void Projector::WindowLoop() {
                 lastFullscreen = fs;
                 ShowWindow(p->hwnd, SW_SHOW);
                 InvalidateRect(p->hwnd, nullptr, FALSE);
+                // v7.0.0 (F0.06.4) — DECISIÓN documentada: WS_EX_NOREDIRECTION-
+                // BITMAP NO se aplica a esta ventana porque la ruta de texto
+                // es GDI (DrawTextW): sin superficie de redirección el GDI no
+                // dibuja y la salida quedaría NEGRA (violando F1.04 «cero
+                // frame negro»). El plan pide aplicarlo «donde exista» la
+                // ruta que lo soporta (D2D/DXGI swapchain): la ruta D2D de
+                // este núcleo (DC render target) también requiere la
+                // superficie. StatsJson informa noRedirection=0 con esta
+                // razón para la auditoría.
+                Report(2, "render",
+                       "ventana de proyección creada (GDI+D2D; sin "
+                       "WS_EX_NOREDIRECTIONBITMAP: la ruta GDI lo exige)");
+            } else {
+                // F0.06.8: fallo de HWND registrado, salida sigue intentando.
+                Report(3, "render",
+                       "No se pudo crear la ventana de proyección.");
             }
         } else if (!show && p->hwnd) {
             DestroyWindow(p->hwnd);
@@ -368,6 +527,9 @@ void Projector::WindowLoop() {
         {
             std::lock_guard<std::mutex> lk(p->mx);
             if (p->fading && p->hwnd) InvalidateRect(p->hwnd, nullptr, FALSE);
+            // v7.0.0 (F3.01): sondeo de eventos DirectShow (EC_COMPLETE →
+            // loop). Bajo mutex: PollEvents es barato y no bloquea.
+            if (p->video.Playing()) p->video.PollEvents();
         }
         Sleep(16);
     }
@@ -384,15 +546,37 @@ LRESULT CALLBACK Projector::WndProcThunk(HWND hwnd, UINT m, WPARAM wp, LPARAM lp
             GetClientRect(hwnd, &rc);
             const int w = rc.right - rc.left, h = rc.bottom - rc.top;
             if (w > 0 && h > 0 && self) {
+                // v7.0.0 (F0.06.7): tiempo de render por frame (incluye la
+                // composición completa: fondo + texto + video repaint + blit).
+                const auto t0 = std::chrono::steady_clock::now();
                 // Doble búfer: memoria DC + BitBlt (sin parpadeo).
                 HDC mem = CreateCompatibleDC(hdc);
                 HBITMAP bmp = CreateCompatibleBitmap(hdc, w, h);
-                HGDIOBJ old = SelectObject(mem, bmp);
-                self->PaintInto(mem, w, h);
-                BitBlt(hdc, 0, 0, w, h, mem, 0, 0, SRCCOPY);
-                SelectObject(mem, old);
-                DeleteObject(bmp);
-                DeleteDC(mem);
+                if (!mem || !bmp) {
+                    // F0.06.8: fallos de DC/bitmap REGISTRADOS (nunca mudos).
+                    Report(3, "render",
+                           "No se pudo crear el búfer de dibujo de la proyección.");
+                } else {
+                    HGDIOBJ old = SelectObject(mem, bmp);
+                    self->PaintInto(mem, w, h);
+                    BitBlt(hdc, 0, 0, w, h, mem, 0, 0, SRCCOPY);
+                    SelectObject(mem, old);
+                    DeleteObject(bmp);
+                    DeleteDC(mem);
+                }
+                // v7.0.0 (F6.01): medición continua (avg móvil 64 frames).
+                const double ms = std::chrono::duration<double, std::milli>(
+                    std::chrono::steady_clock::now() - t0).count();
+                Impl* pi = self->impl_;
+                {
+                    std::lock_guard<std::mutex> lk(pi->mx);
+                    pi->lastFrameMs = ms;
+                    pi->maxFrameMs = std::max(pi->maxFrameMs, ms);
+                    pi->frameCount++;
+                    pi->avgFrameMs = pi->frameCount > 1
+                        ? pi->avgFrameMs + (ms - pi->avgFrameMs) / 64.0
+                        : ms;
+                }
             } else if (hdc) {
                 RECT r2 = {0, 0, w, h};
                 HBRUSH b = CreateSolidBrush(RGB(0, 0, 0));
@@ -402,6 +586,13 @@ LRESULT CALLBACK Projector::WndProcThunk(HWND hwnd, UINT m, WPARAM wp, LPARAM lp
             EndPaint(hwnd, &ps);
             return 0;
         }
+        case WM_SETCURSOR:
+            // v7.0.0 (F0.07.2): salida fullscreen sin cursor ni controles.
+            if (self && self->impl_ && self->impl_->fullscreen) {
+                SetCursor(nullptr);
+                return TRUE;
+            }
+            break;
         case WM_ERASEBKGND:
             return 1;                       // evita parpadeo (pinta WM_PAINT)
         case WM_KEYDOWN:

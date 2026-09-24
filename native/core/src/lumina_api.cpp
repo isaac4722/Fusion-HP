@@ -11,6 +11,12 @@
 #include "Chords.h"
 #include "Utf8.h"
 
+// v7.0.0 «ULTRA» — F0: incluidos EN ESTA UNIDAD (el CMake del núcleo no se
+// toca: restricción explícita del Plan de Ultra Implementación).
+#include "Bootstrap.cpp"    // F0.01-F0.04: detección SO/arquitectura/.NET/perfiles
+#include "NativeLog.cpp"    // F0.09: log nativo estructurado §10.1
+#include "IpcV1.cpp"        // F0.05: IPC ipc.v1 (códec + cola + servidor pipes)
+
 #include <nlohmann/json.hpp>
 
 using namespace lumina;
@@ -86,7 +92,7 @@ int32_t lumina_version(char* out, int32_t cap, int32_t* needed) {
     return Api([&]() -> LuminaStatus {
         Engine* e = nullptr;  // version no necesita handle
         (void)e;
-        return ReturnStr(out, cap, needed, std::string("LuminaCore ") + "6.1.0");
+        return ReturnStr(out, cap, needed, std::string("LuminaCore ") + "7.0.0-ultra");
     });
 }
 
@@ -239,6 +245,125 @@ int32_t lumina_chords_transpose(const char* line, int32_t semitones, int32_t lat
         json j; j["line"] = res;
         return ReturnStr(out, cap, needed, j.dump());
     });
+}
+
+/* ------------------------------------------------ v7.0.0 «ULTRA» ------ */
+
+/* F0.01-F0.03: entorno + decisión de arranque. Sin handle: es previo a la
+   creación del motor (el launcher la usa ANTES de cargar C#). */
+int32_t lumina_env_detect(const char* probeJson, char* out, int32_t cap,
+                          int32_t* needed) {
+    return Api([&]() -> LuminaStatus {
+        std::string probe;
+        if (probeJson) probe = probeJson;
+        return ReturnStr(out, cap, needed,
+                         Engine::DetectEnvJson(probe, false, false,
+                                               false, false, false));
+    });
+}
+
+/* F0.09: log nativo. */
+int32_t lumina_log_open(LuminaHandle h, const char* optsJson) {
+    return Api([&]() -> LuminaStatus {
+        if (!h) return LUMINA_ERR_ARG;
+        return reinterpret_cast<Engine*>(h)->LogOpen(
+            optsJson ? std::string(optsJson) : std::string());
+    });
+}
+
+int32_t lumina_log_write(LuminaHandle h, const char* entryJson) {
+    return Api([&]() -> LuminaStatus {
+        if (!h) return LUMINA_ERR_ARG;
+        return reinterpret_cast<Engine*>(h)->LogWrite(
+            entryJson ? std::string(entryJson) : std::string());
+    });
+}
+
+int32_t lumina_log_stats(LuminaHandle h, char* out, int32_t cap, int32_t* needed) {
+    return Api([&]() -> LuminaStatus {
+        if (!h) return LUMINA_ERR_ARG;
+        return ReturnStr(out, cap, needed,
+                         reinterpret_cast<Engine*>(h)->LogStatsJson());
+    });
+}
+
+/* F0.05: IPC ipc.v1. */
+int32_t lumina_ipc_start(LuminaHandle h, const char* optsJson) {
+    return Api([&]() -> LuminaStatus {
+        if (!h) return LUMINA_ERR_ARG;
+        return reinterpret_cast<Engine*>(h)->IpcStart(
+            optsJson ? std::string(optsJson) : std::string());
+    });
+}
+
+int32_t lumina_ipc_stop(LuminaHandle h) {
+    if (!h) return LUMINA_ERR_ARG;
+    return reinterpret_cast<Engine*>(h)->IpcStop();
+}
+
+int32_t lumina_ipc_stats(LuminaHandle h, char* out, int32_t cap, int32_t* needed) {
+    return Api([&]() -> LuminaStatus {
+        if (!h) return LUMINA_ERR_ARG;
+        return ReturnStr(out, cap, needed,
+                         reinterpret_cast<Engine*>(h)->IpcStatsJson());
+    });
+}
+
+/* Códec puro ipc.v1 (pruebas + cliente nativo). */
+int32_t lumina_ipc_frame_encode(int32_t type, const char* payloadUtf8,
+                                int32_t len, uint8_t* out, int32_t cap,
+                                int32_t* needed) {
+    return Api([&]() -> LuminaStatus {
+        std::string payload;
+        if (!GetIn(payloadUtf8, len, &payload)) return LUMINA_ERR_ARG;
+        std::vector<uint8_t> fr = ipc::EncodeFrame((uint16_t)type, payload);
+        if (!needed) return LUMINA_ERR_ARG;
+        *needed = (int32_t)fr.size();          // binario: sin NUL final
+        if (cap < 0 || (!out && cap > 0)) return LUMINA_ERR_ARG;
+        if ((int32_t)fr.size() > cap) return LUMINA_ERR_LIMIT;
+        if (cap > 0 && out) memcpy(out, fr.data(), fr.size());
+        return LUMINA_OK;
+    });
+}
+
+void* lumina_ipc_decoder_new(void) {
+    return (void*)new ipc::FrameDecoder();
+}
+
+void lumina_ipc_decoder_free(void* dec) {
+    delete reinterpret_cast<ipc::FrameDecoder*>(dec);
+}
+
+int32_t lumina_ipc_decoder_feed(void* dec, const uint8_t* bytes, int32_t len,
+                                int32_t* outType, char* out, int32_t cap,
+                                int32_t* needed, int32_t* consumed) {
+    return Api([&]() -> LuminaStatus {
+        if (!dec) return LUMINA_ERR_ARG;
+        if (len < 0 || (!bytes && len > 0)) return LUMINA_ERR_ARG;
+        uint16_t type = 0; std::string payload; size_t used = 0;
+        const int rc = reinterpret_cast<ipc::FrameDecoder*>(dec)->Feed(
+            bytes, (size_t)len, &type, &payload, &used);
+        if (consumed) *consumed = (int32_t)used;
+        if (rc <= 0) return (LuminaStatus)rc;  // 0=falta, <0=protocolo
+        if (outType) *outType = (int32_t)type;
+        return ReturnStr(out, cap, needed, payload);
+    });
+}
+
+/* F1.03: líneas. */
+int32_t lumina_line_next(LuminaHandle h) {
+    if (!h) return LUMINA_ERR_ARG;
+    return reinterpret_cast<Engine*>(h)->LineNext();
+}
+
+int32_t lumina_line_prev(LuminaHandle h) {
+    if (!h) return LUMINA_ERR_ARG;
+    return reinterpret_cast<Engine*>(h)->LinePrev();
+}
+
+int32_t lumina_line_set(LuminaHandle h, int32_t lineIndex) {
+    if (!h) return LUMINA_ERR_ARG;
+    return reinterpret_cast<Engine*>(h)->LineSet(lineIndex);
 }
 
 /* ------------------------------------------------------- almacenamiento */

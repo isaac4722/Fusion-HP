@@ -46,6 +46,23 @@ public:
     // (cache) → continuidad visual exacta, sin cortes ni parpadeo.
     void SetTransition(int mode, int durationMs);
 
+    // v7.0.0 «ULTRA» (F1.03): línea activa de la slide en proyección. El
+    // fondo y el video NO se repintan: solo cambia el estado de línea que
+    // Renderer::DrawSlide usa para el estilo activo/inactivo.
+    void SetActiveLine(int lineIndex);
+
+    // v7.0.0 «ULTRA» (F0.06.7 / F6.01): métricas de render por frame.
+    // JSON: {"lastMs":N,"avgMs":N,"maxMs":N,"frames":N,"d2d":0|1,
+    //        "noRedirection":0|1,"video":0|1}
+    std::string StatsJson() const;
+
+    // v7.0.0 «ULTRA» (F0.06.8 / F3.02.4): canal de reportes del proyector
+    // (fallos HWND/DC/bitmap, fallos de video) hacia el log del motor y el
+    // aviso al operador. severity: 2=WARN 3=ERROR.
+    typedef void (*ReportFn)(void* user, int severity, const char* module,
+                             const char* msg);
+    static void SetReportSink(ReportFn fn, void* user);
+
     // Renderiza una slide a PNG con el mismo renderizador (preview).
     static bool RenderSlidePng(const Slide& s, const Theme& t,
                                int w, int h, std::string* pngOut);
@@ -56,6 +73,7 @@ private:
 
     void WindowLoop();
     void PaintInto(HDC hdc, int w, int h);
+    void SyncVideo();          // arranca/detiene el video de la slide activa
     static LRESULT CALLBACK WndProcThunk(HWND hwnd, UINT msg,
                                          WPARAM wp, LPARAM lp);
 };

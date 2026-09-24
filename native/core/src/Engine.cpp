@@ -10,6 +10,11 @@
 #include "Scripture.h"
 #include "Storage.h"
 #include "BibleRef.h"
+// v7.0.0 «ULTRA»: IPC ipc.v1 (F0.05) + log estructurado (F0.09) +
+// bootstrap de entorno (F0.01-F0.03). Implementaciones en lumina_api.cpp.
+#include "IpcV1.h"
+#include "NativeLog.h"
+#include "Bootstrap.h"
 
 #ifdef LUMINA_HAS_WIN32
 #include "Projector.h"
@@ -19,7 +24,7 @@
 
 namespace lumina {
 
-static const char* kVersion = "6.1.0";
+static const char* kVersion = "7.0.0-ultra";
 
 /* ------------------------------------------------------------- helpers -- */
 // (H-a: SlideToJson no usado fue retirado — warning -Wunused-function;
@@ -32,6 +37,9 @@ json Theme::ToJson() const {
     j["imagePath"]=imagePath; j["imageMode"]=imageMode;
     j["outlineWidth"]=outlineWidth; j["shadowAlpha"]=shadowAlpha;
     j["uppercase"]=uppercase; j["lineSpacing"]=lineSpacing;
+    // v7.0.0 «ULTRA» (F1.01): estilo de línea activa por tema.
+    j["dimInactive"]=dimInactive; j["activeLineColor"]=activeLineColor;
+    j["activeLineBold"]=activeLineBold;
     return j;
 }
 
@@ -49,6 +57,11 @@ Theme Theme::FromJson(const json& o, const Theme& fallback) {
     if (o.contains("uppercase")  && o["uppercase"].is_boolean()) t.uppercase = o["uppercase"];
     if (o.contains("outlineWidth") && o["outlineWidth"].is_number()) t.outlineWidth = o["outlineWidth"];
     if (o.contains("lineSpacing")  && o["lineSpacing"].is_number()) t.lineSpacing  = o["lineSpacing"];
+    // v7.0.0 «ULTRA» (F1.01): estilo de línea activa por tema.
+    if (o.contains("dimInactive")   && o["dimInactive"].is_boolean())   t.dimInactive   = o["dimInactive"];
+    if (o.contains("activeLineBold")&& o["activeLineBold"].is_boolean()) t.activeLineBold = o["activeLineBold"];
+    if (o.contains("activeLineColor") && o["activeLineColor"].is_string())
+        t.activeLineColor = o["activeLineColor"];
     return t;
 }
 
@@ -66,6 +79,14 @@ std::string Song::LyricsText() const {
 }
 
 /* --------------------------------------------------------------- Engine -- */
+
+// v7.0.0 «ULTRA» (F1.03): helpers de sincronización por línea (definidos al
+// final del archivo; declarados aquí porque Next/Prev/ShowSlide los usan).
+static bool SlideHasSync(const Slide& s);
+static int  FirstActiveLine(const Slide& s);
+static int  NextSyncGroup(const Slide& s, int from);
+static int  PrevSyncGroup(const Slide& s, int from);
+
 Engine::Engine(const LuminaConfig& cfg) : cfg_(cfg) {
     if (cfg_.structSize != (int32_t)sizeof(LuminaConfig)) {
         // ABI distinto: aceptar pero registrar
@@ -77,6 +98,10 @@ Engine::Engine(const LuminaConfig& cfg) : cfg_(cfg) {
         // v6.0.0: transición por defecto (fundido 220 ms) — configurable vía
         // lumina_set_transition antes/después de crear la ventana.
         projector_->SetTransition(transitionMode_, transitionMs_);
+        // v7.0.0 «ULTRA» (F0.06.8/F3.02.4): los reportes del proyector
+        // (fallos HWND/DC/bitmap/video) van al log nativo §10.1 Y al canal
+        // de eventos (aviso en el monitor del operador — nunca mudos).
+        Projector::SetReportSink(&Engine::ProjectorReport, this);
     }
 #endif
     db_.reset(new Database());
@@ -88,9 +113,16 @@ Engine::~Engine() {
     stop_ = true;
     evCv_.notify_all();
     if (eventThread_.joinable()) eventThread_.join();
+    // v7.0.0: el IPC se detiene ANTES del projector (el drain puede estar
+    // sirviendo RESULTs); el log se cierra al final (bitácora del apagado).
+    if (ipcServer_) { ipcServer_->Stop(); ipcServer_.reset(); }
 #ifdef LUMINA_HAS_WIN32
-    if (projector_) { projector_->Close(); projector_.reset(); }
+    if (projector_) {
+        Projector::SetReportSink(nullptr, nullptr);
+        projector_->Close(); projector_.reset();
+    }
 #endif
+    if (log_) { log_->Close(); log_.reset(); }
     db_.reset();
 }
 
@@ -211,17 +243,38 @@ void Engine::Flatten(std::vector<Slide>* out, std::vector<std::string>* titles,
             }
             itemSlides.push_back(s);
         } else if (it.kind == "text") {
-            std::vector<std::string> lines;
-            for (const std::string& l : Split(it.text, '\n')) {
-                std::string t = Trim(l);
-                if (!t.empty()) lines.push_back(t);
-            }
-            for (size_t i = 0; i < lines.size(); i += (size_t)std::max(1, it.maxLinesPerSlide)) {
-                Slide s; s.kind = SLIDE_TEXT; s.title = it.title; s.refLabel = it.kind;
-                const size_t e = std::min(i + (size_t)std::max(1, it.maxLinesPerSlide), lines.size());
-                for (size_t k = i; k < e; ++k) s.lines.push_back(SlideLine(lines[k]));
+            if (!it.structuredLines.empty()) {
+                // v7.0.0 (F1.03/F2.03): las líneas estructuradas (ahp.v1)
+                // NO se re-agrupan: cada slide conserva sus líneas y sus
+                // syncMark (la sincronización por línea es del elemento).
+                Slide s; s.kind = SLIDE_TEXT; s.title = it.title;
+                s.refLabel = it.kind;
+                s.lines = it.structuredLines;
                 itemSlides.push_back(s);
+            } else {
+                std::vector<std::string> lines;
+                for (const std::string& l : Split(it.text, '\n')) {
+                    std::string t = Trim(l);
+                    if (!t.empty()) lines.push_back(t);
+                }
+                for (size_t i = 0; i < lines.size(); i += (size_t)std::max(1, it.maxLinesPerSlide)) {
+                    Slide s; s.kind = SLIDE_TEXT; s.title = it.title; s.refLabel = it.kind;
+                    const size_t e = std::min(i + (size_t)std::max(1, it.maxLinesPerSlide), lines.size());
+                    for (size_t k = i; k < e; ++k) s.lines.push_back(SlideLine(lines[k]));
+                    itemSlides.push_back(s);
+                }
             }
+        } else if (it.kind == "video") {
+            // v7.0.0 (F3.01): video DirectShow desde el núcleo. El proyector
+            // reproduce el archivo sobre el mismo HWND (VMR9 windowless);
+            // la carga es DIFERIDA: solo la slide activa construye el grafo
+            // (F3.07/F6.03: no se cargan todos los videos del proyecto).
+            Slide s; s.kind = SLIDE_VIDEO; s.title = it.title;
+            s.videoPath  = it.videoPath;
+            s.videoVolume= it.videoVolume;
+            s.videoStartAtMs = it.videoStartAtMs;
+            s.videoLoop  = it.videoLoop;
+            itemSlides.push_back(s);
         } else { // blank
             Slide s; s.kind = SLIDE_BLANK; s.title = it.title;
             itemSlides.push_back(s);
@@ -280,9 +333,39 @@ LuminaStatus Engine::LoadScenario(const std::string& jsonText) {
                     loadSong(io, &it);
                 }
                 if (it.kind == "text" && io.contains("lines") && io["lines"].is_array()) {
-                    std::string t;
-                    for (const auto& l : io["lines"]) { if (t.size()) t += "\n"; t += l.get<std::string>(); }
-                    it.text = t;
+                    // v7.0.0: 'lines' admite strings (vía clásica) u objetos
+                    // {text,syncMark} (ahp.v1 — F2.03). Los objetos van a
+                    // structuredLines; aquí solo se aplanan los strings.
+                    bool allStrings = true;
+                    for (const auto& l : io["lines"])
+                        if (!l.is_string()) { allStrings = false; break; }
+                    if (allStrings) {
+                        std::string t;
+                        for (const auto& l : io["lines"]) { if (t.size()) t += "\n"; t += l.get<std::string>(); }
+                        it.text = t;
+                    }
+                }
+                // v7.0.0 (F2.03): persistencia por línea con syncMark —
+                // "lines":[{"text":"...","syncMark":N},...]. Se guardan como
+                // líneas estructuradas del ítem (el motor las respeta al
+                // aplanar; 'text' plano sigue siendo la vía compatible).
+                if (io.contains("lines") && io["lines"].is_array() &&
+                    !io["lines"].empty() && io["lines"][0].is_object()) {
+                    it.structuredLines.clear();
+                    for (const auto& l : io["lines"]) {
+                        SlideLine sl;
+                        sl.text = l.value("text", std::string());
+                        if (l.contains("syncMark") && l["syncMark"].is_number())
+                            sl.syncMark = l["syncMark"].get<int>();
+                        it.structuredLines.push_back(sl);
+                    }
+                }
+                // v7.0.0 (F3.01): elemento video.
+                if (it.kind == "video") {
+                    it.videoPath     = io.value("videoPath", std::string());
+                    it.videoVolume   = io.value("videoVolume", 100);
+                    it.videoStartAtMs= (int64_t)io.value("videoStartAtMs", (int64_t)0);
+                    it.videoLoop     = io.value("videoLoop", false);
                 }
                 sc.items.push_back(it);
             }
@@ -319,8 +402,15 @@ LuminaStatus Engine::ShowSlide(int index) {
         current_ = index;
         black_ = false;
         cleared_ = (index < 0);
+        // v7.0.0 (F1.03): al posar una slide, la línea activa es la primera
+        // de su primer grupo de sincronización (o -1 si no navega por línea).
+        activeLine_ = (index >= 0 && index < (int)flat_.size())
+                      ? FirstActiveLine(flat_[(size_t)index]) : -1;
 #ifdef LUMINA_HAS_WIN32
-        if (projector_) projector_->SetContent(flat_, flatTitles_, theme_, current_, black_);
+        if (projector_) {
+            projector_->SetContent(flat_, flatTitles_, theme_, current_, black_);
+            projector_->SetActiveLine(activeLine_);
+        }
 #endif
     }
     // Fuera del mutex: PostStateEvent → StateJson() vuelve a tomar mx_
@@ -341,16 +431,42 @@ LuminaStatus Engine::ShowSlide(int index) {
 }
 
 LuminaStatus Engine::Next() {
+    // v7.0.0 (F1.03): «avanzar» es consciente de línea — si la slide activa
+    // navega por syncMark y quedan grupos, avanza la LÍNEA (fondo y video
+    // intactos); solo al agotar los grupos pasa a la siguiente slide.
+    // NOTA (lección v3.0.0): PostStateEvent → StateJson() vuelve a tomar
+    // mx_ — JAMÁS dentro del lock (deadlock). Se difiere al final.
+    bool lineAdvanced = false;
     {
         std::lock_guard<std::mutex> lk(mx_);
         if (flat_.empty()) return LUMINA_ERR_STATE;
-        const int n = std::min((int)flat_.size() - 1, current_ + 1);
-        if (n == current_) return LUMINA_OK;
-        current_ = n; black_ = false; cleared_ = false;
+        if (current_ >= 0 && current_ < (int)flat_.size()) {
+            const Slide& sl = flat_[(size_t)current_];
+            if (activeLine_ >= 0) {
+                const int nxt = NextSyncGroup(sl, activeLine_);
+                if (nxt >= 0) {
+                    activeLine_ = nxt;
 #ifdef LUMINA_HAS_WIN32
-        if (projector_) projector_->SetContent(flat_, flatTitles_, theme_, current_, black_);
+                    if (projector_) projector_->SetActiveLine(activeLine_);
 #endif
+                    lineAdvanced = true;
+                }
+            }
+        }
+        if (!lineAdvanced) {
+            const int n = std::min((int)flat_.size() - 1, current_ + 1);
+            if (n == current_) return LUMINA_OK;
+            current_ = n; black_ = false; cleared_ = false;
+            activeLine_ = FirstActiveLine(flat_[(size_t)current_]);
+#ifdef LUMINA_HAS_WIN32
+            if (projector_) {
+                projector_->SetContent(flat_, flatTitles_, theme_, current_, black_);
+                projector_->SetActiveLine(activeLine_);
+            }
+#endif
+        }
     }
+    if (lineAdvanced) { PostStateEvent(); return LUMINA_OK; }
     int itemNow = -1;
     { std::lock_guard<std::mutex> lk(mx_);
       if (current_ >= 0 && current_ < (int)flatItems_.size()) itemNow = flatItems_[(size_t)current_]; }
@@ -364,16 +480,39 @@ LuminaStatus Engine::Next() {
 }
 
 LuminaStatus Engine::Prev() {
+    // v7.0.0 (F1.03): «retroceder» vuelve al grupo de sincronización previo
+    // antes de saltar a la slide anterior (PostStateEvent SIEMPRE fuera del
+    // lock — deadlock v3.0.0).
+    bool lineRetreated = false;
     {
         std::lock_guard<std::mutex> lk(mx_);
         if (flat_.empty()) return LUMINA_ERR_STATE;
-        const int n = std::max(-1, current_ - 1);
-        if (n == current_) return LUMINA_OK;
-        current_ = n;
+        if (current_ >= 0 && current_ < (int)flat_.size() && activeLine_ > 0) {
+            const Slide& sl = flat_[(size_t)current_];
+            const int prv = PrevSyncGroup(sl, activeLine_);
+            if (prv >= 0) {
+                activeLine_ = prv;
 #ifdef LUMINA_HAS_WIN32
-        if (projector_) projector_->SetContent(flat_, flatTitles_, theme_, current_, black_);
+                if (projector_) projector_->SetActiveLine(activeLine_);
 #endif
+                lineRetreated = true;
+            }
+        }
+        if (!lineRetreated) {
+            const int n = std::max(-1, current_ - 1);
+            if (n == current_) return LUMINA_OK;
+            current_ = n;
+            activeLine_ = (current_ >= 0 && current_ < (int)flat_.size())
+                          ? FirstActiveLine(flat_[(size_t)current_]) : -1;
+#ifdef LUMINA_HAS_WIN32
+            if (projector_) {
+                projector_->SetContent(flat_, flatTitles_, theme_, current_, black_);
+                projector_->SetActiveLine(activeLine_);
+            }
+#endif
+        }
     }
+    if (lineRetreated) { PostStateEvent(); return LUMINA_OK; }
     int itemNow = -1;
     { std::lock_guard<std::mutex> lk(mx_);
       if (current_ >= 0 && current_ < (int)flatItems_.size()) itemNow = flatItems_[(size_t)current_]; }
@@ -441,6 +580,14 @@ std::string Engine::StateJson() const {
     j["headless"] = cfg_.headless ? 1 : 0;
     // v6.0.0: transición de proyección (evolución aditiva del estado).
     j["transition"] = json{{"mode", transitionMode_}, {"durationMs", transitionMs_}};
+    // v7.0.0 (F1.03): índice de línea activa (-1 = slide entera).
+    j["line"] = activeLine_;
+    // v7.0.0: telemetría visible para Diagnóstico (F5.10/F6.01).
+    j["ipc"]  = ipcServer_ ? json::parse(ipcServer_->StatsJson()) : json{{"running", 0}};
+    j["log"]  = log_ ? json::parse(LogStatsJson()) : json{{"open", 0}};
+#ifdef LUMINA_HAS_WIN32
+    if (projector_) j["render"] = json::parse(projector_->StatsJson());
+#endif
     j["items"] = json::array();
     for (const ScenarioItem& it : scenario_.items)
         j["items"].push_back(json{{"kind", it.kind}, {"title", it.title}});
@@ -517,6 +664,273 @@ LuminaStatus Engine::DbExec(const std::string& sqlJson, std::string* outJson) {
         return LUMINA_ERR_IO;
     }
     return LUMINA_OK;
+}
+
+
+#ifdef LUMINA_HAS_WIN32
+// v7.0.0 (F0.06.8/F3.02.4): puente proyector → log §10.1 + aviso operador.
+void Engine::ProjectorReport(void* user, int severity, const char* module,
+                             const char* msg) {
+    Engine* e = reinterpret_cast<Engine*>(user);
+    if (!e || !msg) return;
+    const nlog::Severity sev = severity >= 3 ? nlog::SEV_ERROR : nlog::SEV_WARN;
+    if (e->log_) e->log_->Write(sev, module ? module : "render", msg);
+    e->PushEvent(LUMINA_EV_ERROR,
+                 json{{"where", module ? module : "render"}, {"error", msg}}.dump());
+}
+#endif
+
+/* ------------------------------------------------ v7.0.0: líneas (F1.03) -- */
+
+// ¿La slide usa navegación por syncMark? Solo si alguna línea lleva marca:
+// los flujos clásicos (canciones/textos sin marcas) conservan su conducta.
+static bool SlideHasSync(const Slide& s) {
+    for (const SlideLine& l : s.lines)
+        if (l.syncMark > 0) return true;
+    return false;
+}
+
+// Índice de la línea activa al POSAR la slide: primera línea con marca
+// (inicio del primer grupo) o -1 si la slide no navega por línea.
+static int FirstActiveLine(const Slide& s) {
+    if (!SlideHasSync(s)) return -1;
+    for (size_t i = 0; i < s.lines.size(); ++i)
+        if (s.lines[i].syncMark > 0) return (int)i;
+    return -1;
+}
+
+// Siguiente grupo de sincronización desde 'from': primera línea posterior
+// cuyo syncMark difiere del de 'from' (y > 0). -1 = no hay más grupos.
+static int NextSyncGroup(const Slide& s, int from) {
+    if (from < 0 || from >= (int)s.lines.size()) return -1;
+    const int cur = s.lines[(size_t)from].syncMark;
+    for (int i = from + 1; i < (int)s.lines.size(); ++i) {
+        if (s.lines[(size_t)i].syncMark > 0 && s.lines[(size_t)i].syncMark != cur)
+            return i;
+    }
+    return -1;
+}
+
+// Grupo anterior de sincronización (primera línea del grupo previo).
+static int PrevSyncGroup(const Slide& s, int from) {
+    if (from <= 0 || from >= (int)s.lines.size()) return -1;
+    int last = -1;
+    for (int i = 0; i < from; ++i) {
+        if (s.lines[(size_t)i].syncMark > 0) {
+            if (last < 0) last = i;                       // primera marca
+            else if (s.lines[(size_t)i].syncMark != s.lines[(size_t)last].syncMark)
+                last = i;                                  // línea de grupo nuevo
+        }
+    }
+    return last;
+}
+
+// Publica el cambio de línea activa a la proyección (el fondo, el video y
+// la ventana PERMANECEN: F1.03.6 «mantener el fondo y el video intactos»).
+LuminaStatus Engine::LineSet(int32_t lineIndex) {
+    bool changed = false;
+    {
+        std::lock_guard<std::mutex> lk(mx_);
+        if (current_ < 0 || current_ >= (int)flat_.size()) return LUMINA_ERR_STATE;
+        const Slide& sl = flat_[(size_t)current_];
+        if (lineIndex < -1 || lineIndex >= (int)sl.lines.size())
+            return LUMINA_ERR_LIMIT;
+        if (lineIndex == activeLine_) return LUMINA_OK;
+        activeLine_ = lineIndex;
+        changed = true;
+#ifdef LUMINA_HAS_WIN32
+        if (projector_) projector_->SetActiveLine(activeLine_);
+#endif
+    }
+    if (changed) PostStateEvent();    // fuera del lock (lección v3.0.0)
+    return LUMINA_OK;
+}
+
+LuminaStatus Engine::LineNext() {
+    int next = -1;
+    const Slide* sl = nullptr;
+    {
+        std::lock_guard<std::mutex> lk(mx_);
+        if (current_ < 0 || current_ >= (int)flat_.size()) return LUMINA_ERR_STATE;
+        sl = &flat_[(size_t)current_];
+        // con marcas: siguiente GRUPO; sin marcas: línea a línea.
+        if (activeLine_ < 0)
+            next = sl->lines.empty() ? -1 : 0;
+        else if (SlideHasSync(*sl))
+            next = NextSyncGroup(*sl, activeLine_);
+        else
+            next = (activeLine_ + 1 < (int)sl->lines.size()) ? activeLine_ + 1 : -1;
+        if (next < 0) return LUMINA_ERR_LIMIT;
+        activeLine_ = next;
+#ifdef LUMINA_HAS_WIN32
+        if (projector_) projector_->SetActiveLine(activeLine_);
+#endif
+    }
+    PostStateEvent();                 // fuera del lock (lección v3.0.0)
+    return LUMINA_OK;
+}
+
+LuminaStatus Engine::LinePrev() {
+    int prev = -1;
+    const Slide* slp = nullptr;
+    {
+        std::lock_guard<std::mutex> lk(mx_);
+        if (current_ < 0 || current_ >= (int)flat_.size()) return LUMINA_ERR_STATE;
+        slp = &flat_[(size_t)current_];
+        prev = activeLine_ <= 0 ? -1
+              : (SlideHasSync(*slp) ? PrevSyncGroup(*slp, activeLine_)
+                                    : activeLine_ - 1);
+        if (prev < 0) return LUMINA_ERR_LIMIT;
+        activeLine_ = prev;
+#ifdef LUMINA_HAS_WIN32
+        if (projector_) projector_->SetActiveLine(activeLine_);
+#endif
+    }
+    PostStateEvent();                 // fuera del lock (lección v3.0.0)
+    return LUMINA_OK;
+}
+
+/* ------------------------------------------------- v7.0.0: IPC (F0.05) -- */
+
+LuminaStatus Engine::IpcStart(const std::string& optsJson) {
+    ipc::Server::Options o;
+    try {
+        if (!optsJson.empty()) {
+            json j = json::parse(optsJson);
+            if (j.contains("pipe") && j["pipe"].is_string())
+                o.pipeName = j["pipe"].get<std::string>();
+            if (j.contains("maxPayload") && j["maxPayload"].is_number())
+                o.maxPayload = (uint32_t)j["maxPayload"].get<int64_t>();
+            if (j.contains("maxQueued") && j["maxQueued"].is_number())
+                o.queue.maxQueued = (size_t)j["maxQueued"].get<int64_t>();
+            if (j.contains("maxAgeMs") && j["maxAgeMs"].is_number())
+                o.queue.maxAgeMs = (int)j["maxAgeMs"].get<int64_t>();
+        }
+    } catch (const json::exception&) {
+        return LUMINA_ERR_PARSE;
+    }
+    if (ipcServer_) ipcServer_->Stop();
+    ipcServer_.reset(new ipc::Server());
+    // El handler ejecuta los mismos comandos que la API C (una sola política
+    // de verdad); desde el hilo de drenaje del servidor, NUNCA del lector.
+    ipc::CommandHandler handler = [this](const std::string& action,
+                                         const std::string& payload,
+                                         std::string* outJson) -> int32_t {
+        if (action == "next")        return Next();
+        if (action == "prev")        return Prev();
+        if (action == "black") {     json j = payload.empty() ? json::object()
+                                     : json::parse(payload);
+                                     return Black(j.value("on", true)); }
+        if (action == "clear")       return Clear();
+        if (action == "lineNext")    return LineNext();
+        if (action == "linePrev")    return LinePrev();
+        if (action == "lineSet") {   json j = payload.empty() ? json::object()
+                                     : json::parse(payload);
+                                     return LineSet(j.value("line", -1)); }
+        if (action == "showSlide") { json j = payload.empty() ? json::object()
+                                     : json::parse(payload);
+                                     return ShowSlide(j.value("index", 0)); }
+        if (action == "loadScenario") { return LoadScenario(payload); }
+        if (action == "setTheme")   { return SetTheme(payload); }
+        if (action == "ping")       { return Ping(payload); }
+        if (action == "state")      { *outJson = StateJson(); return LUMINA_OK; }
+        return LUMINA_ERR_UNSUPPORTED;
+    };
+    ipc::StateProvider state = [this]() { return StateJson(); };
+    if (!ipcServer_->Start(o, handler, state)) {
+        // Linux/arnés: transporte no disponible — el NÚCLEO SIGUE EN PIE
+        // (F0.05.7). Se registra y se expone en stats para Diagnóstico.
+        if (log_) log_->Write(nlog::SEV_WARN, "ipc",
+                              "transporte ipc.v1 no disponible (no-Windows)");
+        return LUMINA_ERR_UNSUPPORTED;
+    }
+    if (log_)
+        log_->Write(nlog::SEV_INFO, "ipc",
+                    "servidor ipc.v1 escuchando en pipe '" + o.pipeName + "'");
+    return LUMINA_OK;
+}
+
+LuminaStatus Engine::IpcStop() {
+    if (!ipcServer_) return LUMINA_ERR_STATE;
+    ipcServer_->Stop();
+    return LUMINA_OK;
+}
+
+std::string Engine::IpcStatsJson() const {
+    return ipcServer_ ? ipcServer_->StatsJson() : std::string("{\"running\":0}");
+}
+
+/* ------------------------------------------------- v7.0.0: log (F0.09) -- */
+
+LuminaStatus Engine::LogOpen(const std::string& optsJson) {
+    nlog::Log::Options o;
+    try {
+        if (!optsJson.empty()) {
+            json j = json::parse(optsJson);
+            if (j.contains("dir") && j["dir"].is_string())
+                o.dir = j["dir"].get<std::string>();
+            if (j.contains("retentionDays") && j["retentionDays"].is_number())
+                o.retentionDays = (int)j["retentionDays"].get<int64_t>();
+            if (j.contains("level") && j["level"].is_string()) {
+                std::string lv = j["level"].get<std::string>();
+                o.minLevel = lv == "DEBUG" ? nlog::SEV_DEBUG :
+                             lv == "WARN"  ? nlog::SEV_WARN  :
+                             lv == "ERROR" ? nlog::SEV_ERROR : nlog::SEV_INFO;
+            }
+        }
+    } catch (const json::exception&) {
+        return LUMINA_ERR_PARSE;
+    }
+    if (o.dir.empty()) return LUMINA_ERR_ARG;
+    if (!log_) log_.reset(new nlog::Log());
+    if (!log_->Open(o)) return LUMINA_ERR_IO;
+    log_->Write(nlog::SEV_INFO, "log", "log nativo abierto (formato §10.1)");
+    return LUMINA_OK;
+}
+
+LuminaStatus Engine::LogWrite(const std::string& entryJson) {
+    if (!log_) return LUMINA_ERR_STATE;
+    try {
+        json j = entryJson.empty() ? json::object() : json::parse(entryJson);
+        nlog::Entry e;
+        std::string sev = j.value("severity", std::string("INFO"));
+        e.severity = sev == "DEBUG" ? nlog::SEV_DEBUG :
+                     sev == "WARN"  ? nlog::SEV_WARN  :
+                     sev == "ERROR" ? nlog::SEV_ERROR : nlog::SEV_INFO;
+        e.module   = j.value("module", std::string("core"));
+        e.message  = j.value("message", std::string());
+        e.scenarioId = j.value("scenarioId", std::string());
+        e.elementId  = j.value("elementId", std::string());
+        e.lineIndex  = j.value("lineIndex", -1);
+        e.filePath   = j.value("filePath", std::string());
+        e.exception  = j.value("exception", std::string());
+        e.callStack  = j.value("callStack", std::string());
+        return log_->Write(e) ? LUMINA_OK : LUMINA_ERR_IO;
+    } catch (const json::exception&) {
+        return LUMINA_ERR_PARSE;
+    }
+}
+
+std::string Engine::LogStatsJson() const {
+    if (!log_) return std::string("{\"open\":0}");
+    const nlog::Log::Stats st = log_->StatsSnapshot();
+    json j;
+    j["open"] = 1;
+    j["file"] = log_->ActiveFile();
+    j["written"] = (double)st.written;
+    j["failed"] = (double)st.failed;
+    j["dropped"] = (double)st.dropped;
+    j["bytes"] = (double)st.bytes;
+    return j.dump();
+}
+
+/* --------------------------------------------- v7.0.0: entorno (F0.01-03) */
+
+std::string Engine::DetectEnvJson(const std::string& probeJson,
+                                   bool forceX86, bool forceX64,
+                                   bool forceA, bool forceB, bool forceC) {
+    return bootstrap::EnvDecisionToJson(bootstrap::DetectEnvironment(
+        probeJson, forceX86, forceX64, forceA, forceB, forceC));
 }
 
 } // namespace lumina

@@ -226,9 +226,22 @@ void Renderer::DrawBackground(HDC hdc, int w, int h, const Theme& theme) {
     }
 }
 
+// v7.0.0 «ULTRA» (F1.01): mezcla fg→bg para atenuar líneas inactivas (GDI
+// no tiene alfa por texto: el degradado de color hacia el fondo es la vía
+// determinista; con dimInactive el operador distingue la línea activa).
+static COLORREF DimColor(const Theme& theme, COLORREF fg) {
+    const RGBA bg = ParseColor(theme.bgColor, RGBA{255, 11, 31, 42});
+    const double k = 0.42;   // 42% del color frontal
+    const int r = (int)std::lround(GetRValue(fg) * k + (double)bg.r * (1.0 - k));
+    const int g = (int)std::lround(GetGValue(fg) * k + (double)bg.g * (1.0 - k));
+    const int b = (int)std::lround(GetBValue(fg) * k + (double)bg.b * (1.0 - k));
+    return RGB(r, g, b);
+}
+
 void Renderer::DrawSlide(HDC hdc, int w, int h,
                          const Slide* slide, const Theme& theme,
-                         bool black, bool showCounter, int counter) {
+                         bool black, bool showCounter, int counter,
+                         int activeLine) {
     if (black) {
         RECT rc = {0, 0, w, h};
         HBRUSH b = CreateSolidBrush(RGB(0, 0, 0));
@@ -326,16 +339,51 @@ void Renderer::DrawSlide(HDC hdc, int w, int h,
             y += TextHeight(hdc, ch) + std::max(2, fontPx / 8);
             SelectObject(hdc, font);
         }
+        // v7.0.0 «ULTRA» (F1.01): estilo de línea activa por tema. Con
+        // activeLine >= 0 y dimInactive: la línea activa al 100% (color
+        // activo/acento) y las demás atenuadas hacia el fondo. Sin
+        // dimInactive o sin línea activa: conducta clásica.
+        const bool isLineActive =
+            (activeLine >= 0 && (int)li == activeLine);
+        const bool lineDimmed =
+            (activeLine >= 0 && theme.dimInactive && !isLineActive);
+        COLORREF lineFill   = fill;
+        COLORREF lineOutl   = outline;
+        if (activeLine >= 0 && theme.dimInactive) {
+            const RGBA acv = ParseColor(theme.activeLineColor, RGBA{255, 58, 166, 185});
+            if (isLineActive) {
+                if (!theme.activeLineColor.empty()) {
+                    lineFill = ToColorRef(acv);
+                    lineOutl = ToColorRef(acv);
+                } else {
+                    lineFill = ToColorRef(ac);     // acento del tema
+                    lineOutl = outline;
+                }
+            } else {
+                lineFill = DimColor(theme, fill);
+                lineOutl = DimColor(theme, outline);
+            }
+        }
+        HFONT fontLine = font;
+        if (isLineActive && theme.activeLineBold && !theme.bold) {
+            fontLine = MakeFont(theme, fontPx, true);
+            SelectObject(hdc, fontLine);
+        }
         if (useHighlight) {
             // v6.0.0: línea con resaltado (matches en color de acento).
             DrawLineWithHighlight(hdc, w, y, texts[li].second, slide->highlight,
-                                  outline, theme.outlineWidth * (fontPx / 54.0),
-                                  fill, ToColorRef(ac), shadow, shadowOffset);
+                                  lineOutl, theme.outlineWidth * (fontPx / 54.0),
+                                  lineFill, ToColorRef(ac), shadow, shadowOffset);
         } else {
             const int tw = TextWidth(hdc, ln);
             const int x = (w - tw) / 2;
-            DrawOutlined(hdc, x, y, ln, outline,
-                         theme.outlineWidth * (fontPx / 54.0), fill, shadow, shadowOffset);
+            DrawOutlined(hdc, x, y, ln, lineOutl,
+                         theme.outlineWidth * (fontPx / 54.0), lineFill, shadow, shadowOffset);
+        }
+        if (fontLine != font) {
+            SelectObject(hdc, font);
+            DeleteObject(fontLine);
+            fontLine = nullptr;
         }
         y += TextHeight(hdc, ln) + gap;
     }
