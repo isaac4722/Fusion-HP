@@ -7,3 +7,4 @@
 2026-09-24 · RUN  · campaña F6.08 sesión 60 min en tiempo real (fondo local) → docs/verification/sesion60.md al cierre · LUMINA_SESSION_MINUTES=60 · 8_CI
 2026-09-24 · DONE · CI 7 rondas depuradas → VERDE (vcxproj SDK 10.0 + /utf-8, iscc [Code] // + [Components] sin unchecked + rutas absolutas + dist/installer, clrhost informativo no-bloqueante 0x80040154 imagen runner) · run 36037503568 · 7_PERSIST
 2026-09-24 · DONE · F6.08: campaña completa al job sesion60 del CI (sandbox local mata procesos largos — documentado) + sesion60.md con criterio 11.4/11/10 · dispatch/tags · 7_PERSIST
+2026-09-24 · DONE · F6.08 campaña completa 60 min EN CI: success (run 36040245651, 33k ops, 0 errores no justificados, RAM pico 52 MB) + evidencia en docs/verification/sesion60.md · artefacto sesion60 · 9_CLOSE
