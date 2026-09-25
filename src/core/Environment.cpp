@@ -15,7 +15,7 @@ void Environment::DetectOs(EnvironmentReport& r) {
     HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
     if (ntdll) {
         RtlGetVersionFn f = (RtlGetVersionFn)GetProcAddress(ntdll, "RtlGetVersion");
-        if (f) f(&vi);
+        if (f) f((PRTL_OSVERSIONINFOW)&vi);
     }
     r.build = vi.dwBuildNumber;
     r.isServer = (vi.wProductType != VER_NT_WORKSTATION);

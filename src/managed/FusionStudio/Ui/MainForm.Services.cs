@@ -109,11 +109,11 @@ namespace Fusion.Studio.Ui
             catch { }
         }
 
-        protected override void OnFormClosed(EventArgs e)
+        /// <summary>Suscribir en el constructor (ver MainForm.cs): libera servicios al cerrar.</summary>
+        internal void HandleFormClosedForServices(object sender, EventArgs e)
         {
             if (api != null) api.Stop();
             if (obs != null) obs.Stop();
-            base.OnFormClosed(e);
         }
     }
 }

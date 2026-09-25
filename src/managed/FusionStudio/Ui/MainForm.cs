@@ -112,6 +112,7 @@ namespace Fusion.Studio.Ui
             KeyPreview = true;
             KeyDown += OnGlobalKey;
             FormClosing += OnFormClosing;
+            FormClosed += HandleFormClosedForServices;
             Load += OnFormLoad;
             SetMode(Settings.StartInPresentMode ? Mode.Present : Mode.Home);
         }
