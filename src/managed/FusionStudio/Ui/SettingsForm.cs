@@ -107,7 +107,7 @@ namespace Fusion.Studio.Ui
             numObsPort = new NumericUpDown { Location = new Point(286, y), Width = 70, Minimum = 1, Maximum = 65535, Value = S.ObsPort };
             Controls.Add(numObsPort);
 #if !LITE
-            var btnObsTest = new FusionButton { Text = "Probar", IconName = "plug", Location = new Point(372, y - 3), Size = new Size(86, 32) };
+            var btnObsTest = new FusionButton { Text = "Probar", IconName = "world", Location = new Point(372, y - 3), Size = new Size(86, 32) };
             btnObsTest.Click += delegate { TestObs(); };
             Controls.Add(btnObsTest);
 #endif

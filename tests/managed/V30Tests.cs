@@ -14,6 +14,7 @@ using System;
 using System.IO;
 using Fusion.Shared;
 using Fusion.Shared.Model;
+using Fusion.Studio.Export;
 using Fusion.Studio.Import;
 using Fusion.Studio.Services;
 using Fusion.Tests;

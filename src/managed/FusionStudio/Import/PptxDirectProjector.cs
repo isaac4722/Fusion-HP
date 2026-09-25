@@ -19,6 +19,7 @@ using System;
 using System.IO;
 using Fusion.Shared;
 using Fusion.Shared.Model;
+using Fusion.Studio.Services;
 
 namespace Fusion.Studio.Import
 {

@@ -165,7 +165,7 @@ namespace Fusion.Studio.Ui
             // [v3.0.0 — bug «el modo API no funciona»] Interruptor rápido de la API
             // (OBS consume /api/v1/text como fuente de navegador; el móvil usa /remote).
             // Ya no vive solo enterrado en Configuración: se enciende/apaga aquí.
-            btnApi = MakeLiveButton("API para OBS y móvil apagada", "broadcast", ref y, FusionButtonKind.Chip);
+            btnApi = MakeLiveButton("API para OBS y móvil apagada", "world", ref y, FusionButtonKind.Chip);
             btnApi.Click += delegate { ToggleApi(); };
             right.Controls.Add(btnApi); y += 38;
 

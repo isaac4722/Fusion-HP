@@ -4,6 +4,7 @@
 //  NUNCA el Registro [REQ][SPEC §11.4].
 // ============================================================================
 using System;
+using System.Collections.Generic;
 using System.IO;
 
 namespace Fusion.Shared
