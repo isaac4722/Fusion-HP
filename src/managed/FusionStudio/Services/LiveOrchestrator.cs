@@ -380,6 +380,7 @@ namespace Fusion.Studio.Services
                 ExternalSource = null;          // un .ahp del usuario reemplaza lo externo
                 ExternalBaseDir = null;
                 Settings.LastProjectPath = path;
+                Settings.PushRecent(path);      // cargador con nombres (v3.0.0)
                 Settings.Save();
                 // El Motor recibe el programa completo; el reposo manda hasta que
                 // el operador envíe (comportamiento beta 1: nada se proyecta solo).

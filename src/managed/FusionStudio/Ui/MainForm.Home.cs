@@ -39,14 +39,16 @@ namespace Fusion.Studio.Ui
                 SetMode(Mode.Studio);
             }, 0);
 
-            AddTile("Abrir proyecto", "Continúa un .ahp guardado", "folder-open", delegate
+            AddTile("Abrir proyecto", "Recientes con nombres y escenarios", "folder-open", delegate
             {
-                using (var d = new OpenFileDialog())
+                // [v3.0.0 — bug «el cargador de Escenarios no muestra nombres»]
+                // Diálogo dedicado: recientes con nombre, N escenarios y títulos
+                // visibles antes de abrir.
+                using (var f = new ProjectOpenForm(Settings))
                 {
-                    d.Filter = "Proyecto Fusion-HP (*.ahp;*.json)|*.ahp;*.json";
-                    if (d.ShowDialog(this) == DialogResult.OK)
+                    if (f.ShowDialog(this) == DialogResult.OK && !string.IsNullOrEmpty(f.SelectedPath))
                     {
-                        if (Live.LoadProject(d.FileName))
+                        if (Live.LoadProject(f.SelectedPath))
                         {
                             RefreshLibrary();
                             RefreshProgram();

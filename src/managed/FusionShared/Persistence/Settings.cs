@@ -43,6 +43,10 @@ namespace Fusion.Shared
         // sobre la salida lo apaga. Si es false, cerrar la GUI apaga todo.
         public bool KeepEngineAlive = true;
 
+        // Proyectos recientes con nombre (v3.0.0: cargador de Escenarios que sí
+        // muestra nombres — el mosaico Inicio y el diálogo Abrir los listan).
+        public List<string> RecentProjects = new List<string>();
+
         // OBS Studio [SPEC §8.4] — restaurado en v3.0.0 (WebSocket 5.x, obs-websocket):
         // cambiar escenas desde Triggers y desde la consola. Desactivado por defecto.
         public bool ObsEnabled;
@@ -86,6 +90,7 @@ namespace Fusion.Shared
                     s.ObsHost = j.GetStr("obsHost", "127.0.0.1");
                     s.ObsPort = j.GetInt("obsPort", 4455);
                     s.ObsPassword = j.GetStr("obsPassword", "");
+                    s.RecentProjects = j.GetStringArray("recentProjects");
                 }
             }
             catch
@@ -121,6 +126,9 @@ namespace Fusion.Shared
                 j.Set("obsHost", JsonValue.Make(ObsHost));
                 j.Set("obsPort", JsonValue.Make(ObsPort));
                 j.Set("obsPassword", JsonValue.Make(ObsPassword));
+                var rec = JsonValue.Array();
+                foreach (string p in RecentProjects) rec.Add(JsonValue.Make(p));
+                j.Set("recentProjects", rec);
                 Json.WriteFile(Path.Combine(DataDir, "settings.json"), j);
             }
             catch
@@ -130,6 +138,14 @@ namespace Fusion.Shared
         }
 
         public string SongsPath { get { return Path.Combine(DataDir, "songs"); } }
+
+        /// <summary>Mueve un proyecto al frente de los recientes (máx 12).</summary>
+        public void PushRecent(string path)
+        {
+            RecentProjects.Remove(path);
+            RecentProjects.Insert(0, path);
+            while (RecentProjects.Count > 12) RecentProjects.RemoveAt(RecentProjects.Count - 1);
+        }
         public string BiblesPath { get { return Path.Combine(DataDir, "bibles"); } }
         public string MediaPath { get { return Path.Combine(DataDir, "media"); } }
         public string ProjectsPath { get { return Path.Combine(DataDir, "proyectos"); } }
