@@ -1,5 +1,4 @@
 # PROGRESS.md — Bitácora HOT (norma AGENT.md: ≤10 líneas, una por pieza, solo añadir)
-2026-09-24 · DONE · F1.05 atajos JSON · F4.15 FidelityReport · F5.09 JsBudget · F6.04 DriveSyncEngine+SetSession · F6.08 driver sesión · TESTS PASS 42/48 (6 skips CI) · 7_PERSIST
 2026-09-24 · DONE · installer/AppHibrida.iss dual per-user + package_portable.sh SHA256 12/12 + docs/verification + CI 11 jobs (core-msvc, core-portable, installer-windows) + AppHibrida.sln raíz · YAML válido · 7_PERSIST
 2026-09-24 · DONE · quality_gate.sh local VERDE (auditoría F6.09 sin violaciones; saltos MSVC/clang-tidy documentados como degradación de entorno) · bash scripts/quality_gate.sh · 7_PERSIST
 2026-09-24 · RUN  · campaña F6.08 sesión 60 min en tiempo real (fondo local) → docs/verification/sesion60.md al cierre · LUMINA_SESSION_MINUTES=60 · 8_CI
