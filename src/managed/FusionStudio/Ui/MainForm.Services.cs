@@ -4,6 +4,7 @@
 // (desactivados por defecto [SPEC §8]) e iniciados bajo demanda [SPEC §10.3.5].
 // ============================================================================
 using System;
+using Fusion.Shared;
 using Fusion.Studio.Services;
 
 namespace Fusion.Studio.Ui

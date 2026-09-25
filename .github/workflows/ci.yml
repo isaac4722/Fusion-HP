@@ -55,8 +55,8 @@ jobs:
           $exe = "dist/tests/$platform/CoreTests.exe"
           if (-not (Test-Path $exe)) { throw "CoreTests.exe no está en $exe" }
           Copy-Item tests/fixtures -Destination dist/tests/$platform/fixtures -Recurse -Force
-          Push-Location "dist/tests/$platform"
-          try { & $exe } finally { Pop-Location }
+          $exeAbs = (Resolve-Path $exe).Path
+          & $exeAbs
           if ($LASTEXITCODE -ne 0) { throw "tests nativos $platform FALLAN" }
 
       - name: Subir binarios del núcleo
