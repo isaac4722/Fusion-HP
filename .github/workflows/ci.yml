@@ -141,7 +141,8 @@ jobs:
         shell: pwsh
         run: |
           $root = "dist-artifacts"
-          New-Item -ItemType Directory -Force -Path staging | Out-Null
+          # staging DENTRO de installer/: ISCC resuelve rutas relativas contra la carpeta del .iss
+          New-Item -ItemType Directory -Force -Path installer/staging | Out-Null
           # Los artefactos preservan la estructura de directorios: resolver por búsqueda recursiva
           function Find-First($dir, $name) {
             $f = Get-ChildItem -Path $dir -Recurse -Filter $name -File | Select-Object -First 1
@@ -149,21 +150,21 @@ jobs:
             return $f.FullName
           }
           # núcleo
-          Copy-Item (Find-First "$root/nucleo-x86" "FusionHP.exe") staging/FusionHP.x86.exe
-          Copy-Item (Find-First "$root/nucleo-x64" "FusionHP.exe") staging/FusionHP.x64.exe
+          Copy-Item (Find-First "$root/nucleo-x86" "FusionHP.exe") installer/staging/FusionHP.x86.exe
+          Copy-Item (Find-First "$root/nucleo-x64" "FusionHP.exe") installer/staging/FusionHP.x64.exe
           # administrada
-          Copy-Item (Find-First "$root/gestionada" "FusionShared.dll")      staging/
-          Copy-Item (Find-First "$root/gestionada" "FusionStudio.exe")     staging/
-          Copy-Item (Find-First "$root/gestionada" "FusionStudio.Lite.exe") staging/
+          Copy-Item (Find-First "$root/gestionada" "FusionShared.dll")      installer/staging/
+          Copy-Item (Find-First "$root/gestionada" "FusionStudio.exe")     installer/staging/
+          Copy-Item (Find-First "$root/gestionada" "FusionStudio.Lite.exe") installer/staging/
           # recursos
-          New-Item -ItemType Directory -Force -Path staging/resources/img | Out-Null
-          Copy-Item resources/img/* staging/resources/img/ -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path installer/staging/resources/img | Out-Null
+          Copy-Item resources/img/* installer/staging/resources/img/ -ErrorAction SilentlyContinue
           # datos de muestra
           New-Item -ItemType Directory -Force -Path staging/datos/bibles | Out-Null
           # arranque: FusionHP.exe final por arquitectura (renombrado al instalar)
-          Get-ChildItem staging
-          if (-not (Test-Path staging/FusionHP.x86.exe)) { throw 'falta núcleo x86' }
-          if (-not (Test-Path staging/FusionHP.x64.exe)) { throw 'falta núcleo x64' }
+          Get-ChildItem installer/staging
+          if (-not (Test-Path installer/staging/FusionHP.x86.exe)) { throw 'falta núcleo x86' }
+          if (-not (Test-Path installer/staging/FusionHP.x64.exe)) { throw 'falta núcleo x64' }
 
       - name: Compilar instalador Inno Setup (dual)
         shell: pwsh
@@ -181,21 +182,21 @@ jobs:
           New-Item -ItemType Directory -Force -Path portable | Out-Null
           # portable x86 (arranca en cualquier Windows 7+)
           New-Item -ItemType Directory -Force -Path portable/FusionHP-Portable | Out-Null
-          Copy-Item staging/FusionHP.x86.exe       portable/FusionHP-Portable/FusionHP.exe
-          Copy-Item staging/FusionShared.dll       portable/FusionHP-Portable/
-          Copy-Item staging/FusionStudio.exe       portable/FusionHP-Portable/
-          Copy-Item staging/FusionStudio.Lite.exe  portable/FusionHP-Portable/
-          Copy-Item staging/resources              portable/FusionHP-Portable/resources -Recurse
+          Copy-Item installer/staging/FusionHP.x86.exe       portable/FusionHP-Portable/FusionHP.exe
+          Copy-Item installer/staging/FusionShared.dll       portable/FusionHP-Portable/
+          Copy-Item installer/staging/FusionStudio.exe       portable/FusionHP-Portable/
+          Copy-Item installer/staging/FusionStudio.Lite.exe  portable/FusionHP-Portable/
+          Copy-Item installer/staging/resources              portable/FusionHP-Portable/resources -Recurse
           Set-Content portable/FusionHP-Portable/portable.flag "# Fusion HP modo portable: datos junto al programa"
           Set-Content portable/FusionHP-Portable/LEEME.txt "Fusion HP (portable): ejecuta FusionHP.exe. Los datos viven en la carpeta 'datos'."
           Compress-Archive -Path portable/FusionHP-Portable -DestinationPath dist/FusionHP-Portable-x86.zip -Force
           # portable x64
           New-Item -ItemType Directory -Force -Path portable/FusionHP-Portable-x64 | Out-Null
-          Copy-Item staging/FusionHP.x64.exe       portable/FusionHP-Portable-x64/FusionHP.exe
-          Copy-Item staging/FusionShared.dll       portable/FusionHP-Portable-x64/
-          Copy-Item staging/FusionStudio.exe       portable/FusionHP-Portable-x64/
-          Copy-Item staging/FusionStudio.Lite.exe  portable/FusionHP-Portable-x64/
-          Copy-Item staging/resources              portable/FusionHP-Portable-x64/resources -Recurse
+          Copy-Item installer/staging/FusionHP.x64.exe       portable/FusionHP-Portable-x64/FusionHP.exe
+          Copy-Item installer/staging/FusionShared.dll       portable/FusionHP-Portable-x64/
+          Copy-Item installer/staging/FusionStudio.exe       portable/FusionHP-Portable-x64/
+          Copy-Item installer/staging/FusionStudio.Lite.exe  portable/FusionHP-Portable-x64/
+          Copy-Item installer/staging/resources              portable/FusionHP-Portable-x64/resources -Recurse
           Set-Content portable/FusionHP-Portable-x64/portable.flag "# Fusion HP modo portable"
           Set-Content portable/FusionHP-Portable-x64/LEEME.txt "Fusion HP (portable x64): ejecuta FusionHP.exe."
           Compress-Archive -Path portable/FusionHP-Portable-x64 -DestinationPath dist/FusionHP-Portable-x64.zip -Force

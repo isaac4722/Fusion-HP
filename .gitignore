@@ -16,6 +16,8 @@ bin/
 !resources/**/*.exe
 packages/
 
+installer/staging/
+
 # Datos locales de ejecución
 datos/
 logs/
