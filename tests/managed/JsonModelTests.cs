@@ -68,7 +68,7 @@ namespace Fusion.Tests
             TestRunner.CheckEq(p2.Scenarios[0].Elements[0].Id, "el-x", "ID estable");
             TestRunner.CheckEq(p2.Scenarios[0].Elements[0].Lines[1], "Línea dos", "líneas");
             TestRunner.CheckEq(p2.Scenarios[0].Tags[0], "lento", "tags");
-            TestRunner.CheckEq(p2.ThemeRef, "tema-calma", "tema");
+            TestRunner.CheckEq(p2.ThemeRef, "tema-clasico", "tema");   // default v2.1: Clásico lumínico
         }
 
         public static void TestHerencia4Niveles()
@@ -91,7 +91,7 @@ namespace Fusion.Tests
             TestRunner.CheckEq(r.Style.Size ?? 0, 40, "tamaño heredado de plantilla");
             TestRunner.CheckEq(r.Style.Color, "#FFDDAA", "color del escenario gana");
             TestRunner.CheckEq(r.Style.Bold, true, "negrita del elemento gana");
-            TestRunner.CheckEq(r.Style.Font, "Segoe UI", "fuente del tema como base");
+            TestRunner.CheckEq(r.Style.Font, "Outfit", "fuente del tema como base (Outfit incrustada)");
             TestRunner.CheckEq(r.Style.ActiveColor, "#FFD700", "línea activa del tema");
         }
 
@@ -108,7 +108,7 @@ namespace Fusion.Tests
             var tema = p.ActiveTheme();
             tema.Style.Color = "#00FFCC";
             var r2 = ResolvedSlide.Resolve(el, scn, p, ".");
-            TestRunner.CheckEq(r1.Style.Color, "#FFFFFF", "antes");
+            TestRunner.CheckEq(r1.Style.Color, "#FFF8EC", "antes");   // color del tema web clásico
             TestRunner.CheckEq(r2.Style.Color, "#00FFCC", "después");
         }
 
@@ -127,7 +127,7 @@ namespace Fusion.Tests
             TestRunner.CheckEq(j.GetStr("reference"), "Juan 3:16", "referencia");
             TestRunner.CheckEq(j.GetInt("activeLine", -1), 0, "línea");
             var st = j.Get("style");
-            TestRunner.CheckEq(st.GetStr("font"), "Segoe UI", "fuente resuelta");
+            TestRunner.CheckEq(st.GetStr("font"), "Outfit", "fuente resuelta (Outfit incrustada)");
             TestRunner.Check(j.Get("overlay").GetBool("present", false), "overlay presente");
             // El núcleo C++ parsea exactamente este contrato (ver CoreTests TestSlideStateParse)
         }

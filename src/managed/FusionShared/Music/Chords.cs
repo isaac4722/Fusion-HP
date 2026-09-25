@@ -176,16 +176,18 @@ namespace Fusion.Shared.Music
             return SemitoneToNote(s + semi, latinNotation);
         }
 
-        /// <summary>¿Parece tonalidad válida ("C", "Do", "Am", "Lam")?</summary>
+        /// <summary>¿Parece tonalidad válida ("C", "Do", "Am", "Lam", "Solm")?</summary>
         public static bool LooksLikeKey(string key)
         {
             if (string.IsNullOrEmpty(key)) return false;
             string k = key.Trim();
-            string root = k.Length > 1 && (k[1] == '#' || k[1] == 'b') ? k.Substring(0, 2) : k.Substring(0, 1);
-            int s = NoteToSemitone(root);
-            if (s < 0) return false;
-            string rest = k.Substring(root.Length).ToLowerInvariant();
-            return rest == "" || rest == "m" || rest == "menor" || rest == "maj" || rest == "mayor";
+            // vía ParseToken: reconoce raíz anglo Y latina con alteración y sufijo
+            string root, tail, bass; int semi;
+            if (!ParseToken(k, out root, out semi, out tail, out bass)) return false;
+            if (bass.Length > 0) return false;             // una tonalidad no lleva bajo slash
+            string rest = tail.ToLowerInvariant();
+            return rest == "" || rest == "m" || rest == "menor" || rest == "maj" || rest == "mayor" ||
+                   rest == "min" || rest == "maj7" || rest == "7" || rest == "sus" || rest == "dim" || rest == "aug";
         }
 
         /// <summary>Notación latina de una tonalidad dada en anglo ("Am"→"Lam").</summary>
