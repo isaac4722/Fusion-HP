@@ -43,6 +43,13 @@ namespace Fusion.Shared
         // sobre la salida lo apaga. Si es false, cerrar la GUI apaga todo.
         public bool KeepEngineAlive = true;
 
+        // OBS Studio [SPEC §8.4] — restaurado en v3.0.0 (WebSocket 5.x, obs-websocket):
+        // cambiar escenas desde Triggers y desde la consola. Desactivado por defecto.
+        public bool ObsEnabled;
+        public string ObsHost = "127.0.0.1";
+        public int ObsPort = 4455;
+        public string ObsPassword = "";
+
         public static AppSettings Load()
         {
             var s = new AppSettings();
@@ -75,6 +82,10 @@ namespace Fusion.Shared
                     s.Animation = j.GetBool("animation", true);
                     s.DefaultTransition = j.GetStr("defaultTransition", "fade");
                     s.KeepEngineAlive = j.GetBool("keepEngineAlive", true);
+                    s.ObsEnabled = j.GetBool("obsEnabled", false);
+                    s.ObsHost = j.GetStr("obsHost", "127.0.0.1");
+                    s.ObsPort = j.GetInt("obsPort", 4455);
+                    s.ObsPassword = j.GetStr("obsPassword", "");
                 }
             }
             catch
@@ -106,6 +117,10 @@ namespace Fusion.Shared
                 j.Set("animation", JsonValue.Make(Animation));
                 j.Set("defaultTransition", JsonValue.Make(DefaultTransition));
                 j.Set("keepEngineAlive", JsonValue.Make(KeepEngineAlive));
+                j.Set("obsEnabled", JsonValue.Make(ObsEnabled));
+                j.Set("obsHost", JsonValue.Make(ObsHost));
+                j.Set("obsPort", JsonValue.Make(ObsPort));
+                j.Set("obsPassword", JsonValue.Make(ObsPassword));
                 Json.WriteFile(Path.Combine(DataDir, "settings.json"), j);
             }
             catch

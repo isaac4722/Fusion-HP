@@ -39,7 +39,9 @@ namespace Fusion.Studio.Ui
             }
         }
 
-        /// <summary>Aplica cambios de configuración (desde SettingsForm).</summary>
+        /// <summary>Aplica cambios de configuración (desde SettingsForm) y al arrancar
+        /// [v3.0.0 — bug «el modo API no funciona»]: antes la API solo se iniciaba al
+        /// guardar Configuración; ahora también se aplica al abrir la app.</summary>
         public void ApplySettings()
         {
             // ---- presentación (referencia web)
@@ -56,7 +58,29 @@ namespace Fusion.Studio.Ui
             }
             catch { }
 
-            // ---- API de control remoto
+            // ---- [v3.0.0 — bug «ventana de proyección»] El monitor elegido en
+            // Configuración AHORA se aplica al núcleo (antes se guardaba y nunca
+            // se enviaba: la salida ignoraba la selección del operador).
+            try
+            {
+                if (Settings.PublicMonitor >= 0)
+                {
+                    var mp = JsonValue.Object();
+                    mp.Set("index", JsonValue.Make(Settings.PublicMonitor));
+                    mp.Set("output", JsonValue.Make("public"));
+                    Live.PostCore("monitor", mp);
+                }
+                if (Settings.StageMonitor >= 0)
+                {
+                    var ms = JsonValue.Object();
+                    ms.Set("index", JsonValue.Make(Settings.StageMonitor));
+                    ms.Set("output", JsonValue.Make("stage"));
+                    Live.PostCore("monitor", ms);
+                }
+            }
+            catch { }
+
+            // ---- API de control remoto (6 endpoints) + cliente OBS WebSocket
             if (Settings.ApiEnabled)
             {
                 if (api == null)
@@ -70,6 +94,9 @@ namespace Fusion.Studio.Ui
             {
                 api.Stop();
             }
+#if !LITE
+            ApplyObs();
+#endif
 
             // ---- Pantalla de reposo del logo
             if (!string.IsNullOrEmpty(Settings.LogoPath))
@@ -79,6 +106,7 @@ namespace Fusion.Studio.Ui
                 Live.PostCore("blanklogo", lp);
             }
 
+            UpdateApiButton();
             UpdateStatus();
         }
 
@@ -97,6 +125,27 @@ namespace Fusion.Studio.Ui
         internal void HandleFormClosedForServices(object sender, EventArgs e)
         {
             if (api != null) api.Stop();
+#if !LITE
+            StopObs();
+#endif
+        }
+
+        // ------------------------------------------------------------ API rápida (v3.0.0)
+        void ToggleApi()
+        {
+            Settings.ApiEnabled = !Settings.ApiEnabled;
+            Settings.Save();
+            ApplySettings();
+        }
+
+        void UpdateApiButton()
+        {
+            if (btnApi == null) return;
+            btnApi.Text = Settings.ApiEnabled
+                ? "API activa :" + Settings.ApiPort + " (OBS y móvil)"
+                : "API para OBS y móvil apagada";
+            var k = Settings.ApiEnabled ? FusionButtonKind.Active : FusionButtonKind.Chip;
+            if (btnApi.Kind != k) { btnApi.Kind = k; btnApi.Invalidate(); }
         }
     }
 }

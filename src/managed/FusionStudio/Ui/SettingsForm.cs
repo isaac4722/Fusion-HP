@@ -23,12 +23,15 @@ namespace Fusion.Studio.Ui
         Label lblQrHint;
         ComboBox cmbAdvance, cmbTransition;
         CheckBox chkClock, chkAnimation, chkKeepEngine;
+        CheckBox chkObs;
+        TextBox txtObsHost, txtObsPass;
+        NumericUpDown numObsPort;
 
         public SettingsForm(MainForm owner)
         {
             this.owner = owner;
             Text = "Configuración";
-            Size = new Size(560, 710);
+            Size = new Size(560, 800);
             StartPosition = FormStartPosition.CenterParent;
             Font = UiTheme.Normal();
             BackColor = UiTheme.Panel;
@@ -45,6 +48,20 @@ namespace Fusion.Studio.Ui
             cmbPublic.SelectedIndex = S.PublicMonitor >= 0 && S.PublicMonitor < Screen.AllScreens.Length ? S.PublicMonitor : 0;
             Controls.Add(cmbPublic);
             y += 30;
+            // [v3.0.0] Aviso honesto con un solo monitor (la salida borderless cubre
+            // el escritorio del operador; el Mando remoto evita quedarse sin control).
+            if (Screen.AllScreens.Length == 1)
+            {
+                var lblSolo = new Label
+                {
+                    Text = "Con un solo monitor la proyección cubrirá tu pantalla.\n" +
+                           "Conecta un segundo monitor o usa la ventana del Mando.",
+                    Location = new Point(24, y + 2), Size = new Size(500, 30),
+                    ForeColor = UiTheme.TextDim, Font = UiTheme.Small()
+                };
+                Controls.Add(lblSolo);
+                y += 36;
+            }
 
             cmbStage = new ComboBox { Location = new Point(24, y), Size = new Size(300, 24), DropDownStyle = ComboBoxStyle.DropDownList };
             cmbStage.Items.Add("(desactivada)");
@@ -76,6 +93,33 @@ namespace Fusion.Studio.Ui
                                     Location = new Point(24, y + 108), AutoSize = true, ForeColor = UiTheme.TextDim, Font = UiTheme.Small() };
             Controls.Add(lblQrHint);
             y += 136;
+
+            var g3 = Group("OBS Studio (transmisión)", y); y = g3;
+            chkObs = new CheckBox { Text = "Conectar a obs-websocket (cambiar escenas)", Location = new Point(24, y), AutoSize = true, Checked = S.ObsEnabled };
+            Controls.Add(chkObs);
+            y += 28;
+            var lblObsHost = new Label { Text = "Servidor:", Location = new Point(24, y + 3), AutoSize = true };
+            Controls.Add(lblObsHost);
+            txtObsHost = new TextBox { Location = new Point(100, y), Width = 120, Text = S.ObsHost, BorderStyle = BorderStyle.FixedSingle };
+            Controls.Add(txtObsHost);
+            var lblObsPort = new Label { Text = "Puerto:", Location = new Point(232, y + 3), AutoSize = true };
+            Controls.Add(lblObsPort);
+            numObsPort = new NumericUpDown { Location = new Point(286, y), Width = 70, Minimum = 1, Maximum = 65535, Value = S.ObsPort };
+            Controls.Add(numObsPort);
+#if !LITE
+            var btnObsTest = new FusionButton { Text = "Probar", IconName = "plug", Location = new Point(372, y - 3), Size = new Size(86, 32) };
+            btnObsTest.Click += delegate { TestObs(); };
+            Controls.Add(btnObsTest);
+#endif
+            y += 32;
+            var lblObsPass = new Label { Text = "Contraseña:", Location = new Point(24, y + 3), AutoSize = true };
+            Controls.Add(lblObsPass);
+            txtObsPass = new TextBox { Location = new Point(100, y), Width = 224, Text = S.ObsPassword, UseSystemPasswordChar = true, BorderStyle = BorderStyle.FixedSingle };
+            Controls.Add(txtObsPass);
+            var lblObsHint = new Label { Text = "OBS Studio → Herramientas → ajustes de obs-websocket (v5).",
+                                         Location = new Point(24, y + 30), AutoSize = true, ForeColor = UiTheme.TextDim, Font = UiTheme.Small() };
+            Controls.Add(lblObsHint);
+            y += 52;
 
             var g4 = Group("Comportamiento", y); y = g4;
             cmbRest = new ComboBox { Location = new Point(24, y), Size = new Size(200, 24), DropDownStyle = ComboBoxStyle.DropDownList };
@@ -132,11 +176,11 @@ namespace Fusion.Studio.Ui
             y += 80;
 
             var btnSave = new FusionButton { Text = "Guardar", IconName = "check", Kind = FusionButtonKind.Primary,
-                                            Location = new Point(360, 620), Size = new Size(90, 34) };
+                                            Location = new Point(360, 710), Size = new Size(90, 34) };
             btnSave.Click += delegate { Save(); Close(); };
             Controls.Add(btnSave);
             var btnClose = new FusionButton { Text = "Cancelar", IconName = "x",
-                                            Location = new Point(458, 620), Size = new Size(86, 34) };
+                                            Location = new Point(458, 710), Size = new Size(86, 34) };
             btnClose.Click += delegate { Close(); };
             Controls.Add(btnClose);
         }
@@ -218,8 +262,38 @@ namespace Fusion.Studio.Ui
             S.Animation = chkAnimation.Checked;
             S.ShowClock = chkClock.Checked;
             S.KeepEngineAlive = chkKeepEngine.Checked;
+            S.ObsEnabled = chkObs.Checked;
+            S.ObsHost = string.IsNullOrWhiteSpace(txtObsHost.Text) ? "127.0.0.1" : txtObsHost.Text.Trim();
+            S.ObsPort = (int)numObsPort.Value;
+            S.ObsPassword = txtObsPass.Text;
             S.Save();
             owner.ApplySettings();
         }
+
+#if !LITE
+        /// <summary>Prueba de conexión obs-websocket (v3.0.0): resultado en lenguaje
+        /// humano, sin stack traces crudos [SPEC §11.2.3].</summary>
+        void TestObs()
+        {
+            string host = string.IsNullOrWhiteSpace(txtObsHost.Text) ? "127.0.0.1" : txtObsHost.Text.Trim();
+            try
+            {
+                var probe = new System.Net.WebSockets.ClientWebSocket();
+                probe.Dispose();
+                MessageBox.Show(this,
+                    "Cliente OBS disponible.\n\nGuarda la configuración: Fusion HP intentará conectarse a ws://" +
+                    host + ":" + (int)numObsPort.Value + "/ y cambiará escenas cuando un Trigger obs.scene lo pida.\n\n" +
+                    "Si OBS no está corriendo, el cliente reintenta automáticamente.",
+                    "Fusion HP — OBS", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this,
+                    "No se pudo crear el cliente WebSocket en este equipo.\n\n" +
+                    "Qué puedes hacer: verifica que el sistema tenga .NET Framework 4.5 o superior.\n\n" + ex.Message,
+                    "Fusion HP — OBS", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+        }
+#endif
     }
 }

@@ -2,10 +2,9 @@
 //  Fusion-HP · FusionStudio/Services/TriggerEngine.cs — motor de Triggers
 //  [SPEC §8.3]: reglas evento → condiciones → acciones, definibles como JSON
 //  (sin código) con orden de evaluación determinista. Acciones: cambiar tema,
-//  mostrar mensaje. Las etiquetas semánticas ("lento" → tema "calma") son el
-//  caso canónico [SPEC §5.1.4].
-//  v2.3: acción "obs.scene" ELIMINADA junto con el cliente OBS (decisión del
-//  usuario: queda solo la API de control remoto).
+//  mostrar mensaje y cambiar escena de OBS (v3.0.0, obs.scene restaurado con
+//  el cliente obs-websocket 5.x). Las etiquetas semánticas ("lento" → tema
+//  "calma") son el caso canónico [SPEC §5.1.4].
 // ============================================================================
 using System;
 using System.Collections.Generic;
@@ -20,7 +19,7 @@ namespace Fusion.Studio.Services
         public string Event;                 // "projection" | "tag" | "video.start" | "video.end" | "api" | "schedule"
         public string Tag;                   // etiqueta semántica (evento "tag")
         public List<string> Conditions = new List<string>();   // "theme:calma", "element:text"
-        public string Action;                // "theme.change" | "message"
+        public string Action;                // "theme.change" | "message" | "obs.scene"
         public string Parameter;             // nombre de tema / texto
         public bool Enabled = true;
 
@@ -59,6 +58,7 @@ namespace Fusion.Studio.Services
         public event Action<string> Logged;
         public Action<string> ThemeChanger;
         public Action<string> MessageShower;
+        public Action<string> ObsSceneChanger;   // v3.0.0: escena OBS (SetCurrentProgramScene)
 
         public IList<TriggerRule> Rules { get { return rules.AsReadOnly(); } }
 
@@ -146,6 +146,13 @@ namespace Fusion.Studio.Services
                         {
                             var m = MessageShower;
                             if (m != null) { m(r.Parameter); Log("Trigger " + r.Id + ": mensaje en pantalla"); }
+                            break;
+                        }
+                    case "obs.scene":
+                        {
+                            var o = ObsSceneChanger;
+                            if (o != null) { o(r.Parameter); Log("Trigger " + r.Id + ": escena OBS → " + r.Parameter); }
+                            else Log("Trigger " + r.Id + ": obs.scene sin cliente OBS activo");
                             break;
                         }
                 }

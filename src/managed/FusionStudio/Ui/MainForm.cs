@@ -337,6 +337,10 @@ namespace Fusion.Studio.Ui
                         Live.SyncFromMotor();
                         RefreshProgram();
                     }
+                    // [v3.0.0 — bug «el modo API no funciona»] Aplica la configuración
+                    // completa AL ARRANCAR: API, monitor de salida, logo de reposo y
+                    // OBS quedan activos sin pasar por Configuración.
+                    ApplySettings();
                 });
             });
             UpdateStatus();
