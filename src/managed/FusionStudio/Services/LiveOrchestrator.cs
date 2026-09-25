@@ -344,8 +344,14 @@ namespace Fusion.Studio.Services
             if (Project == null) Project = AhpProject.CreateDefault();
             if (!Project.Scenarios.Contains(scn)) Project.Scenarios.Add(scn);
             int i = Project.Scenarios.IndexOf(scn);
-            SendProgram(i, scn.Elements.Count > 0 ? 0 : -1, 0);
+            int el = scn.Elements.Count > 0 ? 0 : -1;
+            // espejo local optimista (el Motor confirma con motor.state)
+            State.ScenarioIndex = i;
+            State.ElementIndex = el;
+            State.LineIndex = 0;
+            SendProgram(i, el, 0);
             Blank("none");   // enviar a pantalla = mostrar
+            RefreshCurrentLocal();
         }
 
         // ---------------------------------------------------------------- persistencia
@@ -368,9 +374,12 @@ namespace Fusion.Studio.Services
                 Settings.Save();
                 // El Motor recibe el programa completo; el reposo manda hasta que
                 // el operador envíe (comportamiento beta 1: nada se proyecta solo).
-                SendProgram(Project.Scenarios.Count > 0 ? 0 : -1,
-                            Project.Scenarios.Count > 0 && Project.Scenarios[0].Elements.Count > 0 ? 0 : -1,
-                            0);
+                int scn = Project.Scenarios.Count > 0 ? 0 : -1;
+                int el = scn >= 0 && Project.Scenarios[0].Elements.Count > 0 ? 0 : -1;
+                State.ScenarioIndex = scn;
+                State.ElementIndex = el;
+                State.LineIndex = 0;
+                SendProgram(scn, el, 0);
                 Blank(Settings.RestScreen);
                 return true;
             }
