@@ -217,6 +217,9 @@ namespace Fusion.Studio.Services
         }
 
         // ---------------------------------------------------------------- navegación → Motor
+        // Espejo local OPTIMISTA: los índices se actualizan al instante (la GUI
+        // y la API siguen útiles sin núcleo) y el comando viaja al Motor, que es
+        // la autoridad — su evento motor.state llega después y reconcilia.
         public Scenario CurrentScenario
         {
             get
@@ -237,32 +240,79 @@ namespace Fusion.Studio.Services
             }
         }
 
-        public void NextLine()  { IpcPost("motor.next", JsonValue.Object()); }
-        public void PrevLine()  { IpcPost("motor.prev", JsonValue.Object()); }
-        public void NextElement() { IpcPost("motor.nextElement", JsonValue.Object()); }
-        public void PrevElement() { IpcPost("motor.prevElement", JsonValue.Object()); }
+        public void NextLine()
+        {
+            if (Settings.AdvanceMode == "slide") { NextElement(); return; }
+            if (State.Current == null) { NextElement(); return; }
+            if (State.LineIndex + 1 < State.Current.Lines.Count) SetLine(State.LineIndex + 1);
+            else NextElement();
+        }
+
+        public void PrevLine()
+        {
+            if (Settings.AdvanceMode == "slide") { PrevElement(); return; }
+            if (State.LineIndex > 0) SetLine(State.LineIndex - 1);
+            else PrevElement();
+        }
+
+        public void NextElement()
+        {
+            var scn = CurrentScenario;
+            if (scn == null || Project == null)
+            {
+                if (Project != null && Project.Scenarios.Count > 0) Select(Project.Scenarios.Count - 1, 0, 0);
+                return;
+            }
+            if (State.ElementIndex + 1 < scn.Elements.Count)
+                Select(State.ScenarioIndex, State.ElementIndex + 1, 0);
+            else if (State.ScenarioIndex + 1 < Project.Scenarios.Count)
+                Select(State.ScenarioIndex + 1, 0, 0);
+        }
+
+        public void PrevElement()
+        {
+            if (State.ElementIndex > 0) Select(State.ScenarioIndex, State.ElementIndex - 1, 0);
+            else if (State.ScenarioIndex > 0)
+            {
+                var prev = Project.Scenarios[State.ScenarioIndex - 1];
+                Select(State.ScenarioIndex - 1, prev.Elements.Count - 1, 0);
+            }
+        }
 
         public void Select(int scenarioIdx, int elementIdx, int lineIdx)
         {
+            State.ScenarioIndex = scenarioIdx;
+            State.ElementIndex = elementIdx;
+            State.LineIndex = lineIdx > 0 ? lineIdx : 0;
             var p = JsonValue.Object();
             p.Set("scenario", JsonValue.Make(scenarioIdx));
             p.Set("element", JsonValue.Make(elementIdx));
-            p.Set("line", JsonValue.Make(lineIdx));
+            p.Set("line", JsonValue.Make(State.LineIndex));
             IpcPost("motor.goto", p);
+            RefreshCurrentLocal();
+            FireStateChanged();
         }
 
         public void SetLine(int line)
         {
+            if (State.Current == null) return;
+            if (line < 0 || line >= State.Current.Lines.Count) return;
+            State.LineIndex = line;
             var p = JsonValue.Object();
             p.Set("index", JsonValue.Make(line));
             IpcPost("motor.line", p);
+            RefreshCurrentLocal();
+            FireStateChanged();
         }
 
         public void Blank(string mode)
         {
+            State.IsBlank = mode != "none";
+            State.BlankMode = mode;
             var p = JsonValue.Object();
             p.Set("mode", JsonValue.Make(mode));
             IpcPost("motor.blank", p);
+            FireStateChanged();
         }
 
         /// <summary>Resaltado en proyección: el Motor lo aplica y persiste.</summary>
