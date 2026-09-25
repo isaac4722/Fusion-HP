@@ -56,8 +56,10 @@ jobs:
           if (-not (Test-Path $exe)) { throw "CoreTests.exe no está en $exe" }
           Copy-Item tests/fixtures -Destination dist/tests/$platform/fixtures -Recurse -Force
           Push-Location (Split-Path (Resolve-Path $exe).Path)
-          try { & ".\CoreTests.exe" } finally { Pop-Location }
-          if ($LASTEXITCODE -ne 0) { throw "tests nativos $platform FALLAN" }
+          try { & ".\CoreTests.exe" 2>&1 | ForEach-Object { "$_" } } finally { Pop-Location }
+          $code = $LASTEXITCODE
+          Write-Host "CoreTests exit code: $code"
+          if ($code -ne 0) { throw "tests nativos $platform FALLAN (exit=$code)" }
 
       - name: Subir binarios del núcleo
         uses: actions/upload-artifact@v4

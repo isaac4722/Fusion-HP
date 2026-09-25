@@ -97,9 +97,9 @@ namespace Fusion.Studio.Ui
             };
             var t = new Label { Text = title, Font = UiTheme.NormalBold(), ForeColor = UiTheme.Text,
                                 Location = new Point(60, 14), AutoSize = true };
-            var s = new Label { Text = subtitle, Font = UiTheme.Small(), ForeColor = UiTheme.TextDim,
-                                Location = new Point(60, 40), Size = new Size(178, 44) };
-            tile.Controls.Add(s); tile.Controls.Add(t);
+            var sub = new Label { Text = subtitle, Font = UiTheme.Small(), ForeColor = UiTheme.TextDim,
+                                  Location = new Point(60, 40), Size = new Size(178, 44) };
+            tile.Controls.Add(sub); tile.Controls.Add(t);
             tile.Click += onClick;
             foreach (Control c in tile.Controls) c.Click += delegate { onClick(null, null); };
             tile.MouseEnter += delegate { tile.BackColor = UiTheme.AccentSoft; };

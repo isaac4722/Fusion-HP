@@ -5,6 +5,7 @@
 #include "Logger.h"
 
 #include <fstream>
+#include <filesystem>
 
 namespace fusion {
 
@@ -196,7 +197,7 @@ void Motor::SavePersisted(const std::wstring& file) {
         out["program"] = prog;
     }
     // Escritura atómica: tmp + reemplazo (como el cancionero de la GUI).
-    std::wstring tmp = file + L".tmp";
+    std::filesystem::path tmp = std::filesystem::path(file) += L".tmp";
     try {
         std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
         f << out.dump();
@@ -210,7 +211,7 @@ void Motor::SavePersisted(const std::wstring& file) {
 
 bool Motor::LoadPersisted(const std::wstring& file) {
     if (file.empty()) return false;
-    std::ifstream f(file, std::ios::binary);
+    std::ifstream f(std::filesystem::path(file), std::ios::binary);
     if (!f.good()) return false;
     try {
         std::string buf((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
