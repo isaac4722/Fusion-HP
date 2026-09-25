@@ -83,28 +83,37 @@ begin
   Result := WizardIsTaskSelected('dotnet');
 end;
 
-function NextButtonClick(CurPageID: Integer): Boolean;
 var
-  Dest: String;
-begin
-  Result := True;
-  // Descarga del instalador web de .NET SOLO si la tarea opcional está marcada
-  if (CurPageID = wpReady) and WantDotNet then
-  begin
-    Dest := ExpandConstant('{tmp}\ndp48-web.exe');
-    try
-      DownloadTemporaryFile('{#DotNetUrl}', 'ndp48-web.exe', '');
-      Log('Descargado instalador opcional de .NET 4.8');
-    except
-      // Sin Internet o descarga fallida: la instalación continúa (perfil C/B)
-      MsgBox('No se pudo descargar .NET Framework 4.8. ' +
-             'Fusion HP se instalará de todos modos y funcionará con lo que haya ' +
-             'incluso sin .NET (modo nativo).', mbInformation, MB_OK);
-    end;
-  end;
-end;
+  DownloadPage: TDownloadWizardPage;
 
 procedure InitializeWizard;
 begin
-  // Diálogo claro sobre .NET [SPEC §4.1]: nada se instala sin consentimiento
+  // Página de descarga del componente opcional .NET [SPEC §4.1]:
+  // nada se descarga sin consentimiento explícito del usuario.
+  DownloadPage := CreateDownloadPage(SetupMessage(msgWizardPreparing),
+    SetupMessage(msgPreparingDesc), nil);
+end;
+
+function NextButtonClick(CurPageID: Integer): Boolean;
+begin
+  Result := True;
+  if (CurPageID = wpReady) and WantDotNet then
+  begin
+    DownloadPage.Clear;
+    DownloadPage.Add('{#DotNetUrl}', 'ndp48-web.exe', '');
+    DownloadPage.Show;
+    try
+      try
+        DownloadPage.Download;
+        Log('Descargado instalador opcional de .NET 4.8');
+      except
+        // Sin Internet o descarga fallida: la instalación continúa (perfil C/B)
+        MsgBox('No se pudo descargar .NET Framework 4.8. ' +
+               'Fusion HP se instalará de todos modos y funcionará con lo que haya ' +
+               'incluso sin .NET (modo nativo).', mbInformation, MB_OK);
+      end;
+    finally
+      DownloadPage.Hide;
+    end;
+  end;
 end;
