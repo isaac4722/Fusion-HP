@@ -236,7 +236,23 @@ static Json TestMotorSlide(const std::string& id, const std::string& a, const st
                 {"style", {"font", "Segoe UI"}, {"size", 44}, {"color", "#FFFFFF"}}};
 }
 
+static void TestMotorBody();
 static void TestMotor()
+{
+    std::cout << "[diag] TestMotor inicia" << std::endl;
+    try {
+        TestMotorBody();
+        std::cout << "[diag] TestMotor termina OK" << std::endl;
+    } catch (const std::exception& e) {
+        std::cout << "[diag] TestMotor EXCEPCION: " << e.what() << std::endl;
+        g_fail++;
+    } catch (...) {
+        std::cout << "[diag] TestMotor EXCEPCION DESCONOCIDA (posible SEH)" << std::endl;
+        g_fail++;
+    }
+}
+
+static void TestMotorBody()
 {
     // programa: 2 escenarios × (2 y 1 elementos); el primero tiene 3 líneas
     Json prog = Json::array();
@@ -372,8 +388,11 @@ int main()
     TestHighlight();
     TestSlideStateV21();
     TestNativeSession();
-    TestIpcLoop();
+    std::cout << "[diag] antes de TestMotor" << std::endl;
     TestMotor();
+    std::cout << "[diag] antes de TestIpcLoop" << std::endl;
+    TestIpcLoop();
+    std::cout << "[diag] suite completa" << std::endl;
 
     std::cout << "\nResultado: " << g_pass << " OK · " << g_fail << " FALLO" << std::endl;
     CoUninitialize();
