@@ -401,6 +401,28 @@ static void TestNativeLibrary()
     CHECK(s1 && s1->key_ == L"Re" && s1->bpm == 72, "Library: tono y BPM");
     CHECK(s1 && s1->sections.size() == 1 && s1->sections[0].lines.size() == 2, "Library: secciones web");
 
+    // ---- [v3.0.0 bug «bibliotecas»] lista directa SIN tope: 250 cantos →
+    // Search con consulta vacía devuelve TODOS (antes se recortaba a 200).
+    {
+        fs::path big = dir / "cancionero-grande.fdb";
+        {
+            std::ofstream f(big, std::ios::binary);
+            f << "{\"format\":\"fdb.v1\",\"songs\":[";
+            for (int i = 0; i < 250; i++) {
+                if (i) f << ",";
+                f << "{\"id\":\"g" << i << "\",\"title\":\"Canto " << i << "\",\"artist\":\"X\","
+                  << "\"key\":\"Do\",\"bpm\":90,\"language\":\"es\",\"tags\":[],"
+                  << "\"sections\":[{\"name\":\"Coro\",\"lines\":[\"Línea " << i << "\"]}]}";
+            }
+            f << "]}";
+        }
+        SongLibrary bigLib;
+        CHECK(bigLib.Load(big.wstring()), "Library: fdb de 250 cantos carga");
+        CHECK(bigLib.Count() == 250, "Library: 250 cantos");
+        CHECK(bigLib.Search(L"", bigLib.Count()).size() == 250,
+              "Library: lista directa COMPLETA sin tope (bug v3.0.0)");
+    }
+
     // ---- biblia empaquetada
     fs::path bibDir = dir / "bibles";
     fs::create_directories(bibDir, ec);
