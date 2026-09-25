@@ -115,7 +115,7 @@ namespace Fusion.Studio.Services
                 d.Set("authentication", Fusion.Shared.JsonValue.Make(AuthHash(password, salt, challenge)));
             }
             identify.Set("d", d);
-            await Send(socket, identify.ToJsonString()).ConfigureAwait(false);
+            Send(socket, identify.ToJsonString());
 
             string identified = await Receive(socket, buf).ConfigureAwait(false);
             var ir = Fusion.Shared.JsonValue.Parse(identified ?? "{}");

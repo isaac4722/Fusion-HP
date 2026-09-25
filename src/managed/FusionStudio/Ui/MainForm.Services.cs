@@ -9,6 +9,7 @@
 using System;
 using Fusion.Shared;
 using Fusion.Studio.Services;
+using Fusion.Studio.Ui.Widgets;
 
 namespace Fusion.Studio.Ui
 {
