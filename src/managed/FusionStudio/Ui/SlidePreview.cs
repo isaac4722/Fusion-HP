@@ -156,7 +156,7 @@ namespace Fusion.Studio.Ui
                 using (var f = new Font("Segoe UI", bandH * 0.36f, FontStyle.Bold))
                 using (var b = new SolidBrush(Color.White))
                 {
-                    var sf = new StringFormat { Alignment = StringAlignmentCenter, LineAlignment = StringAlignment.Center };
+                    var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
                     g.DrawString(slide.OverlayText, f, b, new RectangleF(W * 0.05f, H - bandH, W * 0.9f, bandH), sf);
                 }
             }

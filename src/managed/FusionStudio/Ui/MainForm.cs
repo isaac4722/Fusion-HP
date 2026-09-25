@@ -30,6 +30,7 @@ namespace Fusion.Studio.Ui
         public static Font Normal() { return new Font("Segoe UI", 9f); }
         public static Font NormalBold() { return new Font("Segoe UI", 9f, FontStyle.Bold); }
         public static Font Small() { return new Font("Segoe UI", 8.25f); }
+        public static Font SmallBold() { return new Font("Segoe UI", 8.25f, FontStyle.Bold); }
         public static Font Title() { return new Font("Segoe UI", 14f, FontStyle.Bold); }
         public static Font Big() { return new Font("Segoe UI", 12f, FontStyle.Bold); }
     }

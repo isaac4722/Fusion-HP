@@ -173,7 +173,10 @@ namespace Fusion.Studio.Editor.Wpf
                 b.ReleaseMouseCapture();
                 SyncProperties();
             };
-            b.MouseDoubleClick += (s, e2) => StartInlineEdit(el, b);
+            b.MouseLeftButtonDown += (s, e2) =>
+            {
+                if (e2.ClickCount == 2) StartInlineEdit(el, b);   // edición directa [SPEC §7.1.1]
+            };
             return b;
         }
 

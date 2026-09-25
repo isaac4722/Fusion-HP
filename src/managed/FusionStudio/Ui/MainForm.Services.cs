@@ -93,7 +93,11 @@ namespace Fusion.Studio.Ui
 
             // ---- Pantalla de reposo del logo
             if (!string.IsNullOrEmpty(Settings.LogoPath))
-                Live.PostCore("blanklogo", Settings.LogoPath);
+            {
+                var lp = JsonValue.Object();
+                lp.Set("path", JsonValue.Make(Settings.LogoPath));
+                Live.PostCore("blanklogo", lp);
+            }
 
             UpdateStatus();
         }

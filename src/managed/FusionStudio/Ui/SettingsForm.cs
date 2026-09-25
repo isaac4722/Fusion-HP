@@ -112,7 +112,7 @@ namespace Fusion.Studio.Ui
             return y + 30;
         }
 
-        void AddField(string label, ref int y, out TextBox box, string value, bool password)
+        void AddField(string label, ref int y, out TextBox box, string value, bool password = false)
         {
             var l = new Label { Text = label, Location = new Point(24, y + 3), AutoSize = true };
             Controls.Add(l);

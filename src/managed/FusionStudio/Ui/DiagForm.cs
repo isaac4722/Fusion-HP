@@ -118,11 +118,9 @@ namespace Fusion.Studio.Ui
             // 4) Red local (bind en 127.0.0.1 con puerto efímero)
             try
             {
-                using (var l = new TcpListener(IPAddress.Loopback, 0))
-                {
-                    l.Start();
-                    l.Stop();
-                }
+                var l = new TcpListener(IPAddress.Loopback, 0);
+                l.Start();
+                l.Stop();
                 Add("Autotest: red local", "OK", "Pila TCP disponible"); green++;
             }
             catch (Exception ex) { Add("Autotest: red local", "ROJO", ex.Message); red++; }

@@ -121,8 +121,7 @@ static bool IpcRoundTrip(const std::wstring& pipeName)
     HANDLE pipe = CreateFileW(pipeName.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr,
                               OPEN_EXISTING, 0, nullptr);
     if (pipe == INVALID_HANDLE_VALUE) return false;
-    DWORD mode = PIPE_READMODE_BYTE;
-    SetNamedPipeHandleMode(pipe, PIPE_READMODE_BYTE, &mode, nullptr);
+    // modo BYTE es el predeterminado en clientes de este protocolo
 
     auto writeMsg = [&](const Json& j) {
         std::string s = j.dump();
