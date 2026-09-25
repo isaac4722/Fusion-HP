@@ -11,6 +11,7 @@ using System.Windows.Forms;
 using Fusion.Shared;
 using Fusion.Shared.Music;
 using Fusion.Shared.Model;
+using Fusion.Studio.Services;
 
 namespace Fusion.Studio.Ui
 {

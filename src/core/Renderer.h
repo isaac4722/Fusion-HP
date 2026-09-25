@@ -66,7 +66,7 @@ private:
     bool InitGdiplus();
     // Fuentes de la GUI incrustadas (resources/fonts) + transiciones
     void LoadPrivateFonts();
-    Gdiplus::Font* MakeFontGdip(const std::wstring& family, REAL size, INT style);
+    Gdiplus::Font* MakeFontGdip(const std::wstring& family, Gdiplus::REAL size, INT style);
     bool NeedsPrivateFont(const std::wstring& family) const;
     bool PreferGdipFor(const Slide& s) const;
     void PresentBlendGdip(Gdiplus::Bitmap* prev, Gdiplus::Bitmap* next,
