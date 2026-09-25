@@ -161,6 +161,7 @@ namespace Fusion.Shared.Model
         public BackgroundOverride BgOverride = new BackgroundOverride();
         public List<string> Tags = new List<string>();
         public string Note;                   // notas del operador
+        public string Transition = "";       // cut | fade | slide (vacío = transición por defecto)
         public double X = 0.05, Y = 0.10, W = 0.90, H = 0.80;   // posición libre en el lienzo
 
         public string KindKey
@@ -209,6 +210,7 @@ namespace Fusion.Shared.Model
             if (OverlayText != null) j.Set("overlayText", Shared.JsonValue.Make(OverlayText));
             if (Tags.Count > 0) { var t = Shared.JsonValue.Array(); t.AddStrings(Tags); j.Set("tags", t); }
             if (Note != null) j.Set("note", Shared.JsonValue.Make(Note));
+            if (!string.IsNullOrEmpty(Transition)) j.Set("transition", Shared.JsonValue.Make(Transition));
             j.Set("x", Shared.JsonValue.Make(X));
             j.Set("y", Shared.JsonValue.Make(Y));
             j.Set("w", Shared.JsonValue.Make(W));
@@ -252,6 +254,7 @@ namespace Fusion.Shared.Model
             e.OverlayText = j.GetStr("overlayText");
             e.Tags = j.GetStringArray("tags");
             e.Note = j.GetStr("note");
+                e.Transition = j.GetStr("transition", "");
             e.X = j.GetNum("x", 0.05); e.Y = j.GetNum("y", 0.10);
             e.W = j.GetNum("w", 0.90); e.H = j.GetNum("h", 0.80);
             e.StyleOverride = StyleOverride.FromJson(j.Get("styleOverride")) ?? new StyleOverride();
@@ -382,22 +385,49 @@ namespace Fusion.Shared.Model
         public static AhpProject CreateDefault()
         {
             var p = new AhpProject();
-            var theme = new Theme
-            {
-                Id = "tema-calma",
-                Name = "Calma"
-            };
-            theme.Style.Font = "Segoe UI";
-            theme.Style.Size = 48;
-            theme.Style.Color = "#FFFFFF";
-            theme.Style.ActiveColor = "#FFD700";
-            theme.Style.Align = 1;
-            theme.Style.VAlign = 1;
-            theme.Style.Shadow = true;
-            theme.Background.Color = "#101820";
-            p.Themes.Add(theme);
-            p.ThemeRef = theme.Id;
+            // Temas de la referencia web (H-P-Web-Version-Ref): mismas familias
+            // (Outfit / Cormorant Garamond / Libre Baskerville incrustadas en
+            // resources/fonts) y mismos fondos (resources/backgrounds).
+            p.Themes.Add(WebTheme("tema-clasico", "Clásico lumínico", "Outfit", 46,
+                "#FFF8EC", "#E8C872", true, "gold-rays.jpg", "#0A0704"));
+            p.Themes.Add(WebTheme("tema-escritura", "Escritura", "Libre Baskerville", 42,
+                "#F4EFE4", "#D4B56A", true, "blue-depth.jpg", "#050814"));
+            p.Themes.Add(WebTheme("tema-broadcast", "Broadcast", "Outfit", 40,
+                "#FFFFFF", "#7DD3FC", true, "purple-haze.jpg", "#120814"));
+            p.Themes.Add(WebTheme("tema-moderno", "Moderno liviano", "Outfit", 44,
+                "#F8FAFC", "#FDBA74", false, "emerald.jpg", "#06110C"));
+            p.Themes.Add(WebTheme("tema-solemne", "Solemne", "Cormorant Garamond", 52,
+                "#F3E6C8", "#C4A35A", true, "cross-dawn.jpg", "#1A0E08"));
+            var calma = new Theme { Id = "tema-calma", Name = "Calma" };
+            calma.Style.Font = "Segoe UI";
+            calma.Style.Size = 48;
+            calma.Style.Color = "#FFFFFF";
+            calma.Style.ActiveColor = "#FFD700";
+            calma.Style.Align = 1;
+            calma.Style.VAlign = 1;
+            calma.Style.Shadow = true;
+            calma.Background.Color = "#101820";
+            p.Themes.Add(calma);
+            p.ThemeRef = "tema-clasico";
             return p;
+        }
+
+        static Theme WebTheme(string id, string name, string font, int size,
+            string color, string accent, bool shadow, string bgImage, string bgColor)
+        {
+            var t = new Theme { Id = id, Name = name };
+            t.Style.Font = font;
+            t.Style.Size = size;
+            t.Style.Color = color;
+            t.Style.ActiveColor = accent;
+            t.Style.Align = 1;
+            t.Style.VAlign = 1;
+            t.Style.Shadow = shadow;
+            t.Style.LineSpacing = 1.2;
+            t.Background.Color = bgColor;
+            t.Background.Image = "app:resources/backgrounds/" + bgImage;
+            t.RestScreen = "black";
+            return t;
         }
 
         public Theme ActiveTheme()
@@ -474,6 +504,8 @@ namespace Fusion.Shared.Model
         public string OverlayText;
         public StyleOverride Style = new StyleOverride();
         public BackgroundOverride Background = new BackgroundOverride();
+        public string Transition = "";               // cut | fade | slide
+        public List<string> HighlightWords = new List<string>();   // resaltado [SPEC §5.2 #2]
 
         /// <summary>Resuelve la herencia de 4 niveles [SPEC §5.4]:
         /// Tema → Plantilla de Escenario → Escenario → Elemento.</summary>
@@ -485,6 +517,8 @@ namespace Fusion.Shared.Model
             r.Lines = new List<string>(el.Lines);
             r.Reference = el.Reference;
             r.OverlayText = el.OverlayText;
+            r.Transition = el.Transition;
+            r.HighlightWords = new List<string>(el.HighlightWords);
             r.Loop = el.Loop;
             r.Volume = el.Volume;
             r.StartAt = el.StartAt;
@@ -531,6 +565,10 @@ namespace Fusion.Shared.Model
         static string ResolvePath(string baseDir, string rel)
         {
             if (Path.IsPathRooted(rel)) return rel;
+            // "app:..." = recurso incrustado de la instalación (fondos del programa)
+            if (rel.StartsWith("app:", StringComparison.Ordinal))
+                return Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
+                    rel.Substring(4).Replace('/', Path.DirectorySeparatorChar)));
             return Path.GetFullPath(Path.Combine(baseDir != null ? baseDir : ".", rel));
         }
 
@@ -545,6 +583,13 @@ namespace Fusion.Shared.Model
             j.Set("lines", lines);
             j.Set("activeLine", Shared.JsonValue.Make(ActiveLine));
             if (Reference != null) j.Set("reference", Shared.JsonValue.Make(Reference));
+            if (!string.IsNullOrEmpty(Transition)) j.Set("transition", Shared.JsonValue.Make(Transition));
+            if (HighlightWords.Count > 0)
+            {
+                var hl = Shared.JsonValue.Array();
+                hl.AddStrings(HighlightWords);
+                j.Set("highlight", hl);
+            }
 
             var st = Shared.JsonValue.Object();
             st.Set("font", Shared.JsonValue.Make(Style.Font));

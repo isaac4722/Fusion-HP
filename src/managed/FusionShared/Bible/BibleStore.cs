@@ -77,6 +77,36 @@ namespace Fusion.Shared.Bible
             Json.WriteFile(Path.Combine(dir, id + ".fbi.json"), meta);
         }
 
+        /// <summary>
+        /// Instala las biblias que vienen CON el programa (resources/data/bibles:
+        /// RV1960, NVI, RVG y RVR1909) si aún no están. Devuelve cuántas se
+        /// instalaron. El texto se copia VERBATIM: el programa nunca altera ni
+        /// interpreta el texto bíblico.
+        /// </summary>
+        public int EnsureBundled(string bundledDir)
+        {
+            int installed = 0;
+            try
+            {
+                if (string.IsNullOrEmpty(bundledDir) || !Directory.Exists(bundledDir)) return 0;
+                var have = new HashSet<string>();
+                foreach (InstalledBible b in List()) have.Add(b.Id);
+                foreach (string f in Directory.GetFiles(bundledDir, "*.json"))
+                {
+                    string id = MakeId(Path.GetFileNameWithoutExtension(f));
+                    if (have.Contains(id)) continue;
+                    try
+                    {
+                        ImportReport rep = ImportJson(f);
+                        if (rep.Ok) { installed++; have.Add(id); }
+                    }
+                    catch { /* una biblia dañada no frena las demás */ }
+                }
+            }
+            catch { }
+            return installed;
+        }
+
         public List<InstalledBible> List()
         {
             var r = new List<InstalledBible>();

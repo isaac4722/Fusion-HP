@@ -156,11 +156,14 @@ jobs:
           Copy-Item (Find-First "$root/gestionada" "FusionShared.dll")      installer/staging/
           Copy-Item (Find-First "$root/gestionada" "FusionStudio.exe")     installer/staging/
           Copy-Item (Find-First "$root/gestionada" "FusionStudio.Lite.exe") installer/staging/
-          # recursos
-          New-Item -ItemType Directory -Force -Path installer/staging/resources/img | Out-Null
-          Copy-Item resources/img/* installer/staging/resources/img/ -ErrorAction SilentlyContinue
-          # datos de muestra
-          New-Item -ItemType Directory -Force -Path staging/datos/bibles | Out-Null
+          # recursos: TODO el árbol (img con iconos, fuentes, fondos, biblias)
+          New-Item -ItemType Directory -Force -Path installer/staging/resources | Out-Null
+          Copy-Item resources installer/staging/resources -Recurse -Force
+          # verificación de assets críticos de la fusión web (v2.1)
+          if (-not (Test-Path installer/staging/resources/fonts)) { throw 'faltan fuentes de la GUI' }
+          if (-not (Test-Path installer/staging/resources/backgrounds)) { throw 'faltan fondos de la referencia' }
+          if (-not (Test-Path installer/staging/resources/img/icons)) { throw 'faltan iconos Tabler' }
+          if ((Get-ChildItem installer/staging/resources/data/bibles -Filter *.json -ErrorAction SilentlyContinue).Count -lt 4) { throw 'faltan las 4 biblias completas' }
           # arranque: FusionHP.exe final por arquitectura (renombrado al instalar)
           Get-ChildItem installer/staging
           if (-not (Test-Path installer/staging/FusionHP.x86.exe)) { throw 'falta núcleo x86' }

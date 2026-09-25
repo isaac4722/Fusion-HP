@@ -8,6 +8,7 @@
 #pragma once
 #include "Common.h"
 #include "SlideState.h"
+#include "Highlight.h"
 
 // Direct2D / DirectWrite (Win7+)
 #include <d2d1.h>
@@ -61,6 +62,13 @@ private:
 
     // --- GDI+ fallback ---
     bool InitGdiplus();
+    // Fuentes de la GUI incrustadas (resources/fonts) + transiciones
+    void LoadPrivateFonts();
+    Gdiplus::Font* MakeFontGdip(const std::wstring& family, REAL size, INT style);
+    bool NeedsPrivateFont(const std::wstring& family) const;
+    bool PreferGdipFor(const Slide& s) const;
+    void PresentBlendGdip(Gdiplus::Bitmap* prev, Gdiplus::Bitmap* next,
+                          double a, bool slideIn, int w, int h);
     void RenderGdip(const Slide& s, BlankMode blank);
     void DrawTextLinesGdip(Gdiplus::Graphics& g, const Slide& s, int w, int h);
     Gdiplus::Bitmap* LoadBitmapGdip(const std::wstring& path); // con caché
@@ -80,7 +88,12 @@ private:
     Gdiplus::Bitmap* FindCacheGdip(const std::wstring& p);
 
     ULONG_PTR gdipToken_ = 0;
-    std::wstring logoPath_;
+    Gdiplus::PrivateFontCollection* fonts_ = nullptr;
+    Gdiplus::FontFamily* fontFamilies_ = nullptr;
+    int fontFamilyCount_ = 0;
+    std::unique_ptr<Gdiplus::Bitmap> prevFrame_;   // frame anterior (transiciones)
+    std::string lastSlideId_;
+    BlankMode lastBlank_ = BlankMode::Black;
     Gdiplus::Bitmap* logoGdip_ = nullptr;
     ID2D1Bitmap* logoD2D_ = nullptr;
 };

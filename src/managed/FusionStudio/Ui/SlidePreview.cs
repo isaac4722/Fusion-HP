@@ -9,6 +9,8 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Text;
 using Fusion.Shared.Model;
+using Fusion.Shared.Media;
+using Fusion.Shared.Text;
 
 namespace Fusion.Studio.Ui
 {
@@ -52,10 +54,32 @@ namespace Fusion.Studio.Ui
             int W = Width, H = Height;
             if (W <= 0 || H <= 0) return;
 
-            if (blank || slide == null)
+            if (blank && blankMode != "clear" || slide == null)
             {
                 using (var b = new SolidBrush(blankMode == "theme" && slide != null ? Parse(slide.Background.Color) : Color.Black))
                     g.FillRectangle(b, 0, 0, W, H);
+                return;
+            }
+            if (blank && blankMode == "clear")
+            {
+                // Tecla C: el fondo permanece, el texto se oculta (referencia web)
+                using (var b = new SolidBrush(Parse(slide.Background.Color)))
+                    g.FillRectangle(b, 0, 0, W, H);
+                if (!string.IsNullOrEmpty(slide.Background.Image) && System.IO.File.Exists(slide.Background.Image))
+                {
+                    try
+                    {
+                        using (var img = Image.FromFile(slide.Background.Image))
+                        {
+                            double sc = (slide.Background.Fit ?? 0) == 0
+                                ? Math.Max((double)W / img.Width, (double)H / img.Height)
+                                : Math.Min((double)W / img.Width, (double)H / img.Height);
+                            int dw = (int)(img.Width * sc), dh = (int)(img.Height * sc);
+                            g.DrawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh);
+                        }
+                    }
+                    catch { }
+                }
                 return;
             }
 
@@ -111,7 +135,7 @@ namespace Fusion.Studio.Ui
                 float total = lineH * slide.Lines.Count;
                 if (total > box.Height) { sizePt *= box.Height / total; lineH = sizePt * (float)(st.LineSpacing ?? 1.15) * 96f / 72f * (H / 1080f) * 1.15f; }
 
-                using (var f = new Font(st.Font ?? "Segoe UI", Math.Max(6, sizePt),
+                using (var f = FontVault.Create(st.Font ?? "Segoe UI", Math.Max(6, sizePt),
                                         ((st.Bold ?? false) ? FontStyle.Bold : FontStyle.Regular) |
                                         ((st.Italic ?? false) ? FontStyle.Italic : FontStyle.Regular)))
                 {
@@ -124,19 +148,59 @@ namespace Fusion.Studio.Ui
                     {
                         bool active = i == activeLine;
                         var rect = new RectangleF(box.X, y, box.Width, lineH);
-                        if (st.Shadow ?? true)
+                        if (slide.HighlightWords != null && slide.HighlightWords.Count > 0)
                         {
-                            using (var sb = new SolidBrush(Color.FromArgb(215, Color.Black)))
-                                g.DrawString(slide.Lines[i], f, sb, new RectangleF(rect.X + 1.5f, rect.Y + 1.5f, rect.Width, rect.Height), sf);
+                            // Resaltado [SPEC §5.2 #2]: coincidencias en color de acento
+                            var segs = Highlight.Split(slide.Lines[i], slide.HighlightWords);
+                            var near = new StringFormat { Alignment = StringAlignment.Near, LineAlignment = StringAlignment.Center };
+                            float total = 0;
+                            var widths = new float[segs.Count];
+                            for (int k = 0; k < segs.Count; k++)
+                            {
+                                widths[k] = g.MeasureString(segs[k].Text, f).Width;
+                                total += widths[k];
+                            }
+                            float x0 = (st.Align ?? 1) == 0 ? box.X :
+                                       (st.Align ?? 1) == 2 ? box.X + box.Width - total :
+                                       box.X + (box.Width - total) / 2;
+                            if (st.Shadow ?? true)
+                                using (var sb = new SolidBrush(Color.FromArgb(215, Color.Black)))
+                                {
+                                    float x = x0;
+                                    for (int k = 0; k < segs.Count; k++)
+                                    {
+                                        g.DrawString(segs[k].Text, f, sb, new RectangleF(x + 1.5f, rect.Y + 1.5f, widths[k] + 4, rect.Height), near);
+                                        x += widths[k];
+                                    }
+                                }
+                            float xx = x0;
+                            for (int k = 0; k < segs.Count; k++)
+                            {
+                                using (var b = new SolidBrush(segs[k].Match
+                                    ? Parse(st.ActiveColor ?? "#FFD700")
+                                    : (active ? Parse(st.ActiveColor ?? "#FFD700") : Parse(st.Color ?? "#FFFFFF"))))
+                                {
+                                    g.DrawString(segs[k].Text, f, b, new RectangleF(xx, rect.Y, widths[k] + 4, rect.Height), near);
+                                    xx += widths[k];
+                                }
+                            }
                         }
-                        using (var b = new SolidBrush(active ? Parse(st.ActiveColor ?? "#FFD700") : Parse(st.Color ?? "#FFFFFF")))
-                            g.DrawString(slide.Lines[i], f, b, rect, sf);
+                        else
+                        {
+                            if (st.Shadow ?? true)
+                            {
+                                using (var sb = new SolidBrush(Color.FromArgb(215, Color.Black)))
+                                    g.DrawString(slide.Lines[i], f, sb, new RectangleF(rect.X + 1.5f, rect.Y + 1.5f, rect.Width, rect.Height), sf);
+                            }
+                            using (var b = new SolidBrush(active ? Parse(st.ActiveColor ?? "#FFD700") : Parse(st.Color ?? "#FFFFFF")))
+                                g.DrawString(slide.Lines[i], f, b, rect, sf);
+                        }
                         y += lineH;
                     }
                 }
                 if (slide.Kind == "verse" && !string.IsNullOrEmpty(slide.Reference))
                 {
-                    using (var f = new Font("Segoe UI", Math.Max(7, sizePt * 0.38f), FontStyle.Italic))
+                    using (var f = FontVault.Create(st.Font ?? "Segoe UI", Math.Max(7, sizePt * 0.38f), FontStyle.Italic))
                     using (var b = new SolidBrush(Parse(slide.Style.ActiveColor ?? "#FFD700")))
                     {
                         var sf = new StringFormat { Alignment = StringAlignment.Center };
@@ -153,7 +217,7 @@ namespace Fusion.Studio.Ui
                     g.FillRectangle(b, 0, H - bandH, W, bandH);
                 using (var b = new SolidBrush(Parse(slide.Style.ActiveColor ?? "#FFD700")))
                     g.FillRectangle(b, 0, H - bandH, W, 3);
-                using (var f = new Font("Segoe UI", bandH * 0.36f, FontStyle.Bold))
+                using (var f = FontVault.Create(st.Font ?? "Segoe UI", bandH * 0.36f, FontStyle.Bold))
                 using (var b = new SolidBrush(Color.White))
                 {
                     var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };

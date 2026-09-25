@@ -21,12 +21,14 @@ namespace Fusion.Studio.Ui
         ComboBox cmbRest;
         CheckBox chkStartPresent;
         Label lblQrHint;
+        ComboBox cmbAdvance, cmbTransition;
+        CheckBox chkClock, chkAnimation;
 
         public SettingsForm(MainForm owner)
         {
             this.owner = owner;
             Text = "Configuración";
-            Size = new Size(560, 520);
+            Size = new Size(560, 660);
             StartPosition = FormStartPosition.CenterParent;
             Font = UiTheme.Normal();
             BackColor = UiTheme.Panel;
@@ -91,13 +93,39 @@ namespace Fusion.Studio.Ui
             y += 32;
             chkStartPresent = new CheckBox { Text = "Iniciar en modo Presentación (recomendado)", Location = new Point(24, y), AutoSize = true, Checked = S.StartInPresentMode };
             Controls.Add(chkStartPresent);
+            y += 30;
+
+            var l5 = new Label { Text = "Avance con Espacio/flechas:", Location = new Point(24, y + 3), AutoSize = true };
+            Controls.Add(l5);
+            cmbAdvance = new ComboBox { Location = new Point(220, y), Size = new Size(200, 24), DropDownStyle = ComboBoxStyle.DropDownList };
+            cmbAdvance.Items.Add("Línea por línea (letra sincronizada)");
+            cmbAdvance.Items.Add("Diapositiva completa");
+            cmbAdvance.SelectedIndex = S.AdvanceMode == "slide" ? 1 : 0;
+            Controls.Add(cmbAdvance);
+            y += 32;
+
+            var l6 = new Label { Text = "Transición entre elementos:", Location = new Point(24, y + 3), AutoSize = true };
+            Controls.Add(l6);
+            cmbTransition = new ComboBox { Location = new Point(220, y), Size = new Size(200, 24), DropDownStyle = ComboBoxStyle.DropDownList };
+            cmbTransition.Items.Add("Fundido (fade)");
+            cmbTransition.Items.Add("Deslizamiento (slide)");
+            cmbTransition.Items.Add("Corte directo (cut)");
+            cmbTransition.SelectedIndex = S.DefaultTransition == "slide" ? 1 : S.DefaultTransition == "cut" ? 2 : 0;
+            Controls.Add(cmbTransition);
+            y += 32;
+
+            chkAnimation = new CheckBox { Text = "Animaciones de la interfaz y transiciones", Location = new Point(24, y), AutoSize = true, Checked = S.Animation };
+            Controls.Add(chkAnimation);
+            y += 28;
+            chkClock = new CheckBox { Text = "Mostrar reloj en la consola", Location = new Point(24, y), AutoSize = true, Checked = S.ShowClock };
+            Controls.Add(chkClock);
             y += 40;
 
-            var btnSave = new Button { Text = "Guardar", Location = new Point(370, 430), Size = new Size(80, 32),
+            var btnSave = new Button { Text = "Guardar", Location = new Point(370, 570), Size = new Size(80, 32),
                                        BackColor = UiTheme.Accent, ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
             btnSave.Click += delegate { Save(); Close(); };
             Controls.Add(btnSave);
-            var btnClose = new Button { Text = "Cancelar", Location = new Point(458, 430), Size = new Size(80, 32), FlatStyle = FlatStyle.Flat };
+            var btnClose = new Button { Text = "Cancelar", Location = new Point(458, 570), Size = new Size(80, 32), FlatStyle = FlatStyle.Flat };
             btnClose.Click += delegate { Close(); };
             Controls.Add(btnClose);
         }
@@ -179,6 +207,10 @@ namespace Fusion.Studio.Ui
             S.ObsTextSource = txtObsSource.Text;
             S.RestScreen = cmbRest.SelectedIndex == 1 ? "logo" : cmbRest.SelectedIndex == 2 ? "theme" : "black";
             S.StartInPresentMode = chkStartPresent.Checked;
+            S.AdvanceMode = cmbAdvance.SelectedIndex == 1 ? "slide" : "line";
+            S.DefaultTransition = cmbTransition.SelectedIndex == 1 ? "slide" : cmbTransition.SelectedIndex == 2 ? "cut" : "fade";
+            S.Animation = chkAnimation.Checked;
+            S.ShowClock = chkClock.Checked;
             S.Save();
             owner.ApplySettings();
         }

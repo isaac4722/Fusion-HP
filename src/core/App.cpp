@@ -192,7 +192,8 @@ Json App::Dispatch(const std::string& cmd, const Json& p) {
         if (video_.IsPlaying() && mode == "none") video_.Resume();
         state_.SetBlank(mode == "black" ? BlankMode::Black :
                         mode == "logo" ? BlankMode::Logo :
-                        mode == "theme" ? BlankMode::Theme : BlankMode::None);
+                        mode == "theme" ? BlankMode::Theme :
+                        mode == "clear" ? BlankMode::Clear : BlankMode::None);
         live_.RenderNow();
         BroadcastState();
         return ok;

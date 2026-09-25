@@ -34,7 +34,7 @@ namespace Fusion.Studio.Services
         public AhpProject Project;
         public readonly LiveState State = new LiveState();
         IpcClient ipc;
-        public readonly SongLibrary Songs;
+        public readonly Shared.Store.SongStore Songs;
         public readonly Shared.Bible.BibleStore Bibles;
 
         /// <summary>Notifica a la UI cambios de selección/estado (hilo UI via Marshal).</summary>
@@ -50,7 +50,10 @@ namespace Fusion.Studio.Services
         public LiveOrchestrator(AppSettings settings)
         {
             Settings = settings;
-            Songs = new SongLibrary(settings.SongsPath);
+            // Banco de cantos en UNA base única (cancionero.fdb): carga una vez,
+            // consulta siempre, sin archivos por canto ni duplicados.
+            Songs = new Shared.Store.SongStore(settings.DataDir);
+            Songs.MigrateLegacy(settings.SongsPath);
             Bibles = new Shared.Bible.BibleStore(settings.DataDir);
         }
 
@@ -126,6 +129,8 @@ namespace Fusion.Studio.Services
             if (el == null) { Blank(Settings.RestScreen); return; }
 
             var resolved = ResolvedSlide.Resolve(el, scn, Project, BaseDir());
+            if (string.IsNullOrEmpty(resolved.Transition)) resolved.Transition = Settings.DefaultTransition;
+            if (!Settings.Animation) resolved.Transition = "cut";
             resolved.ActiveLine = State.LineIndex;
             State.Current = resolved;
             State.IsBlank = false;
@@ -171,6 +176,17 @@ namespace Fusion.Studio.Services
             FireStateChanged();
         }
 
+        /// <summary>
+        /// Instala en segundo plano las biblias empaquetadas (RV1960, NVI, RVG,
+        /// RVR1909). Fuera del constructor para no frenar el arranque [SPEC §10.1];
+        /// en ejecuciones posteriores es una verificación rápida sin trabajo.
+        /// </summary>
+        public int EnsureBundledBibles()
+        {
+            return Bibles.EnsureBundled(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
+                Path.Combine(Path.Combine("resources", "data"), "bibles")));
+        }
+
         /// <summary>Tema en caliente [SPEC §7.4.1]: re-resuelve el elemento activo.</summary>
         public void ThemeChanged()
         {
@@ -198,9 +214,11 @@ namespace Fusion.Studio.Services
             }
         }
 
-        /// <summary>Siguiente línea; al terminar el elemento pasa al siguiente [SPEC §6.2.1].</summary>
+        /// <summary>Siguiente línea; al terminar el elemento pasa al siguiente [SPEC §6.2.1].
+        /// Con AdvanceMode="slide" (referencia web) avanza el elemento completo.</summary>
         public void NextLine()
         {
+            if (Settings.AdvanceMode == "slide") { NextElement(); return; }
             if (State.Current == null) { NextElement(); return; }
             if (State.LineIndex + 1 < State.Current.Lines.Count) SetLine(State.LineIndex + 1);
             else NextElement();
@@ -208,6 +226,7 @@ namespace Fusion.Studio.Services
 
         public void PrevLine()
         {
+            if (Settings.AdvanceMode == "slide") { PrevElement(); return; }
             if (State.LineIndex > 0) SetLine(State.LineIndex - 1);
             else PrevElement();
         }
@@ -301,6 +320,7 @@ namespace Fusion.Studio.Services
 
         public void Dispose()
         {
+            if (Songs != null) Songs.Dispose();   // asienta cambios pendientes de la base
             if (ipc != null) ipc.Dispose();
             ipc = null;
         }

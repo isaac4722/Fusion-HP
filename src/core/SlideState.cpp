@@ -55,6 +55,9 @@ bool SlideState::ParseSlide(const Json& j, Slide& out) {
     }
     if (j.contains("activeLine")) s.activeLine = j["activeLine"].get<int>();
     if (j.contains("reference")) s.reference = ToWide(j["reference"].get<std::string>());
+    if (j.contains("transition")) s.transition = j["transition"].get<std::string>();
+    if (j.contains("highlight") && j["highlight"].is_array())
+        for (auto& h : j["highlight"]) s.highlight.push_back(ToWide(h.get<std::string>()));
     if (j.contains("style")) ParseStyle(j["style"], s.style);
     if (j.contains("bg")) ParseBg(j["bg"], s.bg);
     if (j.contains("media") && j["media"].is_object()) {

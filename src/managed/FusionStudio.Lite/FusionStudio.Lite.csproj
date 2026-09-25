@@ -16,7 +16,7 @@
     <AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>2.0.0</Version>
+    <Version>2.1.0</Version>
     <AssemblyTitle>Fusion HP Studio Lite</AssemblyTitle>
     <Product>Fusion HP</Product>
     <Description>Variante de perfil B (.NET 3.5) del estudio</Description>

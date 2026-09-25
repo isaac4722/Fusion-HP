@@ -109,6 +109,7 @@ namespace Fusion.Studio.Ui
             clockTimer = new Timer { Interval = 1000 };
             clockTimer.Tick += delegate { lblClock.Text = DateTime.Now.ToString("HH:mm:ss"); };
             clockTimer.Start();
+            lblClock.Visible = Settings.ShowClock;
 
             KeyPreview = true;
             KeyDown += OnGlobalKey;
@@ -243,6 +244,9 @@ namespace Fusion.Studio.Ui
             // Conexión al núcleo en segundo plano (arranque ≤3 s [SPEC §10.1])
             System.Threading.ThreadPool.QueueUserWorkItem(delegate
             {
+                // Biblias completas empaquetadas (RV1960, NVI, RVG, RVR1909):
+                // instalación única en el primer arranque, después solo consulta.
+                try { Live.EnsureBundledBibles(); } catch { }
                 bool ok = Live.ConnectCore(1);   // núcleo ya lanzado por el bootstrap
                 BeginInvoke((Action)delegate
                 {
@@ -341,6 +345,8 @@ namespace Fusion.Studio.Ui
                     Live.PrevElement(); e.Handled = true; break;
                 case Keys.B:
                     Live.Blank(Live.State.BlankMode == "black" ? "none" : "black"); e.Handled = true; break;
+                case Keys.C:
+                    Live.Blank(Live.State.BlankMode == "clear" ? "none" : "clear"); e.Handled = true; break;
                 case Keys.L:
                     Live.Blank(Live.State.BlankMode == "logo" ? "none" : "logo"); e.Handled = true; break;
                 case Keys.G:

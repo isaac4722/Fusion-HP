@@ -46,6 +46,10 @@ namespace Fusion.Studio.Ui
         /// <summary>Aplica cambios de configuración (desde SettingsForm).</summary>
         public void ApplySettings()
         {
+            // ---- presentación (referencia web)
+            if (lblClock != null) lblClock.Visible = Settings.ShowClock;
+            UpdateAdvanceButton();
+
             // ---- API
             if (Settings.ApiEnabled)
             {

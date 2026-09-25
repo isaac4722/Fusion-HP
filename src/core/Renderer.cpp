@@ -10,6 +10,8 @@ using namespace Gdiplus;
 
 Renderer::Renderer() {}
 Renderer::~Renderer() {
+    delete fonts_;
+    delete[] fontFamilies_;
     for (auto& c : cache_) {
         if (c.d2d) c.d2d->Release();
         delete c.gdip;
@@ -57,6 +59,7 @@ bool Renderer::Init(HWND hwnd) {
 }
 
 bool Renderer::InitGdiplus() {
+    LoadPrivateFonts();
     // Nada extra: GDI+ ya iniciado; el doble buffer se crea en RenderGdip
     return true;
 }
@@ -135,8 +138,107 @@ void Renderer::PreloadImage(const std::wstring& path) {
 
 void Renderer::Render(const Slide& s, BlankMode blank) {
     if (!hwnd_) return;
-    if (usingD2D_) RenderD2D(s, blank);
+    if (usingD2D_ && !PreferGdipFor(s)) RenderD2D(s, blank);
     else RenderGdip(s, blank);
+}
+
+// --------------------------------------------------- fuentes privadas (GUI)
+void Renderer::LoadPrivateFonts() {
+    if (fonts_) return;
+    wchar_t exePath[MAX_PATH] = {};
+    GetModuleFileNameW(nullptr, exePath, MAX_PATH);
+    std::wstring dir(exePath);
+    size_t slash = dir.find_last_of(L"\\/");
+    if (slash != std::wstring::npos) dir = dir.substr(0, slash);
+    dir += L"\\resources\\fonts";
+
+    WIN32_FIND_DATAW fd;
+    HANDLE h = FindFirstFileW((dir + L"\\*.ttf").c_str(), &fd);
+    if (h == INVALID_HANDLE_VALUE) return;
+    fonts_ = new Gdiplus::PrivateFontCollection();
+    std::vector<std::wstring> files;
+    do {
+        if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+            files.push_back(dir + L"\\" + fd.cFileName);
+    } while (FindNextFileW(h, &fd));
+    FindClose(h);
+    for (auto& f : files) {
+        Status st = fonts_->AddFontFile(f.c_str());
+        (void)st;   // una fuente dañada no frena las demás
+    }
+    int n = fonts_->GetFamilyCount();
+    if (n > 0) {
+        fontFamilies_ = new Gdiplus::FontFamily[n];
+        int found = 0;
+        fonts_->GetFamilies(n, fontFamilies_, &found);
+        fontFamilyCount_ = found;
+    }
+}
+
+bool Renderer::NeedsPrivateFont(const std::wstring& family) const {
+    if (!fontFamilies_ || fontFamilyCount_ == 0) return false;
+    WCHAR nm[LF_FACESIZE];
+    for (int i = 0; i < fontFamilyCount_; i++) {
+        fontFamilies_[i].GetFamilyName(nm);
+        if (_wcsicmp(nm, family.c_str()) == 0) return true;
+    }
+    return false;
+}
+
+bool Renderer::PreferGdipFor(const Slide& s) const {
+    if (!s.highlight.empty()) return true;
+    if (s.transition == "fade" || s.transition == "slide") return true;
+    if (NeedsPrivateFont(s.style.font)) return true;
+    if (s.overlay.present && NeedsPrivateFont(s.overlay.style.font)) return true;
+    return false;
+}
+
+Gdiplus::Font* Renderer::MakeFontGdip(const std::wstring& family, REAL size, INT style) {
+    if (fontFamilies_ && fontFamilyCount_ > 0) {
+        WCHAR nm[LF_FACESIZE];
+        for (int i = 0; i < fontFamilyCount_; i++) {
+            fontFamilies_[i].GetFamilyName(nm);
+            if (_wcsicmp(nm, family.c_str()) != 0) continue;
+            INT st = style;
+            if (!fontFamilies_[i].IsStyleAvailable(st)) {
+                if ((st & FontStyleBold) && !fontFamilies_[i].IsStyleAvailable(st & ~FontStyleBold))
+                    st &= ~FontStyleBold;
+                if ((st & FontStyleItalic) && !fontFamilies_[i].IsStyleAvailable(st & ~FontStyleItalic))
+                    st &= ~FontStyleItalic;
+            }
+            return new Gdiplus::Font(&fontFamilies_[i], size, st);
+        }
+    }
+    return new Gdiplus::Font(family.c_str(), size, style);
+}
+
+// ----------------------------------------------- mezcla de transición en pantalla
+void Renderer::PresentBlendGdip(Gdiplus::Bitmap* prev, Gdiplus::Bitmap* next,
+                                double a, bool slideIn, int w, int h) {
+    HDC wnd = GetDC(hwnd_);
+    if (!wnd) return;
+    Bitmap frame(w, h, PixelFormat32bppARGB);
+    Graphics g(&frame);
+    g.SetInterpolationMode(InterpolationModeHighQualityBicubic);
+    ImageAttributes ia;
+    ColorMatrix cmPrev = { {1,0,0,0,0}, {0,1,0,0,0}, {0,0,1,0,0},
+                           {0,0,0,(REAL)(1.0 - a),0}, {0,0,0,0,1} };
+    ColorMatrix cmNext = { {1,0,0,0,0}, {0,1,0,0,0}, {0,0,1,0,0},
+                           {0,0,0,(REAL)a,0}, {0,0,0,0,1} };
+    if (slideIn) {
+        ia.SetColorMatrix(&cmPrev);
+        g.DrawImage(prev, Rect(-(int)(a * w), 0, w, h), 0, 0, w, h, UnitPixel, &ia);
+        ia.SetColorMatrix(&cmNext);
+        g.DrawImage(next, Rect((int)((1.0 - a) * w), 0, w, h), 0, 0, w, h, UnitPixel, &ia);
+    } else {
+        ia.SetColorMatrix(&cmPrev);
+        g.DrawImage(prev, Rect(0, 0, w, h), 0, 0, w, h, UnitPixel, &ia);
+        ia.SetColorMatrix(&cmNext);
+        g.DrawImage(next, Rect(0, 0, w, h), 0, 0, w, h, UnitPixel, &ia);
+    }
+    Graphics wg(wnd);
+    wg.DrawImage(&frame, Rect(0, 0, w, h), 0, 0, w, h, UnitPixel);
+    ReleaseDC(hwnd_, wnd);
 }
 
 void Renderer::FillBlack() {
@@ -427,7 +529,8 @@ void Renderer::RenderGdip(const Slide& s, BlankMode blank) {
             int dw = (int)(iw * sc), dh = (int)(ih * sc);
             g.DrawImage(logoGdip_, Rect((w - dw) / 2, (h - dh) / 2, dw, dh), 0, 0, iw, ih, UnitPixel);
         }
-    } else if (blank == BlankMode::Theme) {
+    } else if (blank == BlankMode::Theme || blank == BlankMode::Clear) {
+        // Clear (tecla C): fondo visible, texto oculto — igual que la referencia
         std::unique_ptr<Bitmap> bg(ComposeBackgroundGdip(s.bg, w, h));
         g.DrawImage(bg.get(), Rect(0, 0, w, h), 0, 0, w, h, UnitPixel);
     } else {
@@ -453,14 +556,32 @@ void Renderer::RenderGdip(const Slide& s, BlankMode blank) {
             g.FillRectangle(&band, 0, y, w, bandH);
             SolidBrush accent(s.overlay.style.activeColor);
             g.FillRectangle(&accent, 0, s.overlay.position == 1 ? y + bandH - 4 : y, w, 4);
-            Font f(s.overlay.style.font.c_str(), (REAL)(bandH * 0.38), FontStyleBold);
+            std::unique_ptr<Font> f(MakeFontGdip(s.overlay.style.font, (REAL)(bandH * 0.38), FontStyleBold));
             StringFormat sf; sf.SetAlignment(StringAlignmentCenter); sf.SetLineAlignment(StringAlignmentCenter);
             std::wstring joined;
             for (size_t i = 0; i < s.overlay.lines.size(); i++) { if (i) joined += L"  ·  "; joined += s.overlay.lines[i]; }
             SolidBrush tx(s.overlay.style.color);
-            g.DrawString(joined.c_str(), -1, &f, RectF(w * 0.05f, (REAL)y, w * 0.9f, (REAL)bandH), &sf, &tx);
+            g.DrawString(joined.c_str(), -1, f.get(), RectF(w * 0.05f, (REAL)y, w * 0.9f, (REAL)bandH), &sf, &tx);
         }
     }
+
+    // Transición fade/slide SOLO al cambiar de elemento (nunca por línea) [SPEC §6.2]:
+    // la conmutación base sigue siendo un blit; la animación compone fuera de pantalla.
+    bool slideChanged = (s.id != lastSlideId_) || (blank != lastBlank_);
+    lastSlideId_ = s.id;
+    lastBlank_ = blank;
+    if (slideChanged && prevFrame_ &&
+        (s.transition == "fade" || s.transition == "slide")) {
+        const ULONGLONG t0 = GetTickCount64();
+        const int durMs = 300;
+        for (;;) {
+            double a = (double)(GetTickCount64() - t0) / (double)durMs;
+            if (a >= 1.0) break;
+            PresentBlendGdip(prevFrame_.get(), &canvas, a, s.transition == "slide", w, h);
+            Sleep(10);
+        }
+    }
+    prevFrame_.reset(canvas.Clone(0, 0, w, h, PixelFormat32bppARGB));
 
     // Blit único a pantalla
     HDC wnd = GetDC(hwnd_);
@@ -474,17 +595,24 @@ void Renderer::RenderGdip(const Slide& s, BlankMode blank) {
     }
 }
 
+// Desplazamiento acumulado de los segmentos de resaltado (medición previa)
+static double segOffset(const std::vector<RectF>& rects, size_t k) {
+    double x = 0;
+    for (size_t i = 0; i < k && i < rects.size(); i++) x += rects[i].Width;
+    return x;
+}
+
 void Renderer::DrawTextLinesGdip(Gdiplus::Graphics& g, const Slide& s, int w, int h) {
     if (s.lines.empty()) return;
 
-    // Medición para auto-ajuste de tamaño
+    // Medición para auto-ajuste de tamaño (fuentes de la GUI incluidas)
     double probeSize = (std::max)(8.0, s.style.size);
-    Font probe(s.style.font.c_str(), (REAL)probeSize);
+    std::unique_ptr<Font> probe(MakeFontGdip(s.style.font, (REAL)probeSize, FontStyleRegular));
     StringFormat msf; msf.SetAlignment(StringAlignmentNear); msf.SetLineAlignment(StringAlignmentNear);
     double maxW = 0;
     for (auto& l : s.lines) {
         RectF r; PointF o(0, 0);
-        g.MeasureString(l.c_str(), -1, &probe, o, &msf, &r);
+        g.MeasureString(l.c_str(), -1, probe.get(), o, &msf, &r);
         if (r.Width > maxW) maxW = r.Width;
     }
     RectF box((REAL)(s.style.x * w), (REAL)(s.style.y * h),
@@ -498,34 +626,69 @@ void Renderer::DrawTextLinesGdip(Gdiplus::Graphics& g, const Slide& s, int w, in
     lineHpx = sizePt * s.style.lineSpacing * 96.0 / 72.0;
     totalH = lineHpx * (double)s.lines.size();
 
-    Font f(s.style.font.c_str(), (REAL)sizePt,
+    std::unique_ptr<Font> f(MakeFontGdip(s.style.font, (REAL)sizePt,
            (FontStyle)((int)(s.style.bold ? FontStyleBold : FontStyleRegular) |
-                       (int)(s.style.italic ? FontStyleItalic : FontStyleRegular)));
+                       (int)(s.style.italic ? FontStyleItalic : FontStyleRegular))));
     StringFormat fmt;
     fmt.SetAlignment(s.style.align == 0 ? StringAlignmentNear :
                      s.style.align == 2 ? StringAlignmentFar : StringAlignmentCenter);
     REAL y = (REAL)(s.style.vAlign == 0 ? box.Y : box.Y + (box.Height - (REAL)totalH) / 2);
 
+    StringFormat nearFmt; nearFmt.SetAlignment(StringAlignmentNear);
+    nearFmt.SetLineAlignment(StringAlignmentCenter);
     for (size_t i = 0; i < s.lines.size(); i++) {
         bool active = ((int)i == s.activeLine);
         Color c(active ? s.style.activeColor : s.style.color);
         RectF lineRect(box.X, y, box.Width, (REAL)lineHpx);
-        if (s.style.shadow) {
-            SolidBrush shb(Color(215, 0, 0, 0));
-            RectF shRect(lineRect.X + 2.5f, lineRect.Y + 2.5f, lineRect.Width, lineRect.Height);
-            g.DrawString(s.lines[i].c_str(), -1, &f, shRect, &fmt, &shb);
+
+        if (!s.highlight.empty()) {
+            // Resaltado [SPEC §5.2 #2]: segmentos verbatim; coincidencias en
+            // color de acento, resto con el color de la línea (port betas 1).
+            auto segs = Highlight::Split(s.lines[i], s.highlight);
+            double totalW = 0;
+            std::vector<RectF> segRects;
+            for (auto& sg : segs) {
+                RectF r; PointF o(0, 0);
+                g.MeasureString(sg.text.c_str(), -1, f.get(), o, &nearFmt, &r);
+                segRects.push_back(r);
+                totalW += r.Width;
+            }
+            double x0 = (double)box.X;
+            if (s.style.align == 1) x0 = (double)box.X + ((double)box.Width - totalW) / 2.0;
+            else if (s.style.align == 2) x0 = (double)box.X + (double)box.Width - totalW;
+            RectF lineBox((REAL)x0, y, (REAL)std::max(totalW, 1.0), (REAL)lineHpx);
+            if (s.style.shadow) {
+                SolidBrush shb(Color(215, 0, 0, 0));
+                for (size_t k = 0; k < segs.size(); k++) {
+                    RectF sr(lineBox.X + (REAL)segOffset(segRects, k) + 2.5f, lineBox.Y + 2.5f,
+                             segRects[k].Width, segRects[k].Height);
+                    g.DrawString(segs[k].text.c_str(), -1, f.get(), sr, &nearFmt, &shb);
+                }
+            }
+            for (size_t k = 0; k < segs.size(); k++) {
+                SolidBrush b(segs[k].match ? s.style.activeColor : c.GetValue());
+                RectF sr(lineBox.X + (REAL)segOffset(segRects, k), lineBox.Y,
+                         segRects[k].Width, segRects[k].Height);
+                g.DrawString(segs[k].text.c_str(), -1, f.get(), sr, &nearFmt, &b);
+            }
+        } else {
+            if (s.style.shadow) {
+                SolidBrush shb(Color(215, 0, 0, 0));
+                RectF shRect(lineRect.X + 2.5f, lineRect.Y + 2.5f, lineRect.Width, lineRect.Height);
+                g.DrawString(s.lines[i].c_str(), -1, f.get(), shRect, &fmt, &shb);
+            }
+            SolidBrush b(c);
+            g.DrawString(s.lines[i].c_str(), -1, f.get(), lineRect, &fmt, &b);
         }
-        SolidBrush b(c);
-        g.DrawString(s.lines[i].c_str(), -1, &f, lineRect, &fmt, &b);
         y += (REAL)lineHpx;
     }
 
     if (s.kind == SlideKind::Verse && !s.reference.empty()) {
-        Font rf(s.style.font.c_str(), (REAL)(std::max)(12.0, sizePt * 0.42), FontStyleItalic);
+        std::unique_ptr<Font> rf(MakeFontGdip(s.style.font, (REAL)(std::max)(12.0, sizePt * 0.42), FontStyleItalic));
         StringFormat rsf; rsf.SetAlignment(StringAlignmentCenter); rsf.SetLineAlignment(StringAlignmentCenter);
         RectF rr(box.X, box.GetBottom() - (REAL)(std::max)(24.0, sizePt * 0.66), box.Width, (REAL)(std::max)(26.0, sizePt * 0.7));
         SolidBrush rb(s.style.activeColor);
-        g.DrawString(s.reference.c_str(), -1, &rf, rr, &rsf, &rb);
+        g.DrawString(s.reference.c_str(), -1, rf.get(), rr, &rsf, &rb);
     }
 }
 

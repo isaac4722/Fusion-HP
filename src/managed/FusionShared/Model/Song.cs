@@ -44,6 +44,8 @@ namespace Fusion.Shared.Model
                 el.Kind = ElementKind.Text;
                 el.Lines = new List<string>(sec.Lines);
                 el.Note = sec.Name;
+                if (!string.IsNullOrEmpty(Key_)) el.Tags.Add("key:" + Key_);
+                if (Bpm > 0) el.Tags.Add("bpm:" + Bpm.ToString("0"));
                 sc.Elements.Add(el);
             }
             return sc;
@@ -95,9 +97,28 @@ namespace Fusion.Shared.Model
             s.Key_ = j.GetStr("key");
             s.Bpm = j.GetNum("bpm", 0);
             s.UseCount = j.GetInt("useCount", 0);
+            DateTime lu;
+            if (DateTime.TryParse(j.GetStr("lastUsed", ""), out lu)) s.LastUsed = lu;
             s.Tags = j.GetStringArray("tags");
+            // Formato de la referencia web (Lumina): sections[{name,lines}]
+            if (s.Sections.Count == 0)
+            {
+                var webSections = j.GetArray("sections");
+                if (webSections != null)
+                {
+                    foreach (var ws in webSections)
+                    {
+                        var sec = new SongSection();
+                        sec.Name = ws.GetStr("name", "Verso");
+                        var wlines = ws.GetArray("lines");
+                        if (wlines != null)
+                            foreach (var l in wlines) if (l.Type == Shared.JsonValue.Kind.String) sec.Lines.Add(l.Str);
+                        if (sec.Lines.Count > 0) s.Sections.Add(sec);
+                    }
+                }
+            }
             var lyr = j.Get("lyrics");
-            var paras = lyr.GetArray("paragraphs");
+            var paras = lyr != null && lyr.Type == Shared.JsonValue.Kind.Object ? lyr.GetArray("paragraphs") : null;
             if (paras != null)
             {
                 foreach (var p in paras)
@@ -120,7 +141,7 @@ namespace Fusion.Shared.Model
                 }
             }
             // Fallback: full_text por bloques
-            if (s.Sections.Count == 0)
+            if (s.Sections.Count == 0 && lyr != null && lyr.Type == Shared.JsonValue.Kind.Object)
             {
                 string full = lyr.GetStr("full_text", "");
                 if (full.Length > 0)

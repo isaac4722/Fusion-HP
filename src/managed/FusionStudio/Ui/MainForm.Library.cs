@@ -225,30 +225,14 @@ namespace Fusion.Studio.Ui
                 d.Filter = "Cantos (*.json;*.hjsong)|*.json;*.hjsong|Todos (*.*)|*.*";
                 d.Multiselect = true;
                 if (d.ShowDialog(this) != DialogResult.OK) return;
-                int ok = 0, fail = 0;
-                foreach (var file in d.FileNames)
-                {
-                    try
-                    {
-                        var root = Json.ParseFile(file);
-                        var one = new List<JsonValue>();
-                        if (root.Type == JsonValue.Kind.Array) one.AddRange(root.Items);
-                        else one.Add(root);
-                        foreach (var j in one)
-                        {
-                            var s = Song.FromJson(j);
-                            if (s != null) { Live.Songs.Save(s); ok++; }
-                            else fail++;
-                        }
-                    }
-                    catch
-                    {
-                        fail++;
-                    }
-                }
+                var rep = Live.Songs.ImportFiles(d.FileNames);
                 RefreshSongs("");
-                MessageBox.Show(this, "Cantos importados: " + ok + (fail > 0 ? "\nNo reconocidos: " + fail : ""),
-                    "Fusion HP", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                string msg = "Cantos nuevos: " + rep.Added +
+                             "\nCantos actualizados (mismo título+artista): " + rep.Updated +
+                             "\n\nEl cancionero vive en UNA base única (cancionero.fdb): " +
+                             "no se crean archivos por canto ni duplicados." +
+                             (rep.Warnings.Count > 0 ? "\n\nAvisos:\n- " + string.Join("\n- ", rep.Warnings.ToArray()) : "");
+                MessageBox.Show(this, msg, "Fusion HP — importación", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
         }
 

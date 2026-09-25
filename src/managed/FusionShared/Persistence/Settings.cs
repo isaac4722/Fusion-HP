@@ -40,6 +40,10 @@ namespace Fusion.Shared
 
         // Diagnóstico
         public int LogLevel = 2;                // 0 ERROR..3 DEBUG
+        public string AdvanceMode = "line";     // line | slide (referencia web)
+        public bool ShowClock = true;           // reloj en la consola
+        public bool Animation = true;           // transiciones animadas (fade/slide)
+        public string DefaultTransition = "fade";   // cut | fade | slide
 
         public static AppSettings Load()
         {
@@ -73,6 +77,10 @@ namespace Fusion.Shared
                     s.LastProjectPath = j.GetStr("lastProjectPath", "");
                     s.MaxApiClients = j.GetInt("maxApiClients", 8);
                     s.LogLevel = j.GetInt("logLevel", 2);
+                    s.AdvanceMode = j.GetStr("advanceMode", "line");
+                    s.ShowClock = j.GetBool("showClock", true);
+                    s.Animation = j.GetBool("animation", true);
+                    s.DefaultTransition = j.GetStr("defaultTransition", "fade");
                 }
             }
             catch
@@ -104,6 +112,10 @@ namespace Fusion.Shared
                 j.Set("lastProjectPath", JsonValue.Make(LastProjectPath));
                 j.Set("maxApiClients", JsonValue.Make(MaxApiClients));
                 j.Set("logLevel", JsonValue.Make(LogLevel));
+                j.Set("advanceMode", JsonValue.Make(AdvanceMode));
+                j.Set("showClock", JsonValue.Make(ShowClock));
+                j.Set("animation", JsonValue.Make(Animation));
+                j.Set("defaultTransition", JsonValue.Make(DefaultTransition));
                 Json.WriteFile(Path.Combine(DataDir, "settings.json"), j);
             }
             catch

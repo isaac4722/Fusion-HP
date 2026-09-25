@@ -12,7 +12,8 @@
 namespace fusion {
 
 enum class SlideKind { None = 0, Text, Image, Video, Verse, Lower3 };
-enum class BlankMode { None = 0, Black, Logo, Theme };
+enum class BlankMode { None = 0, Black, Logo, Theme, Clear };
+// Clear = ocultar el texto y conservar el fondo (tecla C, referencia web)
 
 struct TextStyle {
     std::wstring font = L"Segoe UI";
@@ -55,6 +56,8 @@ struct Slide {
     std::vector<std::wstring> lines;
     int activeLine = 0;
     std::wstring reference;         // cita (Versículo)
+    std::vector<std::wstring> highlight;   // palabras a resaltar [SPEC §5.2 #2]
+    std::string transition;         // "" | cut | fade | slide
     TextStyle style;
     BackgroundStyle bg;
     MediaSpec media;

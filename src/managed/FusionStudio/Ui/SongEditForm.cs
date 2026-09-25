@@ -6,6 +6,7 @@ using System;
 using System.Drawing;
 using System.Windows.Forms;
 using Fusion.Shared.Model;
+using Fusion.Shared.Music;
 
 namespace Fusion.Studio.Ui
 {
@@ -13,7 +14,7 @@ namespace Fusion.Studio.Ui
     {
         public Song Result;
         readonly Song original;
-        TextBox txtTitle, txtArtist, txtTags;
+        TextBox txtTitle, txtArtist, txtTags, txtKey, txtBpm;
         ListBox sections;
         TextBox lines;
         Button btnAddSection, btnDelSection;
@@ -42,7 +43,33 @@ namespace Fusion.Studio.Ui
             L("Etiquetas", 14, y);
             txtTags = new TextBox { Location = new Point(90, y - 3), Size = new Size(280, 24) };
             Controls.Add(txtTags);
-            y += 36;
+
+            L("Tonalidad", 390, y);
+            txtKey = new TextBox { Location = new Point(470, y - 3), Size = new Size(48, 24) };
+            Controls.Add(txtKey);
+            L("BPM", 528, y);
+            txtBpm = new TextBox { Location = new Point(560, y - 3), Size = new Size(40, 24) };
+            Controls.Add(txtBpm);
+            y += 30;
+
+            // Transposición del cifrado (función de las betas 1): los acordes de
+            // las líneas de cifrado se reescriben conservando las columnas.
+            var lblTr = new Label { Text = "Transponer cifrado:", Location = new Point(90, y), AutoSize = true,
+                                    ForeColor = UiTheme.TextDim };
+            Controls.Add(lblTr);
+            int tx = 210;
+            foreach (int step in new[] { -2, -1, 1, 2 })
+            {
+                int st = step;
+                var b = new Button { Text = (step > 0 ? "+" : "") + step, Location = new Point(tx, y - 4),
+                                     Size = new Size(38, 26), FlatStyle = FlatStyle.Flat, Font = UiTheme.Small() };
+                b.Click += delegate { TransposeAll(st); };
+                Controls.Add(b);
+                tx += 42;
+            }
+            var trTip = new ToolTip();
+            trTip.SetToolTip(lblTr, "Reconoce líneas de acordes (C, Do, Am, Lam, C/E, maj7, sus4…) y las transporta.");
+            y += 34;
 
             L("Secciones", 14, y);
             btnAddSection = new Button { Text = "+ Sección", Location = new Point(90, y - 4), AutoSize = true, FlatStyle = FlatStyle.Flat };
@@ -106,6 +133,8 @@ namespace Fusion.Studio.Ui
             txtTitle.Text = s.Title ?? "";
             txtArtist.Text = s.Artist ?? "";
             txtTags.Text = s.Tags != null ? string.Join(", ", s.Tags.ToArray()) : "";
+            txtKey.Text = s.Key_ ?? "";
+            txtBpm.Text = s.Bpm > 0 ? s.Bpm.ToString("0") : "";
             sections.Items.Clear();
             foreach (var sec in s.Sections) sections.Items.Add(sec.Name ?? "Verso");
             if (sections.Items.Count > 0) sections.SelectedIndex = 0;
@@ -148,6 +177,25 @@ namespace Fusion.Studio.Ui
                 var tt = t.Trim();
                 if (tt.Length > 0) s.Tags.Add(tt.ToLowerInvariant());
             }
+            s.Key_ = txtKey.Text.Trim();
+            double bpm;
+            s.Bpm = double.TryParse(txtBpm.Text.Trim(), out bpm) ? bpm : 0;
+        }
+
+        /// <summary>Transpone TODAS las líneas de cifrado del canto (port betas 1).</summary>
+        void TransposeAll(int semis)
+        {
+            var s = Result;
+            if (s == null) return;
+            SyncToModel();
+            bool latin = Chords.LooksLikeKey(s.Key_) && s.Key_.Length >= 2 &&
+                         "adefgl".IndexOf(char.ToLowerInvariant(s.Key_[0])) >= 0;   // Do/Re/Mi… o La menor
+            foreach (var sec in s.Sections)
+                for (int i = 0; i < sec.Lines.Count; i++)
+                    if (Chords.IsChordLine(sec.Lines[i]))
+                        sec.Lines[i] = Chords.TransposeLine(sec.Lines[i], semis, latin);
+            s.Key_ = Chords.TransposeKey(s.Key_ ?? "", semis, latin);
+            LoadFrom(s);
         }
 
         Song Build()

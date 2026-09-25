@@ -2,23 +2,72 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              Focusable="True">
+    <UserControl.Resources>
+        <Style x:Key="RibbonBtn" TargetType="Button">
+            <Setter Property="Padding" Value="8,4"/>
+            <Setter Property="Margin" Value="0,0,4,0"/>
+            <Setter Property="Background" Value="#FFFFFF"/>
+            <Setter Property="BorderBrush" Value="#E1DFDD"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="ToolTipService.InitialShowDelay" Value="200"/>
+        </Style>
+        <Style x:Key="RibGrp" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="Foreground" Value="#8A8886"/>
+            <Setter Property="Margin" Value="0,4,10,0"/>
+        </Style>
+    </UserControl.Resources>
     <DockPanel>
-        <!-- Cinta superior estilo PowerPoint -->
-        <Border DockPanel.Dock="Top" Background="#FFFFFF" BorderBrush="#EDEBE9" BorderThickness="0,0,0,1" Padding="10,6">
-            <StackPanel Orientation="Horizontal">
-                <TextBlock Text="ESCENARIO" FontWeight="Bold" FontSize="13" Foreground="#201F1E"
-                           VerticalAlignment="Center" Margin="0,0,14,0"/>
-                <Button x:Name="btnAddText" Content="Texto" Margin="0,0,6,0" Padding="10,4" Click="OnAddText"/>
-                <Button x:Name="btnAddVerse" Content="Versículo" Margin="0,0,6,0" Padding="10,4" Click="OnAddVerse"/>
-                <Button x:Name="btnAddImage" Content="Imagen" Margin="0,0,6,0" Padding="10,4" Click="OnAddImage"/>
-                <Button x:Name="btnAddVideo" Content="Video" Margin="0,0,6,0" Padding="10,4" Click="OnAddVideo"/>
-                <Button x:Name="btnAddLower" Content="Lower third" Margin="0,0,14,0" Padding="10,4" Click="OnAddLower"/>
-                <Button x:Name="btnDelete" Content="Quitar elemento" Margin="0,0,14,0" Padding="10,4" Click="OnDelete"/>
-                <Rectangle Width="1" Fill="#EDEBE9" Margin="0,0,14,0"/>
-                <Button x:Name="btnSendLive" Content="▶ Enviar a pantalla" Background="#C43E1C" Foreground="White"
-                        Padding="14,4" BorderThickness="0" FontWeight="Bold" Click="OnSendLive"/>
-                <TextBlock x:Name="lblHerencia" VerticalAlignment="Center" Margin="14,0,0,0"
-                           FontSize="11" Foreground="#605E5C" Text="Herencia: Tema → Plantilla → Escenario → Elemento"/>
+        <!-- Cinta superior estilo PowerPoint (grupos con iconos, como la referencia) -->
+        <Border DockPanel.Dock="Top" Background="#FFFFFF" BorderBrush="#EDEBE9" BorderThickness="0,0,0,1" Padding="10,4,10,2">
+            <StackPanel>
+                <WrapPanel>
+                    <TextBlock Text="ESCENARIO" FontWeight="Bold" FontSize="13" Foreground="#201F1E"
+                               VerticalAlignment="Center" Margin="0,0,12,0"/>
+
+                    <!-- Portapapeles / historia (referencia web: Ctrl+Z/Y/C/V/D) -->
+                    <Button x:Name="btnUndo" Style="{StaticResource RibbonBtn}" Click="OnUndo" ToolTip="Deshacer (Ctrl+Z)"/>
+                    <Button x:Name="btnRedo" Style="{StaticResource RibbonBtn}" Click="OnRedo" ToolTip="Rehacer (Ctrl+Y)"/>
+                    <Button x:Name="btnCopy" Style="{StaticResource RibbonBtn}" Click="OnCopy" ToolTip="Copiar elemento (Ctrl+C)"/>
+                    <Button x:Name="btnPaste" Style="{StaticResource RibbonBtn}" Click="OnPaste" ToolTip="Pegar (Ctrl+V)"/>
+                    <Button x:Name="btnDuplicate" Style="{StaticResource RibbonBtn}" Click="OnDuplicate" ToolTip="Duplicar (Ctrl+D)"/>
+                    <Button x:Name="btnDelete" Style="{StaticResource RibbonBtn}" Click="OnDelete" ToolTip="Quitar elemento (Supr)"/>
+                    <Rectangle Width="1" Fill="#EDEBE9" Margin="4,2"/>
+
+                    <!-- Elementos nuevos -->
+                    <Button x:Name="btnAddText" Style="{StaticResource RibbonBtn}" Click="OnAddText" ToolTip="Elemento de texto"/>
+                    <Button x:Name="btnAddVerse" Style="{StaticResource RibbonBtn}" Click="OnAddVerse" ToolTip="Versículo"/>
+                    <Button x:Name="btnAddImage" Style="{StaticResource RibbonBtn}" Click="OnAddImage" ToolTip="Imagen"/>
+                    <Button x:Name="btnAddVideo" Style="{StaticResource RibbonBtn}" Click="OnAddVideo" ToolTip="Video"/>
+                    <Button x:Name="btnAddLower" Style="{StaticResource RibbonBtn}" Click="OnAddLower" ToolTip="Lower third"/>
+                    <Rectangle Width="1" Fill="#EDEBE9" Margin="4,2"/>
+
+                    <!-- Reordenar -->
+                    <Button x:Name="btnMoveUp" Style="{StaticResource RibbonBtn}" Click="OnMoveUp" ToolTip="Subir elemento"/>
+                    <Button x:Name="btnMoveDown" Style="{StaticResource RibbonBtn}" Click="OnMoveDown" ToolTip="Bajar elemento"/>
+                    <Rectangle Width="1" Fill="#EDEBE9" Margin="4,2"/>
+
+                    <Button x:Name="btnSendLive" Background="#C43E1C" Foreground="White" BorderThickness="0"
+                            FontWeight="Bold" Padding="12,4" Margin="0,0,12,0" Cursor="Hand" Click="OnSendLive"
+                            ToolTip="Enviar a la pantalla pública"/>
+                    <TextBlock x:Name="lblHerencia" VerticalAlignment="Center" Margin="0,2,0,0"
+                               FontSize="11" Foreground="#605E5C" Text="Herencia: Tema → Plantilla → Escenario → Elemento"/>
+                </WrapPanel>
+                <WrapPanel Margin="0,4,0,0">
+                    <TextBlock Text="TRANSICIÓN" Style="{StaticResource RibGrp}" VerticalAlignment="Center"/>
+                    <ComboBox x:Name="cmbTransition" Width="120" Margin="0,2,14,2" SelectionChanged="OnTransitionChanged">
+                        <ComboBoxItem Content="Fundido (fade)" Tag="fade" IsSelected="True"/>
+                        <ComboBoxItem Content="Desliz (slide)" Tag="slide"/>
+                        <ComboBoxItem Content="Corte (cut)" Tag="cut"/>
+                    </ComboBox>
+                    <TextBlock Text="RESALTAR EN PANTALLA" Style="{StaticResource RibGrp}" VerticalAlignment="Center"/>
+                    <TextBox x:Name="txtHighlight" Width="170" Margin="0,2,14,2"
+                             ToolTip="Palabras que se dibujan en color de acento al proyectar. Vacío = sin resaltado."
+                             KeyDown="OnHighlightKey" LostFocus="OnHighlightCommit"/>
+                    <TextBlock x:Name="lblHistory" Style="{StaticResource RibGrp}" VerticalAlignment="Center"
+                               Text="Historia: 0"/>
+                </WrapPanel>
             </StackPanel>
         </Border>
 
@@ -89,10 +138,11 @@
             </ScrollViewer>
         </Border>
 
-        <!-- Lienzo central 16:9 -->
+        <!-- Centro: lienzo 16:9 + tira de elementos (miniaturas) -->
         <Grid Background="#F3F2F1">
             <Grid.RowDefinitions>
                 <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
             <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
@@ -102,9 +152,37 @@
                     </Canvas.LayoutTransform>
                 </Canvas>
             </ScrollViewer>
-            <Border Grid.Row="1" Background="#FFFFFF" BorderBrush="#EDEBE9" BorderThickness="0,1,0,0" Padding="10,4">
+
+            <!-- Tira de elementos del escenario (como las diapositivas de la referencia) -->
+            <Border Grid.Row="1" Background="#FFFFFF" BorderBrush="#EDEBE9" BorderThickness="0,1,0,0" Padding="6,4">
+                <ListBox x:Name="lstElements" Height="74" BorderThickness="0"
+                         ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                         ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                         SelectionChanged="OnElementStripSelected">
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal"/>
+                        </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Border Width="118" Margin="2,2" BorderBrush="#E1DFDD" BorderThickness="1" CornerRadius="2"
+                                    Background="#FAF9F8" ToolTip="{Binding Hint}">
+                                <StackPanel Margin="4">
+                                    <TextBlock Text="{Binding Index}" FontSize="10" Foreground="#8A8886"/>
+                                    <TextBlock Text="{Binding Title}" FontSize="11" FontWeight="SemiBold"
+                                               TextTrimming="CharacterEllipsis" Foreground="#201F1E"/>
+                                    <TextBlock Text="{Binding Kind}" FontSize="9" Foreground="#605E5C"/>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Border>
+
+            <Border Grid.Row="2" Background="#FFFFFF" BorderBrush="#EDEBE9" BorderThickness="0,1,0,0" Padding="10,4">
                 <TextBlock x:Name="lblHint" FontSize="11" Foreground="#605E5C"
-                           Text="Arrastra los elementos · doble clic para editar el texto · la previsualización usa el mismo motor que la salida"/>
+                           Text="Arrastra los elementos · doble clic para editar el texto · Ctrl+Z/C/V/D · la previsualización usa el mismo motor que la salida"/>
             </Border>
         </Grid>
     </DockPanel>

@@ -96,6 +96,10 @@ namespace Fusion.Studio.Ui
             btnLogo.Click += delegate { Live.Blank(Live.State.BlankMode == "logo" ? "none" : "logo"); };
             right.Controls.Add(btnLogo); y += 38;
 
+            var btnClear = MakeLiveButton("Ocultar texto (C)", y, UiTheme.Bg, UiTheme.Text);
+            btnClear.Click += delegate { Live.Blank(Live.State.BlankMode == "clear" ? "none" : "clear"); };
+            right.Controls.Add(btnClear); y += 44;
+
             var btnShow = MakeLiveButton("Mostrar", y, UiTheme.Bg, UiTheme.Text);
             btnShow.Click += delegate { Live.Blank("none"); };
             right.Controls.Add(btnShow); y += 44;
@@ -120,7 +124,33 @@ namespace Fusion.Studio.Ui
 
             var btnVerse = MakeLiveButton("Versículo rápido (G)", y, UiTheme.Bg, UiTheme.Text);
             btnVerse.Click += delegate { FocusBibleSearch(); };
-            right.Controls.Add(btnVerse); y += 46;
+            right.Controls.Add(btnVerse); y += 38;
+
+            var btnChords = MakeLiveButton("Acordes (músicos)", y, UiTheme.Bg, UiTheme.Text);
+            btnChords.Click += delegate { ShowChordsWindow(); };
+            right.Controls.Add(btnChords); y += 44;
+
+            // Resaltado en proyección [SPEC §5.2 #2]: palabras que se dibujan
+            // en color de acento (port de las betas 1). Enter aplica, vacío limpia.
+            var lblHl = new Label { Text = "RESALTAR EN PANTALLA", Font = UiTheme.SmallBold(),
+                                    ForeColor = UiTheme.TextDim, Location = new Point(10, y), AutoSize = true };
+            right.Controls.Add(lblHl); y += 22;
+            txtHighlight = new TextBox { Location = new Point(10, y), Size = new Size(196, 24),
+                                         Font = UiTheme.Normal(), BorderStyle = BorderStyle.FixedSingle };
+            ToolTip tipHl = new ToolTip();
+            tipHl.SetToolTip(txtHl, "Palabras separadas por espacio. Enter aplica, vacío limpia. Ej.: Dios amor");
+            txtHighlight.KeyDown += delegate(object s, KeyEventArgs e)
+            {
+                if (e.KeyCode == Keys.Enter) { ApplyHighlight(); e.SuppressKeyPress = true; }
+                if (e.KeyCode == Keys.Escape) { txtHighlight.Text = ""; ApplyHighlight(); e.SuppressKeyPress = true; }
+            };
+            right.Controls.Add(txtHighlight); y += 30;
+
+            // Avance línea/diapositiva (referencia web) conmutable al vuelo
+            btnAdvance = MakeLiveButton("Avance: línea por línea", y, UiTheme.AccentSoft, UiTheme.AccentDark);
+            btnAdvance.Click += delegate { ToggleAdvanceMode(); };
+            right.Controls.Add(btnAdvance); y += 38;
+            UpdateAdvanceButton();
 
             var lblLines = new Label { Text = "LÍNEAS DEL ELEMENTO", Font = UiTheme.SmallBold(), ForeColor = UiTheme.TextDim,
                                        Location = new Point(10, y), AutoSize = true };
@@ -139,6 +169,43 @@ namespace Fusion.Studio.Ui
                                  Font = UiTheme.Normal(), UseVisualStyleBackColor = false };
             b.FlatAppearance.BorderSize = 0;
             return b;
+        }
+
+        TextBox txtHighlight;
+        Button btnAdvance;
+        ChordsForm chordsForm;
+
+        void ToggleAdvanceMode()
+        {
+            Settings.AdvanceMode = Settings.AdvanceMode == "line" ? "slide" : "line";
+            Settings.Save();
+            UpdateAdvanceButton();
+        }
+
+        void UpdateAdvanceButton()
+        {
+            if (btnAdvance == null) return;
+            btnAdvance.Text = Settings.AdvanceMode == "line" ? "Avance: línea por línea" : "Avance: por diapositiva";
+        }
+
+        void ApplyHighlight()
+        {
+            var el = Live.CurrentElement;
+            if (el == null) return;
+            el.HighlightWords.Clear();
+            string t = txtHighlight.Text.Trim();
+            if (t.Length > 0)
+                foreach (string w in t.Split((char[])null, StringSplitOptions.RemoveEmptyEntries))
+                    el.HighlightWords.Add(w);
+            Live.SendCurrent();
+        }
+
+        void ShowChordsWindow()
+        {
+            if (chordsForm == null || chordsForm.IsDisposed)
+                chordsForm = new ChordsForm(this, Live);
+            chordsForm.Show(this);
+            chordsForm.BringToFront();
         }
 
         Scenario CurrentScenarioUi

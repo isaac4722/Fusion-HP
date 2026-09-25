@@ -7,7 +7,7 @@
 ; ============================================================================
 
 #define AppName "Fusion HP"
-#define AppVersion "2.0.0-beta.1"
+#define AppVersion "2.1.0"
 #define AppPublisher "Fusion HP"
 #define AppExeName "FusionHP.exe"
 #define DotNetUrl "https://go.microsoft.com/fwlink/?linkid=2088631"
@@ -52,7 +52,6 @@ Source: "staging\FusionShared.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "staging\FusionStudio.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "staging\FusionStudio.Lite.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "staging\resources\*"; DestDir: "{app}\resources"; Flags: recursesubdirs ignoreversion
-Source: "..\resources\data\bible_rvr1909.json"; DestDir: "{app}\resources\data"; Flags: skipifsourcedoesntexist ignoreversion
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"

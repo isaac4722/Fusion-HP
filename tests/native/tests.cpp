@@ -8,6 +8,7 @@
 #include "../../src/core/Logger.h"
 #include "../../src/core/Environment.h"
 #include "../../src/core/SlideState.h"
+#include "../../src/core/Highlight.h"
 #include "../../src/core/NativeSession.h"
 #include "../../src/core/IpcServer.h"
 #include <cstdio>
@@ -92,6 +93,50 @@ static void TestSlideState()
     Slide s2;
     CHECK(SlideState::ParseSlide(withOverlay, s2), "SlideState: overlay parsea");
     CHECK(s2.overlay.present && s2.overlay.lines[0] == L"aviso", "SlideState: overlay contenido");
+}
+
+static void TestHighlight()
+{
+    // Port de las betas 1: acentos insensibles + frontera de palabra + verbatim
+    auto segs = Highlight::Split(L"Porque tanto AMÓ Dios al mundo", {L"amo"});
+    bool any = false;
+    for (auto& sg : segs) if (sg.match) any = true;
+    CHECK(any, "Highlight: AMO coincide con 'amo' sin acento");
+
+    segs = Highlight::Split(L"Diosas y Dios y diosdad", {L"Dios"});
+    int matches = 0;
+    for (auto& sg : segs) if (sg.match) matches++;
+    CHECK(matches == 1, "Highlight: frontera de palabra (solo 'Dios')");
+
+    std::wstring joined;
+    segs = Highlight::Split(L"Él es DIOS sobre todo", {L"dios"});
+    for (auto& sg : segs) joined += sg.text;
+    CHECK(joined == L"Él es DIOS sobre todo", "Highlight: texto VERBATIM");
+}
+
+static void TestSlideStateV21()
+{
+    // Contrato v2.1: transición + resaltado + modo clear
+    Json slide = Json::parse(R"({
+      "id":"el-v21","kind":"verse","activeLine":0,
+      "lines":["Porque de tal manera amó Dios"],
+      "transition":"slide",
+      "highlight":["Dios"],
+      "style":{"font":"Outfit","size":46,"bold":false,"italic":false,
+               "color":"#FFF8EC","activeColor":"#E8C872","align":1,"vAlign":1,
+               "shadow":true,"outline":false,"lineSpacing":1.2,
+               "box":{"x":0.05,"y":0.08,"w":0.9,"h":0.84}},
+      "bg":{"color":"#0A0704","fit":0,"opacity":1.0}
+    })");
+    Slide s;
+    CHECK(SlideState::ParseSlide(slide, s), "SlideState v2.1: parseo");
+    CHECK(s.transition == "slide", "SlideState v2.1: transición slide");
+    CHECK(s.highlight.size() == 1 && s.highlight[0] == L"Dios", "SlideState v2.1: resaltado");
+    CHECK(s.style.font == L"Outfit", "SlideState v2.1: fuente incrustada");
+    SlideState st;
+    st.Set(s);
+    st.SetBlank(BlankMode::Clear);
+    CHECK(st.Blank() == BlankMode::Clear, "SlideState v2.1: modo clear (tecla C)");
 }
 
 static void TestNativeSession()
@@ -182,6 +227,8 @@ int main()
     TestEnvironment();
     TestJson();
     TestSlideState();
+    TestHighlight();
+    TestSlideStateV21();
     TestNativeSession();
     TestIpcLoop();
 
