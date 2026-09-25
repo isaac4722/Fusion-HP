@@ -270,8 +270,7 @@ void NativeStudio::PaintPresent(Gdiplus::Graphics& g, const RECT& cli) {
     SetBkMode(dc, TRANSPARENT);
     RECT ptag{main.left + pad, main.top + 10, main.left + pad + 86, main.top + 28};
     g.ReleaseHDC(dc);
-    Gdiplus::SolidBrush tb2(ui::ToColor(ui::Accent));
-    ui::RoundRect(g, ptag, 2, tb2);
+    ui::RoundRect(g, ptag, 2, ui::ToColor(ui::Accent));
     dc = g.GetHDC();
     SelectObject(dc, ui::Font(10, FW_BOLD));
     SetTextColor(dc, 0xFFFFFF);

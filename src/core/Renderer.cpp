@@ -722,7 +722,7 @@ void Renderer::RenderStageEx(const Slide& s, const StageInfo& info) {
         Gdiplus::Graphics g(dc);
         g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
         Gdiplus::SolidBrush black(StageColor(0xFF000000));
-        g.FillRectangle(&black, 0, 0, (Gdiplus::REAL)w, (Gdiplus::REAL)h);
+        g.FillRectangle(&black, (Gdiplus::REAL)0, (Gdiplus::REAL)0, (Gdiplus::REAL)w, (Gdiplus::REAL)h);
 
         double scale = (double)h / 720.0;                 // diseño base 720p
         if (scale < 0.5) scale = 0.5;

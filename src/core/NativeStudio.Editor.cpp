@@ -530,8 +530,7 @@ void NativeStudio::PaintBackstage(Gdiplus::Graphics& g, const RECT& r) {
             RECT c1{pg.left + 32, pg.top + 92, pg.left + 32 + 420, pg.top + 300};
             Gdiplus::Pen pn(ui::ToColor(ui::Border2));
             Gdiplus::SolidBrush wb(ui::ToColor(ui::Paper));
-            g.FillRectangle(&wb, (Gdiplus::REAL)(c1.left), (Gdiplus::REAL)(c1.top),  (Gdiplus::REAL)(c.right - c1.left - 1), 
-                            (Gdiplus::REAL)(c1.bottom - c1.top - 1));
+            g.FillRectangle(&wb, (Gdiplus::REAL)(c1.left), (Gdiplus::REAL)(c1.top),  (Gdiplus::REAL)(c1.right - c1.left - 1), (Gdiplus::REAL)(c1.bottom - c1.top - 1));
             g.DrawRectangle(&pn, (Gdiplus::REAL)(c1.left), (Gdiplus::REAL)(c1.top),  (Gdiplus::REAL)(c1.right - c1.left - 1), 
                             (Gdiplus::REAL)(c1.bottom - c1.top - 1));
             dc = g.GetHDC();

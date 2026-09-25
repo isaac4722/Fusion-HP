@@ -193,10 +193,12 @@ void Tab(Gdiplus::Graphics& g, const RECT& r, const std::wstring& label, bool ac
          bool hot, bool isArchivo) {
     if (active && isArchivo) {
         Gdiplus::SolidBrush br(ToColor(HoverBg));
-        g.FillRectangle(&br, r.left, r.top, r.right - r.left, r.bottom - r.top);
+        g.FillRectangle(&br, (Gdiplus::REAL)r.left, (Gdiplus::REAL)r.top,
+                        (Gdiplus::REAL)(r.right - r.left), (Gdiplus::REAL)(r.bottom - r.top));
     } else if (hot && !active) {
         Gdiplus::SolidBrush br(ToColor(HoverBg));
-        g.FillRectangle(&br, r.left, r.top, r.right - r.left, r.bottom - r.top);
+        g.FillRectangle(&br, (Gdiplus::REAL)r.left, (Gdiplus::REAL)r.top,
+                        (Gdiplus::REAL)(r.right - r.left), (Gdiplus::REAL)(r.bottom - r.top));
     }
     HDC dc = g.GetHDC();
     HFONT f = Font(13, active ? FW_SEMIBOLD : FW_NORMAL);
@@ -209,7 +211,7 @@ void Tab(Gdiplus::Graphics& g, const RECT& r, const std::wstring& label, bool ac
     if (active && !isArchivo) {
         Gdiplus::SolidBrush br(ToColor(Accent));
         int x = r.left + 8, w = r.right - r.left - 16;
-        g.FillRectangle(&br, x, r.bottom - 3, (Gdiplus::REAL)w, 2.5f);
+        g.FillRectangle(&br, (Gdiplus::REAL)x, (Gdiplus::REAL)(r.bottom - 3), (Gdiplus::REAL)w, 2.5f);
     }
 }
 
@@ -379,7 +381,7 @@ Gdiplus::Bitmap* MakeThumb(const Json& slide, int w, int h) {
     Gdiplus::SolidBrush bb(ToColor(bgc));
     g.FillRectangle(&bb, 0, 0, w, h);
     Gdiplus::Bitmap* bgImg = ThumbBgLoad(img);
-    if (bgImg) g.DrawImage(bgImg, 0, 0, (Gdiplus::REAL)w, (Gdiplus::REAL)h);
+    if (bgImg) g.DrawImage(bgImg, (Gdiplus::REAL)0, (Gdiplus::REAL)0, (Gdiplus::REAL)w, (Gdiplus::REAL)h);
 
     // estilo
     std::wstring font = L"Segoe UI";
