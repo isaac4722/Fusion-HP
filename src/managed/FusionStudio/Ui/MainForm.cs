@@ -124,8 +124,9 @@ namespace Fusion.Studio.Ui
             {
                 string p = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logo.ico");
                 if (System.IO.File.Exists(p)) return new Icon(p);
-                p = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "resources", "img", "app.ico");
-                if (System.IO.File.Exists(p)) return new Icon(p);
+                p = System.IO.Path.Combine(
+                    System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "resources"),
+                    System.IO.Path.Combine("img", "app.ico"));
             }
             catch { }
             return null;
