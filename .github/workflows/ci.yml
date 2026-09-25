@@ -1136,13 +1136,24 @@ jobs:
             > ⚠ **ESTA PUBLICACIÓN ES UNA PRERELEASE (beta)**: funcionalidad completa y gates de CI
             > en verde, pero sujeta a cambios. Reporte de fallos bienvenido.
 
-            ## Novedades respecto a v1.0.0-beta.1
-            - Evidencia F6.08 completa (campaña de 60 min en runner CI): 60,00 min · 33.138 ops ·
-              0 errores no justificados · RAM pico 52 MB (objetivo ≤ 300 MB) · 59 dumps de métricas
-              (F6.01) — `docs/verification/sesion60.md`.
-            - Bitácora HOT rotada a WARM conforme a la norma AGENT.md (≤ 10 líneas).
-            - Cuerpo de la release corregido: nombres de descarga reales de esta línea (las betas
-              anteriores arrastraban la plantilla de la línea histórica v7.x).
+            ## Novedades de v1.0.0-beta.3 (auditoría 80/80 + experiencia PowerStudio)
+            - **Auditoría fixture a fixture F0.01–F6.10** (80/80): matriz de cumplimiento y
+              mapa de gates en `docs/verification/`.
+            - **Nueva experiencia PowerStudio** (referencia H-P-Web-Version-Ref): pantalla de
+              **Inicio** con mosaicos (continuar último proyecto, crear, presentar) y
+              **Estudio**: cinta de tareas, miniaturas, lienzo 16:9 con textos/imágenes
+              arrastrables y redimensionables, propiedades y notas — el diseño viaja al culto
+              como ítem compuesto (proyección nativa + exportación PPTX/PDF/imágenes).
+            - **Cierre de brechas**: F1.06 (último proyecto), F1.07 (búsqueda en caliente
+              Ctrl+K sin interrumpir la salida), F2.09 (shell WinForms+WPF vía ElementHost),
+              F2.12 (anotaciones/historial/popularidad de canciones), F2.14 (biblioteca de
+              recursos con re-vinculación portable), F4.13 (exportación de imágenes
+              1920×1080+, 5 formatos).
+            - **FIX preexistente**: triggers FTS5 `AFTER UPDATE/DELETE` (comando 'delete' solo
+              válido en contenido externo) y FTS5 MATCH con alias — toda búsqueda y
+              actualización de la biblioteca fallaba con núcleo real; hallado por el nuevo
+              gate (arnés net48 con LuminaCore.dll en CI).
+            - Evidencia F6.08 completa (sesion60: 60,00 min · 33.138 ops · RAM pico 52 MB).
 
             ## Descargas
             - `LuminaPresentation-${{ env.APP_VERSION }}-win-x86.zip` — **Windows 7 SP1 a Windows 11 (32 bits)**
