@@ -64,8 +64,7 @@ namespace Fusion.Studio.Ui
             Version v = Environment.Version;
             string profile = v.Major >= 4 ? "A (óptimo — .NET 4.x)" : v.Major >= 2 ? "B (reducido — .NET 3.5)" : "C (nativo)";
             Add("Sistema operativo", "OK", Environment.OSVersion.VersionString);
-            Add("Arquitectura del proceso", "OK", Environment.Is64BitProcess ? "x64" : "x86" +
-                (Environment.Is64BitOperatingSystem ? " sobre SO x64" : ""));
+            Add("Arquitectura del proceso", "OK", IntPtr.Size == 8 ? "x64" : "x86" + (IsWow64() ? " sobre SO x64 (WOW64)" : ""));
             Add("Perfil de runtime", "OK", profile + " · CLR " + v);
             Add("Modo de datos", "OK", owner.Settings.Portable ? "Portable (carpeta del programa)" : "Instalado (%APPDATA%\\FusionHP)");
             Add("Carpeta de datos", Directory.Exists(owner.Settings.DataDir) ? "OK" : "ÁMBAR", owner.Settings.DataDir);
@@ -170,6 +169,19 @@ namespace Fusion.Studio.Ui
                 (red == 0 ? "  —  entorno apto para proyectar" : "  —  corrige los puntos en rojo antes del servicio");
             lblSummary.ForeColor = red > 0 ? ColorTranslator.FromHtml("#A4262C") :
                                    amber > 0 ? ColorTranslator.FromHtml("#8A6A00") : ColorTranslator.FromHtml("#107C10");
+        }
+
+        [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+        static extern bool IsWow64Process(System.IntPtr hProcess, out bool wow64Process);
+
+        static bool IsWow64()
+        {
+            try
+            {
+                bool wow;
+                return IsWow64Process(System.Diagnostics.Process.GetCurrentProcess().Handle, out wow) && wow;
+            }
+            catch { return false; }
         }
 
         void Add(string component, string status, string detail)
