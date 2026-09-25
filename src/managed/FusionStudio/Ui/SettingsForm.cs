@@ -263,7 +263,7 @@ namespace Fusion.Studio.Ui
             S.ShowClock = chkClock.Checked;
             S.KeepEngineAlive = chkKeepEngine.Checked;
             S.ObsEnabled = chkObs.Checked;
-            S.ObsHost = string.IsNullOrWhiteSpace(txtObsHost.Text) ? "127.0.0.1" : txtObsHost.Text.Trim();
+            S.ObsHost = txtObsHost.Text.Trim().Length == 0 ? "127.0.0.1" : txtObsHost.Text.Trim();
             S.ObsPort = (int)numObsPort.Value;
             S.ObsPassword = txtObsPass.Text;
             S.Save();
@@ -275,7 +275,7 @@ namespace Fusion.Studio.Ui
         /// humano, sin stack traces crudos [SPEC §11.2.3].</summary>
         void TestObs()
         {
-            string host = string.IsNullOrWhiteSpace(txtObsHost.Text) ? "127.0.0.1" : txtObsHost.Text.Trim();
+            string host = txtObsHost.Text.Trim().Length == 0 ? "127.0.0.1" : txtObsHost.Text.Trim();
             try
             {
                 var probe = new System.Net.WebSockets.ClientWebSocket();
