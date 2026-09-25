@@ -251,8 +251,12 @@ namespace lumina.ui
 #endif
 
             // F1.06 «Arranque en Presentación»: restaura el ÚLTIMO PROYECTO
-            // (silencioso, fail-safe) tras construir la ventana completa.
-            BeginInvoke(new Action(RestoreLastProjectAtStartup));
+            // (silencioso, fail-safe). LLAMADA DIRECTA — BeginInvoke exige un
+            // handle de ventana aún no creado en arranque headless (--uicheck:
+            // «Invoke or BeginInvoke cannot be called until the window handle
+            // has been created»). El método es fail-safe y solo toca controles
+            // ya construidos por BuildContent().
+            RestoreLastProjectAtStartup();
         }
 
 #if NET48
