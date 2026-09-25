@@ -142,13 +142,19 @@ jobs:
         run: |
           $root = "dist-artifacts"
           New-Item -ItemType Directory -Force -Path staging | Out-Null
+          # Los artefactos preservan la estructura de directorios: resolver por búsqueda recursiva
+          function Find-First($dir, $name) {
+            $f = Get-ChildItem -Path $dir -Recurse -Filter $name -File | Select-Object -First 1
+            if (-not $f) { throw "no encontrado en el artefacto: $name" }
+            return $f.FullName
+          }
           # núcleo
-          Copy-Item "$root/nucleo-x86/FusionHP.exe"      staging/FusionHP.x86.exe
-          Copy-Item "$root/nucleo-x64/FusionHP.exe"      staging/FusionHP.x64.exe
+          Copy-Item (Find-First "$root/nucleo-x86" "FusionHP.exe") staging/FusionHP.x86.exe
+          Copy-Item (Find-First "$root/nucleo-x64" "FusionHP.exe") staging/FusionHP.x64.exe
           # administrada
-          Copy-Item "$root/gestionada/FusionShared.dll"  staging/
-          Copy-Item "$root/gestionada/FusionStudio.exe"  staging/
-          Copy-Item "$root/gestionada/FusionStudio.Lite.exe" staging/
+          Copy-Item (Find-First "$root/gestionada" "FusionShared.dll")      staging/
+          Copy-Item (Find-First "$root/gestionada" "FusionStudio.exe")     staging/
+          Copy-Item (Find-First "$root/gestionada" "FusionStudio.Lite.exe") staging/
           # recursos
           New-Item -ItemType Directory -Force -Path staging/resources/img | Out-Null
           Copy-Item resources/img/* staging/resources/img/ -ErrorAction SilentlyContinue
