@@ -204,10 +204,14 @@ jobs:
       - name: Checksums SHA256
         shell: pwsh
         run: |
-          Get-ChildItem dist -Recurse -File | ForEach-Object {
-            $h = Get-FileHash $_.FullName -Algorithm SHA256
-            "{0}  {1}" -f $h.Hash, $_.Name
-          } | Out-File dist/SHA256SUMS.txt -Encoding utf8
+          # Recolectar antes de escribir: el propio SUMS no puede hashearse abierto
+          $lines = Get-ChildItem dist -Recurse -File |
+            Where-Object { $_.Name -ne 'SHA256SUMS.txt' } |
+            ForEach-Object {
+              $h = Get-FileHash $_.FullName -Algorithm SHA256
+              "{0}  {1}" -f $h.Hash, $_.Name
+            }
+          $lines | Out-File dist/SHA256SUMS.txt -Encoding utf8
           Get-Content dist/SHA256SUMS.txt
 
       - name: Subir instalador y portable
