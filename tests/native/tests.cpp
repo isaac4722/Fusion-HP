@@ -388,10 +388,11 @@ static void TestNativeLibrary()
           << R"({"id":"c1","title":"Dios es amor","artist":"Autor A","key":"Re","bpm":72,"language":"es",)"
           << R"("tags":["adoracion"],"sections":[{"name":"Coro","lines":["Dios es amor","Su misericordia"]}]},)"
           << R"({"id":"c2","title":"Santo Espíritu","artist":"Autor B","key":"Mi","bpm":80,"language":"es",)"
-          << R"("sections":[{"name":"Estrofa 1","lines":["Ven Espíritu"]}]})]})";
+          << R"("sections":[{"name":"Estrofa 1","lines":["Ven Espíritu"]}]}]})";
     }
     SongLibrary songs;
     CHECK(songs.Load(fdb.wstring()), "Library: fdb.v1 carga");
+    if (!songs.Loaded()) { fs::remove_all(dir, ec); return; }   // defensivo: no desreferenciar sin datos
     CHECK(songs.Count() == 2, "Library: 2 cantos");
     auto hits = songs.Search(L"dios es amor");
     CHECK(hits.size() == 1 && hits[0] == 0, "Library: búsqueda normalizada (sin/prefijo)");

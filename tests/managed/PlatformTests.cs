@@ -139,6 +139,7 @@ namespace Fusion.Tests
             var live = new LiveOrchestrator(new AppSettings { DataDir = dir });
             live.Project = AhpProject.CreateDefault();
             var scn = new Scenario { Title = "x" };
+            scn.Tags.Add("anuncio");
             var el = new Element { Kind = ElementKind.Text };
             el.Lines.Add("hola");
             scn.Elements.Add(el);
