@@ -8,6 +8,7 @@
 //  Los títulos provienen de AhpProjectInfo (lectura de cabecera ahp.v1).
 // ============================================================================
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Windows.Forms;

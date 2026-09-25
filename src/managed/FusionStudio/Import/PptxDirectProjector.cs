@@ -16,6 +16,7 @@
 //  elimina la dependencia dura de PowerPoint.
 // ============================================================================
 using System;
+using System.Collections.Generic;
 using System.IO;
 using Fusion.Shared;
 using Fusion.Shared.Model;
