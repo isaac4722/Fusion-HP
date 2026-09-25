@@ -47,6 +47,8 @@ enum {
     CMD_LT_TOGGLE,
     CMD_APPLY_BG_SECTION = 720, CMD_APPLY_BG_ALL, CMD_APPLY_THEME_ALL,
     CMD_SLIDE_PREV = 740, CMD_SLIDE_NEXT,
+    CMD_TRANS_BASE = 748,          // +i (cut/fade/slide de esta diapositiva)
+    CMD_TRANSDEF_BASE = 752,       // +i (predeterminada global)
     CMD_VIEW_NORMAL = 760, CMD_VIEW_SORTER, CMD_TOGGLE_PANE, CMD_TOGGLE_NOTES, CMD_TOGGLE_TASK,
     CMD_SHORTCUTS = 780, CMD_OPTIONS,
 
@@ -868,13 +870,13 @@ void NativeStudio::PaintStart(Gdiplus::Graphics& g, const RECT& cli) {
 
     // ---- cabecera blanca con logo, reloj y botón Nuevo ----
     RECT top{0, 0, W, 44};
-    Gdiplus::SolidBrush wp(ToColor(ui::Paper));
+    Gdiplus::SolidBrush wp(ui::ToColor(ui::Paper));
     g.FillRectangle(&wp, 0, 0, (Gdiplus::REAL)W, 44);
-    Gdiplus::Pen lp(ToColor(ui::Border), 1.0f);
+    Gdiplus::Pen lp(ui::ToColor(ui::Border), 1.0f);
     g.DrawLine(&lp, 0, 43.5f, (Gdiplus::REAL)W, 43.5f);
     // logo "P" en cuadro acento (como la web)
     RECT lg{12, 8, 40, 36};
-    ui::RoundRect(g, lg, 4, ToColor(ui::Accent));
+    ui::RoundRect(g, lg, 4, ui::ToColor(ui::Accent));
     HDC dc = g.GetHDC();
     HFONT fl = ui::Font(15, FW_SEMIBOLD);
     SelectObject(dc, fl);
@@ -900,12 +902,12 @@ void NativeStudio::PaintStart(Gdiplus::Graphics& g, const RECT& cli) {
     DrawTextW(dc, ClockText().c_str(), -1, &lc, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
     g.ReleaseHDC(dc);
     RECT bn{W - 120, 8, W - 12, 36};
-    ui::Chip(g, bn, L"Nuevo", L"", "plus", kAcc | (hoverId_ == CMD_NEW ? kHot : 0));
+    ui::Chip(g, bn, L"Nuevo", L"", "plus", ui::kAcc | (hoverId_ == CMD_NEW ? ui::kHot : 0));
     HitAdd(CMD_NEW, 0, 0, bn);
 
     // ---- barra lateral roja (Lumina web) ----
     RECT side{0, 44, 220, H - 26};
-    Gdiplus::SolidBrush rb(ToColor(ui::Accent));
+    Gdiplus::SolidBrush rb(ui::ToColor(ui::Accent));
     g.FillRectangle(&rb, side.left, side.top, (Gdiplus::REAL)(side.right - side.left),
                     (Gdiplus::REAL)(side.bottom - side.top));
     dc = g.GetHDC();
@@ -958,7 +960,7 @@ void NativeStudio::PaintStart(Gdiplus::Graphics& g, const RECT& cli) {
 
     // ---- área principal: título + buscador + tarjetas ----
     RECT main{220, 44, W, H - 26};
-    Gdiplus::SolidBrush cb(ToColor(ui::CanvasBg));
+    Gdiplus::SolidBrush cb(ui::ToColor(ui::CanvasBg));
     g.FillRectangle(&cb, main.left, main.top, (Gdiplus::REAL)(main.right - main.left),
                     (Gdiplus::REAL)(main.bottom - main.top));
     dc = g.GetHDC();
@@ -985,12 +987,12 @@ void NativeStudio::PaintStart(Gdiplus::Graphics& g, const RECT& cli) {
         cards.push_back({recientes_[i].name, L"Presentación reciente", CMD_RECENT_BASE + (int)i, (int)i});
 
     int cw = 218, chh = 150, gap = 12;
-    int perRow = std::max(1, (main.right - main.left - 48) / (cw + gap));
+    int perRow = std::max(1, (int)((main.right - main.left - 48) / (cw + gap)));
     RECT area{main.left + 24, main.top + 70, main.right - 24, main.bottom - 40};
     int totalH = (int)((cards.size() + perRow - 1) / perRow) * (chh + gap);
-    ScrollAdd(area, scStart_, std::max(0, totalH - (area.bottom - area.top)));
+    ScrollAdd(area, scStart_, std::max(0, (int)(totalH - (area.bottom - area.top))));
     int visW = area.right - area.left;
-    perRow = std::max(1, visW / (cw + gap));
+    perRow = std::max(1, (int)(visW / (cw + gap)));
     int ax = area.left, ay = area.top - scStart_;
     int idx = 0;
     for (auto& c : cards) {
@@ -1001,7 +1003,7 @@ void NativeStudio::PaintStart(Gdiplus::Graphics& g, const RECT& cli) {
             if (c.id == CMD_CONTINUE) ui::Card(g, r, c.title, c.sub, hoverId_ == c.id, true);
             else if (c.id == CMD_NEW) {
                 // tarjeta punteada "en blanco" (web)
-                Gdiplus::Pen dp(ToColor(0xFFC8C6C4), 1.5f);
+                Gdiplus::Pen dp(ui::ToColor(0xFFC8C6C4), 1.5f);
                 dp.SetDashStyle(Gdiplus::DashStyleDash);
                 g.DrawRectangle(&dp, r.left, r.top, (Gdiplus::REAL)(cw - 1), (Gdiplus::REAL)(chh - 1));
                 if (ui::Icon("plus", ui::TintInk))
@@ -1024,12 +1026,12 @@ void NativeStudio::PaintStart(Gdiplus::Graphics& g, const RECT& cli) {
     // botones inferiores
     RECT br{main.left + 24, main.bottom - 36, main.left + 240, main.bottom - 6};
     ui::Chip(g, br, L"Abrir archivo (.ahp)", L"", "folder-open",
-             (hoverId_ == CMD_OPEN ? kHot : 0));
+             (hoverId_ == CMD_OPEN ? ui::kHot : 0));
     HitAdd(CMD_OPEN, 0, 0, br);
 
     // ---- pie ----
     RECT foot{0, H - 26, W, H};
-    Gdiplus::SolidBrush fb(ToColor(ui::Paper));
+    Gdiplus::SolidBrush fb(ui::ToColor(ui::Paper));
     g.FillRectangle(&fb, 0, (Gdiplus::REAL)(H - 26), (Gdiplus::REAL)W, 26);
     g.DrawLine(&lp, 0, (Gdiplus::REAL)(H - 26) + 0.5f, (Gdiplus::REAL)W, (Gdiplus::REAL)(H - 26) + 0.5f);
     dc = g.GetHDC();
@@ -1064,14 +1066,14 @@ void NativeStudio::PlaceEdit(HWND ed, const RECT& r, bool show) {
 // Réplica de RemoteView (App.tsx de la web): marco de móvil centrado.
 void NativeStudio::PaintMando(Gdiplus::Graphics& g, const RECT& cli) {
     int W = cli.right, H = cli.bottom;
-    Gdiplus::SolidBrush bg(ToColor(0xFFE6E6E6));
+    Gdiplus::SolidBrush bg(ui::ToColor(0xFFE6E6E6));
     g.FillRectangle(&bg, 0, 0, (Gdiplus::REAL)W, (Gdiplus::REAL)H);
 
     int ph = std::min(H - 24, 860), pw = std::min(W - 24, 420);
     int px = (W - pw) / 2, py = (H - ph) / 2;
     RECT fr{px, py, px + pw, py + ph};
-    Gdiplus::Pen bp(ToColor(0xFFC8C6C4), 1.0f);
-    Gdiplus::SolidBrush wb(ToColor(ui::Paper));
+    Gdiplus::Pen bp(ui::ToColor(0xFFC8C6C4), 1.0f);
+    Gdiplus::SolidBrush wb(ui::ToColor(ui::Paper));
     g.FillRectangle(&wb, fr.left, fr.top, (Gdiplus::REAL)(fr.right - fr.left),
                     (Gdiplus::REAL)(fr.bottom - fr.top));
     g.DrawRectangle(&bp, fr.left, fr.top, (Gdiplus::REAL)(fr.right - fr.left - 1),
@@ -1080,7 +1082,7 @@ void NativeStudio::PaintMando(Gdiplus::Graphics& g, const RECT& cli) {
     int y = fr.top;
     // cabecera del mando
     RECT back{fr.left + 8, y + 10, fr.left + 36, y + 38};
-    ui::IconButton(g, back, "chevron-left", (hoverId_ == CMD_M_BACK ? kHot : 0));
+    ui::IconButton(g, back, "chevron-left", (hoverId_ == CMD_M_BACK ? ui::kHot : 0));
     HitAdd(CMD_M_BACK, 0, 0, back);
     HDC dc = g.GetHDC();
     SetBkMode(dc, TRANSPARENT);
@@ -1094,7 +1096,7 @@ void NativeStudio::PaintMando(Gdiplus::Graphics& g, const RECT& cli) {
     DrawTextW(dc, L"Sincronizado con este equipo", -1, &t2, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
     g.ReleaseHDC(dc);
     y += 50;
-    Gdiplus::Pen hp(ToColor(ui::Border), 1.0f);
+    Gdiplus::Pen hp(ui::ToColor(ui::Border), 1.0f);
     g.DrawLine(&hp, (Gdiplus::REAL)fr.left, (Gdiplus::REAL)y, (Gdiplus::REAL)fr.right, (Gdiplus::REAL)y);
 
     // vista previa 16:9
@@ -1102,7 +1104,7 @@ void NativeStudio::PaintMando(Gdiplus::Graphics& g, const RECT& cli) {
     RECT pr{fr.left + 12, y + 8, fr.left + 12 + prevW, y + 8 + prevH};
     Gdiplus::Bitmap* th = ThumbOf(CurrentSlideJson(), prevW, prevH, "mando:preview");
     if (th) g.DrawImage(th, pr.left, pr.top, prevW, prevH);
-    else { Gdiplus::SolidBrush bk(ToColor(0xFF000000)); g.FillRectangle(&bk, pr.left, pr.top, (Gdiplus::REAL)prevW, (Gdiplus::REAL)prevH); }
+    else { Gdiplus::SolidBrush bk(ui::ToColor(0xFF000000)); g.FillRectangle(&bk, pr.left, pr.top, (Gdiplus::REAL)prevW, (Gdiplus::REAL)prevH); }
     y = pr.bottom + 8;
 
     // línea actual
@@ -1135,10 +1137,10 @@ void NativeStudio::PaintMando(Gdiplus::Graphics& g, const RECT& cli) {
     int bw = (pw - 36) / 2;
     RECT pv{fr.left + 12, y, fr.left + 12 + bw, y + 56};
     RECT nx{fr.right - 12 - bw, y, fr.right - 12, y + 56};
-    ui::Chip(g, pv, L"Anterior", L"←", "player-skip-back", hoverId_ == CMD_M_PREV ? kHot : 0);
+    ui::Chip(g, pv, L"Anterior", L"←", "player-skip-back", hoverId_ == CMD_M_PREV ? ui::kHot : 0);
     HitAdd(CMD_M_PREV, 0, 0, pv);
     ui::Chip(g, nx, L"Siguiente", L"→", "player-skip-forward",
-             kAcc | (hoverId_ == CMD_M_NEXT ? kHot : 0));
+             ui::kAcc | (hoverId_ == CMD_M_NEXT ? ui::kHot : 0));
     HitAdd(CMD_M_NEXT, 0, 0, nx);
     y += 64;
     // B / C / L
@@ -1151,7 +1153,7 @@ void NativeStudio::PaintMando(Gdiplus::Graphics& g, const RECT& cli) {
                   (ks[i].id == CMD_M_C && blank_ == "clear") ||
                   (ks[i].id == CMD_M_L && blank_ == "logo");
         ui::Chip(g, r, ks[i].l, ks[i].k, "",
-                 (on ? kOn : 0) | (hoverId_ == ks[i].id ? kHot : 0));
+                 (on ? ui::kOn : 0) | (hoverId_ == ks[i].id ? ui::kHot : 0));
         HitAdd(ks[i].id, 0, 0, r);
     }
     y += 60;
@@ -1159,14 +1161,14 @@ void NativeStudio::PaintMando(Gdiplus::Graphics& g, const RECT& cli) {
     // programa (lista desplazable)
     RECT listR{fr.left + 8, y, fr.right - 8, fr.bottom - 8};
     int rowH = 34, total = (int)progTitles_.size() * rowH;
-    ScrollAdd(listR, scMando_, std::max(0, total - (listR.bottom - listR.top)));
+    ScrollAdd(listR, scMando_, std::max(0, (int)(total - (listR.bottom - listR.top))));
     int yy = listR.top - scMando_;
     for (int i = 0; i < (int)progTitles_.size(); i++) {
         RECT r{listR.left, yy, listR.right, yy + rowH};
         if (r.bottom > listR.top && r.top < listR.bottom) {
             bool cur = (i == curEl_);
             ui::Row(g, r, i + 1, ToWide(progTitles_[(size_t)i].first), L"", "",
-                    (cur ? kOn : 0) | (hoverId_ == CMD_M_ITEM && hoverA_ == i ? kHot : 0));
+                    (cur ? ui::kOn : 0) | (hoverId_ == CMD_M_ITEM && hoverA_ == i ? ui::kHot : 0));
             HitAdd(CMD_M_ITEM, i, 0, r);
         }
         yy += rowH;
@@ -1192,8 +1194,8 @@ void NativeStudio::PaintModal(Gdiplus::Graphics& g, const RECT& cli) {
     int W = 460, H = shortcutsOpen_ ? 560 : 430;
     int x = (cli.right - W) / 2, y = (cli.bottom - H) / 2;
     RECT card{x, y, x + W, y + H};
-    Gdiplus::SolidBrush wb(ToColor(ui::Paper));
-    Gdiplus::Pen bp(ToColor(ui::Border2), 1.0f);
+    Gdiplus::SolidBrush wb(ui::ToColor(ui::Paper));
+    Gdiplus::Pen bp(ui::ToColor(ui::Border2), 1.0f);
     g.FillRectangle(&wb, card.left, card.top, (Gdiplus::REAL)W, (Gdiplus::REAL)H);
     g.DrawRectangle(&bp, card.left, card.top, (Gdiplus::REAL)(W - 1), (Gdiplus::REAL)(H - 1));
 
@@ -1206,7 +1208,7 @@ void NativeStudio::PaintModal(Gdiplus::Graphics& g, const RECT& cli) {
               DT_LEFT | DT_VCENTER | DT_SINGLELINE);
     g.ReleaseHDC(dc);
     RECT xb{x + W - 44, y + 10, x + W - 12, y + 42};
-    ui::IconButton(g, xb, "x", hoverId_ == CMD_MODAL_CLOSE ? kHot : 0);
+    ui::IconButton(g, xb, "x", hoverId_ == CMD_MODAL_CLOSE ? ui::kHot : 0);
     HitAdd(CMD_MODAL_CLOSE, 0, 0, xb);
 
     if (shortcutsOpen_) {
@@ -1244,7 +1246,7 @@ void NativeStudio::PaintModal(Gdiplus::Graphics& g, const RECT& cli) {
         for (auto& r : rows) {
             RECT cr{x + 20, ry, x + 440, ry + 46};
             if (hoverId_ == r.id) {
-                Gdiplus::SolidBrush hb(ToColor(ui::HoverBg));
+                Gdiplus::SolidBrush hb(ui::ToColor(ui::HoverBg));
                 g.FillRectangle(&hb, cr.left, cr.top, (Gdiplus::REAL)(cr.right - cr.left),
                                 (Gdiplus::REAL)(cr.bottom - cr.top));
             }
@@ -1261,9 +1263,9 @@ void NativeStudio::PaintModal(Gdiplus::Graphics& g, const RECT& cli) {
             g.ReleaseHDC(dcx);
             // interruptor estilo web
             RECT tg{x + 384, ry + 12, x + 416, ry + 28};
-            Gdiplus::SolidBrush tb(ToColor(r.on ? 0xFF8CE0A4 : 0xFFC8C6C4));
+            Gdiplus::SolidBrush tb(ui::ToColor(r.on ? 0xFF8CE0A4 : 0xFFC8C6C4));
             ui::RoundRect(g, tg, 8, tb);
-            Gdiplus::SolidBrush kb(ToColor(ui::Paper));
+            Gdiplus::SolidBrush kb(ui::ToColor(ui::Paper));
             Gdiplus::REAL kx = r.on ? tg.right - 14 : tg.left + 2;
             g.FillEllipse(&kb, kx, (Gdiplus::REAL)tg.top + 2, 12, 12);
             HitAdd(r.id, 0, 0, cr);
@@ -1282,7 +1284,7 @@ void NativeStudio::PaintModal(Gdiplus::Graphics& g, const RECT& cli) {
         g.ReleaseHDC(dcx);
         RECT cb{x + 20, ry + 66, x + 210, ry + 96};
         ui::Chip(g, cb, L"Exportar historial CSV", L"", "download",
-                 hoverId_ == CMD_BS_CSV ? kHot : 0);
+                 hoverId_ == CMD_BS_CSV ? ui::kHot : 0);
         HitAdd(CMD_BS_CSV, 0, 0, cb);
     }
 }

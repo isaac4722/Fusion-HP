@@ -61,9 +61,9 @@ void NativeStudio::PaintEditor(Gdiplus::Graphics& g, const RECT& cli) {
 
     // pestañas de la cinta
     RECT tabs{0, 44, W, 78};
-    Gdiplus::SolidBrush wp(ToColor(ui::Paper));
+    Gdiplus::SolidBrush wp(ui::ToColor(ui::Paper));
     g.FillRectangle(&wp, 0, 44, (Gdiplus::REAL)W, 34);
-    Gdiplus::Pen lp(ToColor(ui::Border), 1.0f);
+    Gdiplus::Pen lp(ui::ToColor(ui::Border), 1.0f);
     g.DrawLine(&lp, 0, 77.5f, (Gdiplus::REAL)W, 77.5f);
     static const wchar_t* kTabs[] = {L"Archivo", L"Inicio", L"Insertar", L"Diseño",
                                      L"Transiciones", L"Animaciones", L"Presentación", L"Vista"};
@@ -97,7 +97,7 @@ void NativeStudio::PaintEditor(Gdiplus::Graphics& g, const RECT& cli) {
     PaintRibbon(g, rib);
 
     RECT ws{0, 164, W, H - 26};
-    Gdiplus::SolidBrush cbg(ToColor(0xFFE6E6E6));
+    Gdiplus::SolidBrush cbg(ui::ToColor(0xFFE6E6E6));
     g.FillRectangle(&cbg, ws.left, ws.top, (Gdiplus::REAL)(ws.right - ws.left),
                     (Gdiplus::REAL)(ws.bottom - ws.top));
 
@@ -123,14 +123,14 @@ void NativeStudio::PaintEditor(Gdiplus::Graphics& g, const RECT& cli) {
 // ================================================================== cabecera
 void NativeStudio::PaintHeader(Gdiplus::Graphics& g, const RECT& cli) {
     int W = cli.right;
-    Gdiplus::SolidBrush wp(ToColor(ui::Paper));
+    Gdiplus::SolidBrush wp(ui::ToColor(ui::Paper));
     g.FillRectangle(&wp, 0, 0, (Gdiplus::REAL)W, 44);
-    Gdiplus::Pen lp(ToColor(ui::Border), 1.0f);
+    Gdiplus::Pen lp(ui::ToColor(ui::Border), 1.0f);
     g.DrawLine(&lp, 0, 43.5f, (Gdiplus::REAL)W, 43.5f);
 
     // logo
     RECT lg{10, 8, 38, 36};
-    ui::RoundRect(g, lg, 4, ToColor(ui::Accent));
+    ui::RoundRect(g, lg, 4, ui::ToColor(ui::Accent));
     HDC dc = g.GetHDC();
     SelectObject(dc, ui::Font(15, FW_SEMIBOLD));
     SetBkMode(dc, TRANSPARENT);
@@ -176,10 +176,10 @@ void NativeStudio::PaintHeader(Gdiplus::Graphics& g, const RECT& cli) {
 
 // ================================================================== cinta
 void NativeStudio::PaintRibbon(Gdiplus::Graphics& g, const RECT& r) {
-    Gdiplus::SolidBrush wp(ToColor(ui::Paper));
+    Gdiplus::SolidBrush wp(ui::ToColor(ui::Paper));
     g.FillRectangle(&wp, r.left, r.top, (Gdiplus::REAL)(r.right - r.left),
                     (Gdiplus::REAL)(r.bottom - r.top));
-    Gdiplus::Pen lp(ToColor(ui::Border), 1.0f);
+    Gdiplus::Pen lp(ui::ToColor(ui::Border), 1.0f);
     g.DrawLine(&lp, 0, (Gdiplus::REAL)r.bottom - 0.5f, (Gdiplus::REAL)r.right,
                (Gdiplus::REAL)r.bottom - 0.5f);
 
@@ -285,18 +285,18 @@ void NativeStudio::PaintRibbon(Gdiplus::Graphics& g, const RECT& r) {
                 const ThemeDef& t = Themes()[i];
                 RECT c{x, y0, x + 118, y0 + 58};
                 bool on = sl && sl->themeId == t.id;
-                Gdiplus::Pen pn(ToColor(on ? ui::Accent : ui::Border2), on ? 2.0f : 1.0f);
-                Gdiplus::SolidBrush wb(ToColor(ui::Paper));
+                Gdiplus::Pen pn(ui::ToColor(on ? ui::Accent : ui::Border2), on ? 2.0f : 1.0f);
+                Gdiplus::SolidBrush wb(ui::ToColor(ui::Paper));
                 g.FillRectangle(&wb, c.left, c.top, (Gdiplus::REAL)(c.right - c.left - 1),
                                 (Gdiplus::REAL)(c.bottom - c.top - 1));
                 g.DrawRectangle(&pn, c.left, c.top, (Gdiplus::REAL)(c.right - c.left - 1),
                                 (Gdiplus::REAL)(c.bottom - c.top - 1));
                 // muestra: franja oscura + bloque texto + bloque acento
-                Gdiplus::SolidBrush ib(ToColor(ui::Ink));
+                Gdiplus::SolidBrush ib(ui::ToColor(ui::Ink));
                 g.FillRectangle(&ib, c.left + 1, c.top + 1, (Gdiplus::REAL)(c.right - c.left - 2), 22);
-                Gdiplus::SolidBrush tb2(ToColor(0xE6FFFFFF));   // blanco 90 % sobre la muestra
+                Gdiplus::SolidBrush tb2(ui::ToColor(0xE6FFFFFF));   // blanco 90 % sobre la muestra
                 g.FillRectangle(&tb2, c.left + 8, c.top + 6, 26, 12);
-                Gdiplus::SolidBrush ab(ToColor(ui::ParseColor(t.activeColor, 0xFFE8C872)));
+                Gdiplus::SolidBrush ab(ui::ToColor(ui::ParseColor(t.activeColor, 0xFFE8C872)));
                 g.FillRectangle(&ab, c.left + 38, c.top + 6, 12, 12);
                 HDC dc = g.GetHDC();
                 SelectObject(dc, ui::Font(11));
@@ -316,8 +316,8 @@ void NativeStudio::PaintRibbon(Gdiplus::Graphics& g, const RECT& r) {
                 const BgDef& b = Backgrounds()[i];
                 RECT c{bx + (int)i * 80, y0, bx + (int)i * 80 + 76, y0 + 48};
                 bool on = sl && sl->bgId == b.id;
-                Gdiplus::Pen pn(ToColor(on ? ui::Accent : ui::Border2), on ? 2.0f : 1.0f);
-                Gdiplus::SolidBrush bb(ToColor(ui::ParseColor(b.color, 0xFF000000)));
+                Gdiplus::Pen pn(ui::ToColor(on ? ui::Accent : ui::Border2), on ? 2.0f : 1.0f);
+                Gdiplus::SolidBrush bb(ui::ToColor(ui::ParseColor(b.color, 0xFF000000)));
                 g.FillRectangle(&bb, c.left, c.top, (Gdiplus::REAL)(c.right - c.left - 1),
                                 (Gdiplus::REAL)(c.bottom - c.top - 1));
                 g.DrawRectangle(&pn, c.left, c.top, (Gdiplus::REAL)(c.right - c.left - 1),
@@ -342,13 +342,13 @@ void NativeStudio::PaintRibbon(Gdiplus::Graphics& g, const RECT& r) {
             for (auto& o : opts) {
                 RECT c{x, y0, x + 100, y0 + 58};
                 bool on = cur == o.v;
-                Gdiplus::Pen pn(ToColor(on ? ui::Accent : ui::Border2), on ? 2.0f : 1.0f);
-                Gdiplus::SolidBrush wb(ToColor(ui::Paper));
+                Gdiplus::Pen pn(ui::ToColor(on ? ui::Accent : ui::Border2), on ? 2.0f : 1.0f);
+                Gdiplus::SolidBrush wb(ui::ToColor(ui::Paper));
                 g.FillRectangle(&wb, c.left, c.top, (Gdiplus::REAL)(c.right - c.left - 1),
                                 (Gdiplus::REAL)(c.bottom - c.top - 1));
                 g.DrawRectangle(&pn, c.left, c.top, (Gdiplus::REAL)(c.right - c.left - 1),
                                 (Gdiplus::REAL)(c.bottom - c.top - 1));
-                Gdiplus::SolidBrush gb(ToColor(ui::HoverBg));
+                Gdiplus::SolidBrush gb(ui::ToColor(ui::HoverBg));
                 g.FillRectangle(&gb, c.left + 4, c.top + 4, (Gdiplus::REAL)(c.right - c.left - 9),
                                 26);
                 if (ui::Icon(o.icon, ui::TintInk))
@@ -443,7 +443,7 @@ void NativeStudio::PaintRibbon(Gdiplus::Graphics& g, const RECT& r) {
 // ================================================================== backstage
 void NativeStudio::PaintBackstage(Gdiplus::Graphics& g, const RECT& r) {
     // barra lateral roja
-    Gdiplus::SolidBrush rb(ToColor(ui::Accent));
+    Gdiplus::SolidBrush rb(ui::ToColor(ui::Accent));
     g.FillRectangle(&rb, r.left, r.top, 220, (Gdiplus::REAL)(r.bottom - r.top));
     HDC dc = g.GetHDC();
     SelectObject(dc, ui::Font(15, FW_SEMIBOLD));
@@ -504,7 +504,7 @@ void NativeStudio::PaintBackstage(Gdiplus::Graphics& g, const RECT& r) {
 
     // página
     RECT pg{220, r.top, r.right, r.bottom};
-    Gdiplus::SolidBrush cb(ToColor(ui::CanvasBg));
+    Gdiplus::SolidBrush cb(ui::ToColor(ui::CanvasBg));
     g.FillRectangle(&cb, pg.left, pg.top, (Gdiplus::REAL)(pg.right - pg.left),
                     (Gdiplus::REAL)(pg.bottom - pg.top));
     dc = g.GetHDC();
@@ -528,8 +528,8 @@ void NativeStudio::PaintBackstage(Gdiplus::Graphics& g, const RECT& r) {
             g.ReleaseHDC(dc);
             // tarjeta: nombre + descripción
             RECT c1{pg.left + 32, pg.top + 92, pg.left + 32 + 420, pg.top + 300};
-            Gdiplus::Pen pn(ToColor(ui::Border2));
-            Gdiplus::SolidBrush wb(ToColor(ui::Paper));
+            Gdiplus::Pen pn(ui::ToColor(ui::Border2));
+            Gdiplus::SolidBrush wb(ui::ToColor(ui::Paper));
             g.FillRectangle(&wb, c1.left, c1.top, (Gdiplus::REAL)(c.right - c1.left - 1),
                             (Gdiplus::REAL)(c1.bottom - c1.top - 1));
             g.DrawRectangle(&pn, c1.left, c1.top, (Gdiplus::REAL)(c1.right - c1.left - 1),
@@ -588,8 +588,8 @@ void NativeStudio::PaintBackstage(Gdiplus::Graphics& g, const RECT& r) {
             int ry = pg.top + 140;
             dc = g.GetHDC();
             for (auto& rc : recientes_) {
-                Gdiplus::SolidBrush wb(ToColor(ui::Paper));
-                Gdiplus::Pen pn(ToColor(ui::Border2));
+                Gdiplus::SolidBrush wb(ui::ToColor(ui::Paper));
+                Gdiplus::Pen pn(ui::ToColor(ui::Border2));
                 RECT r2{pg.left + 32, ry, pg.right - 32, ry + 38};
                 g.FillRectangle(&wb, r2.left, r2.top, (Gdiplus::REAL)(r2.right - r2.left - 1),
                                 (Gdiplus::REAL)(r2.bottom - r2.top - 1));
@@ -637,8 +637,8 @@ void NativeStudio::PaintBackstage(Gdiplus::Graphics& g, const RECT& r) {
                        {L"Animaciones", CMD_OPT_ANIM, animate_}};
             int by = pg.top + 92;
             RECT c1{pg.left + 32, by, pg.left + 32 + 420, by + 3 * 46 + 12};
-            Gdiplus::Pen pn(ToColor(ui::Border2));
-            Gdiplus::SolidBrush wb(ToColor(ui::Paper));
+            Gdiplus::Pen pn(ui::ToColor(ui::Border2));
+            Gdiplus::SolidBrush wb(ui::ToColor(ui::Paper));
             g.FillRectangle(&wb, c1.left, c1.top, (Gdiplus::REAL)(c1.right - c1.left - 1),
                             (Gdiplus::REAL)(c1.bottom - c1.top - 1));
             g.DrawRectangle(&pn, c1.left, c1.top, (Gdiplus::REAL)(c1.right - c1.left - 1),
@@ -646,9 +646,9 @@ void NativeStudio::PaintBackstage(Gdiplus::Graphics& g, const RECT& r) {
             int ry = by + 8;
             for (auto& b : bs) {
                 RECT tg{c1.right - 54, ry + 10, c1.right - 22, ry + 26};
-                Gdiplus::SolidBrush tb(ToColor(b.on ? 0xFF8CE0A4 : 0xFFC8C6C4));
+                Gdiplus::SolidBrush tb(ui::ToColor(b.on ? 0xFF8CE0A4 : 0xFFC8C6C4));
                 ui::RoundRect(g, tg, 8, tb);
-                Gdiplus::SolidBrush kb(ToColor(ui::Paper));
+                Gdiplus::SolidBrush kb(ui::ToColor(ui::Paper));
                 Gdiplus::REAL kx = b.on ? tg.right - 14 : tg.left + 2;
                 g.FillEllipse(&kb, kx, (Gdiplus::REAL)tg.top + 2, 12, 12);
                 dc = g.GetHDC();
@@ -675,10 +675,10 @@ void NativeStudio::PaintBackstage(Gdiplus::Graphics& g, const RECT& r) {
 
 // ================================================================== miniaturas
 void NativeStudio::PaintThumbs(Gdiplus::Graphics& g, const RECT& r) {
-    Gdiplus::SolidBrush wp(ToColor(ui::Paper));
+    Gdiplus::SolidBrush wp(ui::ToColor(ui::Paper));
     g.FillRectangle(&wp, r.left, r.top, (Gdiplus::REAL)(r.right - r.left),
                     (Gdiplus::REAL)(r.bottom - r.top));
-    Gdiplus::Pen lp(ToColor(ui::Border), 1.0f);
+    Gdiplus::Pen lp(ui::ToColor(ui::Border), 1.0f);
     g.DrawLine(&lp, (Gdiplus::REAL)r.right - 0.5f, r.top, (Gdiplus::REAL)r.right - 0.5f,
                (Gdiplus::REAL)r.bottom);
     HDC dc = g.GetHDC();
@@ -697,7 +697,7 @@ void NativeStudio::PaintThumbs(Gdiplus::Graphics& g, const RECT& r) {
     int total = 0;
     for (auto& it : draft_.items)
         total += 26 + (int)it.slides.size() * 96 + 14;
-    ScrollAdd(listR, scThumbs_, std::max(0, total - (listR.bottom - listR.top)));
+    ScrollAdd(listR, scThumbs_, std::max(0, (int)(total - (listR.bottom - listR.top))));
 
     int y = listR.top - scThumbs_;
     int n = 0;      // numeración global de diapositivas
@@ -755,7 +755,7 @@ void NativeStudio::PaintThumbs(Gdiplus::Graphics& g, const RECT& r) {
                 int tw = tr2.right - tr2.left - 24, thh = tw * 9 / 16;
                 RECT tb{tr2.left + 24, tr2.top, tr2.left + 24 + tw, tr2.top + thh};
                 if (sl.type == "blank") {
-                    Gdiplus::SolidBrush bk(ToColor(0xFF111111));
+                    Gdiplus::SolidBrush bk(ui::ToColor(0xFF111111));
                     g.FillRectangle(&bk, tb.left, tb.top, (Gdiplus::REAL)(tb.right - tb.left),
                                     (Gdiplus::REAL)(tb.bottom - tb.top));
                     dc = g.GetHDC();
@@ -768,7 +768,7 @@ void NativeStudio::PaintThumbs(Gdiplus::Graphics& g, const RECT& r) {
                     Gdiplus::Bitmap* bmp = ThumbOf(SlideJsonForPreview(sl), tw, thh, "t:" + sl.id);
                     if (bmp) g.DrawImage(bmp, tb.left, tb.top, tw, thh);
                     // marco activo
-                    Gdiplus::Pen pn(ToColor(sel && draft_.selSlide == j ? ui::Accent
+                    Gdiplus::Pen pn(ui::ToColor(sel && draft_.selSlide == j ? ui::Accent
                                                                         : ui::Border2),
                                     sel && draft_.selSlide == j ? 2.0f : 1.0f);
                     g.DrawRectangle(&pn, tb.left - 0.5f, tb.top - 0.5f,
@@ -825,8 +825,8 @@ void NativeStudio::PaintCanvas(Gdiplus::Graphics& g, const RECT& r) {
     if (sh > maxH) { sh = maxH; sw = sh * 16 / 9; }
     int sx = r.left + (r.right - r.left - sw) / 2, sy = r.top + 32;
     RECT frame{sx, sy, sx + sw, sy + sh};
-    Gdiplus::Pen fp(ToColor(0xFFC8C6C4), 1.0f);
-    Gdiplus::SolidBrush sb(ToColor(0xFF000000));
+    Gdiplus::Pen fp(ui::ToColor(0xFFC8C6C4), 1.0f);
+    Gdiplus::SolidBrush sb(ui::ToColor(0xFF000000));
     g.FillRectangle(&sb, frame.left, frame.top, (Gdiplus::REAL)(frame.right - frame.left),
                     (Gdiplus::REAL)(frame.bottom - frame.top));
     g.DrawRectangle(&fp, frame.left, frame.top, (Gdiplus::REAL)(frame.right - frame.left - 1),
@@ -860,8 +860,8 @@ void NativeStudio::PaintCanvas(Gdiplus::Graphics& g, const RECT& r) {
     // tarjeta de edición (web: editar texto de la diapositiva)
     int cy = frame.bottom + 10;
     RECT card{sx, cy, sx + sw, cy + 128};
-    Gdiplus::SolidBrush wb(ToColor(ui::Paper));
-    Gdiplus::Pen cp(ToColor(ui::Border2), 1.0f);
+    Gdiplus::SolidBrush wb(ui::ToColor(ui::Paper));
+    Gdiplus::Pen cp(ui::ToColor(ui::Border2), 1.0f);
     g.FillRectangle(&wb, card.left, card.top, (Gdiplus::REAL)(card.right - card.left - 1),
                     (Gdiplus::REAL)(card.bottom - card.top - 1));
     g.DrawRectangle(&cp, card.left, card.top, (Gdiplus::REAL)(card.right - card.left - 1),
@@ -925,9 +925,9 @@ void NativeStudio::PaintSorter(Gdiplus::Graphics& g, const RECT& r) {
 
     RECT grid{r.left + 12, r.top + 40, r.right - 12, r.bottom - 8};
     int cw = 168, chh = 94 + 26, gap = 10;
-    int perRow = std::max(1, (grid.right - grid.left) / (cw + gap));
+    int perRow = std::max(1, (int)((grid.right - grid.left) / (cw + gap)));
     int rows = (SlideTotalCount() + perRow - 1) / perRow;
-    ScrollAdd(grid, scSorter_, std::max(0, rows * (chh + gap) - (grid.bottom - grid.top)));
+    ScrollAdd(grid, scSorter_, std::max(0, (int)(rows * (chh + gap) - (grid.bottom - grid.top))));
     int n = 0;
     int y = grid.top - scSorter_;
     for (int i = 0; i < (int)draft_.items.size(); i++) {
@@ -941,8 +941,8 @@ void NativeStudio::PaintSorter(Gdiplus::Graphics& g, const RECT& r) {
                    grid.left + col * (cw + gap) + cw, y + row * (chh + gap) + chh};
             if (c.bottom > grid.top && c.top < grid.bottom) {
                 bool sel = (draft_.selItem == i && draft_.selSlide == j);
-                Gdiplus::Pen pn(ToColor(sel ? ui::Accent : ui::Border2), sel ? 2.0f : 1.0f);
-                Gdiplus::SolidBrush wb(ToColor(ui::Paper));
+                Gdiplus::Pen pn(ui::ToColor(sel ? ui::Accent : ui::Border2), sel ? 2.0f : 1.0f);
+                Gdiplus::SolidBrush wb(ui::ToColor(ui::Paper));
                 g.FillRectangle(&wb, c.left, c.top, (Gdiplus::REAL)(c.right - c.left - 1),
                                 (Gdiplus::REAL)(chh - 1));
                 g.DrawRectangle(&pn, c.left, c.top, (Gdiplus::REAL)(c.right - c.left - 1),
@@ -978,10 +978,10 @@ void NativeStudio::PaintSorter(Gdiplus::Graphics& g, const RECT& r) {
 
 // ================================================================== panel tareas
 void NativeStudio::PaintTaskPane(Gdiplus::Graphics& g, const RECT& r) {
-    Gdiplus::SolidBrush wp(ToColor(ui::Paper));
+    Gdiplus::SolidBrush wp(ui::ToColor(ui::Paper));
     g.FillRectangle(&wp, r.left, r.top, (Gdiplus::REAL)(r.right - r.left),
                     (Gdiplus::REAL)(r.bottom - r.top));
-    Gdiplus::Pen lp(ToColor(ui::Border), 1.0f);
+    Gdiplus::Pen lp(ui::ToColor(ui::Border), 1.0f);
     g.DrawLine(&lp, (Gdiplus::REAL)r.left + 0.5f, r.top, (Gdiplus::REAL)r.left + 0.5f,
                (Gdiplus::REAL)r.bottom);
     // pestañas Formato | Biblioteca + cerrar
@@ -1073,9 +1073,9 @@ void NativeStudio::PaintTaskPane(Gdiplus::Graphics& g, const RECT& r) {
             int row = (int)i / 4, col = (int)i % 4;
             RECT c{body.left + 14 + col * (gw + 4), y + row * (gw * 9 / 16 + 6),
                    body.left + 14 + (col + 1) * (gw + 4) - 4, y + row * (gw * 9 / 16 + 6) + gw * 9 / 16};
-            Gdiplus::Pen pn(ToColor(sl->bgId == Backgrounds()[i].id ? ui::Accent : ui::Border2),
+            Gdiplus::Pen pn(ui::ToColor(sl->bgId == Backgrounds()[i].id ? ui::Accent : ui::Border2),
                             sl->bgId == Backgrounds()[i].id ? 2.0f : 1.0f);
-            Gdiplus::SolidBrush bb(ToColor(ui::ParseColor(Backgrounds()[i].color, 0xFF000000)));
+            Gdiplus::SolidBrush bb(ui::ToColor(ui::ParseColor(Backgrounds()[i].color, 0xFF000000)));
             g.FillRectangle(&bb, c.left, c.top, (Gdiplus::REAL)(c.right - c.left - 1),
                             (Gdiplus::REAL)(c.bottom - c.top - 1));
             g.DrawRectangle(&pn, c.left, c.top, (Gdiplus::REAL)(c.right - c.left - 1),
@@ -1112,11 +1112,11 @@ void NativeStudio::PaintLibrary(Gdiplus::Graphics& g, const RECT& r) {
         RECT b{x, y, x + 52, y + 24};
         bool on = libTab_ == t.id;
         if (on) {
-            Gdiplus::SolidBrush ib(ToColor(ui::Ink));
+            Gdiplus::SolidBrush ib(ui::ToColor(ui::Ink));
             g.FillRectangle(&ib, b.left, b.top, (Gdiplus::REAL)(b.right - b.left),
                             (Gdiplus::REAL)(b.bottom - b.top));
         } else if (hoverId_ == CMD_LIB_TAB_BASE + t.id) {
-            Gdiplus::SolidBrush hb(ToColor(ui::HoverBg));
+            Gdiplus::SolidBrush hb(ui::ToColor(ui::HoverBg));
             g.FillRectangle(&hb, b.left, b.top, (Gdiplus::REAL)(b.right - b.left),
                             (Gdiplus::REAL)(b.bottom - b.top));
         }
@@ -1144,7 +1144,7 @@ void NativeStudio::PaintLibrary(Gdiplus::Graphics& g, const RECT& r) {
         songHits_ = songs_.Search(libQuery_, 200);
         RECT listR{r.left, y, r.right, r.bottom};
         int rowH = 44, total = (int)songHits_.size() * rowH;
-        ScrollAdd(listR, scLib_, std::max(0, total - (listR.bottom - listR.top)));
+        ScrollAdd(listR, scLib_, std::max(0, (int)(total - (listR.bottom - listR.top))));
         int yy = y - scLib_;
         for (size_t k = 0; k < songHits_.size(); k++) {
             const LibSong* s = songs_.At((size_t)songHits_[k]);
@@ -1216,7 +1216,7 @@ void NativeStudio::PaintLibrary(Gdiplus::Graphics& g, const RECT& r) {
         RECT listR{r.left, y, r.right, r.bottom};
         int vv = bibles_.VerseCount(bn, bibleChapter_);
         int rowH = 58;
-        ScrollAdd(listR, scVerses_, std::max(0, vv * rowH - (listR.bottom - listR.top)));
+        ScrollAdd(listR, scVerses_, std::max(0, (int)(vv * rowH - (listR.bottom - listR.top))));
         int yy = y - scVerses_;
         for (int i = 1; i <= vv && (int)verseNums_.size() < 100; i++) {
             std::wstring tx = bibles_.Verse(bn, bibleChapter_, i);
@@ -1247,8 +1247,8 @@ void NativeStudio::PaintLibrary(Gdiplus::Graphics& g, const RECT& r) {
             int row = (int)i / 3, col = (int)i % 3;
             RECT c{r.left + 10 + col * (gw + 4), y + row * (gw * 9 / 16 + 26),
                    r.left + 10 + (col + 1) * (gw + 4) - 4, y + row * (gw * 9 / 16 + 26) + gw * 9 / 16};
-            Gdiplus::SolidBrush bb(ToColor(ui::ParseColor(Backgrounds()[i].color, 0xFF000000)));
-            Gdiplus::Pen pn(ToColor(ui::Border2));
+            Gdiplus::SolidBrush bb(ui::ToColor(ui::ParseColor(Backgrounds()[i].color, 0xFF000000)));
+            Gdiplus::Pen pn(ui::ToColor(ui::Border2));
             g.FillRectangle(&bb, c.left, c.top, (Gdiplus::REAL)(c.right - c.left - 1),
                             (Gdiplus::REAL)(c.bottom - c.top - 1));
             g.DrawRectangle(&pn, c.left, c.top, (Gdiplus::REAL)(c.right - c.left - 1),
@@ -1297,9 +1297,9 @@ void NativeStudio::PaintLibrary(Gdiplus::Graphics& g, const RECT& r) {
 // ================================================================== estado
 void NativeStudio::PaintStatus(Gdiplus::Graphics& g, const RECT& cli) {
     int W = cli.right, H = cli.bottom;
-    Gdiplus::SolidBrush wp(ToColor(ui::Paper));
+    Gdiplus::SolidBrush wp(ui::ToColor(ui::Paper));
     g.FillRectangle(&wp, 0, (Gdiplus::REAL)(H - 26), (Gdiplus::REAL)W, 26);
-    Gdiplus::Pen lp(ToColor(ui::Border), 1.0f);
+    Gdiplus::Pen lp(ui::ToColor(ui::Border), 1.0f);
     g.DrawLine(&lp, 0, (Gdiplus::REAL)(H - 26) + 0.5f, (Gdiplus::REAL)W, (Gdiplus::REAL)(H - 26) + 0.5f);
     HDC dc = g.GetHDC();
     SelectObject(dc, ui::Font(11));

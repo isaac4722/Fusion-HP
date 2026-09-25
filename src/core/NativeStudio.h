@@ -178,6 +178,7 @@ private:
     std::wstring startQuery_, libQuery_, bibleQuery_;
     int bibleBook_ = -1, bibleChapter_ = 23;      // Salmos 23 por defecto (web)
     bool bibleAsLt_ = false;
+    bool bibleOpen_ = false;                  // Biblia rápida (G) visible en Presentar
     std::vector<int> songHits_;                   // resultado de búsqueda actual
     std::vector<int> verseNums_;                  // versículos listados (biblia rápida)
     std::wstring ahpPath_;                        // archivo abierto/guardado

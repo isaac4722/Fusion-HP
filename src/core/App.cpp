@@ -157,7 +157,7 @@ void App::ApplySlide(const Json& slideJson) {
         live_.RenderNow();
         return;
     }
-    if (video_.IsPlaying()) video_->Stop();   // carga diferida: liberar el anterior
+    if (video_.IsPlaying()) video_.Stop();   // carga diferida: liberar el anterior
     state_.Set(s);
     state_.SetBlank(BlankMode::None);
     live_.RenderNow();

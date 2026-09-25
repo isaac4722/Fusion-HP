@@ -80,7 +80,7 @@ namespace Fusion.Studio.Ui
             var card = new Panel
             {
                 Size = new Size(190, 132), Margin = new Padding(6), BackColor = UiTheme.Panel,
-                Cursor = Cursors.Hand, Tag = scn.Title + "|" + el.Title
+                Cursor = Cursors.Hand, Tag = scn.Title
             };
             card.Paint += delegate(object s, PaintEventArgs e)
             {
@@ -101,7 +101,7 @@ namespace Fusion.Studio.Ui
             {
                 Dock = DockStyle.Fill, Font = UiTheme.Small(), ForeColor = UiTheme.Text,
                 TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(6, 0, 2, 0),
-                Text = (string.IsNullOrEmpty(el.Title) ? scn.Title : el.Title)
+                Text = ElementCaption(scn, el)
             };
             card.Controls.Add(cap);
             card.Click += delegate { SelectCard(scn, el); };
@@ -109,6 +109,14 @@ namespace Fusion.Studio.Ui
             cap.Click += delegate { SelectCard(scn, el); };
             card.DoubleClick += delegate { SelectCard(scn, el); Close(); };
             return card;
+        }
+
+        static string ElementCaption(Scenario scn, Element el)
+        {
+            // Element no lleva título propio: primera línea del contenido o título de la sección
+            if (el.Lines.Count > 0 && !string.IsNullOrEmpty(el.Lines[0])) return el.Lines[0];
+            if (!string.IsNullOrEmpty(el.Reference)) return el.Reference;
+            return scn.Title;
         }
 
         bool IsActive(Scenario scn, Element el)
