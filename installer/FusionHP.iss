@@ -93,7 +93,7 @@ begin
   begin
     Dest := ExpandConstant('{tmp}\ndp48-web.exe');
     try
-      DownloadTemporaryFile('{#DotNetUrl}', 'ndp48-web.exe', nil);
+      DownloadTemporaryFile('{#DotNetUrl}', 'ndp48-web.exe', '');
       Log('Descargado instalador opcional de .NET 4.8');
     except
       // Sin Internet o descarga fallida: la instalación continúa (perfil C/B)
