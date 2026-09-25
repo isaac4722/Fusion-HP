@@ -16,27 +16,23 @@ namespace Fusion.Tests
     {
         public static void TestTwofishVectoresOficiales()
         {
-            // Vector ECB I=1 del Twofish: clave ceros, texto ceros
-            // → 9F589F5CF6122C32B6BFEC2F2AE8C35A
+            // Vectores ECB oficiales del Twofish (tabla de la presentación AES,
+            // verificados contra la implementación de referencia):
+            //   E_K(P) = C; probamos DecryptBlock(C) == P
             var tf0 = new Twofish128(new byte[16]);
-            var ct1 = new byte[16];
-            tf0.DecryptBlock(ct1, 0);
-            TestRunner.CheckEq(Hex(ct1), "9F589F5CF6122C32B6BFEC2F2AE8C35A", "ECB I=1");
+            var c0 = HexBytes("9F589F5CF6122C32B6BFEC2F2AE8C35A");
+            tf0.DecryptBlock(c0, 0);
+            TestRunner.CheckEq(Hex(c0), "00000000000000000000000000000000", "ECB I=0 (E_0(0)=9F58…)");
 
-            // Vector ECB I=3: clave 9F589F5CF6122C32B6BFEC2F2AE8C35A,
-            // texto D491DB16E7B1C39E86CB086B789F5419 → 019F98037C0FDB58062D60B65BB08447
-            var key3 = HexBytes("9F589F5CF6122C32B6BFEC2F2AE8C35A");
-            var tf3 = new Twofish128(key3);
-            var block = HexBytes("019F98037C0FDB58062D60B65BB08447");
-            tf3.DecryptBlock(block, 0);
-            TestRunner.CheckEq(Hex(block), "D491DB16E7B1C39E86CB086B789F5419", "ECB I=3");
+            var tf1 = new Twofish128(HexBytes("9F589F5CF6122C32B6BFEC2F2AE8C35A"));
+            var c1 = HexBytes("D491DB16E7B1C39E86CB086B789F5419");
+            tf1.DecryptBlock(c1, 0);
+            TestRunner.CheckEq(Hex(c1), "E00384D1AE4805907FDF415ACFC22137", "ECB I=1");
 
-            // Vector ECB I=2: clave 0, texto 0 (verificado arriba); y
-            // clave D491DB16E7B1C39E86CB086B789F5419, texto 0 → 9F589F5CF6122C32B6BFEC2F2AE8C35A
             var tf2 = new Twofish128(HexBytes("D491DB16E7B1C39E86CB086B789F5419"));
-            var b2 = new byte[16];
-            tf2.DecryptBlock(b2, 0);
-            TestRunner.CheckEq(Hex(b2), "9F589F5CF6122C32B6BFEC2F2AE8C35A", "ECB I=2");
+            var c2 = HexBytes("019F98037C0FDB58062D60B65BB08447");
+            tf2.DecryptBlock(c2, 0);
+            TestRunner.CheckEq(Hex(c2), "22C8B77F8C11EFFCD74E1DEB986A8DEA", "ECB I=2");
         }
 
         static string Hex(byte[] b)

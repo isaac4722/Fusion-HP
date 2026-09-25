@@ -491,17 +491,16 @@ namespace Fusion.Shared.Model
             if (el.Src != null)
                 r.Src = ResolvePath(baseDir, el.Src);
 
-            // Nivel 1: tema
+            // Herencia en cascada [SPEC §5.4]: el nivel más bajo GANA.
+            // Se parte del elemento (nivel 4) y se rellenan los null subiendo:
+            // Elemento → Escenario → Plantilla → Tema (nivel 1 como base).
             var theme = project != null ? project.ActiveTheme() : null;
-            var s = new StyleOverride();
-            s.InheritFrom(theme != null ? theme.Style : null);
-            // Nivel 2: plantilla del escenario
             var tpl = project != null ? project.FindTemplate(scn != null ? scn.TemplateId : null) : null;
-            s.InheritFrom(tpl != null ? tpl.Style : null);
-            // Nivel 3: escenario
-            s.InheritFrom(scn != null ? scn.StyleOverride : null);
-            // Nivel 4: elemento
-            s.InheritFrom(el.StyleOverride);
+            var s = new StyleOverride();
+            s.InheritFrom(el.StyleOverride);                              // nivel 4
+            s.InheritFrom(scn != null ? scn.StyleOverride : null);        // nivel 3
+            s.InheritFrom(tpl != null ? tpl.Style : null);                // nivel 2
+            s.InheritFrom(theme != null ? theme.Style : null);            // nivel 1
             if (s.Size == null) s.Size = 48;
             if (s.Align == null) s.Align = 1;
             if (s.VAlign == null) s.VAlign = 1;
@@ -517,10 +516,10 @@ namespace Fusion.Shared.Model
             r.Style = s;
 
             var b = new BackgroundOverride();
-            b.InheritFrom(theme != null ? theme.Background : null);
-            b.InheritFrom(tpl != null ? tpl.Background : null);
-            b.InheritFrom(scn != null ? scn.BgOverride : null);
             b.InheritFrom(el.BgOverride);
+            b.InheritFrom(scn != null ? scn.BgOverride : null);
+            b.InheritFrom(tpl != null ? tpl.Background : null);
+            b.InheritFrom(theme != null ? theme.Background : null);
             if (b.Color == null) b.Color = "#101820";
             if (b.Fit == null) b.Fit = 0;
             if (b.Opacity == null) b.Opacity = 1.0;

@@ -34,22 +34,8 @@ namespace Fusion.Studio.Export
             if (File.Exists(outPath)) File.Delete(outPath);
             using (Package pkg = Package.Open(outPath, FileMode.Create))
             {
-                // -------- [Content_Types].xml
-                AddPart(pkg, new Uri("/[Content_Types].xml", UriKind.Relative), "application/xml",
-                        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
-                        "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">" +
-                        "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>" +
-                        "<Default Extension=\"xml\" ContentType=\"application/xml\"/>" +
-                        "<Default Extension=\"png\" ContentType=\"image/png\"/>" +
-                        "<Default Extension=\"jpg\" ContentType=\"image/jpeg\"/>" +
-                        "<Default Extension=\"jpeg\" ContentType=\"image/jpeg\"/>" +
-                        "<Default Extension=\"gif\" ContentType=\"image/gif\"/>" +
-                        "<Default Extension=\"bmp\" ContentType=\"image/bmp\"/>" +
-                        "<Override PartName=\"/ppt/presentation.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml\"/>" +
-                        "<Override PartName=\"/ppt/slideMasters/slideMaster1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml\"/>" +
-                        "<Override PartName=\"/ppt/slideLayouts/slideLayout1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml\"/>" +
-                        "<Override PartName=\"/ppt/theme/theme1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.theme+xml\"/>" +
-                        "</Types>");
+                // [Content_Types].xml lo genera System.IO.Packaging a partir de los
+                // content types de las partes (crearla a mano colisiona en Dispose).
 
                 // -------- _rels/.rels
                 AddPart(pkg, new Uri("/_rels/.rels", UriKind.Relative), "application/vnd.openxmlformats-package.relationships+xml",

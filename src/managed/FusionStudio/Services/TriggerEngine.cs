@@ -95,6 +95,7 @@ namespace Fusion.Studio.Services
         /// <summary>Evalúa un evento con contexto. Orden determinista [SPEC §8.3.3].</summary>
         public void Fire(string evt, Scenario scn, Element el, LiveOrchestrator live)
         {
+            if (live == null) return;   // puede dispararse sin orquestador (pruebas/CLI)
             string themeName = live.Project != null && live.Project.ActiveTheme() != null ? live.Project.ActiveTheme().Name : "";
             string elementKind = el != null ? el.KindKey : "";
             for (int i = 0; i < rules.Count; i++)

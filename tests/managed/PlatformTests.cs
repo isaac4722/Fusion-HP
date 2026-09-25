@@ -64,6 +64,7 @@ namespace Fusion.Tests
                 using (var c = new WebClient())
                 {
                     c.Headers["Authorization"] = "Bearer " + settings.ApiToken;
+                    c.Encoding = Encoding.UTF8;   // sin charset en la respuesta, WebClient asume Latin-1
                     state = c.DownloadString(baseUri + "/api/v1/state");
                 }
                 var sj = JsonValue.Parse(state);
@@ -74,6 +75,7 @@ namespace Fusion.Tests
                 using (var c = new WebClient())
                 {
                     c.Headers["Authorization"] = "Bearer " + settings.ApiToken;
+                    c.Encoding = Encoding.UTF8;
                     string plain = c.DownloadString(baseUri + "/api/v1/text?format=plain");
                     TestRunner.CheckEq(plain, "línea uno", "texto plano para OBS");
                     string json = c.DownloadString(baseUri + "/api/v1/text?format=json");

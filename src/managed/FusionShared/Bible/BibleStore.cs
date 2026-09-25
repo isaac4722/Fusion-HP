@@ -112,11 +112,12 @@ namespace Fusion.Shared.Bible
             }
             string idx = b.DataPath + ".idx";
             var bytes = File.ReadAllBytes(idx);
-            int n = bytes.Length / 16;
+            // Registro: book(1) chapter(1) verse(2) offset(4) len(4) = 12 bytes
+            int n = bytes.Length / 12;
             var r = new IndexEntry[n];
             for (int i = 0; i < n; i++)
             {
-                int o = i * 16;
+                int o = i * 12;
                 r[i].Book = bytes[o];
                 r[i].Chapter = bytes[o + 1];
                 r[i].Verse = (bytes[o + 2] << 8) | bytes[o + 3];
