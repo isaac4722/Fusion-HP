@@ -92,7 +92,7 @@ namespace Fusion.Tests
             TestRunner.CheckEq(r.Style.Color, "#FFDDAA", "color del escenario gana");
             TestRunner.CheckEq(r.Style.Bold, true, "negrita del elemento gana");
             TestRunner.CheckEq(r.Style.Font, "Outfit", "fuente del tema como base (Outfit incrustada)");
-            TestRunner.CheckEq(r.Style.ActiveColor, "#FFD700", "línea activa del tema");
+            TestRunner.CheckEq(r.Style.ActiveColor, "#E8C872", "línea activa del tema (acento web clásico)");
         }
 
         public static void TestTemaEnCaliente()
