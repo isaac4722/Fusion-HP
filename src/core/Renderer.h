@@ -9,6 +9,8 @@
 #include "Common.h"
 #include "SlideState.h"
 #include "Highlight.h"
+#include <memory>
+#include <string>
 
 // Direct2D / DirectWrite (Win7+)
 #include <d2d1.h>
@@ -94,6 +96,7 @@ private:
     std::unique_ptr<Gdiplus::Bitmap> prevFrame_;   // frame anterior (transiciones)
     std::string lastSlideId_;
     BlankMode lastBlank_ = BlankMode::Black;
+    std::wstring logoPath_;
     Gdiplus::Bitmap* logoGdip_ = nullptr;
     ID2D1Bitmap* logoD2D_ = nullptr;
 };

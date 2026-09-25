@@ -33,7 +33,7 @@ namespace Fusion.Shared.Media
             tried = true;
             try
             {
-                string dir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "resources", "fonts");
+                string dir = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "resources"), "fonts");
                 if (!Directory.Exists(dir)) return;
                 pfc = new PrivateFontCollection();
                 foreach (string f in Directory.GetFiles(dir, "*.ttf"))

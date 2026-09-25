@@ -37,7 +37,7 @@ namespace Fusion.Shared.Store
         bool dirty;
         public event Action Changed;
 
-        public string Path { get { return path; } }
+        public string FilePath { get { return path; } }
 
         public SongStore(string dataDir)
         {
@@ -304,7 +304,7 @@ namespace Fusion.Shared.Store
             else if (root.Type == JsonValue.Kind.Object)
             {
                 var arr = root.GetArray("songs");
-                if (arr != null) { foreach (var s in arr.Items) TryAdd(list, s); return list; }
+                if (arr != null) { foreach (var s in arr) TryAdd(list, s); return list; }
                 // Objeto único: canción o canción de la referencia web (title/artist/sections)
                 TryAdd(list, root);
             }
