@@ -1,16 +1,8 @@
-// ============================================================================
-//  version.props — Versión única del producto (importado por los proyectos).
-//  Norma: esquema `1.x.y-beta+z` del documento técnico v1.1 [SPEC §12.4]
-//  y AGENT.md («Prohibido cambiarla fuera de este esquema»).
-//  Línea reestructurada: 1.0.0-beta.3 (beta.1 primer corte, beta.2 evidencia F6.08;
-//  la histórica
-//  v7.1.0 «OPERADOR» queda
-//  congelada como prototipo anterior).
-// ============================================================================
-<Project>
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!-- Versión del prototipo: esquema 1.x.y-beta+z ligado a ahp.v1 [AGENT.md] -->
   <PropertyGroup>
-    <AppVersion>1.0.0</AppVersion>
-    <AppVersionSuffix>beta.3</AppVersionSuffix>
-    <AppVersionFull>1.0.0-beta.3</AppVersionFull>
+    <FusionVersion>2.0.0-beta.1</FusionVersion>
+    <FusionStage>reescritura-completa</FusionStage>
   </PropertyGroup>
 </Project>

@@ -1,42 +1,26 @@
-# TESTING.md — Estrategia de testing
+# TESTING.md — estrategia de pruebas
 
-**Fuente:** plan de implementación §12 (unitarias/integración/seguridad/rendimiento)
-y `AGENT.md` (arnés propio, no xUnit: salidas "TESTS PASS n/n").
+## Arnés nativo (`tests/native/CoreTests.vcxproj`)
+Consola auto-hospedada: JSON, contrato ipc.v1 (parseo de Slide), sesión ahp.v1
+del perfil C con herencia, bucle IPC real (pipe con nombre + hello/respuesta),
+detección de entorno. Corre en x86 y x64.
 
-## Arnés gestionado (`src/managed/Tests`, net8.0 + net48)
+## Arnés administrado (`tests/managed/FusionTests.csproj`, net48)
+- JSON propio: round-trip, escapes, números, tolerancia.
+- Modelo ahp.v1: persistencia, IDs estables, herencia 4 niveles, tema en caliente.
+- Twofish-128: vectores ECB oficiales I=1, I=2, I=3 del cifrado.
+- Lector SQLite puro + importador e-Sword completo (fixture cifrado real:
+  blobs Twofish+SQLitePlus+zlib generados con el código de referencia).
+- Zefania XML, TSV legado, JSON de himnario, búsqueda ≤ 200 ms (criterio F4).
+- API HTTP: 6 endpoints con token, 401 sin token (criterio F5), goto/message.
+- Triggers: etiqueta "lento" → tema "calma" (criterio F5) y acción OBS.
+- Exportadores: PPTX (ZIP válido + reimportable), PDF (cabecera/EOF), PNG 1080p.
 
-- Cada pieza: `Run("nombre", TestFn)` — el test debe FALLAR sin la implementación.
-- Ejecución: `LUMINA_SKIP_NATIVE=1 dotnet run --project src/managed/Tests -f net8.0`.
-- Gate externo de exportadores en CI: `tools/validate_pptx.py` (python-pptx +
-  pypdf) valida que muestra.pptx/muestra.pdf sean archivos válidos de verdad.
+## En CI
+- Núcleo y tests nativos se compilan y ejecutan para Win32 y x64.
+- La capa gestionada compila net35 + net48 y corre los tests en net48.
+- El gate de calidad audita prohibiciones en cada push.
 
-## Arnés portable del núcleo (`tests/core.Tests`, g++)
-
-- Compila el subset portable del núcleo (sin Win32) con una lista explícita de
-  archivos — el CMake heredado no se toca.
-- Cubre: framing `ipc.v1` (fragmentación, payload grande, versión desconocida),
-  `ahp.v1`, bootstrap de clasificación (entradas sintéticas), log rotativo,
-  parsers bíblicos, ZIP/OPC con miniz.
-
-## Cobertura mínima (plan §12.1)
-
-Bootstrap SO/arquitectura · clasificación A/B/C · IPC · ahp.v1 · IDs · herencia ·
-syncMark · render · lazy loading · API/Bearer · Triggers · OBS · JSLib · cada
-importador/exportador · informes de fidelidad · logs y rotación · recuperación.
-
-## Seguridad (plan §12.3)
-
-XXE · billion laughs · DTD · ZIP bombs · paths maliciosos · archivos corruptos ·
-PPTM · token ausente/inválido · exceso de clientes · payload grande · sandbox
-JSLib (disco/CPU/memoria) — cada una con test que demuestre la mitigación.
-
-## Rendimiento (plan §12.4)
-
-Métricas de la tabla 10.1 con mediciones REALES registradas en
-`docs/verification/` — prohibido inventar cifras [AGENT.md].
-
-## Plataformas
-
-- Local (Linux): g++ + dotnet SDK — arnés portable + gestionado completo.
-- CI windows-latest: MSVC x86/x64 + selftest nativo + vstest + gates de
-  bitness del PE (las 6 pruebas de la DLL nativa que saltan en local).
+## Fuera de alcance del sandbox
+Pruebas visuales (60 fps de transición) y rendimiento en Win7 real: se
+documentan procedimientos de verificación manual en docs/verification/.

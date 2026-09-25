@@ -8,17 +8,16 @@ Aplica para TODO agente (IA o humano). Lee este archivo, `docs/agent/` y la espe
 
 | Tarea | Comando |
 |---|---|
-| Restaurar dependencias | `msbuild /t:Restore AppHibrida.sln` |
-| Compilar núcleo nativo x86 | `msbuild src/core/core.vcxproj /p:Configuration=Release /p:Platform=Win32` |
-| Compilar núcleo nativo x64 | `msbuild src/core/core.vcxproj /p:Configuration=Release /p:Platform=x64` |
-| Compilar capa C# | `msbuild src/managed/managed.csproj /p:Configuration=Release` |
-| Análisis estático C++ | `clang-tidy src/core/**/*.cpp --config-file=.clang-tidy` |
-| Análisis estático C# | `dotnet format src/managed/managed.csproj --verify-no-changes` |
-| Suite de tests nativos | `vstest.console tests/core.Tests.dll` |
-| Suite de tests C# | `vstest.console tests/managed.Tests.dll` |
-| Test de una pieza | `vstest.console tests/<ruta>/<archivo>_test.dll --Tests:<NombrePrueba>` |
-| Build instalador dual | `iscc installer/AppHibrida.iss` |
-| **Gate de Calidad** | `bash scripts/quality_gate.sh` (analyze C++ + analyze C# + test + auditoría de prohibiciones) |
+| Compilar núcleo nativo x86 | `msbuild src/core/FusionHP.vcxproj /p:Configuration=Release /p:Platform=Win32` |
+| Compilar núcleo nativo x64 | `msbuild src/core/FusionHP.vcxproj /p:Configuration=Release /p:Platform=x64` |
+| Compilar capa C# (net48) | `dotnet build src/managed/FusionStudio/FusionStudio.csproj -c Release` |
+| Compilar variante B (net35) | `dotnet build src/managed/FusionStudio.Lite/FusionStudio.Lite.csproj -c Release` |
+| Suite de tests nativos | `msbuild tests/native/CoreTests.vcxproj /p:Configuration=Release /p:Platform=x64 && dist/tests/x64/CoreTests.exe` |
+| Suite de tests C# | `dotnet build tests/managed/FusionTests.csproj -c Release && tests/managed/bin/Release/FusionTests.exe` |
+| Test de una pieza (C#) | `tests/managed/bin/Release/FusionTests.exe Test<Nombre>` |
+| Build instalador dual | `iscc installer/FusionHP.iss` (staging preparado por el CI) |
+| Paquete portable | `bash scripts/package_portable.sh x86` |
+| **Gate de Calidad** | `bash scripts/quality_gate.sh` (auditoría de prohibiciones + degradación informada) |
 
 ---
 
@@ -36,7 +35,9 @@ Aplica para TODO agente (IA o humano). Lee este archivo, `docs/agent/` y la espe
 ## Estructura del Proyecto (Mapa)
 
 - `src/core/`: Núcleo nativo C++ (Win32/CRT). Bootstrap, detección de entorno, render (Direct2D/GDI+), media (DirectShow), gestor de pantallas, IPC puente, log binario. Prohibido: código administrado, dependencias externas no incluidas en `/MT`.
-- `src/managed/`: Capa C#/.NET. Shell WinForms, Editor WPF (`ElementHost`), modelo de datos, importadores/exportadores, servidor API, Triggers, JSLib, integraciones. Prohibido: mocks, cifras inventadas, patrones web (`localStorage`, `ServiceWorker`).
+- `src/managed/FusionShared/`: Dominio compartido net35→net48 (`ahp.v1`: Escenario, Elemento, Tema, canciones, biblias, IPC, JSON propio, lector SQLite y Twofish para e-Sword). Sin UI.
+- `src/managed/FusionStudio/`: App principal net48 (WinForms + editor WPF vía `ElementHost`): modos Inicio/Estudio/Presentación, biblioteca, API, OBS, Triggers, importadores/exportadores.
+- `src/managed/FusionStudio.Lite/`: Variante de perfil B (net35, `LITE`): mismas fuentes, editor funcional WinForms. Prohibido: mocks, cifras inventadas, patrones web.
 - `src/bridge/`: Puente de interoperabilidad C++/CLI (opcional, solo punteros de render). Protocolo IPC `ipc.v1` [SPEC §3.4].
 - `src/managed/core/`: Dominio compartido (`Escenario`, `Elemento`, `Proyecto`, `Tema`) + sistema de diseño (`Theme.xaml`, tokens UI en `UiTokens.cs`).
 - `src/managed/data/` + `src/managed/services/` + `src/managed/state/`: Persistencia (`ahp.v1`, índices bíblicos), servicios de plataforma (red, media, OBS/NDI, Planning Center, Drive) y estado (`provider`).

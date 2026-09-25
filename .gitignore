@@ -1,53 +1,35 @@
-# Build
-build/
-build-*/
-out/
-deploy/
+# Compilación
+dist/
+obj/
+bin/
+[Bb]in/
+[Oo]bj/
 *.user
-*.pro.user*
-
-# CMake
-CMakeLists.txt.user
-CMakeCache.txt
-CMakeFiles/
-cmake_install.cmake
-Makefile
-compile_commands.json
-
-# Binarios
+*.suo
+*.aps
+*.pdb
+*.ilk
+*.obj
+*.lib
 *.exe
 *.dll
-*.so
-*.so.*
-*.a
-*.lib
-*.7z
-*.zip
+!resources/**/*.exe
+packages/
 
-# Qt
-moc_*.cpp
-qrc_*.cpp
-ui_*.h
+# Datos locales de ejecución
+datos/
+logs/
+*.log
 
-# Sistema
-.DS_Store
+# Herramientas
+.vs/
+.vscode/
+.idea/
+*.swp
 Thumbs.db
-desktop.ini
+.DS_Store
 
-staging/
-
-# Datos locales de prueba
-*.db
-*.sqlite
-
-# Capa gestionada C# (salidas de build)
-managed/**/bin/
-managed/**/obj/
-artifacts-managed/
-staging/
-dist/
-
-# Capa gestionada C# reestructurada (src/managed)
-src/managed/**/bin/
-src/managed/**/obj/
-export-samples/
+# Secretos — JAMÁS commitear [AGENT.md]
+*.token
+*.secret
+secrets*

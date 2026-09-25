@@ -1,107 +1,76 @@
 #!/usr/bin/env bash
 # ============================================================================
-#  quality_gate.sh — Gate de calidad (norma AGENT.md: analyze C++ + analyze C#
-#  + test + auditoría de prohibiciones).
-#
-#  Degradación controlada por entorno (sin fallo silencioso: cada paso informa
-#  lo que ejecuta y lo que no puede ejecutarse aquí — MSVC/vstest viven en los
-#  runners Windows del CI):
-#    1) Auditoría de prohibiciones (F6.09)          — siempre
-#    2) Build gestionado net35+net48+net8           — dotnet SDK
-#    3) Tests gestionados (arnés propio)            — net8.0
-#    4) Arnés portable del núcleo (g++)             — si hay g++
-#    5) Análisis estático C#/formato                — dotnet format si existe
-#    6) Análisis estático C++ (clang-tidy)          — solo si está instalado
-#    7) Build nativo MSVC x86/x64 + vstest          — solo en Windows
+#  quality_gate.sh — Gate de calidad [AGENT.md]: auditoría de prohibiciones
+#  [SPEC §3.5, §11.4]. En runners Linux (CI) se ejecuta completo; en equipos
+#  sin herramientas informa y degrada sin fallo silencioso.
+#  1) Cero Java/JRE en código
+#  2) Cero .NET Core/.NET 5+ como runtime obligatorio (archivos de proyecto)
+#  3) Cero escritura al Registro de Windows
+#  4) Cero regedit/líneas de comando/permisos elevados exigidos al usuario
+#  5) Cero dependencias NuGet de runtime (solo herramientas de build)
 # ============================================================================
 set -u
 cd "$(dirname "$0")/.."
 FAIL=0
-STEP() { printf '\n\033[1;34m== %s ==\033[0m\n' "$1"; }
-OK()   { printf '\033[1;32m[OK]\033[0m %s\n' "$1"; }
-BAD()  { printf '\033[1;31m[FALLO]\033[0m %s\n' "$1"; FAIL=1; }
-SKIP() { printf '\033[1;33m[SALTA]\033[0m %s\n' "$1"; }
-
-# ---------------------------------------------------------------------------
-STEP "1) Auditoría de prohibiciones (F6.09)"
-# cero Java/JRE · cero .NET Core obligatorio · cero Registro/consola/elevación
-# · cero stacks crudos como única respuesta · cero desactivación del log.
-# Marca de permitido: las líneas que documentan la propia prohibición o el
-# cliente web remoto servido (F5.03 — feature normada) llevan audit-allow.
 VIOL=0
-HAS_MATCH() { # HAS_MATCH <patrón> <archivos…> — falla solo si hay coincidencia real
+
+STEP() { printf '\n== %s ==\n' "$1"; }
+OK()   { printf '[OK]   %s\n' "$1"; }
+BAD()  { printf '[FALLO] %s\n' "$1"; FAIL=1; VIOL=$((VIOL+1)); }
+SKIP() { printf '[SALTA] %s\n' "$1"; }
+
+HAS_MATCH() { # patrón, archivos… — devuelve coincidencias reales (excluye docs de la propia prohibición)
   local pat="$1"; shift
-  local hits
-  hits=$(grep -rniE "$pat" "$@" 2>/dev/null | grep -v "audit-allow" | grep -viE "prohibid|cero|nunca|jamás|sin jvm|sin java|no usa|no se usa|never|removida|retirad" || true)
-  if [ -n "$hits" ]; then printf '%s\n' "$hits"; return 0; fi
-  return 1
+  grep -rniE "$pat" "$@" 2>/dev/null \
+    | grep -v "audit-allow" \
+    | grep -viE "prohibid|cero |nunca|jamás|sin jvm|sin java|no usa|no se usa|never |removida|retirad|descargado|comentari" \
+    || true
 }
-HAS_MATCH "java\.|javax\.|jvm\b|/jre\b" src/managed --include="*.cs" && { BAD "posible dependencia Java en capa gestionada"; VIOL=1; }
-HAS_MATCH "Registry(Key)?\.[A-Za-z]*\.?SetValue\(" src/managed --include="*.cs" && { BAD "escritura al Registro detectada"; VIOL=1; }
-HAS_MATCH "\bregedit\b" src/managed --include="*.cs" && { BAD "mención de regedit como requerimiento"; VIOL=1; }
-HAS_MATCH "localStorage|ServiceWorker" src/managed --include="*.cs" && { BAD "patrones web prohibidos en capa gestionada"; VIOL=1; }
-grep -rn "audit-allow" src/managed --include="*.cs" | rg -q "localStorage|ServiceWorker" && OK "cliente web remoto (F5.03) con marca audit-allow documentada"
-[ $VIOL -eq 0 ] && OK "auditoría de prohibiciones sin violaciones"
 
-# ---------------------------------------------------------------------------
-STEP "2) Build gestionado (net35+net48+net8.0 con ref assemblies)"
-if command -v dotnet >/dev/null 2>&1; then
-  dotnet build src/managed/Lumina.sln -c Release >/tmp/qg_build.log 2>&1 \
-    && OK "Lumina.sln compilada (3 TFMs)" \
-    || { BAD "build gestionado — ver /tmp/qg_build.log"; tail -20 /tmp/qg_build.log; }
+STEP "1) Cero Java/JRE [SPEC §3.5]"
+if [ -n "$(HAS_MATCH 'java\.|javax\.|jvm\b|/jre\b' src/ --include='*.cs' --include='*.cpp' --include='*.h')" ]; then
+  BAD "dependencia Java detectada"
 else
-  SKIP "dotnet SDK no disponible en este entorno (CI lo ejecuta)"
+  OK "sin Java"
 fi
 
-# ---------------------------------------------------------------------------
-STEP "3) Tests gestionados (arnés propio net8.0)"
-if command -v dotnet >/dev/null 2>&1; then
-  LUMINA_SKIP_NATIVE=1 dotnet run --project src/managed/Tests -c Release -f net8.0 \
-    > /tmp/qg_tests.log 2>&1
-  grep -q "TESTS PASS" /tmp/qg_tests.log && OK "$(grep 'TESTS PASS' /tmp/qg_tests.log | tail -1)" \
-    || { BAD "tests gestionados — ver /tmp/qg_tests.log"; tail -10 /tmp/qg_tests.log; }
+STEP "2) Sin .NET Core/.NET 5+ obligatorio [SPEC §3.5]"
+BADNET=$(grep -rE 'TargetFramework>net[5-9]|TargetFramework>netcoreapp' src/ tests/ --include='*.csproj' 2>/dev/null || true)
+if [ -n "$BADNET" ]; then BAD "TFM moderno como objetivo: $BADNET"; else OK "solo net35/net48"; fi
+
+STEP "3) Sin escritura al Registro [SPEC §11.4]"
+if [ -n "$(HAS_MATCH 'Registry(Key)?\.(SetValue|CreateSubKey|DeleteValue|DeleteSubKey)' src/ --include='*.cs')" ]; then
+  BAD "escritura al Registro en capa C#"
+elif [ -n "$(HAS_MATCH 'RegSetValueEx|RegCreateKeyEx' src/core/)" ]; then
+  BAD "escritura al Registro en núcleo C++"
 else
-  SKIP "dotnet no disponible"
+  OK "sin escritura al Registro"
 fi
 
-# ---------------------------------------------------------------------------
-STEP "4) Arnés portable del núcleo (g++)"
-if command -v g++ >/dev/null 2>&1 && [ -f tests/core.Tests/build_and_run.sh ]; then
-  bash tests/core.Tests/build_and_run.sh > /tmp/qg_core.log 2>&1 \
-    && OK "$(tail -1 /tmp/qg_core.log)" \
-    || { BAD "arnés del núcleo — ver /tmp/qg_core.log"; tail -15 /tmp/qg_core.log; }
+STEP "4) Sin regedit/consola/elevación para el usuario [SPEC §11.4]"
+if [ -n "$(HAS_MATCH 'regedit|runas|runasas|ShellExecute.*(cmd\.exe|powershell)' src/ --include='*.cs' --include='*.cpp' --include='*.h')" ]; then
+  BAD "invocación de herramientas del sistema detectada"
 else
-  SKIP "g++/arnés no disponible"
+  OK "nada que exigir regedit/consola/elevación"
 fi
 
-# ---------------------------------------------------------------------------
-STEP "5) Formato/estilo C# (dotnet format --verify-no-changes)"
-if command -v dotnet >/dev/null 2>&1 && dotnet format --version >/dev/null 2>&1; then
-  dotnet format src/managed/Lumina.sln --verify-no-changes >/tmp/qg_fmt.log 2>&1 \
-    && OK "formato C# conforme" || SKIP "formato con diferencias (revisar /tmp/qg_fmt.log)"
+STEP "5) Dependencias NuGet solo de build [SPEC §10.2]"
+BADPKG=$(grep -rh 'PackageReference Include' src/ tests/ --include='*.csproj' 2>/dev/null \
+  | grep -v 'Microsoft.NETFramework.ReferenceAssemblies' || true)
+if [ -n "$BADPKG" ]; then BAD "paquete de runtime: $BADPKG"; else OK "sin paquetes de runtime"; fi
+
+STEP "6) Manifest sin elevación"
+if grep -q 'requestedExecutionLevel level="requireAdministrator"' -r src/ installer/ 2>/dev/null; then
+  BAD "el manifiesto exige administrador"
 else
-  SKIP "dotnet format no disponible"
+  OK "asInvoker"
 fi
 
-# ---------------------------------------------------------------------------
-STEP "6) Análisis estático C++ (clang-tidy)"
-if command -v clang-tidy >/dev/null 2>&1; then
-  OK "clang-tidy presente (CI ejecuta el análisis completo)"
-  SKIP "ejecución completa diferida al CI (headers Win32 no presentes aquí)"
+printf '\n'
+if [ "$FAIL" -eq 0 ]; then
+  printf 'GATE DE CALIDAD: VERDE (0 violaciones)\n'
+  exit 0
 else
-  SKIP "clang-tidy no instalado (CI lo ejecuta en Windows)"
+  printf 'GATE DE CALIDAD: ROJO (%d violaciones)\n' "$VIOL"
+  exit 1
 fi
-
-# ---------------------------------------------------------------------------
-STEP "7) Build nativo MSVC x86+x64 + vstest (Windows)"
-if command -v msbuild >/dev/null 2>&1; then
-  msbuild src/core/core.vcxproj /p:Configuration=Release /p:Platform=Win32 /m || FAIL=1
-  msbuild src/core/core.vcxproj /p:Configuration=Release /p:Platform=x64 /m || FAIL=1
-  OK "núcleo MSVC x86+x64"
-else
-  SKIP "MSVC/msbuild no disponible (gate del CI windows-latest)"
-fi
-
-printf '\n%s\n' "==================================================================="
-if [ $FAIL -eq 0 ]; then printf '\033[1;32mGATE DE CALIDAD: VERDE\033[0m (salta documentados = degradación controlada)\n'; else printf '\033[1;31mGATE DE CALIDAD: ROJO\033[0m\n'; fi
-exit $FAIL

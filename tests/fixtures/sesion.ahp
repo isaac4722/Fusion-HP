@@ -1,0 +1,53 @@
+{
+  "format": "ahp.v1",
+  "project": {
+    "name": "Sesión de prueba",
+    "themeRef": "tema-calma",
+    "themes": [
+      {
+        "id": "tema-calma",
+        "name": "Calma",
+        "style": { "font": "Segoe UI", "size": 48, "color": "#FFFFFF", "activeColor": "#FFD700", "align": 1, "vAlign": 1, "shadow": true },
+        "bg": { "color": "#101820" },
+        "restScreen": "black"
+      }
+    ],
+    "templates": [],
+    "scenarios": [
+      {
+        "id": "scn-001",
+        "title": "Grande es Tu Fidelidad",
+        "tags": ["lento", "adoracion"],
+        "elements": [
+          {
+            "id": "el-001",
+            "type": "text",
+            "lines": [
+              { "text": "Grande es tu fidelidad", "syncMark": 0.0 },
+              { "text": "Grande es tu bondad", "syncMark": 12.5 }
+            ],
+            "styleOverride": null,
+            "bgOverride": null
+          }
+        ],
+        "styleOverride": { "size": 40 },
+        "bgOverride": null
+      },
+      {
+        "id": "scn-002",
+        "title": "Versículo del día",
+        "tags": [],
+        "elements": [
+          {
+            "id": "el-002",
+            "type": "verse",
+            "verses": ["Porque de tal manera amó Dios al mundo"],
+            "reference": "Juan 3:16",
+            "styleOverride": { "color": "#FFE9C8" }
+          }
+        ]
+      }
+    ],
+    "media": []
+  }
+}

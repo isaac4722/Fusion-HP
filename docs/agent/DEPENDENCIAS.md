@@ -1,32 +1,22 @@
-# DEPENDENCIAS.md — Dependencias y toolset
+# DEPENDENCIAS.md — dependencias y toolset
 
-## Núcleo nativo (C++)
+## Núcleo C++ (todas incluidas en el paquete)
+- Win32: user32, gdi32, gdiplus, d2d1, dwrite, windowscodecs, strmiids, quartz,
+  comctl32, comdlg32, ole32, uuid, shell32, shlwapi — todas del sistema (Win7+).
+- `third_party/nlohmann/json.hpp` — header-only, MIT, incluida en el repo.
 
-- MSVC toolset compatible con Win7 (`_WIN32_WINNT=0x0601`), CRT estático `/MT`.
-- `third_party/sqlite3` (amalgamado, FTS5+JSON1 habilitados por definición) y
-  `third_party/nlohmann` (JSON header-only) — empaquetados, sin descargas.
-- `third_party/miniz` — contenedor ZIP/OPC (importación PPTX y respaldos).
-- System libs Win7 RTM permitidas: kernel32, user32, gdi32, gdiplus, d2d1,
-  ole32, oleaut32, shell32, commdlg32, avrt.
-- TODO: confirmar con el propietario si la salida NDI (F5.06) usa el SDK
-  oficial de NDI (redistribución sujeta a licencia) — mientras tanto la
-  integración queda con degradación controlada documentada.
+## Capa C# (todas del framework, cero NuGet de runtime)
+- net35/net48: System.Windows.Forms, System.Drawing, System.Xml, System.Core.
+- net48 (Studio): PresentationFramework/PresentationCore/WindowsBase (WPF),
+  WindowsFormsIntegration (ElementHost), WindowsBase (System.IO.Packaging).
+- TcpClient/HttpListener/SHA256/DeflateStream — parte del framework.
 
-## Capa gestionada (C#)
+## Toolset de compilación (no se distribuye)
+- MSVC v143 (WindowsTargetPlatformVersion 10.0), `/MT`.
+- .NET SDK (para `dotnet build` de proyectos SDK-style net35/net48) +
+  `Microsoft.NETFramework.ReferenceAssemblies` (solo build, PrivateAssets).
+- Inno Setup 6 (instalador), zip (portable).
 
-- **Cero paquetes NuGet funcionales** — el OPC/ZIP es motor propio
-  (`ZipWriter`/`ZipBackup`); JSON es `MiniJson`.
-- `Microsoft.NETFramework.ReferenceAssemblies` (PrivateAssets) para compilar
-  net35/net48 sin targeting pack de Windows (Linux/CI).
-- TFMs: `net35;net48` producto · `net8.0` arnés de tests/validación.
-- WinForms (net35+net48) y WPF (net48) — referencia del propio Framework.
-
-## Tooling del agente
-
-- Local: g++ (arnés portable), dotnet SDK 8 (builds+tests), python
-  (`duckduckgo_search`/`ddgs` para el estado PLAN).
-- CI: windows-latest (MSVC, .NET SDK, Inno Setup no instalado — el .iss se
-  compila en un job dedicado si se habilita choco install innosetup),
-  ubuntu-latest (port GCC, exportadores python).
-- TODO: confirmar con el propietario si el job de release debe firmar los
-  instaladores (no hay certificado en el repo).
+## Prohibido [SPEC §3.5]
+Java/JRE · .NET Core/.NET 5+ como runtime · escritura al Registro ·
+cualquier dependencia no incluida en el paquete.

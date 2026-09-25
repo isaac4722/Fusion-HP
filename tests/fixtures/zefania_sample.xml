@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<XMLBIBLE type="x-bible" biblicalContent="OT-NT" format="Zefania XML" generator="fixture" revision="1">
+  <INFORMATION>
+    <title>Reina Valera 1909 (muestra)</title>
+    <creator>Fusion HP test</creator>
+    <rights>Dominio público</rights>
+  </INFORMATION>
+  <BIBLEBOOK bnumber="1" bname="Génesis" bsname="Gn">
+    <CHAPTER cnumber="1">
+      <VERSES vnumber="1">En el principio creó Dios los cielos y la tierra.</VERSES>
+      <VERSES vnumber="2">Y la tierra estaba desordenada y vacía.</VERSES>
+      <VERSES vnumber="3">Y dijo Dios: Sea la luz; y fue la luz.</VERSES>
+    </CHAPTER>
+  </BIBLEBOOK>
+  <BIBLEBOOK bnumber="19" bname="Salmos" bsname="Sal">
+    <CHAPTER cnumber="23">
+      <VERSES vnumber="1">Jehová es mi pastor; nada me faltará.</VERSES>
+    </CHAPTER>
+  </BIBLEBOOK>
+  <BIBLEBOOK bnumber="43" bname="Juan" bsname="Jn">
+    <CHAPTER cnumber="3">
+      <VERSES vnumber="16">Porque de tal manera amó Dios al mundo, que ha dado a su Hijo unigénito, para que todo aquel que en él cree, no se pierda, mas tenga vida eterna.</VERSES>
+    </CHAPTER>
+  </BIBLEBOOK>
+</XMLBIBLE>

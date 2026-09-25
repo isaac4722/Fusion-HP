@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ============================================================================
+       FusionStudio.Lite — variante de PERFIL B (.NET 3.5 SP1) [SPEC §4.2]:
+       mismas fuentes que FusionStudio con LITE definido; editor funcional en
+       WinForms (sin WPF ni efectos acelerados). Motor Live completo,
+       importadores, exportadores y API intactos.
+       ============================================================================ -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net35</TargetFramework>
+    <LangVersion>7.3</LangVersion>
+    <RootNamespace>Fusion.Studio</RootNamespace>
+    <AssemblyName>FusionStudio.Lite</AssemblyName>
+    <DefineConstants>$(DefineConstants);LITE</DefineConstants>
+    <AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Version>2.0.0</Version>
+    <AssemblyTitle>Fusion HP Studio Lite</AssemblyTitle>
+    <Product>Fusion HP</Product>
+    <Description>Variante de perfil B (.NET 3.5) del estudio</Description>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="All" />
+    <ProjectReference Include="..\FusionShared\FusionShared.csproj" />
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Xml" />
+    <Reference Include="System.Core" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Fuentes compartidas con FusionStudio (excluye el editor WPF) -->
+    <Compile Include="..\FusionStudio\Program.cs" Link="Program.cs" />
+    <Compile Include="..\FusionStudio\Ui\*.cs" Link="Ui\%(Filename)%(Extension)" />
+    <Compile Include="..\FusionStudio\Services\*.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\FusionStudio\Import\*.cs" Link="Import\%(Filename)%(Extension)" />
+    <Compile Include="..\FusionStudio\Export\*.cs" Link="Export\%(Filename)%(Extension)" />
+    <Compile Include="..\FusionStudio\Editor\WinForms\*.cs" Link="Editor\WinForms\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+</Project>

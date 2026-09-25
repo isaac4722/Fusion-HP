@@ -1,50 +1,60 @@
-# ARCHITECTURE.md — Arquitectura dual y IPC
+# ARCHITECTURE.md — Arquitectura dual de Fusion-HP
 
-**Fuente normativa:** `spec/Aplicacion_Hibrida_TechnicalDoc_v1.1_2026-09-23.md` §3–§5.
+Verdad funcional: `spec/Aplicacion_Hibrida_TechnicalDoc_v1.1_2026-09-23.md` [SPEC §3].
 
-## Dos capas por criticidad
+## Visión general
 
-1. **Núcleo nativo C++ (Win32/CRT, `/MT`, x86+x64)** — lo que *no puede fallar*:
-   bootstrap con detección (SO por `RtlGetVersion`, arquitectura por
-   `IsWow64Process2`, .NET por claves NDP de solo lectura), perfiles A/B/C,
-   render (Direct2D cuando disponible / GDI+ fallback), DirectShow, salida
-   borderless persistente, IPC `ipc.v1`, log binario y UI de emergencia (perfil C).
-2. **Capa gestionada C# (.NET Framework 3.5 SP1→4.8, WinForms + WPF)** — lo que
-   *gana productividad*: shell WinForms, editor WPF vía `ElementHost`, modelo
-   `ahp.v1`, importadores/exportadores, servidor API (`HttpListener`), Triggers,
-   OBS/NDI/PCO/Drive, JSLib y diagnóstico.
+```
+FusionHP.exe (C++ /MT, Win32, x86 y x64)
+ ├─ Bootstrap [SPEC §4.1]: detecta SO → arquitectura → .NET (filesystem, sin Registro)
+ ├─ Salida de proyección: ventana borderless persistente en el monitor elegido
+ │   ├─ Renderer: Direct2D (HwndRenderTarget) con fallback GDI+ doble buffer
+ │   ├─ Capas: fondo (caché) → contenido → lower third [SPEC §6.4]
+ │   └─ HWND hijo para video DirectShow (VMR9 windowless)
+ ├─ IPC ipc.v1: \\.\pipe\FusionHP.ipc.v1 (longitud prefijada u32 LE + JSON UTF-8)
+ ├─ UI de emergencia nativa (perfil C): abrir .ahp, navegar, reposo [SPEC §4.2]
+ └─ Lanza FusionStudio.exe (perfil A, net48) o FusionStudio.Lite.exe (perfil B, net35)
 
-## Frontera nativo/gestionado
+FusionStudio.exe (C# net48, WinForms + WPF)
+ ├─ MainForm: Inicio (mosaicos) · Estudio (editor embebido) · Presentación (por defecto)
+ ├─ LiveOrchestrator: cerebro — resuelve herencia 4 niveles y envía el estado RESUELTO
+ ├─ Biblioteca: Cantos (songs/*.json) + Biblia (índice en disco .fbi) + Medios
+ ├─ Importadores: Zefania XML · e-Sword (.bib SQLite 9+ con Twofish) · JSON · TSV · PPTX (COM y OpenXML)
+ ├─ Exportadores: PPTX (System.IO.Packaging) · PDF (escritor puro) · PNG (GDI+)
+ ├─ ApiServer (HttpListener, 6 endpoints + token + /remote móvil)
+ ├─ ObsClient (WebSocket RFC6455 propio + auth sha256)
+ └─ TriggerEngine (evento → condiciones → acciones, JSON)
 
-- IPC por **pipes con nombre**, mensajes binarios con longitud prefijada,
-  protocolo versionado `ipc.v1` (frame: magic u32, version u16, type u16, length u32).
-- **Cola sin bloqueo** de comandos hacia render con límite de latencia explícito.
-- El núcleo opera íntegro sin C# (perfil C). El hosting CLR en proceso es el
-  objetivo del producto; el P/Invoke existente es la vía A documentada.
-- API C plana del núcleo (`native/core/include/lumina/lumina.h`): texto UTF-8,
-  sin excepciones cruzando la frontera, patrón de búfer `out/cap/needed`.
+FusionStudio.Lite.exe (C# net35, WinForms, define LITE)
+ └─ Mismas fuentes; editor funcional WinForms en lugar de WPF [SPEC §7.1.2]
+```
 
-## Modelo de datos compartido
+## Contrato ipc.v1 (lo que C# envía al núcleo)
 
-`ahp.v1` (JSON versionado): Proyecto → Escenarios → Elementos (exactamente
-cinco tipos: Texto Formateado, Versículo Bíblico, Imagen, Video, Lower Third).
-Herencia de estilos: Tema → Plantilla de Escenario → Escenario → Elemento
-(`null` = heredar). IDs estables entre sesiones.
+Mensaje: `[u32 LE longitud][JSON UTF-8]`. Respuestas llevan `id` de eco.
 
-## Mapa de carpetas (reestructuración v1.0.0)
+| Comando | Payload | Efecto |
+|---|---|---|
+| `hello` | `{}` | handshake; respuesta con `protocol:"ipc.v1"` |
+| `show` | `{slide:{…}}` | proyecta el elemento resuelto |
+| `preload` | `{slide:{…}}` | decodifica imágenes del siguiente (carga diferida) |
+| `line` | `{index:n}` | línea activa (solo capa de texto) |
+| `blank` | `{mode: none\|black\|logo\|theme}` | pantalla de reposo |
+| `clear` | `{}` | negro |
+| `video` | `{action, value}` | pause/resume/stop/volume |
+| `monitors` / `monitor` | lista / `{output,index}` | gestión multi-pantalla |
+| `env` / `state` | — | informe de entorno / estado |
+| `quit` | — | apagado ordenado |
 
-- `src/core/`: proyecto MSBuild del núcleo + módulos nuevos.
-- `native/core/`: fuentes base del núcleo (ruta congelada por la restricción
-  CMake del plan — el `.vcxproj` las compila juntas con los módulos nuevos).
-- `src/managed/Lumina.Core/`: `core/` (dominio), `data/` (persistencia e
-  índices bíblicos), `services/` (OBS/NDI/PCO/Drive/diagnóstico),
-  `state/` (StateProvider), `features/` (interop, triggers, scripting).
-- `src/managed/Lumina.UI` (WinForms) y `Lumina.WPF` (editor): las dos caras
-  del shell; el editor comparte el contrato de coordenadas del motor (WYSIWYG).
+`slide` (RESUELTO por C#, dibujado tal cual por C++):
+`id, kind(text|image|video|verse|lower3), lines[], activeLine, reference, style{font,size,bold,italic,color,activeColor,align,vAlign,shadow,outline,lineSpacing,box{x,y,w,h}}, bg{color,image,fit,opacity}, media{src,loop,volume,startAt}, overlay{present,lines,style,position,duration}`.
 
-## Compilación permitida
+Eventos del núcleo → clientes: `{"v":1,"evt":"state","data":{…}}` y `{"evt":"warning", …}` (fail-safe de video).
 
-MSBuild es el mecanismo normativo de la línea reestructurada
-(`src/core/core.vcxproj`, `src/managed/Lumina.sln`). El CMake heredado de
-`native/` **no se crea, restaura, regenera ni modifica** (restricción del
-plan); compila el subset portable del núcleo en el CI Linux.
+## Reglas de oro
+
+1. El núcleo **nunca** depende de .NET; el estudio **nunca** toca el render directamente.
+2. La herencia de estilos se **resuelve en C#** (`ResolvedSlide.Resolve`) — el núcleo no conoce temas, solo estados resueltos. Esto hace posible el tema en caliente re-enviando el estado.
+3. La ventana de salida **nunca se destruye** entre elementos [SPEC §6.3.1].
+4. Todo archivo de proyecto es `ahp.v1` JSON versionado; campos nuevos deben ser ignorables [SPEC §5.3].
+5. Cero dependencias de runtime no incluidas en el paquete [SPEC §3.5].

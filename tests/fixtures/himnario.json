@@ -1,0 +1,73 @@
+{
+  "id": 1700000000001,
+  "title": "HIMNO DE BIENVENIDA",
+  "artist": "",
+  "author": "",
+  "note": "N° 1",
+  "copyright": "Cantos Espirituales - Iglesia de Cristo",
+  "language": "es",
+  "key": "",
+  "bpm": 0.0,
+  "time_sig": "",
+  "midi": null,
+  "order": "",
+  "arrangements": [],
+  "lyrics": {
+    "full_text": "Co gran gozo y placer, nos volvemos\nhoy a ver, nuestras manos otra vez\nestrechamos. Se contenta el corazón\nensanchándose de amor; todos a\nuna voz a Dios Gracias damos.\n\nBienvenido,\nbienvenido,\nLos\nhermanos de aquí nos gozamos en\ndecir, Bienvenido, bienvenido, Al\nvolvernos a reunir, Bienvenido.\n\nHasta aquí Dios te ayudó, ni un\nmomento te dejó, y a nosotros te\nvolvió, Bienvenido. El Señor te\nacompañó, su presencia te amparó,\ndel peligro te guardó, Bienvenido.\n\nCon su tierna compasión Dios nos dio\nconsolación,\ncontestó\nnuestra\noración, te ha traído. Esta alegre\nreunión, Que rebosa animación,\ncanta hoy el dulce son, Bienvenido.\n\nDios nos guarde en este amor. Para\nque de corazón, consagrados al\nSeñor. Le alabemos, En la eterna\nreunión, do no habrá separación, ni\ntristeza ni aflicción, cantaremos\n¡Aleluya! Todos juntos con Jesús,\nTodos juntos en su luz, ¡Aleluya!\n¡Aleluya! Todos salvos por su cruz,\nAleluya",
+    "full_text_with_comment": null,
+    "paragraphs": [
+      {
+        "number": 1,
+        "description": "Verso 1",
+        "text": "Co gran gozo y placer, nos volvemos\nhoy a ver, nuestras manos otra vez\nestrechamos. Se contenta el corazón\nensanchándose de amor; todos a\nuna voz a Dios Gracias damos.",
+        "text_with_comment": null,
+        "translations": null
+      },
+      {
+        "number": 2,
+        "description": "Coro",
+        "text": "Bienvenido,\nbienvenido,\nLos\nhermanos de aquí nos gozamos en\ndecir, Bienvenido, bienvenido, Al\nvolvernos a reunir, Bienvenido.",
+        "text_with_comment": null,
+        "translations": null
+      },
+      {
+        "number": 3,
+        "description": "Verso 2",
+        "text": "Hasta aquí Dios te ayudó, ni un\nmomento te dejó, y a nosotros te\nvolvió, Bienvenido. El Señor te\nacompañó, su presencia te amparó,\ndel peligro te guardó, Bienvenido.",
+        "text_with_comment": null,
+        "translations": null
+      },
+      {
+        "number": 4,
+        "description": "Verso 3",
+        "text": "Con su tierna compasión Dios nos dio\nconsolación,\ncontestó\nnuestra\noración, te ha traído. Esta alegre\nreunión, Que rebosa animación,\ncanta hoy el dulce son, Bienvenido.",
+        "text_with_comment": null,
+        "translations": null
+      },
+      {
+        "number": 5,
+        "description": "Verso 4",
+        "text": "Dios nos guarde en este amor. Para\nque de corazón, consagrados al\nSeñor. Le alabemos, En la eterna\nreunión, do no habrá separación, ni\ntristeza ni aflicción, cantaremos\n¡Aleluya! Todos juntos con Jesús,\nTodos juntos en su luz, ¡Aleluya!\n¡Aleluya! Todos salvos por su cruz,\nAleluya",
+        "text_with_comment": null,
+        "translations": null
+      }
+    ]
+  },
+  "streaming": {
+    "audio": {
+      "spotify": "",
+      "youtube": "",
+      "deezer": "",
+      "apple_music": "",
+      "amazon_music": ""
+    },
+    "backing_track": {
+      "spotify": "",
+      "youtube": "",
+      "deezer": "",
+      "apple_music": "",
+      "amazon_music": ""
+    }
+  },
+  "extras": {}
+}

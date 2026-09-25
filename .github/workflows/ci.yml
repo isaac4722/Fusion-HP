@@ -1,1185 +1,241 @@
 # ============================================================================
-#  LuminaPresentation / LuminaPresentation Suite — CI/CD híbrido v7.1.0 «OPERADOR»
-#  Copyright (c) 2026 Isaac. Licencia View-Only.
-# ----------------------------------------------------------------------------
-#  Pipeline de la arquitectura híbrida (docs/architecture-hybrid.md §6):
-#
-#    native-windows : núcleo C++ (LuminaCore.dll /MT) x86+x64 + selftest + PoC nativo
-#    native-linux   : port del núcleo (GCC) — regresa rápido el estado del port
-#    managed        : capa C# (net35+net48+net8 en Core) + tests + GATE exportadores
-#    interop        : PoC real C# ↔ DLL nativa (x86/x64, net48; net35 informativo)
-#    clrhost-poc    : vía C — CLR hosting C++ puro contra PocFacade (INFORMATIVO)
-#                     (evaluación de la vía de respaldo; NO bloquea paquete/release)
-#    package        : layout portable por arquitectura + verify_portable + zip + SHA256
-#    release        : GitHub Release solo en tags v*
-#
-#  CONTRATOS de rutas entre jobs (respetar al mover proyectos):
-#    src/managed/Lumina.sln                          (solución gestionada)
-#    src/managed/Lumina.Core                         (net35;net48;net8.0)
-#    src/managed/Lumina.UI                           (WinExe net35;net48)
-#    src/managed/PoC/PoC.Managed                       (net35;net48)
-#    src/managed/PoC/PocFacade                         (net48;net35) — COM-visible
-#    src/managed/Tests                                 (net8.0;net48)
-#    Salidas: <proj>/bin/Release/<tfm>/... (SDK-style estándar de dotnet build)
-#    PoC.Managed debe imprimir "POC PASS 12/12" y salir 0 cuando todo pasa.
-#    Tests debe imprimir "TESTS PASS n/n" y (v5.0.0) con LUMINA_EXPORT_SAMPLES
-#    escribe muestra.pptx/muestra.pdf para el gate tools/validate_pptx.py
-#    (python-pptx + pypdf: validación EXTERNA de los exportadores).
-#    PocFacade: tipo por defecto "Lumina.PocFacade.PocFacade" (COMVisible,
-#    MarshalByRefObject/Serializable para cruzar dominios) con métodos
-#    Add(int,int), Echo(string), Version() -> prefijo "LUMINA-FACADE-OK".
+#  Fusion-HP · CI [AGENT.md paso 8]: compilación dual x86+x64 obligatoria,
+#  tests nativos y administrados, gate de prohibiciones, instalador Inno Setup
+#  y paquete portable. En tags v*: sube artefactos de release.
 # ============================================================================
-
-name: CI híbrido
+name: CI
 
 on:
   push:
     branches: [main]
-    tags: ['v*']        # necesario para que el job «release» sea alcanzable
+    tags: ['v*']
   pull_request:
+    branches: [main]
   workflow_dispatch:
 
-# Los jobs normales solo leen; la escritura (release) se concede en su job.
-permissions:
-  contents: read
-
-# Un solo CI activo por rama/PR: cancela el run anterior en progreso.
-concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 env:
-  DOTNET_VERSION: '8.0.x'
-  APP_VERSION: '1.0.0-beta.3'
+  DOTNET_NOLOGO: 1
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
 
 jobs:
-  # ---------------------------------------------------------------------------
-  # 0) Auditoría de prohibiciones (F6.09): cero Java/registro/elevación/...
-  # ---------------------------------------------------------------------------
-  prohibitions-audit:
-    name: Auditoría F6.09
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Auditoría de prohibiciones (F6.09)
-        run: python3 tools/audit_prohibitions.py
-      - name: Auditoría ampliada v1.0.0 (src/managed — patrones quality_gate)
-        run: |
-          # Igual que scripts/quality_gate.sh paso 1: solo coincidencias reales.
-          if grep -rniE 'java\.|javax\.|jvm\b|/jre\b' src/managed --include='*.cs' \
-             | grep -v audit-allow \
-             | grep -viE 'prohibid|cero|nunca|jamás|sin jvm|sin java|no usa|no se usa|never|removida|retirad'; then
-            echo '::error::posible dependencia Java en src/managed'; exit 1
-          fi
-          if grep -rn 'localStorage\|ServiceWorker' src/managed --include='*.cs' \
-             | grep -v audit-allow; then
-            echo '::error::patrones web prohibidos en src/managed'; exit 1
-          fi
-          echo 'auditoría ampliada sin violaciones'
-
-  # ---------------------------------------------------------------------------
-  # 1) Núcleo C++ en Windows: LuminaCore.dll (/MT) + selftest + PoC nativo
-  # ---------------------------------------------------------------------------
-  native-windows:
-    name: Núcleo C++ ${{ matrix.arch }} (/MT + gates)
+  # ---------------------------------------------------------------- núcleo nativo
+  nucleo:
+    name: Núcleo C++ (${{ matrix.arch }})
     runs-on: windows-latest
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - arch: x86
-            cmake_arch: Win32
-          - arch: x64
-            cmake_arch: x64
+        arch: [x86, x64]
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Configurar (CMake ${{ matrix.arch }})
-        shell: pwsh
-        run: |
-          cmake -S . -B build -A ${{ matrix.cmake_arch }} -DCMAKE_BUILD_TYPE=Release
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Compilar (Release)
-        shell: pwsh
-        run: |
-          cmake --build build --config Release --parallel $env:NUMBER_OF_PROCESSORS
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Recolectar binarios en dist/${{ matrix.arch }}
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path "dist/${{ matrix.arch }}" | Out-Null
-          Copy-Item build/native/Release/LuminaCore.dll        "dist/${{ matrix.arch }}/"
-          Copy-Item build/native/Release/lumina_selftest.exe   "dist/${{ matrix.arch }}/"
-          Copy-Item build/native/Release/lumina_poc_native.exe "dist/${{ matrix.arch }}/"
-
-      # v5.2.0 «MOTOR»: gate de compatibilidad Win7 SP1 — ninguna API Win8+
-      # (GetSystemTimePreciseAsFileTime, WaitOnAddress, PathCch*…) puede entrar
-      # como import ESTÁTICO en el binario que se distribuye: en Win7 SP1,
-      # LoadLibrary falla con ERROR_PROCEDURE_NOT_FOUND y la app abre en
-      # «modo limitado» («carga la GUI pero más nada»). Este gate reproduce
-      # esa condición ANTES de publicar (lección del bug de campo v5.1.1).
-      - name: GATE Win7 SP1 — tabla de importaciones de LuminaCore.dll
-        shell: pwsh
-        run: |
-          python tools/verify_win7_imports.py "dist/${{ matrix.arch }}/LuminaCore.dll"
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: GATE lumina_selftest (exit 0)
-        shell: pwsh
-        working-directory: dist/${{ matrix.arch }}
-        run: |
-          ./lumina_selftest.exe
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: GATE lumina_poc_native headless (exit 0)
-        shell: pwsh
-        working-directory: dist/${{ matrix.arch }}
-        run: |
-          ./lumina_poc_native.exe
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Subir artefacto native-${{ matrix.arch }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: native-${{ matrix.arch }}
-          path: dist/${{ matrix.arch }}
-          if-no-files-found: error
-
-  # ---------------------------------------------------------------------------
-  # 2) Núcleo C++ en Linux (partes portables): señal rápida del port
-  # ---------------------------------------------------------------------------
-  native-linux:
-    name: Núcleo C++ Linux (port)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Configurar
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-
-      - name: Compilar
-        run: cmake --build build --parallel
-
-      - name: GATE lumina_selftest (exit 0)
-        run: ./build/native/lumina_selftest
-
-  # ---------------------------------------------------------------------------
-  # 3) Capa gestionada: solución C# (net35+net48) + tests net8.0
-  # ---------------------------------------------------------------------------
-  core-msvc:
-    # v1.0.0 «REESTRUCTURA»: build NORMATIVO del núcleo reestructurado
-    # (src/core/core.vcxproj — MSBuild, /MT, x86+x64; ruta Direct2D F0.06.1
-    # vía LUMINA_HAS_D2D; EnvironmentReport F0.09). El paquete release sigue
-    # usando el DLL del job heredado (selftest + gate Win7 probados); este
-    # job verifica el mecanismo normativo de la línea nueva (AGENT.md).
-    name: Núcleo reestructurado (vcxproj MSVC x86+x64)
-    runs-on: windows-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: 'MSBuild core.vcxproj Win32 y x64 (Release /MT)'
+      - name: Buscar MSBuild
+        id: msbuild
         shell: pwsh
         run: |
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
           $msbuild = & $vswhere -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | Select-Object -First 1
           if (-not $msbuild) { throw 'MSBuild no encontrado' }
-          & $msbuild src/core/core.vcxproj /p:Configuration=Release /p:Platform=Win32 /m /v:m /nologo
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          & $msbuild src/core/core.vcxproj /p:Configuration=Release /p:Platform=x64 /m /v:m /nologo
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "path=$msbuild" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
-      - name: 'GATE: LuminaCore.dll de ambas variantes (vcxproj)'
+      - name: Compilar núcleo ${{ matrix.arch }}
         shell: pwsh
         run: |
-          $dlls = Get-ChildItem -Recurse -Filter LuminaCore.dll | Where-Object { $_.FullName -match 'core' }
-          if ($dlls.Count -lt 2) { throw "core.vcxproj no produjo ambas variantes (halladas: $($dlls.Count))" }
-          $dlls | ForEach-Object { Write-Host ("  [vcxproj] {0} → {1} bytes" -f $_.FullName, $_.Length) }
+          $platform = '${{ matrix.arch }}' -eq 'x86' ? 'Win32' : 'x64'
+          & "${{ steps.msbuild.outputs.path }}" src/core/FusionHP.vcxproj /p:Configuration=Release /p:Platform=$platform /m /v:m /nologo
+          if ($LASTEXITCODE -ne 0) { throw "compilación $platform falló" }
+          Test-Path "dist/$platform/FusionHP.exe"
 
-  core-portable:
-    # v1.0.0: arnés portable g++ del núcleo (tests/core.Tests) — el MISMO gate
-    # verde en local (docs/verification/core-local.md), ahora en CI.
-    name: Núcleo portable (arnés g++)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Arnés portable del núcleo (debe terminar CORE TESTS PASS)
-        run: |
-          bash tests/core.Tests/build_and_run.sh
-
-  sesion60:
-    # v1.0.0 (F6.08): campaña COMPLETA de 60 minutos en tiempo real — el
-    # anfitrión local mata procesos largos entre turnos (limitación del
-    # sandbox documentada en docs/verification/), así que la campaña completa
-    # se ejecuta aquí (runners permiten hasta 6 h). El arnés local valida la
-    # versión corta (2 min) en cada PR. Disparo manual o en tags.
-    name: Sesión de servicio 60 min (F6.08 campaña completa)
-    runs-on: windows-latest
-    timeout-minutes: 90
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup .NET SDK
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
-
-      - name: Campaña de 60 minutos (arnés gestionado, sin núcleo — justificado)
-        env:
-          LUMINA_SKIP_NATIVE: '1'
-          LUMINA_SESSION_MINUTES: '60'
+      - name: Compilar y ejecutar tests nativos ${{ matrix.arch }}
         shell: pwsh
         run: |
-          dotnet build src/managed/Tests -c Release -f net8.0
-          dotnet run --project src/managed/Tests -c Release -f net8.0 --no-build 2>&1 | Tee-Object -FilePath sesion60-ci.log
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $platform = '${{ matrix.arch }}' -eq 'x86' ? 'Win32' : 'x64'
+          & "${{ steps.msbuild.outputs.path }}" tests/native/CoreTests.vcxproj /p:Configuration=Release /p:Platform=$platform /m /v:m /nologo
+          if ($LASTEXITCODE -ne 0) { throw "tests $platform no compilaron" }
+          $exe = "dist/tests/$platform/CoreTests.exe"
+          if (-not (Test-Path $exe)) { throw "CoreTests.exe no está en $exe" }
+          Copy-Item tests/fixtures -Destination dist/tests/$platform/fixtures -Recurse -Force
+          Push-Location "dist/tests/$platform"
+          try { & $exe } finally { Pop-Location }
+          if ($LASTEXITCODE -ne 0) { throw "tests nativos $platform FALLAN" }
 
-      - name: Subir evidencia de la campaña
+      - name: Subir binarios del núcleo
         uses: actions/upload-artifact@v4
         with:
-          name: sesion60
-          path: sesion60-ci.log
-
-  managed:
-    name: Capa C# (net35+net48) + tests net8.0
-    runs-on: windows-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup .NET SDK
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
-
-      - name: Cache NuGet
-        uses: actions/cache@v4
-        with:
-          path: ~/.nuget/packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('src/managed/**/*.csproj') }}
-          restore-keys: |
-            nuget-${{ runner.os }}-
-
-      - name: Compilar solución (net35+net48 con ref assemblies)
-        shell: pwsh
-        run: |
-          dotnet build src/managed/Lumina.sln -c Release
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Tests net8.0 (arnés propio; LUMINA_SKIP_NATIVE=1 + muestras)
-        shell: pwsh
-        env:
-          LUMINA_SKIP_NATIVE: '1'
-          LUMINA_EXPORT_SAMPLES: 'export-samples'
-        run: |
-          dotnet run --project src/managed/Tests --configuration Release --framework net8.0
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      # v1.0.0-beta.3: el MISMO arnés compilado net48 (GDI+ real, F4.13).
-      # Sin LuminaCore.dll en este job → los tests nativo-dependientes saltan
-      # (están gated en el job interop, que sí coloca la DLL).
-      - name: Tests net48 (mismo arnés; GDI+ real para F4.13)
-        shell: pwsh
-        env:
-          LUMINA_SKIP_NATIVE: '1'
-        run: |
-          dotnet build src/managed/Tests -f net48 -c Release
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $out = & "src/managed/Tests/bin/Release/net48/Lumina.Tests.exe" 2>&1
-          $code = $LASTEXITCODE
-          $out | ForEach-Object { Write-Host "$_" }
-          if ($code -ne 0) { Write-Host "EXIT CODE: $code"; exit 1 }
-          if (-not ($out -match 'TESTS PASS')) { Write-Host 'Sin TESTS PASS'; exit 1 }
-
-      - name: 'GATE exportadores: python-pptx + pypdf (PPTX/PDF válidos)'
-        shell: pwsh
-        run: |
-          pip install --quiet python-pptx pypdf
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python tools/validate_pptx.py export-samples/muestra.pptx export-samples/muestra.pdf
-          if ($LASTEXITCODE -ne 0) { Write-Host 'Los exportadores no produjeron archivos válidos'; exit 1 }
-
-      - name: Publicar UI WPF net48 + WinForms net35 POR ARQUITECTURA (x86 y x64)
-        shell: pwsh
-        run: |
-          # LECCIÓN v5.1.0 (hallada por el gate de humo): el PRIMER publish
-          # tras `dotnet build Lumina.sln` reusa el PE AnyCPU de la solución
-          # (el checkpoint no trackea PlatformTarget) → el exe «x86» corría
-          # como 64 bits y moría con BadImageFormatException contra
-          # LuminaCore.dll x86. Fix: `dotnet clean` ANTES DE CADA publish +
-          # aserción dura del bitness del PE (32BITREQUIRED para x86;
-          # PE32+ 0x8664 para x64).
-          function Assert-PeBitness([string]$exe, [string]$arch) {
-            $b = [System.IO.File]::ReadAllBytes($exe)
-            $peOff = [BitConverter]::ToInt32($b, 0x3C)
-            if ($b[$peOff] -ne 0x50 -or $b[$peOff+1] -ne 0x45) {
-              throw "sin cabecera PE en $exe"
-            }
-            $machine = [BitConverter]::ToUInt16($b, $peOff + 4)
-            if ($arch -eq 'x64') {
-              if ($machine -ne 0x8664) { throw ("PE no es x64 (machine=0x{0:X4}): {1}" -f $machine, $exe) }
-              Write-Host "  [pe] $exe → x64 (PE32+) OK"
-            } else {
-              if ($machine -ne 0x014C) { throw ("PE no es x86 (machine=0x{0:X4}): {1}" -f $machine, $exe) }
-              # PE32: distinguir x86 REAL de AnyCPU por el flag 32BITREQUIRED
-              # del header COR20 (directorio 14): machine igual (0x14C).
-              $optOff = $peOff + 24
-              $magic = [BitConverter]::ToUInt16($b, $optOff)
-              $ddOff = if ($magic -eq 0x10B) { $optOff + 96 } else { $optOff + 112 }
-              $corRva = [BitConverter]::ToInt32($b, $ddOff + 14*8)
-              $corOff = 0
-              if ($corRva -gt 0) {
-                $nsec = [BitConverter]::ToUInt16($b, $peOff + 6)
-                $optSize = [BitConverter]::ToUInt16($b, $peOff + 20)
-                $secOff = $optOff + $optSize
-                for ($i = 0; $i -lt $nsec; $i++) {
-                  $s = $secOff + 40*$i
-                  $vaddr = [BitConverter]::ToUInt32($b, $s + 12)
-                  $vsize = [BitConverter]::ToUInt32($b, $s + 8)
-                  if ($corRva -ge $vaddr -and $corRva -lt ($vaddr + [Math]::Max($vsize, 0x1000))) {
-                    $corOff = [BitConverter]::ToUInt32($b, $s + 20) + ($corRva - $vaddr); break
-                  }
-                }
-              }
-              if ($corOff -eq 0) { throw "sin header COR20 en $exe (¿nativo?)" }
-              $flags = [BitConverter]::ToUInt32($b, $corOff + 16)
-              if (($flags -band 0x2) -eq 0) {
-                throw ("AnyCPU detectado (sin 32BITREQUIRED, flags=0x{0:X8}): {1}" -f $flags, $exe)
-              }
-              Write-Host "  [pe] $exe → x86 (32BITREQUIRED) OK"
-            }
-          }
-
-          # Compilar con el PlatformTarget pedido y COPIAR el bin directamente:
-          # el publish de un exe .NET Framework solo copia archivos, y el SDK 10
-          # del runner deriva RuntimeIdentifier del PlatformTarget (NETSDK1047).
-          # El bin del build YA trae exe + .exe.config + DLLs dependientes.
-          function Publish-Ui([string]$tfm, [string]$platform, [string]$destName) {
-            dotnet clean src/managed/Lumina.UI -f $tfm -c Release | Out-Null
-            dotnet build src/managed/Lumina.UI -f $tfm -c Release -p:PlatformTarget=$platform
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            $bin = "src/managed/Lumina.UI/bin/Release/$tfm"
-            $exe = Get-ChildItem "$bin/*.exe" | Select-Object -First 1
-            Assert-PeBitness $exe.FullName $platform
-            New-Item -ItemType Directory -Force -Path "$bin/$destName" | Out-Null
-            Copy-Item "$bin/*.exe" "$bin/$destName/" -ErrorAction Stop
-            Copy-Item "$bin/*.dll" "$bin/$destName/" -ErrorAction Stop
-            Copy-Item "$bin/*.exe.config" "$bin/$destName/" -ErrorAction Stop
-            Write-Host "  [publish] $destName listo con $((Get-ChildItem "$bin/$destName").Count) archivos"
-          }
-
-          # v5.4.0 «ESTUDIO»: la variante net48 del paquete es la interfaz WPF
-          # (LuminaPresentation.exe). Mismas lecciones v5.1.0: clean ANTES DE
-          # cada publish + aserción dura del bitness del PE.
-          function Publish-Wpf([string]$platform, [string]$destName) {
-            dotnet clean src/managed/Lumina.WPF -f net48 -c Release | Out-Null
-            dotnet build src/managed/Lumina.WPF -f net48 -c Release -p:PlatformTarget=$platform
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            $bin = "src/managed/Lumina.WPF/bin/Release/net48"
-            $exe = Get-ChildItem "$bin/*.exe" | Select-Object -First 1
-            Assert-PeBitness $exe.FullName $platform
-            New-Item -ItemType Directory -Force -Path "$bin/$destName" | Out-Null
-            Copy-Item "$bin/*.exe" "$bin/$destName/" -ErrorAction Stop
-            Copy-Item "$bin/*.dll" "$bin/$destName/" -ErrorAction Stop
-            Copy-Item "$bin/*.exe.config" "$bin/$destName/" -ErrorAction Stop
-            Write-Host "  [publish] $destName listo con $((Get-ChildItem "$bin/$destName").Count) archivos"
-          }
-
-          Publish-Wpf 'x86' 'publish-x86'
-          Publish-Wpf 'x64' 'publish-x64'
-          Publish-Ui 'net35' 'x86' 'publish35-x86'
-          Publish-Ui 'net35' 'x64' 'publish35-x64'
-
-      - name: Preparar artefacto «managed»
-        shell: pwsh
-        run: |
-          $stage = 'artifacts-managed'
-          New-Item -ItemType Directory -Force -Path `
-            "$stage/ui-publish-x86","$stage/ui-publish-x64","$stage/ui-publish35-x86","$stage/ui-publish35-x64",`
-            "$stage/poc-net48","$stage/poc-net35",`
-            "$stage/pocfacade-net48","$stage/tests-net48" | Out-Null
-          # UI net48 (WPF v5.4.0) + net35 (WinForms) publicadas POR ARQUITECTURA
-          # (para el paquete portable). El publish lleva TODAS las DLL
-          # gestionadas dependientes (Lumina.Core/Bridge/Api) — el paquete las
-          # copia COMPLETAS.
-          Copy-Item src/managed/Lumina.WPF/bin/Release/net48/publish-x86/* "$stage/ui-publish-x86/"
-          Copy-Item src/managed/Lumina.WPF/bin/Release/net48/publish-x64/* "$stage/ui-publish-x64/"
-          Copy-Item src/managed/Lumina.UI/bin/Release/net35/publish35-x86/* "$stage/ui-publish35-x86/"
-          Copy-Item src/managed/Lumina.UI/bin/Release/net35/publish35-x64/* "$stage/ui-publish35-x64/"
-          # Respaldo: si un publish dejó el exe en otra carpeta, copiar del build
-          if (-not (Test-Path "$stage/ui-publish-x86/LuminaPresentation.exe")) {
-            Copy-Item src/managed/Lumina.WPF/bin/Release/net48/LuminaPresentation.exe "$stage/ui-publish-x86/"
-          }
-          if (-not (Test-Path "$stage/ui-publish-x64/LuminaPresentation.exe")) {
-            Copy-Item src/managed/Lumina.WPF/bin/Release/net48/LuminaPresentation.exe "$stage/ui-publish-x64/"
-          }
-          # PoC.Managed (binarios net48 y net35)
-          Copy-Item src/managed/PoC/PoC.Managed/bin/Release/net48/* "$stage/poc-net48/"
-          Copy-Item src/managed/PoC/PoC.Managed/bin/Release/net35/* "$stage/poc-net35/"
-          # Facade COM-visible (para el PoC de CLR hosting)
-          Copy-Item src/managed/PoC/PocFacade/bin/Release/net48/Lumina.PocFacade.dll "$stage/pocfacade-net48/"
-          # Tests net48 (informativo)
-          Copy-Item src/managed/Tests/bin/Release/net48/* "$stage/tests-net48/"
-
-      - name: Subir artefacto managed
-        uses: actions/upload-artifact@v4
-        with:
-          name: managed
-          path: artifacts-managed
+          name: nucleo-${{ matrix.arch }}
+          path: |
+            dist/${{ matrix.arch == 'x86' && 'Win32' || 'x64' }}/FusionHP.exe
           if-no-files-found: error
 
-  # ---------------------------------------------------------------------------
-  # 4) Interop real: PoC C# (net48) contra LuminaCore.dll por arquitectura
-  # ---------------------------------------------------------------------------
-  installer-windows:
-    # v1.0.0 «REESTRUCTURA» (F6.06): compila el instalador dual con Inno Setup
-    # contra el staging plano derivado de los zips portable verificados.
-    # iscc falla ruidoso si falta un archivo obligatorio (fuentes core) — gate real.
-    name: Instalador dual (Inno Setup F6.06)
-    needs: [package]
+  # ---------------------------------------------------------------- capa administrada
+  gestionada:
+    name: Capa C# (net48 + net35) + tests
     runs-on: windows-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restaurar y compilar FusionShared (net35)
+        shell: pwsh
+        run: |
+          dotnet restore src/managed/FusionShared/FusionShared.csproj
+          dotnet build src/managed/FusionShared/FusionShared.csproj -c Release --no-restore -v m
+          if ($LASTEXITCODE -ne 0) { throw 'FusionShared net35 no compiló' }
+
+      - name: Compilar FusionStudio (net48, WinForms+WPF)
+        shell: pwsh
+        run: |
+          dotnet build src/managed/FusionStudio/FusionStudio.csproj -c Release -v m
+          if ($LASTEXITCODE -ne 0) { throw 'FusionStudio net48 no compiló' }
+
+      - name: Compilar FusionStudio.Lite (net35, perfil B)
+        shell: pwsh
+        run: |
+          dotnet build src/managed/FusionStudio.Lite/FusionStudio.Lite.csproj -c Release -v m
+          if ($LASTEXITCODE -ne 0) { throw 'FusionStudio.Lite net35 no compiló' }
+
+      - name: Tests administrados (net48)
+        shell: pwsh
+        run: |
+          dotnet build tests/managed/FusionTests.csproj -c Release -v m
+          if ($LASTEXITCODE -ne 0) { throw 'FusionTests no compiló' }
+          & "tests/managed/bin/Release/FusionTests.exe"
+          if ($LASTEXITCODE -ne 0) { throw 'tests administrados FALLAN' }
+
+      - name: Subir binarios administrados
+        uses: actions/upload-artifact@v4
+        with:
+          name: gestionada
+          path: |
+            src/managed/FusionShared/bin/Release/FusionShared.dll
+            src/managed/FusionStudio/bin/Release/FusionStudio.exe
+            src/managed/FusionStudio.Lite/bin/Release/FusionStudio.Lite.exe
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------- gate de calidad
+  gate:
+    name: Gate de calidad (auditoría de prohibiciones)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Auditoría de prohibiciones [SPEC §3.5, §11.4]
+        run: bash scripts/quality_gate.sh
+
+  # ---------------------------------------------------------------- paquete + instalador
+  instalador:
+    name: Instalador dual + portable
+    runs-on: windows-latest
+    needs: [nucleo, gestionada, gate]
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Descargar artefactos
         uses: actions/download-artifact@v4
         with:
-          path: artifacts
+          path: dist-artifacts
 
-      - name: Instalar Inno Setup 6
+      - name: Preparar staging (ambas arquitecturas)
         shell: pwsh
         run: |
-          choco install innosetup -y --no-progress
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $root = "dist-artifacts"
+          New-Item -ItemType Directory -Force -Path staging | Out-Null
+          # núcleo
+          Copy-Item "$root/nucleo-x86/FusionHP.exe"      staging/FusionHP.x86.exe
+          Copy-Item "$root/nucleo-x64/FusionHP.exe"      staging/FusionHP.x64.exe
+          # administrada
+          Copy-Item "$root/gestionada/FusionShared.dll"  staging/
+          Copy-Item "$root/gestionada/FusionStudio.exe"  staging/
+          Copy-Item "$root/gestionada/FusionStudio.Lite.exe" staging/
+          # recursos
+          New-Item -ItemType Directory -Force -Path staging/resources/img | Out-Null
+          Copy-Item resources/img/* staging/resources/img/ -ErrorAction SilentlyContinue
+          # datos de muestra
+          New-Item -ItemType Directory -Force -Path staging/datos/bibles | Out-Null
+          # arranque: FusionHP.exe final por arquitectura (renombrado al instalar)
+          Get-ChildItem staging
+          if (-not (Test-Path staging/FusionHP.x86.exe)) { throw 'falta núcleo x86' }
+          if (-not (Test-Path staging/FusionHP.x64.exe)) { throw 'falta núcleo x64' }
 
-      - name: 'Estaging plano x86/x64 desde los zips portable'
+      - name: Compilar instalador Inno Setup (dual)
         shell: pwsh
         run: |
-          function Flatten([string]$zipPath, [string]$dest) {
-            New-Item -ItemType Directory -Force -Path $dest | Out-Null
-            Expand-Archive -Path $zipPath -DestinationPath $dest -Force
-            # El zip portable trae net48/ net35/ y raíz compartida: aplana
-            # (net48 primero; net35 solo añade archivos nuevos — los exe
-            # tienen nombres distintos, las DLL compartidas no se pisan).
-            $root = Get-ChildItem $dest | Where-Object { $_.PSIsContainer -and $_.Name -eq 'net48' } | Select-Object -First 1
-            if ($root) {
-              $base = Split-Path $root.FullName
-              Copy-Item "$base/net48/*" $dest -Force
-              Copy-Item "$base/net35/*" $dest -Force -ErrorAction SilentlyContinue
-              Remove-Item "$base/net48","$base/net35" -Recurse -Force -ErrorAction SilentlyContinue
-            }
-          }
-          $zips = Get-ChildItem artifacts -Recurse -Filter "LuminaPresentation-*-win-x86.zip" | Select-Object -First 1
-          $zipx = Get-ChildItem artifacts -Recurse -Filter "LuminaPresentation-*-win-x64.zip" | Select-Object -First 1
-          if (-not $zips -or -not $zipx) { throw 'zips portable no hallados en artifacts' }
-          Flatten $zips.FullName "dist/portable/x86"
-          Flatten $zipx.FullName "dist/portable/x64"
-          Get-ChildItem dist/portable/x86 | Select-Object -First 5 | ForEach-Object { Write-Host "  [x86] $($_.Name)" }
-          Get-ChildItem dist/portable/x64 | Select-Object -First 5 | ForEach-Object { Write-Host "  [x64] $($_.Name)" }
+          $iscc = Get-ChildItem "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" -ErrorAction SilentlyContinue
+          if (-not $iscc) { $iscc = Get-ChildItem "${env:ProgramFiles}\Inno Setup 6\ISCC.exe" -ErrorAction SilentlyContinue }
+          if (-not $iscc) { throw 'Inno Setup 6 no está instalado en el runner' }
+          & $iscc.FullName installer/FusionHP.iss
+          if ($LASTEXITCODE -ne 0) { throw 'ISCC falló' }
+          Get-ChildItem dist/installer
 
-      - name: Compilar instalador (iscc installer/AppHibrida.iss)
+      - name: Construir portable (x86 universal + x64 opcional)
         shell: pwsh
         run: |
-          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-          if (-not (Test-Path $iscc)) { throw 'ISCC.exe no encontrado tras choco install' }
-          # ISCC resuelve rutas relativas contra la carpeta del .iss (installer/)
-          # — el override se pasa ABSOLUTO (lección ronda 4: buscaba
-          # installer/dist/… y el staging real vive en la raíz del runner).
-          $sx = (Resolve-Path 'dist/portable/x86').Path
-          $sy = (Resolve-Path 'dist/portable/x64').Path
-          foreach ($d in @($sx, $sy)) {
-            if (-not (Test-Path (Join-Path $d 'LuminaPresentation.exe'))) {
-              $listing = (Get-ChildItem $d | Select-Object -First 8 | ForEach-Object Name) -join ', '
-              throw "staging sin LuminaPresentation.exe: $d -> $listing"
-            }
-          }
-          & $iscc /DStagingX86="$sx" /DStagingX64="$sy" installer/AppHibrida.iss
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          New-Item -ItemType Directory -Force -Path portable | Out-Null
+          # portable x86 (arranca en cualquier Windows 7+)
+          New-Item -ItemType Directory -Force -Path portable/FusionHP-Portable | Out-Null
+          Copy-Item staging/FusionHP.x86.exe       portable/FusionHP-Portable/FusionHP.exe
+          Copy-Item staging/FusionShared.dll       portable/FusionHP-Portable/
+          Copy-Item staging/FusionStudio.exe       portable/FusionHP-Portable/
+          Copy-Item staging/FusionStudio.Lite.exe  portable/FusionHP-Portable/
+          Copy-Item staging/resources              portable/FusionHP-Portable/resources -Recurse
+          Set-Content portable/FusionHP-Portable/portable.flag "# Fusion HP modo portable: datos junto al programa"
+          Set-Content portable/FusionHP-Portable/LEEME.txt "Fusion HP (portable): ejecuta FusionHP.exe. Los datos viven en la carpeta 'datos'."
+          Compress-Archive -Path portable/FusionHP-Portable -DestinationPath dist/FusionHP-Portable-x86.zip -Force
+          # portable x64
+          New-Item -ItemType Directory -Force -Path portable/FusionHP-Portable-x64 | Out-Null
+          Copy-Item staging/FusionHP.x64.exe       portable/FusionHP-Portable-x64/FusionHP.exe
+          Copy-Item staging/FusionShared.dll       portable/FusionHP-Portable-x64/
+          Copy-Item staging/FusionStudio.exe       portable/FusionHP-Portable-x64/
+          Copy-Item staging/FusionStudio.Lite.exe  portable/FusionHP-Portable-x64/
+          Copy-Item staging/resources              portable/FusionHP-Portable-x64/resources -Recurse
+          Set-Content portable/FusionHP-Portable-x64/portable.flag "# Fusion HP modo portable"
+          Set-Content portable/FusionHP-Portable-x64/LEEME.txt "Fusion HP (portable x64): ejecuta FusionHP.exe."
+          Compress-Archive -Path portable/FusionHP-Portable-x64 -DestinationPath dist/FusionHP-Portable-x64.zip -Force
 
-      - name: Subir artefacto instalador
+      - name: Checksums SHA256
+        shell: pwsh
+        run: |
+          Get-ChildItem dist -Recurse -File | ForEach-Object {
+            $h = Get-FileHash $_.FullName -Algorithm SHA256
+            "{0}  {1}" -f $h.Hash, $_.Name
+          } | Out-File dist/SHA256SUMS.txt -Encoding utf8
+          Get-Content dist/SHA256SUMS.txt
+
+      - name: Subir instalador y portable
         uses: actions/upload-artifact@v4
         with:
-          name: installer
+          name: release-artifacts
           path: |
             dist/installer/*.exe
+            dist/FusionHP-Portable-*.zip
+            dist/SHA256SUMS.txt
           if-no-files-found: error
 
-  interop:
-    name: Interop C# ↔ nativo (${{ matrix.arch }})
-    needs: [native-windows, managed]
-    runs-on: windows-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: x86
-            cmake_arch: Win32
-          - arch: x64
-            cmake_arch: x64
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup .NET SDK
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
-
-      - name: Cache NuGet
-        uses: actions/cache@v4
-        with:
-          path: ~/.nuget/packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('src/managed/**/*.csproj') }}
-          restore-keys: |
-            nuget-${{ runner.os }}-
-
-      - name: Descargar artefactos
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      # dotnet build -f net48 produce un .exe que corre sobre .NET Framework 4.8
-      # (preinstalado en windows-latest). Para x86 se fuerza PlatformTarget=x86
-      # y el exe corre bajo WoW64; así el proceso casa con LuminaCore.dll.
-      - name: Compilar PoC.Managed net48 (${{ matrix.arch }})
-        shell: pwsh
-        run: |
-          dotnet build src/managed/PoC/PoC.Managed -f net48 -c Release -p:PlatformTarget=${{ matrix.arch }}
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Colocar LuminaCore.dll (${{ matrix.arch }}) junto al PoC
-        shell: pwsh
-        run: |
-          Copy-Item "artifacts/native-${{ matrix.arch }}/LuminaCore.dll" `
-                    "src/managed/PoC/PoC.Managed/bin/Release/net48/"
-
-      - name: 'GATE PoC net48 ${{ matrix.arch }}: «POC PASS 12/12» + exit 0'
-        shell: pwsh
-        working-directory: src/managed/PoC/PoC.Managed/bin/Release/net48
-        run: |
-          $out = & ./PoC.Managed.exe 2>&1
-          $code = $LASTEXITCODE
-          $out | ForEach-Object { Write-Host "$_" }
-          if ($code -ne 0) { Write-Host "EXIT CODE: $code"; exit 1 }
-          if (-not ($out -match 'POC PASS 12/12')) {
-            Write-Host 'No apareció "POC PASS 12/12" en la salida'; exit 1
-          }
-
-      # v1.0.0-beta.3 (F1.07/F2.12/F2.14): el arnés gestionado CON el núcleo
-      # real — los tests nativo-dependientes (BD/FTS5/recursos/uso) corren de
-      # verdad aquí (en «managed» saltan por ausencia de la DLL).
-      - name: 'Tests gestionados net48 con núcleo (${{ matrix.arch }})'
-        shell: pwsh
-        run: |
-          dotnet build src/managed/Tests -f net48 -c Release -p:PlatformTarget=${{ matrix.arch }}
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Copy-Item "artifacts/native-${{ matrix.arch }}/LuminaCore.dll" `
-                    "src/managed/Tests/bin/Release/net48/"
-          $out = & "src/managed/Tests/bin/Release/net48/Lumina.Tests.exe" 2>&1
-          $code = $LASTEXITCODE
-          $out | ForEach-Object { Write-Host "$_" }
-          if ($code -ne 0) { Write-Host "EXIT CODE: $code"; exit 1 }
-          if (-not ($out -match 'TESTS PASS')) { Write-Host 'Sin TESTS PASS'; exit 1 }
-          if ($out -match '\[FAIL\]') { Write-Host 'Hay tests en fallo'; exit 1 }
-
-      # Informativo: SOLO si el runtime 3.5 está disponible en el runner
-      # (windows-latest no siempre lo trae). Nunca rompe el CI.
-      - name: 'PoC net35 (informativo, continue-on-error)'
-        continue-on-error: true
-        shell: pwsh
-        run: |
-          $v35 = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v3.5' -ErrorAction SilentlyContinue
-          if (-not $v35 -or $v35.Install -ne 1) {
-            Write-Host 'Runtime 3.5 no disponible en el runner: paso omitido (informativo).'
-            exit 0
-          }
-          dotnet build src/managed/PoC/PoC.Managed -f net35 -c Release -p:PlatformTarget=${{ matrix.arch }}
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Copy-Item "artifacts/native-${{ matrix.arch }}/LuminaCore.dll" `
-                    "src/managed/PoC/PoC.Managed/bin/Release/net35/"
-          Set-Location src/managed/PoC/PoC.Managed/bin/Release/net35
-          $out = & ./PoC.Managed.exe 2>&1
-          $out | ForEach-Object { Write-Host "$_" }
-          Write-Host "EXIT CODE (informativo): $LASTEXITCODE"
-
-  # ---------------------------------------------------------------------------
-  # 5) Vía C: CLR hosting desde C++ puro contra PocFacade (x86 y x64)
-  # ---------------------------------------------------------------------------
-  clrhost-poc:
-    name: CLR hosting C++ (${{ matrix.arch }}, informativo)
-    needs: [native-windows, managed]
-    # Vía C = evaluación de respaldo (docs/architecture-hybrid.md §3). El gate
-    # estricto de interop es el del PoC de la vía A (elegida). Este job queda
-    # informativo: si la activación del CLR falla por el entorno del runner
-    # (p. ej. shim sin runtime registrado), NO bloquea paquete/release.
-    continue-on-error: true
-    runs-on: windows-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: x86
-            cmake_arch: Win32
-          - arch: x64
-            cmake_arch: x64
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup .NET SDK
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
-
-      - name: Cache NuGet
-        uses: actions/cache@v4
-        with:
-          path: ~/.nuget/packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('src/managed/**/*.csproj') }}
-          restore-keys: |
-            nuget-${{ runner.os }}-
-
-      - name: Descargar artefactos
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      # CMakeLists autónomo con /MT (no toca la base del núcleo).
-      - name: Compilar lumina_poc_clrhost (${{ matrix.arch }})
-        shell: pwsh
-        run: |
-          cmake -S native/poc-clrhost -B bch -A ${{ matrix.cmake_arch }} -DCMAKE_BUILD_TYPE=Release
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          cmake --build bch --config Release --parallel $env:NUMBER_OF_PROCESSORS
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Compilar PocFacade net48
-        shell: pwsh
-        run: |
-          dotnet build src/managed/PoC/PocFacade -f net48 -c Release
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Preparar carpeta de ejecución
-        shell: pwsh
-        run: |
-          Copy-Item src/managed/PoC/PocFacade/bin/Release/net48/Lumina.PocFacade.dll bch/Release/
-          Copy-Item "artifacts/native-${{ matrix.arch }}/LuminaCore.dll" bch/Release/
-
-      - name: 'GATE CLRHOST (${{ matrix.arch }}): «CLRHOST PASS» + exit 0'
-        shell: pwsh
-        run: |
-          $dll = (Resolve-Path 'bch/Release/Lumina.PocFacade.dll').Path
-          $out = & ./bch/Release/lumina_poc_clrhost.exe $dll 'lumina.poc.LuminaFacade' 2>&1
-          $code = $LASTEXITCODE
-          $out | ForEach-Object { Write-Host "$_" }
-          if ($code -ne 0) { Write-Host "EXIT CODE: $code"; exit 1 }
-          if (-not ($out -match 'CLRHOST PASS')) {
-            Write-Host 'No apareció "CLRHOST PASS" en la salida'; exit 1
-          }
-
-  # ---------------------------------------------------------------------------
-  # 6) Empaquetado portable por arquitectura + gate de verificación
-  # ---------------------------------------------------------------------------
-  package:
-    name: Empaquetado portable (${{ matrix.arch }})
-    needs: [interop]
-    runs-on: windows-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: x86
-            cmake_arch: Win32
-          - arch: x64
-            cmake_arch: x64
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Descargar artefactos
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      # Launcher nativo con su CMakeLists autónomo (mismo patrón que clrhost).
-      - name: Compilar LuminaLauncher (${{ matrix.arch }})
-        shell: pwsh
-        run: |
-          cmake -S native/launcher -B blaunch -A ${{ matrix.cmake_arch }} -DCMAKE_BUILD_TYPE=Release
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          cmake --build blaunch --config Release --parallel $env:NUMBER_OF_PROCESSORS
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: 'Armar layout portable v5.3.0 (net48 + net35 + raíz compartida)'
-        shell: pwsh
-        run: |
-          $stage = "staging/LuminaPresentation-${{ matrix.arch }}"
-          New-Item -ItemType Directory -Force -Path `
-            "$stage/net48","$stage/net35","$stage/resources/data" | Out-Null
-
-          # ---- Launcher en la RAÍZ (elige la variante según el CLR del equipo) ----
-          Copy-Item blaunch/Release/LuminaLauncher.exe "$stage/"
-
-          # ---- net48\: interfaz optimizada + TODAS sus DLL gestionadas ----
-          Copy-Item "artifacts/managed/ui-publish-${{ matrix.arch }}/*" "$stage/net48/"
-          # LuminaCore.dll (nativa /MT) junto al exe: la resolución del loader
-          # busca primero el directorio del proceso.
-          Copy-Item "artifacts/native-${{ matrix.arch }}/LuminaCore.dll" "$stage/net48/"
-
-          # ---- net35\: baseline mínima (.NET 3.5, Win7 SP1 de fábrica) ----
-          Copy-Item "artifacts/managed/ui-publish35-${{ matrix.arch }}/*" "$stage/net35/"
-          Copy-Item "artifacts/native-${{ matrix.arch }}/LuminaCore.dll" "$stage/net35/"
-
-          # ---- Recursos de fábrica (Biblia RVR1909 completa) ----
-          Copy-Item resources/data/bible_rvr1909.json "$stage/resources/data/"
-
-          # ---- data\ compartida en la RAÍZ: Settings.DefaultBaseDir() detecta el
-          #      layout net48/net35 y sube un nivel → una sola carpeta de datos.
-          New-Item -ItemType Directory -Force -Path "$stage/data" | Out-Null
-
-          @'
-          LuminaPresentation v7.1.0 «OPERADOR» BETA — núcleo C++ + interfaz WPF
-          =====================================================
-
-          PROGRAMA PORTABLE — BETA. No requiere instalación ni permisos de
-          administrador.
-
-          1) Descomprimir el ZIP COMPLETO en cualquier carpeta propia.
-          2) Ejecutar LuminaLauncher.exe.
-
-          Requisitos (cualquiera de los dos, según su Windows):
-            • Windows 10 1903+ / Windows 11 → .NET Framework 4.8 integrado
-              (el launcher usa la variante net48, con interfaz WPF).
-            • Windows 7 SP1 / 8.x → .NET Framework 3.5 integrado
-              (el launcher usa la variante net35, la baseline mínima).
-            • Para proyectar PPTX originales: PowerPoint instalado (2007+;
-              sin PowerPoint, el ítem muestra el nombre del archivo).
-
-          Ambas variantes están incluidas (net48\ y net35\) y comparten
-          la misma carpeta de datos (data\) — canciones, biblias, temas,
-          activadores y ajustes.
-
-          NO ejecute desde dentro del ZIP: extráigalo primero completo.
-
-          Contenido:
-            LuminaLauncher.exe  — detecta el runtime .NET y lanza la variante
-                                  correcta; verifica el paquete completo antes;
-                                  sin .NET utilizable abre el MODO EMERGENCIA
-                                  nativo (proyección C++ de proyectos .ahp).
-            net48\              — interfaz WPF optimizada (.NET 4.8).
-            net35\              — interfaz WinForms baseline (.NET 3.5, Win7 SP1).
-            LuminaCore.dll      — motor C++ nativo (/MT, sin dependencias),
-                                  dentro de cada carpeta de variante.
-            resources\data\     — Biblia Reina-Valera 1909 completa incluida:
-                                  al abrir la base de datos, la app ofrece
-                                  instalarla (~31.000 versículos).
-
-          v7.1.0 «OPERADOR» (BETA) — correcciones del prototipo probado por
-          el usuario (modo Holyrics/PowerPoint):
-            * EDITOR DE DIAPOSITIVAS estilo PowerPoint (lienzo libre):
-              «Culto > Diapositiva (lienzo)…» — elementos de texto/imagen
-              que se ARRASTRAN, redimensionan por las esquinas y se editan
-              DOBLE CLIC en el sitio; alineación/color/opacidad/tamaño;
-              capas con reorden; WYSIWYG total (mismo motor de dibujo de
-              la proyección); edición en caliente del culto en vivo.
-            * PROYECCIÓN sin bordes y a pantalla completa (o 960×540 sin
-              bordes), botón/interruptor F5 con estado real: cerrar con X
-              o ESC ya NO duplica la ventana y se reabre cuantas veces
-              sea; cambio de monitor SIN abrir otra ventana.
-            * MODO OPERADOR (En Vivo) estilo Holyrics: lista de ÍTEMS con
-              sus slides (clic = leer sin proyectar, doble clic =
-              proyectar), seguimiento en vivo y panel de TEXTO COMPLETO —
-              el operador lee toda la Biblia/letra sin proyectar nada.
-            * BIBLIA por libro y capítulo SIN buscar (66 libros siempre
-              visibles, versiones instaladas en la BD) + COMPARACIÓN de
-              DOS versiones lado a lado (lectura y proyección juntas).
-            * CANTOS: la biblioteca COMPLETA aparece al abrir la BD — el
-              cuadro de búsqueda queda como filtro opcional.
-            * PPTX ORIGINAL sin extracción: «Agregar PPTX…» conserva el
-              archivo tal cual y PowerPoint lo proyecta completo (COM,
-              kiosco sobre el monitor del proyector) al ponerlo en vivo.
-            * La «API local» orientada a OBS/control externo se RETIRÓ de
-              la interfaz (no funcionaba); el control remoto sigue siendo
-              el MANDO MÓVIL por red local (Integraciones).
-            * Cultos/escenarios como crear un pptx pero SIN generar
-              archivos: todo vive en la lista del culto + BD (solo-cargar).
-
-          v7.0.0 «ULTRA» (BETA): Plan de Ultra Implementación (F0-F6):
-            * Bootstrap con perfiles A/B/C: detección de SO/arquitectura/
-              .NET en modo SOLO LECTURA (nunca instala ni activa nada);
-              sin .NET utilizable, el launcher abre el MODO EMERGENCIA
-              nativo: proyección C++ de proyectos .ahp (texto/imagen/
-              video, negro/logo/fondo, teclado completo). Conmutadores:
-              /arch:x86 /arch:x64 /profile:a|b|c /emergency /log:debug.
-            * ipc.v1: canal normativo C++<->C# por pipes con nombre (trama
-              binaria versionada, servidor OVERLAPPED, cola no
-              bloqueante — la proyección sobrevive a la desconexión de
-              la capa gestionada).
-            * Proyecto ahp.v1: 5 tipos de Elemento, escenarios ordenados
-              con IDs estables, syncMark, notas del director, empaquetado
-              .ahpz (ZIP), guardado atómico + auto-guardado recuperable y
-              herencia de estilos Tema->Plantilla->Escenario->Elemento.
-            * Sincronización por LINEA: la línea activa se destaca en
-              proyección y next/prev navegan por grupos sin tocar
-              fondo/video.
-            * Video DirectShow desde el núcleo (VMR9 windowless con
-              volumen/inicio/loop, fail-safe con aviso legible que NO
-              cierra la salida, carga diferida).
-            * Interoperabilidad: .BIB e-Sword con inserción real (fila a
-              fila), Holyrics JSON/XML con deduplicación, informe de
-              carga/compatibilidad ahp y XML endurecido (XXE/bomba ZIP).
-            * API v1 con Authorization: Bearer (401/503) + mando móvil
-              servido local (remote.html) + QR de emparejamiento (codec
-              propio validado con zxing-cpp y OpenCV).
-            * NDI / Planning Center / Google Drive con degradación limpia
-              (carga dinámica / PAT / OAuth loopback — sin credenciales
-              nada se rompe: todo queda visible en el diagnóstico).
-            * Diagnóstico integrado (Estado del sistema con semáforos +
-              Verificar entorno con pruebas reales) y métricas continuas
-              (RAM/render/latencia IPC, volcado cada 60 s).
-            * Instalador dual SIN elevación: tools\install.cmd (per-user +
-              marcador + acceso directo; portable equivalente, cero
-              Registro) y auditoría automatizada de prohibiciones como
-              gate de CI (cero Java, cero Registro, cero elevación).
-
-          v6.1.0 «GUION» (BETA): motor de scripts JSLib (spec §3.3) sobre
-            IActiveScript/JScript del propio Windows — ES3, CERO despliegue:
-            * Módulos .js en data\modules\ cargados al activar o «Recargar»
-              (Integraciones > Módulos JS): registro en vivo de 60 líneas.
-            * jslib: log/notify, httpGet(url, cb), tcp/ws persistentes por id,
-              cmd('next'|'prev'|'black'|'clear'|'show'), showText(texto),
-              onEvent(...) y setTimeout/clearTimeout.
-            * Los módulos ven los MISMOS eventos que los activadores
-              (slide_changed, item_changed, song_started, video_ended,
-              midi_*) con payload JSON (jsonParse del preámbulo).
-            * Nueva acción de activador «script»: function=nombre ·
-              data={"k":v} invoca funciones globales de los módulos.
-
-          v6.0.0 «HORIZONTE» (BETA): las funciones diferidas del spec llegan
-          al motor y a la capa de datos:
-            * Transiciones: fundido entre diapositivas en la salida del
-              proyector (crossfade desde el último fotograma, sin destello),
-              configurable en Ajustes > Proyección (corte/fundido + duración).
-            * Resaltado en PROYECCIÓN: la palabra buscada en la Biblia se
-              proyecta en color de acento cuando el pasaje viene de una
-              búsqueda (insensible a mayúsculas y acentos).
-            * OSIS XML: importación de biblias en el formato académico OSIS
-              junto a ZEFania/.BIB/JSON.
-            * PPTX: importación de PowerPoint a la cola del culto (1
-              diapositiva de texto = 1 ítem; las vacías se agregan en blanco).
-            * Notas del director persistentes por ítem + «Guardar plan
-              JSON…» (el culto completo, con notas y resaltados, se guarda y
-              re-importa).
-
-          v5.4.0 «ESTUDIO» (BETA): la interfaz principal pasa a WPF (Windows
-          Presentation Foundation) sobre .NET Framework 4.8 — mismo motor
-          probado de v5.2.0+ y mismos gates de CI. Diseño «Lumina Studio»
-          rehecho en XAML: tokens semánticos de color, 94 iconos vectoriales
-          Feather (MIT), tarjetas redondeadas, botones con variantes y estados,
-          navegación lateral con píldora ámbar, vista previa del tema con
-          contorno por silueta (misma técnica del núcleo), foco visible por
-          teclado y tooltips con atajos. La baseline net35 (WinForms) se
-          conserva para Windows 7 SP1 sin .NET 4.8. ESTA VERSIÓN ES BETA.
-
-          v5.3.0 «INTERFAZ»: rediseño completo de la UI/UX de la variante
-          WinForms (tema «Lumina Studio», sistema de diseño UiKit, página
-          «En Vivo» rehecha, atajos F1/Ctrl+1…9).
-
-          v5.2.0 «MOTOR»: corregido el fallo que dejaba la app «con la GUI
-          pero más nada» en Windows 7 SP1 (reporte de campo): el CRT/STL
-          estático arrastraba un import de una API que NO existe en Win7
-          (GetSystemTimePreciseAsFileTime, de Win8+) → LuminaCore.dll no
-          cargaba → la app abría en modo limitado y «Cargar al escenario»
-          lanzaba NullReferenceException. Ahora esa API se resuelve con
-          delay-load + fallback seguro, la CI audita la tabla de
-          importaciones de cada binario (gate Win7) y ejercita el flujo
-          Biblia→Escenario completo (gate --flowcheck) antes de publicar.
-
-          v5.1.1 «APERTURA»: corregido el error que impedía ABRIR la app en
-          algunos equipos («Control does not support transparent background
-          colors»: el control Chip de la cabecera usaba fondo transparente sin
-          activar el estilo WinForms que lo permite). La CI ahora construye la
-          ventana completa de ambas variantes antes de publicar el paquete.
-
-          v5.1.0 «FUNDAMENTO»: reparación del arranque (paquete completo),
-          .NET mínimo 3.5 con 4.8 opcional, teclado en vivo (flechas/espacio/
-          B/L/P/F5-F8), acordes proyectables, búsqueda bíblica por palabra,
-          tercera pantalla del director, editor de culto completo (canción/
-          pasaje/imagen/texto/plan JSON), video con bucle/volumen/pausa,
-          pantallas reales del sistema, respaldo ZIP a carpeta (Google Drive/
-          OneDrive) y biblia de fábrica.
-
-          Binarios de uso libre · Código fuente bajo Licencia View-Only.
-          '@ | Set-Content -Path "$stage/README.txt" -Encoding UTF8
-
-      - name: 'GATE humo: --selfcheck + --uicheck + --flowcheck de AMBAS variantes (la app ABRE, la ventana SE CONSTRUYE y los FLUJOS responden)'
-        shell: pwsh
-        run: |
-          # Este gate existe por tres lecciones de campo:
-          #   v5.0.0 — el paquete se publicó sin las DLL gestionadas y la app
-          #            moría con FileNotFoundException AL ABRIR → --selfcheck.
-          #   v5.1.0 — el control Chip asignaba BackColor=Transparent sin
-          #            SupportsTransparentBackColor: ArgumentException en
-          #            MainForm..ctor, la app NO ABRÍA… y el --selfcheck (sin
-          #            UI) pasaba en verde → --uicheck (v5.1.1).
-          #   v5.1.1 — el núcleo no cargaba en Win7 SP1 (import estático
-          #            Win8+ en el CRT): la app abría en modo limitado y
-          #            «Cargar al escenario» lanzaba NullReferenceException
-          #            → --flowcheck (v5.2.0): flujos reales headless.
-          # Ahora el MISMO binario que se va a empaquetar se auto-verifica:
-          # motor + BD + exportadores (selfcheck), construcción de la ventana
-          # (uicheck) Y los flujos de usuario (flowcheck).
-          $stage = "staging/LuminaPresentation-${{ matrix.arch }}"
-
-          # Función de diagnóstico: vuelca el log de sesión del selfcheck al
-          # log del runner (el exe es WinExe: su salida no aparece sin esto).
-          function DumpSelfcheckLog([string]$root, [string]$variant) {
-            $logDir = Join-Path $root 'data/logs'
-            if (Test-Path $logDir) {
-              $last = Get-ChildItem $logDir -Filter '*.log' |
-                      Sort-Object LastWriteTime | Select-Object -Last 1
-              if ($last) {
-                Write-Host "===== data\logs\$($last.Name) ($variant) ====="
-                Get-Content $last.FullName | ForEach-Object { Write-Host "  $_" }
-                Write-Host '===== fin del log de sesión ====='
-              }
-            } else {
-              Write-Host "(sin data\logs\ para $variant — el proceso murió antes de escribir el log)"
-            }
-          }
-
-          # .NET 3.5 real para la baseline (para probar sobre CLR2). Si el
-          # runner no puede instalarlo, el humo net35 bajo CLR4 es INFORMATIVO:
-          # una BD real de usuario con solo-4.8 siempre usará la variante net48
-          # (el launcher la elige), y Win7 SP1 trae 3.5 de fábrica. El caso
-          # «3.5 instalado + selfcheck falla» SÍ es bloqueante (fallo real).
-          $v35 = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v3.5' -ErrorAction SilentlyContinue
-          $has35 = $v35 -and $v35.Install -eq 1
-          if (-not $has35) {
-            Write-Host 'Instalando .NET 3.5 (NetFx3) para el humo de la baseline…'
-            try {
-              Enable-WindowsOptionalFeature -Online -FeatureName NetFx3 -All -NoRestart -ErrorAction Stop | Out-Null
-              $v35 = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v3.5' -ErrorAction SilentlyContinue
-              $has35 = $v35 -and $v35.Install -eq 1
-              if ($has35) { Write-Host '.NET 3.5 instalado: el humo net35 correrá sobre CLR2 real.' }
-            } catch {
-              Write-Host "NetFx3 no instalable en el runner ($($_.Exception.Message))."
-            }
-          }
-
-          Write-Host '--- selfcheck net48 (bloqueante) ---'
-          $p48 = Start-Process -FilePath "$stage/net48/LuminaPresentation.exe" `
-                 -ArgumentList '--selfcheck' -WorkingDirectory "$stage" -PassThru -Wait
-          Write-Host "net48 --selfcheck exit code: $($p48.ExitCode)"
-          if ($p48.ExitCode -ne 0) {
-            DumpSelfcheckLog $stage 'net48'
-            Write-Host "::error::La variante net48 no pasó el selfcheck (código $($p48.ExitCode))"
-            exit 1
-          }
-
-          Write-Host '--- selfcheck net35 ---'
-          $p35 = Start-Process -FilePath "$stage/net35/LuminaPresentation35.exe" `
-                 -ArgumentList '--selfcheck' -WorkingDirectory "$stage" -PassThru -Wait
-          Write-Host "net35 --selfcheck exit code: $($p35.ExitCode)"
-          if ($p35.ExitCode -ne 0) {
-            DumpSelfcheckLog $stage 'net35'
-            if ($has35) {
-              Write-Host "::error::La variante net35 FALLÓ con .NET 3.5 presente (código $($p35.ExitCode))"
-              exit 1
-            } else {
-              # Entorno del runner sin 3.5: la baseline no puede cargar sus
-              # dependencias 3.x bajo CLR4 (WindowsBase 3.0). Caso no soportado
-              # de fábrica: un PC real así usa la variante net48 vía launcher.
-              Write-Host "::warning::net35 selfcheck no ejecutable en este runner (sin .NET 3.5): código $($p35.ExitCode). La cobertura CLR2 real se da en PCs Win7 SP1 (3.5 de fábrica)."
-            }
-          }
-
-          # ---- v5.1.1: gate de UI — la ventana principal SE CONSTRUYE -------
-          # Reproduce la traza exacta del crash de v5.1.0 (MainForm..ctor →
-          # BuildHeader → Chip..ctor). Headless: construye, no muestra.
-          Write-Host '--- uicheck net48 (bloqueante): la ventana SE CONSTRUYE ---'
-          $p48ui = Start-Process -FilePath "$stage/net48/LuminaPresentation.exe" `
-                   -ArgumentList '--uicheck' -WorkingDirectory "$stage" -PassThru -Wait
-          Write-Host "net48 --uicheck exit code: $($p48ui.ExitCode)"
-          if ($p48ui.ExitCode -ne 0) {
-            DumpSelfcheckLog $stage 'net48 uicheck'
-            Write-Host "::error::La variante net48 no pasó el uicheck (código $($p48ui.ExitCode)) — la ventana principal no se puede construir; la app no abriría"
-            exit 1
-          }
-
-          Write-Host '--- uicheck net35 ---'
-          $p35ui = Start-Process -FilePath "$stage/net35/LuminaPresentation35.exe" `
-                   -ArgumentList '--uicheck' -WorkingDirectory "$stage" -PassThru -Wait
-          Write-Host "net35 --uicheck exit code: $($p35ui.ExitCode)"
-          if ($p35ui.ExitCode -ne 0) {
-            DumpSelfcheckLog $stage 'net35 uicheck'
-            if ($has35) {
-              Write-Host "::error::La variante net35 FALLÓ el uicheck con .NET 3.5 presente (código $($p35ui.ExitCode))"
-              exit 1
-            } else {
-              Write-Host "::warning::net35 uicheck no ejecutable en este runner (sin .NET 3.5): código $($p35ui.ExitCode)."
-            }
-          }
-
-          # ---- v5.2.0: gate de FLUJOS — Biblia→Escenario, sin excepciones ----
-          # (1) con el núcleo caído (modo limitado simulado): debe avisar,
-          #     JAMÁS lanzar (el bug de campo v5.1.1);
-          # (2) flujo feliz completo: BD temporal → pasaje → slides.
-          Write-Host '--- flowcheck net48 (bloqueante): los FLUJOS responden ---'
-          $p48f = Start-Process -FilePath "$stage/net48/LuminaPresentation.exe" `
-                  -ArgumentList '--flowcheck' -WorkingDirectory "$stage" -PassThru -Wait
-          Write-Host "net48 --flowcheck exit code: $($p48f.ExitCode)"
-          if ($p48f.ExitCode -ne 0) {
-            DumpSelfcheckLog $stage 'net48 flowcheck'
-            Write-Host "::error::La variante net48 no pasó el flowcheck (código $($p48f.ExitCode)) — un flujo de usuario lanza excepción"
-            exit 1
-          }
-
-          Write-Host '--- flowcheck net35 ---'
-          $p35f = Start-Process -FilePath "$stage/net35/LuminaPresentation35.exe" `
-                  -ArgumentList '--flowcheck' -WorkingDirectory "$stage" -PassThru -Wait
-          Write-Host "net35 --flowcheck exit code: $($p35f.ExitCode)"
-          if ($p35f.ExitCode -ne 0) {
-            DumpSelfcheckLog $stage 'net35 flowcheck'
-            if ($has35) {
-              Write-Host "::error::La variante net35 FALLÓ el flowcheck con .NET 3.5 presente (código $($p35f.ExitCode))"
-              exit 1
-            } else {
-              Write-Host "::warning::net35 flowcheck no ejecutable en este runner (sin .NET 3.5): código $($p35f.ExitCode)."
-            }
-          }
-
-          # Los checks pudieron crear data\logs\ en el staging: limpiar para que
-          # el ZIP distribuido no lleve basura de la fábrica.
-          Remove-Item "$stage/data/logs" -Recurse -Force -ErrorAction SilentlyContinue
-          Write-Host 'SELFCHECK+UICHECK+FLOWCHECK PASS (net48 estricto + net35 según entorno)'
-
-      - name: GATE verify_portable (${{ matrix.arch }})
-        shell: pwsh
-        run: |
-          python tools/verify_portable.py "staging/LuminaPresentation-${{ matrix.arch }}" ${{ matrix.arch }}
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      # v5.2.0: el gate Win7 también corre sobre el PAQUETE armado (la DLL
-      # que viajará en el ZIP) y sobre el launcher — doble verificación.
-      - name: GATE Win7 SP1 — imports del PAQUETE armado
-        shell: pwsh
-        run: |
-          python tools/verify_win7_imports.py `
-            "staging/LuminaPresentation-${{ matrix.arch }}/net48/LuminaCore.dll" `
-            "staging/LuminaPresentation-${{ matrix.arch }}/net35/LuminaCore.dll" `
-            "staging/LuminaPresentation-${{ matrix.arch }}/LuminaLauncher.exe"
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: ZIP + SHA256
-        shell: pwsh
-        run: |
-          $zip = "LuminaPresentation-${{ env.APP_VERSION }}-win-${{ matrix.arch }}.zip"
-          Compress-Archive -Path "staging/LuminaPresentation-${{ matrix.arch }}/*" -DestinationPath $zip -Force
-          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash
-          "$hash  $zip" | Set-Content -Path SHA256SUMS.txt -Encoding ASCII
-          Write-Host "$hash  $zip"
-
-      - name: Subir artefacto portable-${{ matrix.arch }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: portable-${{ matrix.arch }}
-          path: |
-            LuminaPresentation-*.zip
-            SHA256SUMS.txt
-          if-no-files-found: error
-
-  # ---------------------------------------------------------------------------
-  # 7) BETA: solo en tags v* (v5.4.0: TODO lo publicado es BETA / pre-release)
-  # ---------------------------------------------------------------------------
+  # ---------------------------------------------------------------- release en tags
   release:
-    name: Publicar BETA (tags v*)
-    needs: [package, installer-windows]
+    name: Release (solo en tags v*)
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    needs: [instalador]
     permissions:
-      contents: write        # crear la release y subir assets
+      contents: write
     steps:
-      - name: Descargar artefactos
-        uses: actions/download-artifact@v4
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
         with:
-          path: artifacts
-
-      - name: SHA256SUMS combinado
-        run: |
-          cd artifacts
-          find . -name '*.zip' -print0 | sort -z | xargs -0 sha256sum | sed 's|\./||' > SHA256SUMS.txt
-          cat SHA256SUMS.txt
-
-      - name: Publicar BETA
+          name: release-artifacts
+          path: dist
+      - name: Crear release con artefactos
         uses: softprops/action-gh-release@v2
         with:
-          name: "LuminaPresentation ${{ github.ref_name }} «REESTRUCTURA» — BETA"
-          body: |
-            **LuminaPresentation v1.0.0-beta.3 «REESTRUCTURA» — PRERELEASE · línea normativa del doc técnico v1.1 · núcleo C++ (vcxproj MSVC /MT, ruta Direct2D) + WPF (.NET 4.8) + WinForms (.NET 3.5)**
-
-            > Reestructuración completa al mapa normativo de AGENT.md (`src/core` · `src/managed` con
-            > `core|data|services|state|features` · `tests` · `installer` · `spec` · `skills`) y cierre
-            > de brechas F1.05 (atajos JSON) · F4.15 (informe de fidelidad generalizado) · F5.09
-            > (presupuesto sandbox JSLib) · F6.04 (Drive offline-first con historial de conflictos) ·
-            > F6.08 (sesión de servicio simulada). Evidencias reales: `docs/verification/`.
-            > Trazabilidad: `spec/`, `docs/research/`, `.agents/skills/`.
-            > ⚠ **ESTA PUBLICACIÓN ES UNA PRERELEASE (beta)**: funcionalidad completa y gates de CI
-            > en verde, pero sujeta a cambios. Reporte de fallos bienvenido.
-
-            ## Novedades de v1.0.0-beta.3 (auditoría 80/80 + experiencia PowerStudio)
-            - **Auditoría fixture a fixture F0.01–F6.10** (80/80): matriz de cumplimiento y
-              mapa de gates en `docs/verification/`.
-            - **Nueva experiencia PowerStudio** (referencia H-P-Web-Version-Ref): pantalla de
-              **Inicio** con mosaicos (continuar último proyecto, crear, presentar) y
-              **Estudio**: cinta de tareas, miniaturas, lienzo 16:9 con textos/imágenes
-              arrastrables y redimensionables, propiedades y notas — el diseño viaja al culto
-              como ítem compuesto (proyección nativa + exportación PPTX/PDF/imágenes).
-            - **Cierre de brechas**: F1.06 (último proyecto), F1.07 (búsqueda en caliente
-              Ctrl+K sin interrumpir la salida), F2.09 (shell WinForms+WPF vía ElementHost),
-              F2.12 (anotaciones/historial/popularidad de canciones), F2.14 (biblioteca de
-              recursos con re-vinculación portable), F4.13 (exportación de imágenes
-              1920×1080+, 5 formatos).
-            - **FIX preexistente**: triggers FTS5 `AFTER UPDATE/DELETE` (comando 'delete' solo
-              válido en contenido externo) y FTS5 MATCH con alias — toda búsqueda y
-              actualización de la biblioteca fallaba con núcleo real; hallado por el nuevo
-              gate (arnés net48 con LuminaCore.dll en CI).
-            - Evidencia F6.08 completa (sesion60: 60,00 min · 33.138 ops · RAM pico 52 MB).
-
-            ## Descargas
-            - `LuminaPresentation-${{ env.APP_VERSION }}-win-x86.zip` — **Windows 7 SP1 a Windows 11 (32 bits)**
-            - `LuminaPresentation-${{ env.APP_VERSION }}-win-x64.zip` — **Windows 7 SP1 a Windows 11+ (64 bits)**
-            - `LuminaPresentation-${{ env.APP_VERSION }}-setup.exe` — **instalador dual x86/x64** (per-user, sin elevación ni Registro)
-            - `SHA256SUMS.txt` — integridad de los paquetes
-
-            ## Verificación CI (gates verdes antes de publicar)
-            - Núcleo C++: arnés portable g++ 13/13 (ipc.v1, bootstrap, FTS5) + job MSVC del
-              vcxproj x86/x64.
-            - Gestionado: build net35 + net48 + net8.0 (0 errores) + tests 42/48 locales (6 skips =
-              DLL nativa, gated en el job windows-latest del CI).
-            - Instalador: `iscc installer/AppHibrida.iss` con staging plano verificado (x86/x64).
-            - F6.08: campaña completa de 60 min (job `sesion60`) disparada sobre el tag.
-            - Empaquetado: layout portable completo + SHA256 verificado.
-
-            ## Instalación
-            Descomprimir el ZIP **completo** en una carpeta propia y ejecutar
-            `LuminaLauncher.exe`. En Win10 1903+/Win11 usa .NET 4.8 integrado
-            (GUI WPF); en Win7 SP1 usa .NET 3.5 integrado (GUI WinForms).
-            Sin .NET: modo emergencia nativo (`/emergency` o detección
-            automática). Instalación clásica opcional: `tools/install.cmd` y
-            `installer/AppHibrida.iss` (per-user, sin elevación, sin Registro).
-          draft: false
-          prerelease: true
+          draft: true
+          generate_release_notes: false
+          body_path: .github/RELEASE_NOTES.md
           files: |
-            artifacts/**/*.zip
-            artifacts/installer/*.exe
-            artifacts/SHA256SUMS.txt
+            dist/*.exe
+            dist/*.zip
+            dist/SHA256SUMS.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
