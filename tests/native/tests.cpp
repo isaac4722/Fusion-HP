@@ -15,6 +15,7 @@
 #include <cassert>
 #include <filesystem>
 #include <iostream>
+#include <iomanip>
 
 using namespace fusion;
 

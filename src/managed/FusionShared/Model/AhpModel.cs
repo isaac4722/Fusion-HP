@@ -588,7 +588,7 @@ namespace Fusion.Shared.Model
                 var o = Shared.JsonValue.Object();
                 o.Set("present", Shared.JsonValue.Make(true));
                 var ol = Shared.JsonValue.Array();
-                ol.Add(OverlayText);
+                ol.Add(Shared.JsonValue.Make(OverlayText));
                 o.Set("lines", ol);
                 var os = Shared.JsonValue.Object();
                 os.Set("font", Shared.JsonValue.Make(Style.Font));

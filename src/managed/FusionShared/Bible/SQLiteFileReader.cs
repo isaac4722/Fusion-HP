@@ -245,7 +245,7 @@ namespace Fusion.Shared.Bible
             }
             if (pos < b.Length)
             {
-                v = (v << 8) | b[pos++];
+                v = (v << 8) | (ulong)b[pos++];
             }
             return (long)v;
         }

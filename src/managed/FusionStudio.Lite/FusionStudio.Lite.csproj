@@ -30,6 +30,8 @@
     <Reference Include="System.Drawing" />
     <Reference Include="System.Xml" />
     <Reference Include="System.Core" />
+    <!-- System.IO.Packaging (import/export PPTX) vive en WindowsBase (3.0+) [SPEC §9.2] -->
+    <Reference Include="WindowsBase" />
   </ItemGroup>
 
   <ItemGroup>

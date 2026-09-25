@@ -205,10 +205,12 @@ namespace Fusion.Shared.Bible
             }
             for (int i = 0; i < 20; i++)
             {
-                uint A = H(2 * i * RHO, Me, k);
-                uint B = ROL(H(2 * i * RHO + RHO, Mo, k), 8);
+                // Aritmética u32 envolvente (igual que el original: 2*i*RHO módulo 2^32)
+                uint m = 2u * (uint)i * RHO;
+                uint A = H(m, Me, k);
+                uint B = ROL(H(m + RHO, Mo, k), 8);
                 K[2 * i] = A + B;
-                K[2 * i + 1] = ROL(A + 2 * B, 9);
+                K[2 * i + 1] = ROL(A + 2u * B, 9);
             }
             FullKey(Sv, k);
         }
@@ -252,10 +254,10 @@ namespace Fusion.Shared.Bible
                         y3 = Q0[Q1[Q1[y3] ^ B3(L[1])] ^ B3(L[0])];
                         break;
                 }
-                S[0][i] = ((uint)multEF[y0] << 24) | ((uint)multEF[y0] << 16) | ((uint)mult5B[y0] << 8) | y0;
-                S[1][i] = ((uint)y1 << 24) | ((uint)mult5B[y1] << 16) | ((uint)multEF[y1] << 8) | multEF[y1];
-                S[2][i] = ((uint)multEF[y2] << 24) | ((uint)y2 << 16) | ((uint)multEF[y2] << 8) | mult5B[y2];
-                S[3][i] = ((uint)mult5B[y3] << 24) | ((uint)multEF[y3] << 16) | ((uint)y3 << 8) | mult5B[y3];
+                S[0][i] = ((uint)multEF[y0] << 24) | ((uint)multEF[y0] << 16) | ((uint)mult5B[y0] << 8) | (uint)y0;
+                S[1][i] = ((uint)y1 << 24) | ((uint)mult5B[y1] << 16) | ((uint)multEF[y1] << 8) | (uint)multEF[y1];
+                S[2][i] = ((uint)multEF[y2] << 24) | ((uint)y2 << 16) | ((uint)multEF[y2] << 8) | (uint)mult5B[y2];
+                S[3][i] = ((uint)mult5B[y3] << 24) | ((uint)multEF[y3] << 16) | ((uint)y3 << 8) | (uint)mult5B[y3];
             }
         }
 

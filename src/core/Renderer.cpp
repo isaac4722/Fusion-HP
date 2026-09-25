@@ -268,12 +268,12 @@ void Renderer::DrawTextLinesD2D(const Slide& s, D2D1_SIZE_F size, bool stageMode
     DWRITE_TEXT_ALIGNMENT ta = s.style.align == 0 ? DWRITE_TEXT_ALIGNMENT_LEADING :
                                s.style.align == 2 ? DWRITE_TEXT_ALIGNMENT_TRAILING :
                                                     DWRITE_TEXT_ALIGNMENT_CENTER;
-    DWRITE_PARAGRAPH_ALIGNMENT pa = s.style.vAlign == 0 ? DWRITE_PARAGRAPH_ALIGNMENT_NEAR :
-                                    DWRITE_PARAGRAPH_ALIGNMENT_FAR : DWRITE_PARAGRAPH_ALIGNMENT_CENTER;
+    DWRITE_PARAGRAPH_ALIGNMENT pa = s.style.vAlign == 0 ? DWRITE_PARAGRAPH_ALIGNMENT_NEAR
+                                                        : DWRITE_PARAGRAPH_ALIGNMENT_CENTER;
     if (FAILED(dw_->CreateTextFormat(s.style.font.c_str(), nullptr,
             s.style.bold ? DWRITE_FONT_WEIGHT_BOLD : DWRITE_FONT_WEIGHT_NORMAL,
             s.style.italic ? DWRITE_FONT_STYLE_ITALIC : DWRITE_FONT_STYLE_NORMAL,
-            DWRITE_FONT_WEIGHT_NORMAL, (FLOAT)sizeDip, L"es-VE", &fmt))) return;
+            DWRITE_FONT_STRETCH_NORMAL, (FLOAT)sizeDip, L"es-VE", &fmt))) return;
     fmt->SetTextAlignment(ta);
     fmt->SetParagraphAlignment(pa);
     fmt->SetLineSpacing(DWRITE_LINE_SPACING_METHOD_UNIFORM, (FLOAT)(sizeDip * s.style.lineSpacing), 0);
@@ -284,38 +284,53 @@ void Renderer::DrawTextLinesD2D(const Slide& s, D2D1_SIZE_F size, bool stageMode
     float y = (FLOAT)s.style.vAlign == 0 ? box.top :
               (box.top + box.bottom) / 2 - totalH / 2;
 
+    ID2D1SolidColorBrush* shadowBrush = nullptr;
+    rt_->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.85f), &shadowBrush);
+    ID2D1SolidColorBrush* textBrush = nullptr;
+    rt_->CreateSolidColorBrush(ToD2D(s.style.color), &textBrush);
+    ID2D1SolidColorBrush* activeBrush = nullptr;
+    rt_->CreateSolidColorBrush(ToD2D(s.style.activeColor), &activeBrush);
+
     for (size_t i = 0; i < s.lines.size(); i++) {
         bool active = ((int)i == s.activeLine);
         D2D1_RECT_F lineRect = D2D1::RectF(box.left, y, box.right, y + lineH);
-        uint32_t col = active ? s.style.activeColor : s.style.color;
         // Sombra [SPEC §5.2 #1]
-        if (s.style.shadow) {
+        if (s.style.shadow && shadowBrush) {
             D2D1_RECT_F sh = D2D1::RectF(lineRect.left + 2.5f, lineRect.top + 2.5f, lineRect.right + 2.5f, lineRect.bottom + 2.5f);
-            rt_->DrawTextW(s.lines[i].c_str(), (UINT32)s.lines[i].size(), fmt, sh,
-                           D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.85f));
+            rt_->DrawTextW(s.lines[i].c_str(), (UINT32)s.lines[i].size(), fmt, sh, shadowBrush);
         }
-        rt_->DrawTextW(s.lines[i].c_str(), (UINT32)s.lines[i].size(), fmt, lineRect, ToD2D(col));
+        rt_->DrawTextW(s.lines[i].c_str(), (UINT32)s.lines[i].size(), fmt, lineRect,
+                       active ? (activeBrush ? activeBrush : textBrush) : textBrush);
         y += lineH;
     }
+    if (shadowBrush) shadowBrush->Release();
+    if (textBrush) textBrush->Release();
+    if (activeBrush) activeBrush->Release();
     fmt->Release();
 
     // Referencia bíblica (cita) bajo el bloque [SPEC §5.2 #2]
     if (s.kind == SlideKind::Verse && !s.reference.empty()) {
         IDWriteTextFormat* rfmt = nullptr;
         if (SUCCEEDED(dw_->CreateTextFormat(s.style.font.c_str(), nullptr,
-                DWRITE_FONT_WEIGHT_SEMI_BOLD, DWRITE_FONT_STYLE_ITALIC, DWRITE_FONT_WEIGHT_NORMAL,
+                DWRITE_FONT_WEIGHT_SEMI_BOLD, DWRITE_FONT_STYLE_ITALIC, DWRITE_FONT_STRETCH_NORMAL,
                 (FLOAT)(std::max)(14.0, sizeDip * 0.42), L"es-VE", &rfmt))) {
             rfmt->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
             rfmt->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_NEAR);
             D2D1_RECT_F rr = D2D1::RectF(box.left, box.bottom - (FLOAT)(std::max)(22.0, sizeDip * 0.62),
                                           box.right, box.bottom);
-            if (s.style.shadow) {
+            ID2D1SolidColorBrush* rb = nullptr;
+            rt_->CreateSolidColorBrush(ToD2D(s.style.activeColor), &rb);
+            ID2D1SolidColorBrush* rsb = nullptr;
+            rt_->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.85f), &rsb);
+            if (s.style.shadow && rsb) {
                 D2D1_RECT_F sh = D2D1::RectF(rr.left + 2, rr.top + 2, rr.right + 2, rr.bottom + 2);
-                rt_->DrawTextW(s.reference.c_str(), (UINT32)s.reference.size(), rfmt, sh,
-                               D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.85f));
+                rt_->DrawTextW(s.reference.c_str(), (UINT32)s.reference.size(), rfmt, sh, rsb);
             }
-            rt_->DrawTextW(s.reference.c_str(), (UINT32)s.reference.size(), rfmt, rr,
-                           ToD2D(s.style.activeColor));
+            if (rb) {
+                rt_->DrawTextW(s.reference.c_str(), (UINT32)s.reference.size(), rfmt, rr, rb);
+                rb->Release();
+            }
+            if (rsb) rsb->Release();
             rfmt->Release();
         }
     }
@@ -326,14 +341,18 @@ void Renderer::DrawLowerThirdD2D(const Slide& s, D2D1_SIZE_F size) {
     float bandH = (FLOAT)(size.height * 0.16);
     float y = s.overlay.position == 1 ? 0 : (float)size.height - bandH;
     D2D1_RECT_F band = D2D1::RectF(0, y, size.width, y + bandH);
-    rt_->FillRectangle(band, D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.62f));
-    rt_->FillRectangle(D2D1::RectF(0, s.overlay.position == 1 ? y + bandH - 4 : y, size.width,
-                                   s.overlay.position == 1 ? y + bandH : y + 4),
-                       ToD2D(s.overlay.style.activeColor));
+    ID2D1SolidColorBrush* bandBrush = nullptr;
+    ID2D1SolidColorBrush* accentBrush = nullptr;
+    rt_->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.62f), &bandBrush);
+    rt_->CreateSolidColorBrush(ToD2D(s.overlay.style.activeColor), &accentBrush);
+    if (bandBrush) rt_->FillRectangle(band, bandBrush);
+    if (accentBrush)
+        rt_->FillRectangle(D2D1::RectF(0, s.overlay.position == 1 ? y + bandH - 4 : y, size.width,
+                                       s.overlay.position == 1 ? y + bandH : y + 4), accentBrush);
     if (!s.overlay.lines.empty()) {
         IDWriteTextFormat* fmt = nullptr;
         if (SUCCEEDED(dw_->CreateTextFormat(s.overlay.style.font.c_str(), nullptr,
-                DWRITE_FONT_WEIGHT_SEMI_BOLD, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_WEIGHT_NORMAL,
+                DWRITE_FONT_WEIGHT_SEMI_BOLD, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL,
                 (FLOAT)(bandH * 0.42f), L"es-VE", &fmt))) {
             fmt->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
             fmt->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
@@ -343,8 +362,14 @@ void Renderer::DrawLowerThirdD2D(const Slide& s, D2D1_SIZE_F size) {
                 if (i) joined += L"  ·  ";
                 joined += s.overlay.lines[i];
             }
-            rt_->DrawTextW(joined.c_str(), (UINT32)joined.size(), fmt, tr,
-                           ToD2D(s.overlay.style.color));
+            ID2D1SolidColorBrush* tb = nullptr;
+            rt_->CreateSolidColorBrush(ToD2D(s.overlay.style.color), &tb);
+            if (tb) {
+                rt_->DrawTextW(joined.c_str(), (UINT32)joined.size(), fmt, tr, tb);
+                tb->Release();
+            }
+            if (bandBrush) bandBrush->Release();
+            if (accentBrush) accentBrush->Release();
             fmt->Release();
         }
     }
@@ -486,10 +511,9 @@ void Renderer::DrawTextLinesGdip(Gdiplus::Graphics& g, const Slide& s, int w, in
         Color c(active ? s.style.activeColor : s.style.color);
         RectF lineRect(box.X, y, box.Width, (REAL)lineHpx);
         if (s.style.shadow) {
-            StringFormat shf(fmt);
             SolidBrush shb(Color(215, 0, 0, 0));
             RectF shRect(lineRect.X + 2.5f, lineRect.Y + 2.5f, lineRect.Width, lineRect.Height);
-            g.DrawString(s.lines[i].c_str(), -1, &f, shRect, &shf, &shb);
+            g.DrawString(s.lines[i].c_str(), -1, &f, shRect, &fmt, &shb);
         }
         SolidBrush b(c);
         g.DrawString(s.lines[i].c_str(), -1, &f, lineRect, &fmt, &b);

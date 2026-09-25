@@ -44,7 +44,7 @@ void Logger::SetLevel(int lv) { g_minLevel = lv; }
 
 void Logger::RotateIfNeeded() {
     // Llamado con lock tomado
-    SYSTEMTIME stNow, stFile;
+    SYSTEMTIME stNow;
     GetLocalTime(&stNow);
     int today = stNow.wYear * 10000 + stNow.wMonth * 100 + stNow.wDay;
     if (g_logFile && today == g_curDay) return;
@@ -60,6 +60,7 @@ void Logger::RotateIfNeeded() {
             old.push_back(e.path());
         }
     }
+    (void)0;
     if (old.size() > 14) {
         std::sort(old.begin(), old.end());
         size_t excess = old.size() - 14;

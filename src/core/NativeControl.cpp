@@ -127,7 +127,7 @@ void NativeControl::ShowSlideOf(int slideIdx) {
         if (!video_->Play(s.media.src, vh, s.media.loop, s.media.volume, s.media.startAt)) {
             s.kind = SlideKind::Text;                    // fondo del tema + aviso
             s.lines = {L"(El video no se pudo reproducir)",
-                       ToWide(s.media.src)};
+                       s.media.src};
             s.style.color = 0xFFE0E0E0;
             s.style.activeColor = 0xFFFFB0B0;
         }

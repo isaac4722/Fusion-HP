@@ -66,7 +66,7 @@
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>WIN32;_WINDOWS;NDEBUG;_WIN32_WINNT=0x0601;WINVER=0x0601;_CRT_SECURE_NO_WARNINGS;NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;NDEBUG;_WIN32_WINNT=0x0601;WINVER=0x0601;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)..\..\third_party\nlohmann;$(MSBuildThisFileDirectory)..\..\src\core;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
@@ -89,7 +89,7 @@
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>WIN64;_WINDOWS;NDEBUG;_WIN32_WINNT=0x0601;WINVER=0x0601;_CRT_SECURE_NO_WARNINGS;NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN64;_WINDOWS;NDEBUG;_WIN32_WINNT=0x0601;WINVER=0x0601;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)..\..\third_party\nlohmann;$(MSBuildThisFileDirectory)..\..\src\core;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
@@ -110,7 +110,7 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>WIN32;_WINDOWS;_DEBUG;_WIN32_WINNT=0x0601;WINVER=0x0601;_CRT_SECURE_NO_WARNINGS;NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;_DEBUG;_WIN32_WINNT=0x0601;WINVER=0x0601;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)..\..\third_party\nlohmann;$(MSBuildThisFileDirectory)..\..\src\core;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
@@ -126,7 +126,7 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>WIN64;_WINDOWS;_DEBUG;_WIN32_WINNT=0x0601;WINVER=0x0601;_CRT_SECURE_NO_WARNINGS;NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN64;_WINDOWS;_DEBUG;_WIN32_WINNT=0x0601;WINVER=0x0601;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)..\..\third_party\nlohmann;$(MSBuildThisFileDirectory)..\..\src\core;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>

@@ -23,6 +23,7 @@ public:
     void Destroy();
 
     HWND Hwnd() const { return hwnd_; }
+    static LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
     HWND VideoHwnd() const { return videoHwnd_; }
     Renderer& GetRenderer() { return renderer_; }
     int MonitorIndex() const { return monitorIdx_; }
@@ -41,7 +42,6 @@ public:
     void SetVideoPlayer(VideoPlayer* vp) { video_ = vp; }
 
 private:
-    static LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
     LRESULT Handle(HWND, UINT, WPARAM, LPARAM);
 
     HWND hwnd_ = nullptr;

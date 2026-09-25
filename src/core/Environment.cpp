@@ -10,7 +10,7 @@ typedef BOOL (WINAPI* IsWow64Process2Fn)(HANDLE, PUSHORT, PUSHORT);
 
 void Environment::DetectOs(EnvironmentReport& r) {
     // PASO 1 — RtlGetVersion (no mentido por manifest de compatibilidad)
-    RTL_OSVERSIONINFOW vi = {};
+    RTL_OSVERSIONINFOEXW vi = {};
     vi.dwOSVersionInfoSize = sizeof(vi);
     HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
     if (ntdll) {

@@ -501,7 +501,7 @@ namespace Fusion.Shared.Bible
             if (s.IndexOf("{\\rtf", StringComparison.OrdinalIgnoreCase) < 0 && s.IndexOf("\\par", StringComparison.Ordinal) < 0)
                 return s.Replace("\\pard", "").Trim();
             var sb = new StringBuilder();
-            bool escape = false, skipGroup = false;
+            bool escape = false;
             int depth = 0;
             for (int i = 0; i < s.Length; i++)
             {
