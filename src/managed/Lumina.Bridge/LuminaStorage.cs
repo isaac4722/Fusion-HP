@@ -104,10 +104,14 @@ namespace lumina.bridge
         public static string SearchSongsRequest(string term, int limit)
         {
             if (limit <= 0) limit = 50;
+            // NOTA FTS5: el objetivo de MATCH debe ser el nombre REAL de la
+            // tabla virtual — con alias («f MATCH») SQLite responde
+            // «no such column: f». Bug latente hallado por el arnés net48
+            // con núcleo (v1.0.0-beta.3); los tests nativos lo cubren.
             return BuildExecJson(
-                "SELECT s.id, s.title, s.author, s.lyrics FROM songs_fts f" +
-                " JOIN songs s ON s.id = f.rowid" +
-                " WHERE f MATCH ?1 LIMIT ?2",
+                "SELECT s.id, s.title, s.author, s.lyrics FROM songs_fts" +
+                " JOIN songs s ON s.id = songs_fts.rowid" +
+                " WHERE songs_fts MATCH ?1 LIMIT ?2",
                 term ?? string.Empty, limit);
         }
 
@@ -165,6 +169,148 @@ namespace lumina.bridge
         public static string RawSqlRequest(string sql)
         {
             return BuildExecJson(sql);
+        }
+
+        /* ==================================================================
+         *  v1.0.0-beta.3 — cierre de brechas F1.06/F1.07/F2.12/F2.14.
+         *  Mismo contrato: SQL SIEMPRE con parámetros enlazados; el esquema
+         *  vive en el núcleo (Storage.cpp) — aquí solo sentencias de app.
+         * ================================================================ */
+
+        /* ------------------------------------------------- settings F1.06 -- */
+
+        /// <summary>Lee un valor de la tabla settings (null si no existe).</summary>
+        public static string SettingsGetRequest(string key)
+        {
+            return BuildExecJson("SELECT value FROM settings WHERE key = ?1", key ?? string.Empty);
+        }
+
+        /// <summary>UPSERT de settings (INSERT OR REPLACE, clave primaria).</summary>
+        public static string SettingsSetRequest(string key, string value)
+        {
+            return BuildExecJson("INSERT OR REPLACE INTO settings(key, value) VALUES(?1, ?2)",
+                key ?? string.Empty, value ?? string.Empty);
+        }
+
+        /* ------------------------------------- canciones F2.12 (uso/anot) -- */
+
+        /// <summary>Registra un uso: usage_count+1 y last_used_at=ahora (F2.12).</summary>
+        public static string RecordSongUseRequest(long songId)
+        {
+            return BuildExecJson(
+                "UPDATE songs SET usage_count = usage_count + 1, last_used_at = datetime('now')" +
+                " WHERE id = ?1", songId);
+        }
+
+        /// <summary>Guarda la anotación del operador sobre una canción (F2.12).</summary>
+        public static string UpdateSongAnnotationsRequest(long songId, string annotations)
+        {
+            return BuildExecJson("UPDATE songs SET annotations = ?2 WHERE id = ?1",
+                songId, annotations ?? string.Empty);
+        }
+
+        /// <summary>
+        /// Canciones más usadas (popularidad/frecuencia, F2.12): orden por
+        /// usage_count DESC y last_used_at DESC como desempate.
+        /// </summary>
+        public static string TopSongsRequest(int limit)
+        {
+            if (limit <= 0) limit = 50;
+            return BuildExecJson(
+                "SELECT id, title, author, usage_count, COALESCE(last_used_at,''), annotations" +
+                " FROM songs ORDER BY usage_count DESC, last_used_at DESC, title COLLATE NOCASE LIMIT ?1",
+                limit);
+        }
+
+        /* ------------------------------------------- búsqueda caliente F1.07 */
+
+        /// <summary>
+        /// Búsqueda global de VERSÍCULOS por palabra (bible_fts MATCH) para la
+        /// búsqueda en caliente durante la proyección (F1.07). Sin cargar la
+        /// biblioteca completa: solo el índice FTS y un LIMIT.
+        /// </summary>
+        public static string SearchVersesRequest(string term, int limit)
+        {
+            if (limit <= 0) limit = 20;
+            return BuildExecJson(
+                "SELECT b.version, b.book, b.chapter, b.verse, b.text" +
+                " FROM bible_fts JOIN bible b ON b.rowid = bible_fts.rowid" +
+                " WHERE bible_fts MATCH ?1 LIMIT ?2",
+                term ?? string.Empty, limit);
+        }
+
+        /* ------------------------------------------- recursos F2.14 -------- */
+
+        /// <summary>
+        /// Registra un recurso (imagen/video) con ruta RELATIVA al directorio
+        /// de datos (portable, F2.14). El llamador convierte a relativa.
+        /// </summary>
+        public static string InsertResourceRequest(string kind, string name, string relativePath,
+                                                   string tags)
+        {
+            return BuildExecJson("INSERT INTO resources(kind, name, path, tags) VALUES(?,?,?,?)",
+                (kind ?? "image"), (name ?? string.Empty), (relativePath ?? string.Empty),
+                (tags ?? string.Empty));
+        }
+
+        /// <summary>Toda la biblioteca de recursos ordenada por nombre (F2.14).</summary>
+        public static string ListResourcesRequest(int limit)
+        {
+            if (limit <= 0) limit = 1000;
+            return BuildExecJson(
+                "SELECT id, kind, name, path, tags FROM resources" +
+                " ORDER BY name COLLATE NOCASE LIMIT ?1", limit);
+        }
+
+        /// <summary>Búsqueda FTS de recursos por nombre/etiquetas (F2.14).</summary>
+        public static string SearchResourcesRequest(string term, int limit)
+        {
+            if (limit <= 0) limit = 100;
+            return BuildExecJson(
+                "SELECT r.id, r.kind, r.name, r.path, r.tags FROM resources_fts f" +
+                " JOIN resources r ON r.id = f.rowid" +
+                " WHERE resources_fts MATCH ?1 LIMIT ?2",
+                term ?? string.Empty, limit);
+        }
+
+        /// <summary>Actualiza nombre/etiquetas de un recurso (edición F2.14).</summary>
+        public static string UpdateResourceRequest(long id, string name, string tags)
+        {
+            return BuildExecJson("UPDATE resources SET name = ?2, tags = ?3 WHERE id = ?1",
+                id, name ?? string.Empty, tags ?? string.Empty);
+        }
+
+        /// <summary>Elimina el registro (el archivo físico NO se toca).</summary>
+        public static string DeleteResourceRequest(long id)
+        {
+            return BuildExecJson("DELETE FROM resources WHERE id = ?1", id);
+        }
+
+        /// <summary>
+        /// Re-vinculación portable (F2.14): sustituye el prefijo de ruta viejo
+        /// por el nuevo en TODOS los recursos cuya ruta empiece por oldRoot.
+        /// Rutas RELATIVAS → una sola UPDATE parametrizada, sin rescan.
+        /// </summary>
+        public static string RelinkResourcesRequest(string oldRoot, string newRoot)
+        {
+            string oldRootNorm = (oldRoot ?? string.Empty).Replace('\\', '/');
+            string newRootNorm = (newRoot ?? string.Empty).Replace('\\', '/');
+            return BuildExecJson(
+                "UPDATE resources SET path = ?2 || substr(path, ?3)" +
+                " WHERE substr(path, 1, length(?1)) = ?1",
+                oldRootNorm, newRootNorm, (oldRootNorm.Length + 1).ToString());
+        }
+
+        /* ------------------------------------------------------ utilidades -- */
+
+        /// <summary>
+        /// Extrae el primer valor escalar string de un resultado ExecJson
+        /// (azúcar sobre <see cref="Scalar"/> para settings/lookups).
+        /// </summary>
+        public static string GetSettingValue(string execResultJson)
+        {
+            object v = Scalar(execResultJson);
+            return v == null ? null : v.ToString();
         }
     }
 }

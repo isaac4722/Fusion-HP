@@ -782,5 +782,241 @@ namespace lumina.wpf
             };
             dlg.ShowDialog();
         }
+
+        /// <summary>Ruta del último proyecto (para el mosaico «Continuar» de Inicio).</summary>
+        internal string LastProjectPath
+        {
+            get { return _settings != null ? _settings.LastProjectPath : string.Empty; }
+        }
+
+        /// <summary>
+        /// «Continuar» desde Inicio: carga el último plan guardado. true si se
+        /// restauró algo (ítems > 0). Errores al log, nunca lanza.
+        /// </summary>
+        internal bool ResumeLastProject()
+        {
+            string path = _settings.LastProjectPath;
+            if (string.IsNullOrEmpty(path) || !File.Exists(path))
+            {
+                Status("No hay último proyecto guardado.");
+                return false;
+            }
+            try
+            {
+                int added = ImportPlanCore(File.ReadAllText(path, new UTF8Encoding(false)));
+                if (added > 0)
+                {
+                    SelectLastServiceItem();
+                    RefreshPreview();
+                    RememberProjectPath(path);
+                    Status("Proyecto abierto: " + Path.GetFileName(path)
+                        + " (" + added + " ítems).");
+                    return true;
+                }
+                Status("El plan no trae ítems.");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                App.LogLine("ResumeLastProject: " + ex.Message);
+                Status("El último proyecto no se pudo abrir (ver log).");
+                return false;
+            }
+        }
+
+        /* ======================================================================
+         *  F1.06 «Arranque en Presentación» — la ventana abre en Inicio
+         *  (NavigateToIndex(0), constructor) y RESTAURA el último plan de
+         *  culto guardado (settings.json → lastProjectPath). La creación de
+         *  contenido sigue siendo explícita por página/atajo; entrar/salir
+         *  del editor no bloquea la salida.
+         * ==================================================================== */
+
+        /// <summary>
+        /// F1.06: guarda la ruta del último proyecto (settings.json). Ruta
+        /// absoluta para que el arranque la encuentre desde cualquier carpeta.
+        /// </summary>
+        internal void RememberProjectPath(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return;
+            try
+            {
+                _settings.LastProjectPath = Path.GetFullPath(path);
+                _settings.Save();
+            }
+            catch (Exception ex)
+            {
+                try { App.LogLine("RememberProjectPath FALLO: " + ex.Message); } catch (Exception) { }
+            }
+        }
+
+        /// <summary>
+        /// F1.06: restauración silenciosa del último proyecto al arrancar.
+        /// Nunca bloquea el arranque: cualquier fallo queda en el log y la
+        /// ventana sigue en En Vivo con el escenario vacío (fail-safe).
+        /// </summary>
+        internal void RestoreLastProjectAtStartup()
+        {
+            string path = _settings.LastProjectPath;
+            if (string.IsNullOrEmpty(path) || !File.Exists(path)) return;
+            try
+            {
+                int added = ImportPlanCore(File.ReadAllText(path, new UTF8Encoding(false)));
+                if (added > 0)
+                {
+                    SelectLastServiceItem();
+                    RefreshPreview();
+                    Status("Último proyecto restaurado: " + Path.GetFileName(path)
+                        + " (" + added + " ítems).");
+                    App.LogLine("F1.06: último proyecto restaurado (" + added + " ítems).");
+                }
+                else
+                {
+                    Status("El último proyecto no trae ítems: escenario vacío.");
+                }
+            }
+            catch (Exception ex)
+            {
+                App.LogLine("F1.06: no se pudo restaurar el último proyecto: " + ex.Message);
+                Status("El último proyecto no se pudo restaurar (ver log).");
+            }
+        }
+
+        /* ======================================================================
+         *  F1.07 «Búsqueda en caliente» — cuadro visible durante la proyección
+         *  (LivePage, Ctrl+K). Búsqueda GLOBAL de canciones y versículos vía
+         *  FTS5 (el índice, NO la biblioteca completa). Seleccionar/agregar
+         *  NO interrumpe la salida: el resultado se agrega al escenario
+         *  pendiente y proyectar sigue siendo una acción explícita del
+         *  operador (EN VIVO / doble clic).
+         * ==================================================================== */
+
+        /// <summary>Fila de resultado de la búsqueda en caliente (F1.07).</summary>
+        internal sealed class HotResultVm
+        {
+            public string KindLabel = string.Empty;   // «Canción» | «Biblia»
+            public string RefLabel = string.Empty;    // autor | «Juan 3:16 (RVR1909)»
+            public string Detail = string.Empty;      // primera línea del texto
+            public long SongId = -1;                  // >0 → canción de la biblioteca
+            public string Reference = string.Empty;   // biblia: referencia cruda
+            public string Version = string.Empty;     // biblia: versión
+            public string VerseText = string.Empty;   // biblia: texto del versículo
+        }
+
+        /// <summary>Filtro FTS5 seguro (delegado a Core — testeable sin UI).</summary>
+        private static string FtsQuote(string term)
+        {
+            return FtsQuery.Sanitize(term);
+        }
+
+        /// <summary>Ejecuta la búsqueda en caliente y llena el popup.</summary>
+        internal void HotSearchRun(string term)
+        {
+            List<HotResultVm> results = new List<HotResultVm>();
+            string fts = FtsQuote(term);
+            if (fts.Length > 0 && _engine != null && _dbOpen)
+            {
+                // Canciones (biblioteca F2.12).
+                try
+                {
+                    List<List<object>> rows = LuminaStorage.Rows(
+                        _engine.DbExec(LuminaStorage.SearchSongsRequest(fts, 8)));
+                    foreach (List<object> r in rows)
+                    {
+                        HotResultVm vm = new HotResultVm();
+                        vm.KindLabel = "Canción";
+                        vm.RefLabel = r.Count > 2 ? Cell(r, 2) : string.Empty;
+                        string lyrics = r.Count > 3 ? Cell(r, 3) : string.Empty;
+                        int nl = lyrics.IndexOf('\n');
+                        vm.Detail = nl > 0 ? lyrics.Substring(0, nl) : lyrics;
+                        if (vm.Detail.Length > 90) vm.Detail = vm.Detail.Substring(0, 90) + "…";
+                        long id;
+                        long.TryParse(r.Count > 0 ? Cell(r, 0) : string.Empty, out id);
+                        vm.SongId = id;
+                        results.Add(vm);
+                    }
+                }
+                catch (Exception ex) { App.LogLine("HotSearch canciones: " + ex.Message); }
+                // Versículos (búsqueda por palabra, F2.13/F1.07).
+                try
+                {
+                    List<List<object>> rows = LuminaStorage.Rows(
+                        _engine.DbExec(LuminaStorage.SearchVersesRequest(fts, 8)));
+                    foreach (List<object> r in rows)
+                    {
+                        HotResultVm vm = new HotResultVm();
+                        vm.KindLabel = "Biblia";
+                        vm.Version = r.Count > 0 ? Cell(r, 0) : string.Empty;
+                        string refLabel = BooksTable.AbbrOf((int)(r.Count > 1 ? ToLong(r, 1) : 0))
+                            + " " + (r.Count > 2 ? ToLong(r, 2) : 0).ToString()
+                            + ":" + (r.Count > 3 ? ToLong(r, 3) : 0).ToString();
+                        vm.RefLabel = refLabel + " (" + vm.Version + ")";
+                        vm.Reference = refLabel;
+                        vm.VerseText = r.Count > 4 ? Cell(r, 4) : string.Empty;
+                        vm.Detail = vm.VerseText;
+                        if (vm.Detail.Length > 90) vm.Detail = vm.Detail.Substring(0, 90) + "…";
+                        results.Add(vm);
+                    }
+                }
+                catch (Exception ex) { App.LogLine("HotSearch versículos: " + ex.Message); }
+            }
+            pageLive.ShowHotResults(results, results.Count > 0);
+        }
+
+        /// <summary>Agrega el resultado seleccionado al escenario SIN proyectar.</summary>
+        internal void HotSearchAddSelected()
+        {
+            HotResultVm r = pageLive.SelectedHotResult();
+            if (r != null) HotSearchAdd(r);
+        }
+
+        /// <summary>Convierte un resultado en ítem del culto (sin tocar la salida).</summary>
+        internal void HotSearchAdd(HotResultVm r)
+        {
+            if (r == null) return;
+            try
+            {
+                if (r.SongId > 0)
+                {
+                    // Canción completa desde la biblioteca.
+                    string res = _engine.DbExec(LuminaStorage.SelectSongByIdRequest(r.SongId));
+                    List<List<object>> rows = LuminaStorage.Rows(res);
+                    if (rows.Count == 0) { Status("La canción ya no existe."); return; }
+                    List<object> row = rows[0];
+                    string title = row.Count > 1 ? Cell(row, 1) : "Canción";
+                    string artist = row.Count > 2 ? Cell(row, 2) : string.Empty;
+                    string lyrics = row.Count > 6 ? Cell(row, 6) : string.Empty;
+                    Song s = ScenarioBuilder.SongFromEditor(title, artist, lyrics, false, 0);
+                    _serviceItems.Add(ScenarioBuilder.FromSong(s));
+                    try { _engine.DbExec(LuminaStorage.RecordSongUseRequest(r.SongId)); }
+                    catch (Exception) { }
+                }
+                else if (r.Reference.Length > 0)
+                {
+                    // Versículo: ítem scripture con el texto ya resuelto.
+                    ScenarioItem it = ScenarioBuilder.ScriptureItem(
+                        r.Reference, r.Version, 1, r.VerseText);
+                    it.Title = r.Reference + " (" + r.Version + ")";
+                    _serviceItems.Add(it);
+                }
+                RefreshServiceList();
+                SelectLastServiceItem();
+                RefreshPreview();
+                Status("Agregado al escenario (la proyección NO cambia hasta que lo pidas): "
+                    + (r.SongId > 0 ? r.RefLabel : r.Reference));
+            }
+            catch (Exception ex)
+            {
+                Status("No se pudo agregar el resultado: " + ex.Message);
+            }
+        }
+
+        /// <summary>long de celda (para book/chapter/verse del índice bíblico).</summary>
+        private static long ToLong(List<object> row, int i)
+        {
+            if (row == null || i >= row.Count || row[i] == null) return 0;
+            long v;
+            return long.TryParse(row[i].ToString(), out v) ? v : 0;
+        }
     }
 }

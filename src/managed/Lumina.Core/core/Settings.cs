@@ -59,6 +59,13 @@ namespace lumina.core
         public bool TransitionFade = true;            // false = corte inmediato
         public int  TransitionMs   = 220;             // 0..5000 ms
         public bool JsEnabled = false;                // v6.1.0 «GUION»: motor de scripts JSLib (WPF)
+        /// <summary>
+        /// v1.0.0-beta.3 — F1.06: ruta del último plan de culto (JSON). Al
+        /// arrancar, si existe, el escenario se RESTAURA (arranque en modo
+        /// presentación con el último proyecto ya cargado). Persistido en
+        /// settings.json (disponible SIN base de datos abierta).
+        /// </summary>
+        public string LastProjectPath = string.Empty;
 
         // ---- v1.0.0-beta.1 «ULTRA» — F1.05: atajos personalizables ----
         // Diccionario acción→tecla (valores de tecla legibles es-VE). Los
@@ -247,6 +254,7 @@ namespace lumina.core
             if (ProjectionScreen > 32) ProjectionScreen = 32;
             if (DirectorScreen < 0) DirectorScreen = 0;
             if (BackupFolder == null) BackupFolder = string.Empty;
+            if (LastProjectPath == null) LastProjectPath = string.Empty;   // F1.06
             if (TransitionMs < 0) TransitionMs = 0;
             if (TransitionMs > 5000) TransitionMs = 5000;
             NormalizeShortcuts();                          // F1.05
@@ -291,6 +299,8 @@ namespace lumina.core
                 s.TransitionFade = MiniJson.GetBool(o, "transitionFade", true);
                 s.TransitionMs = (int)MiniJson.GetInt(o, "transitionMs", 220);
                 s.JsEnabled = MiniJson.GetBool(o, "jsEnabled", false);     // v6.1.0
+                // F1.06: último proyecto restaurado al arrancar (si existe).
+                s.LastProjectPath = MiniJson.GetString(o, "lastProjectPath", string.Empty);
                 // F1.05: atajos persistidos — entradas con tecla válida; la
                 // normalización descarta acciones desconocidas y rellena huecos.
                 Dictionary<string, object> sc = MiniJson.GetObject(o, "shortcuts");
@@ -342,6 +352,7 @@ namespace lumina.core
             o["transitionFade"] = TransitionFade;                  // v6.0.0
             o["transitionMs"] = TransitionMs;
             o["jsEnabled"] = JsEnabled;                            // v6.1.0 «GUION»
+            if (LastProjectPath.Length > 0) o["lastProjectPath"] = LastProjectPath;  // F1.06
             // F1.05: mapa de atajos acción→tecla (SIEMPRE completo tras
             // Normalize; los lectores antiguos ignoran el campo — F2.01.8).
             Dictionary<string, object> sc = new Dictionary<string, object>();

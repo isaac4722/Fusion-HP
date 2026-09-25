@@ -9,6 +9,7 @@
 
 #include <sqlite3.h>
 #include <mutex>
+#include <cstring>
 
 namespace lumina {
 
@@ -121,16 +122,58 @@ bool Database::EnsureSchema(std::string* err) {
         "CREATE TRIGGER IF NOT EXISTS songs_ai AFTER INSERT ON songs BEGIN"
         "  INSERT INTO songs_fts(rowid,title,lyrics,tags) VALUES(new.id,new.title,new.lyrics,new.tags); END;"
         "CREATE TRIGGER IF NOT EXISTS songs_ad AFTER DELETE ON songs BEGIN"
-        "  INSERT INTO songs_fts(songs_fts,rowid,title,lyrics,tags) VALUES('delete',old.id,old.title,old.lyrics,old.tags); END;"
+        "  DELETE FROM songs_fts WHERE rowid=old.id; END;"
         "CREATE TRIGGER IF NOT EXISTS songs_au AFTER UPDATE ON songs BEGIN"
-        "  INSERT INTO songs_fts(songs_fts,rowid,title,lyrics,tags) VALUES('delete',old.id,old.title,old.lyrics,old.tags);"
+        "  DELETE FROM songs_fts WHERE rowid=old.id;"
         "  INSERT INTO songs_fts(rowid,title,lyrics,tags) VALUES(new.id,new.title,new.lyrics,new.tags); END;"
         "CREATE TRIGGER IF NOT EXISTS bible_ai AFTER INSERT ON bible BEGIN"
         "  INSERT INTO bible_fts(version,book,chapter,verse,text) VALUES(new.version,new.book,new.chapter,new.verse,new.text); END;"
         "CREATE TRIGGER IF NOT EXISTS bible_ad AFTER DELETE ON bible BEGIN"
-        "  INSERT INTO bible_fts(bible_fts,version,book,chapter,verse,text) VALUES('delete',old.version,old.book,old.chapter,old.verse,old.text); END;"
-        "CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT);";
-    return Exec(kSchema, {}, err);
+        "  DELETE FROM bible_fts WHERE rowid=old.rowid; END;"
+        "CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT);"
+        // F2.14: biblioteca de recursos (imágenes/videos) — ruta RELATIVA al
+        // directorio de datos (portable, re-vinculación sin rescan completo).
+        "CREATE TABLE IF NOT EXISTS resources("
+        "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "  kind TEXT NOT NULL DEFAULT 'image',"
+        "  name TEXT NOT NULL,"
+        "  path TEXT NOT NULL,"
+        "  tags TEXT DEFAULT '',"
+        "  created_at TEXT DEFAULT (datetime('now')));"
+        "CREATE VIRTUAL TABLE IF NOT EXISTS resources_fts USING fts5(name, tags);"
+        "CREATE TRIGGER IF NOT EXISTS resources_ai AFTER INSERT ON resources BEGIN"
+        "  INSERT INTO resources_fts(rowid,name,tags) VALUES(new.id,new.name,new.tags); END;"
+        "CREATE TRIGGER IF NOT EXISTS resources_ad AFTER DELETE ON resources BEGIN"
+        "  DELETE FROM resources_fts WHERE rowid=old.id; END;"
+        "CREATE TRIGGER IF NOT EXISTS resources_au AFTER UPDATE ON resources BEGIN"
+        "  DELETE FROM resources_fts WHERE rowid=old.id;"
+        "  INSERT INTO resources_fts(rowid,name,tags) VALUES(new.id,new.name,new.tags); END;";
+    if (!Exec(kSchema, {}, err)) return false;
+
+    // Migración aditiva v1.0.0-beta.3 (F2.12): columnas de biblioteca de
+    // canciones — anotaciones del operador + historial de uso (frecuencia y
+    // popularidad se derivan de usage_count/last_used_at). Va DESPUÉS del
+    // esquema base (en BD nueva songs aún no existe antes) y guarda con
+    // pragma_table_info: ALTER TABLE ADD COLUMN fallaría si ya existe.
+    static const char* kSongCols[] = {"annotations", "usage_count", "last_used_at"};
+    for (const char* col : kSongCols) {
+        sqlite3_stmt* st = nullptr;
+        int n = 0;
+        if (sqlite3_prepare_v2(db_, "SELECT count(*) FROM pragma_table_info('songs') WHERE name=?", -1,
+                               &st, nullptr) == SQLITE_OK) {
+            sqlite3_bind_text(st, 1, col, -1, SQLITE_TRANSIENT);
+            if (sqlite3_step(st) == SQLITE_ROW) n = sqlite3_column_int(st, 0);
+        }
+        sqlite3_finalize(st);
+        if (n == 0) {
+            const char* ddl =
+                std::strcmp(col, "annotations") == 0 ? "ALTER TABLE songs ADD COLUMN annotations TEXT DEFAULT '';"
+                : std::strcmp(col, "usage_count") == 0 ? "ALTER TABLE songs ADD COLUMN usage_count INTEGER DEFAULT 0;"
+                                                       : "ALTER TABLE songs ADD COLUMN last_used_at TEXT DEFAULT '';";
+            if (!Exec(ddl, {}, err)) return false;
+        }
+    }
+    return true;
 }
 
 bool Database::ExecJson(const std::string& sqlJson, std::string* outJson, std::string* err) {

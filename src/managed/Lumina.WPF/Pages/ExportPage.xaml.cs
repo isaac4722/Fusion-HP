@@ -27,5 +27,11 @@ namespace lumina.wpf
         {
             if (Shell != null) Shell.ExportScenarioPdf();
         }
+
+        /// <summary>F4.13: exportación a archivos de imagen (5 formatos).</summary>
+        private void OnExportImages(object sender, RoutedEventArgs e)
+        {
+            if (Shell != null) Shell.ExportScenarioImages();
+        }
     }
 }

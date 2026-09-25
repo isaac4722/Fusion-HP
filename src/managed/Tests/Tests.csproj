@@ -16,10 +16,12 @@
   </ItemGroup>
 
   <!-- ZipFile/ZipArchive (validación del ZipBackup propio) y DeflateStream
-       en .NET Framework: FileSystem para el lector del arnés de pruebas. -->
+       en .NET Framework: FileSystem para el lector del arnés de pruebas.
+       System.Drawing: GDI+ para el test del exportador de imágenes (F4.13). -->
   <ItemGroup Condition="'$(TargetFrameworkIdentifier)' == '.NETFramework'">
     <Reference Include="System.IO.Compression" />
     <Reference Include="System.IO.Compression.FileSystem" />
+    <Reference Include="System.Drawing" />
   </ItemGroup>
 
 </Project>

@@ -109,7 +109,11 @@ namespace lumina.wpf
                 pageSongs.txtTitle.Text = row.Count > 1 ? Cell(row, 1) : string.Empty;
                 pageSongs.txtArtist.Text = row.Count > 2 ? Cell(row, 2) : string.Empty;
                 pageSongs.txtLyrics.Text = row.Count > 6 ? Cell(row, 6) : string.Empty;
-                Status("Canción #" + id + " cargada al editor.");
+                // F2.12: historial de uso — cargar al editor cuenta como uso
+                // (alimenta frecuencia y popularidad de la biblioteca).
+                try { _engine.DbExec(LuminaStorage.RecordSongUseRequest(id)); }
+                catch (Exception) { }
+                Status("Canción #" + id + " cargada al editor (uso registrado).");
             }
             catch (LuminaException ex)
             {
@@ -823,14 +827,39 @@ namespace lumina.wpf
             if (dlg.ShowDialog(this) != true) return;
             try
             {
-                Dictionary<string, object> plan = MiniJson.Parse(
+                int addedCount = ImportPlanCore(
                     File.ReadAllText(dlg.FileName, new UTF8Encoding(false)));
-                List<object> items = MiniJson.GetArray(plan, "items");
-                if (items.Count == 0)
+                if (addedCount < 0)
                 {
                     MessageBox.Show(this, "El plan no trae elementos (se espera \"items\": [...]).",
                         "Importar plan", MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
+                }
+                // F1.06: el plan importado queda como «último proyecto».
+                RememberProjectPath(dlg.FileName);
+                Status("Plan importado: " + addedCount + " ítems agregados al culto.");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "El plan no se pudo leer: " + ex.Message,
+                    "Importar plan", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
+        /// <summary>
+        /// v1.0.0-beta.3 (F1.06): núcleo de carga de plan JSON COMPARTIDO por
+        /// «Importar plan» (con diálogo + avisos) y el arranque en modo
+        /// presentación («abrir el último proyecto», silencioso). Devuelve la
+        /// cantidad de ítems agregados, o -1 si el plan no trae "items".
+        /// Lanza ante JSON inválido (el llamador decide cómo informar).
+        /// </summary>
+        internal int ImportPlanCore(string planJson)
+        {
+                Dictionary<string, object> plan = MiniJson.Parse(planJson);
+                List<object> items = MiniJson.GetArray(plan, "items");
+                if (items.Count == 0)
+                {
+                    return -1;
                 }
                 int added = 0;
                 foreach (object ro in items)
@@ -916,13 +945,7 @@ namespace lumina.wpf
                 string planName = MiniJson.GetString(plan, "name", string.Empty);
                 if (planName.Length > 0) pageService.txtServiceName.Text = planName;
                 RefreshServiceList();
-                Status("Plan importado: " + added + " ítems agregados al culto.");
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show(this, "El plan no se pudo leer: " + ex.Message,
-                    "Importar plan", MessageBoxButton.OK, MessageBoxImage.Warning);
-            }
+                return added;
         }
 
         /* --------------------------------------------- plan JSON v6.0.0 */
@@ -954,6 +977,8 @@ namespace lumina.wpf
                 plan["items"] = arr;
                 File.WriteAllText(dlg.FileName,
                     MiniJson.Serialize(plan) + "\n", new UTF8Encoding(false));
+                // F1.06: el plan guardado queda como «último proyecto».
+                RememberProjectPath(dlg.FileName);
                 Status("Plan guardado: " + dlg.FileName + " (" + _serviceItems.Count + " ítems).");
             }
             catch (Exception ex)
@@ -1358,6 +1383,444 @@ namespace lumina.wpf
                 Status("Fallo al exportar PDF.");
                 MessageBox.Show(this, err, AppName, MessageBoxButton.OK, MessageBoxImage.Warning);
             }
+        }
+
+        /// <summary>
+        /// F4.13: exportación del escenario a ARCHIVOS DE IMAGEN
+        /// (JPG/PNG/GIF/BMP/TIF). Resolución configurable con mínimo
+        /// normativo 1920×1080 (ImageExporter reescala con calidad alta).
+        /// Una imagen por slide (Escenario individual), nombres estables.
+        /// </summary>
+        internal void ExportScenarioImages()
+        {
+            if (_slides.Count == 0)
+            {
+                Status("No hay escenario cargado que exportar.");
+                MessageBox.Show(this, "Carga primero un escenario (canción, pasaje o culto) en «En Vivo».",
+                    AppName, MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            if (_engine == null)
+            {
+                Status("La exportación de imágenes requiere el núcleo nativo.");
+                MessageBox.Show(this, "El núcleo no está activo (modo limitado): sin render no hay imágenes.",
+                    AppName, MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            // ---- diálogo compacto de opciones (formato + resolución) ----
+            Window opt = new Window
+            {
+                Title = "Exportar imágenes — opciones",
+                Owner = this,
+                Width = 420, SizeToContent = SizeToContent.Height,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                ResizeMode = ResizeMode.NoResize,
+                Background = (Brush)FindResource("PageBrush"),
+            };
+            StackPanel sp = new StackPanel { Margin = new Thickness(14) };
+            sp.Children.Add(new TextBlock
+            {
+                Text = "Formato:",
+                Style = (Style)FindResource("TxtSmall")
+            });
+            ComboBox cmbFmt = new ComboBox { MinHeight = 30, Margin = new Thickness(0, 4, 0, 0) };
+            cmbFmt.Items.Add("PNG (sin pérdidas)");
+            cmbFmt.Items.Add("JPG (calidad 92)");
+            cmbFmt.Items.Add("GIF");
+            cmbFmt.Items.Add("BMP");
+            cmbFmt.Items.Add("TIF");
+            cmbFmt.SelectedIndex = 0;
+            sp.Children.Add(cmbFmt);
+
+            sp.Children.Add(new TextBlock
+            {
+                Text = "Resolución (mínimo 1920×1080):",
+                Style = (Style)FindResource("TxtSmall"),
+                Margin = new Thickness(0, 10, 0, 0)
+            });
+            ComboBox cmbRes = new ComboBox { MinHeight = 30, Margin = new Thickness(0, 4, 0, 0) };
+            cmbRes.Items.Add("1920×1080 (mínimo normativo)");
+            cmbRes.Items.Add("2560×1440 (QHD)");
+            cmbRes.Items.Add("3840×2160 (4K)");
+            cmbRes.SelectedIndex = 0;
+            sp.Children.Add(cmbRes);
+
+            Button ok = new LumButton { Text = "Exportar", Variant = "Primary", MinWidth = 120 };
+            sp.Children.Add(ok);
+            opt.Content = sp;
+
+            ok.Click += delegate
+            {
+                opt.Close();
+                ImageExportOptions io = new ImageExportOptions();
+                switch (cmbFmt.SelectedIndex)
+                {
+                    case 1: io.Format = ImageExportFormat.Jpg; break;
+                    case 2: io.Format = ImageExportFormat.Gif; break;
+                    case 3: io.Format = ImageExportFormat.Bmp; break;
+                    case 4: io.Format = ImageExportFormat.Tif; break;
+                    default: io.Format = ImageExportFormat.Png; break;
+                }
+                if (cmbRes.SelectedIndex == 1) { io.Width = 2560; io.Height = 1440; }
+                if (cmbRes.SelectedIndex == 2) { io.Width = 3840; io.Height = 2160; }
+
+                Microsoft.Win32.SaveFileDialog dlg = new Microsoft.Win32.SaveFileDialog();
+                dlg.Title = "Exportar escenario a imágenes (una por diapositiva)";
+                dlg.Filter = "Imagen " + io.Extension.ToUpperInvariant() +
+                    " (*." + io.Extension + ")|*." + io.Extension;
+                dlg.FileName = SafeFileName(_lastScenarioName.Length > 0 ? _lastScenarioName : "Escenario")
+                    + "-001." + io.Extension;
+                if (dlg.ShowDialog(this) != true) return;
+
+                string baseName = Path.GetFileNameWithoutExtension(dlg.FileName);
+                if (baseName.EndsWith("-001")) baseName = baseName.Substring(0, baseName.Length - 4);
+                string dir = Path.GetDirectoryName(dlg.FileName);
+
+                int count = _slides.Count;
+                LuminaEngine eng = _engine;
+                ImageExportResult res = ImageExporter.Export(count,
+                    delegate (int i) { return eng.RenderPreviewPng(i); },
+                    dir, baseName, io);
+                if (res.Files.Count > 0)
+                {
+                    Status("Imágenes exportadas: " + res.Files.Count + "/" + count
+                        + (res.Errors.Count > 0 ? " (" + res.Errors.Count + " con fallo)." : "."));
+                    MessageBox.Show(this,
+                        "Exportadas " + res.Files.Count + " imágenes a:\n" + dir +
+                        (res.Errors.Count > 0
+                            ? "\n\nFallos (revisa el log):\n  " + string.Join("\n  ", res.Errors.ToArray())
+                            : string.Empty),
+                        AppName, MessageBoxButton.OK,
+                        res.Errors.Count > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
+                }
+                else
+                {
+                    Status("Fallo al exportar imágenes.");
+                    MessageBox.Show(this,
+                        "No se pudo exportar ninguna imagen.\n" +
+                        string.Join("\n", res.Errors.ToArray()),
+                        AppName, MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+            };
+            opt.ShowDialog();
+        }
+
+        /* ===================================== ESTUDIO — flujo PowerStudio == */
+
+        /// <summary>
+        /// Serializa las diapositivas del Estudio como ítems "composed" del
+        /// culto (REEMPLAZA los composed anteriores: el Estudio es dueño de los
+        /// diseños). Persisten en el plan JSON y se proyectan/exportan igual
+        /// que cualquier ítem.
+        /// </summary>
+        internal void SaveStudioToService(IList<StudioSlide> slides)
+        {
+            for (int i = _serviceItems.Count - 1; i >= 0; i--)
+                if (_serviceItems[i].Kind == "composed") _serviceItems.RemoveAt(i);
+            foreach (StudioSlide s in slides)
+            {
+                ScenarioItem it = ScenarioBuilder.ComposedItem(s.Title, s.Elements);
+                it.Notes = s.Notes;
+                _serviceItems.Add(it);
+            }
+            RefreshServiceList();
+            Status("Diseños guardados en el culto: " + slides.Count + " diapositiva(s).");
+        }
+
+        /// <summary>Carga al Estudio los ítems "composed" presentes en el culto.</summary>
+        internal int LoadStudioFromService(IList<StudioSlide> studio)
+        {
+            studio.Clear();
+            foreach (ScenarioItem it in _serviceItems)
+            {
+                if (it.Kind != "composed" || it.Composed == null) continue;
+                studio.Add(StudioSlide.From(
+                    string.IsNullOrEmpty(it.Title) ? "Diseño" : it.Title, it.Notes, it.Composed));
+            }
+            return studio.Count;
+        }
+
+        /* ============================================ F2.14: recursos ===== */
+        /// <summary>Fila de la biblioteca de recursos (listado del diálogo).</summary>
+        internal sealed class ResourceRowVm
+        {
+            public string Id = string.Empty;
+            public string Kind = string.Empty;
+            public string Name = string.Empty;
+            public string Path = string.Empty;
+            public string Tags = string.Empty;
+        }
+
+        /// <summary>
+        /// F2.14 «Biblioteca de recursos»: imágenes y videos con etiquetas,
+        /// búsqueda FTS, rutas RELATIVAS al directorio de datos (portable) y
+        /// re-vinculación por prefijo. Incluye arrastrar-y-soltar desde el
+        /// Explorador (DragDrop de FileDrop).
+        /// </summary>
+        internal void OpenResourceLibrary()
+        {
+            if (!RequireEngine() || !RequireDb()) return;
+            Window dlg = new Window
+            {
+                Title = "Biblioteca de recursos (imágenes y videos)",
+                Owner = this, Width = 720, Height = 520,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Background = (Brush)FindResource("PageBrush"),
+                AllowDrop = true,
+            };
+            DockPanel root = new DockPanel { Margin = new Thickness(12) };
+
+            // ---- pie: botones ----
+            StackPanel buttons = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Margin = new Thickness(0, 10, 0, 0),
+            };
+            TextBox txtTags = new TextBox { MinHeight = 28, MinWidth = 200, VerticalContentAlignment = VerticalAlignment.Center };
+            TextBox txtName = new TextBox { MinHeight = 28, MinWidth = 160, VerticalContentAlignment = VerticalAlignment.Center };
+            ListBox lst = new ListBox { MinHeight = 240 };
+
+            Button btnAdd = new LumButton { Text = "Agregar archivos…", Variant = "Primary", MinWidth = 130 };
+            Button btnSaveTag = new LumButton { Text = "Guardar etiquetas", Variant = "Secondary", MinWidth = 130 };
+            Button btnUse = new LumButton { Text = "Agregar al culto", Variant = "Secondary", MinWidth = 120 };
+            Button btnRelink = new LumButton { Text = "Re-vincular…", Variant = "Secondary", MinWidth = 110 };
+            Button btnDelete = new LumButton { Text = "Quitar registro", Variant = "Danger", MinWidth = 120 };
+            buttons.Children.Add(btnAdd);
+            buttons.Children.Add(btnUse);
+            buttons.Children.Add(btnRelink);
+            buttons.Children.Add(btnDelete);
+
+            // ---- edición (nombre/etiquetas del seleccionado) ----
+            Grid edit = new Grid();
+            edit.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            edit.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            edit.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            StackPanel pName = new StackPanel();
+            pName.Children.Add(new TextBlock { Text = "Nombre:", Style = (Style)FindResource("TxtCaption") });
+            pName.Children.Add(txtName);
+            StackPanel pTags = new StackPanel();
+            pTags.Children.Add(new TextBlock { Text = "Etiquetas (separadas por espacio):", Style = (Style)FindResource("TxtCaption") });
+            pTags.Children.Add(txtTags);
+            Grid.SetColumn(pName, 0);
+            Grid.SetColumn(pTags, 1);
+            Grid.SetColumn(btnSaveTag, 2);
+            btnSaveTag.Margin = new Thickness(8, 14, 0, 0);
+            edit.Children.Add(pName);
+            edit.Children.Add(pTags);
+            edit.Children.Add(btnSaveTag);
+
+            DockPanel.SetDock(edit, Dock.Bottom);
+            DockPanel.SetDock(buttons, Dock.Bottom);
+            root.Children.Add(edit);
+            root.Children.Add(buttons);
+
+            // ---- listado ----
+            Grid listGrid = new Grid();
+            listGrid.Children.Add(lst);
+            TextBlock hint = new TextBlock
+            {
+                Text = "Arrastra imágenes o videos desde el Explorador para registrarlos.\n" +
+                       "Las rutas se guardan RELATIVAS al directorio de datos (portable).",
+                Style = (Style)FindResource("TxtCaption"),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                TextAlignment = TextAlignment.Center,
+                IsHitTestVisible = false,
+                TextWrapping = TextWrapping.Wrap,
+            };
+            listGrid.Children.Add(hint);
+            root.Children.Add(listGrid);
+            dlg.Content = root;
+
+            List<ResourceRowVm> rows = new List<ResourceRowVm>();
+
+            Action reload = delegate
+            {
+                rows.Clear();
+                try
+                {
+                    List<List<object>> r = LuminaStorage.Rows(
+                        _engine.DbExec(LuminaStorage.ListResourcesRequest(1000)));
+                    foreach (List<object> row in r)
+                    {
+                        ResourceRowVm vm = new ResourceRowVm();
+                        vm.Id = Cell(row, 0);
+                        vm.Kind = Cell(row, 1);
+                        vm.Name = Cell(row, 2);
+                        vm.Path = Cell(row, 3);
+                        vm.Tags = Cell(row, 4);
+                        rows.Add(vm);
+                    }
+                }
+                catch (Exception ex) { App.LogLine("Recursos listado: " + ex.Message); }
+                lst.ItemsSource = null;
+                lst.ItemsSource = rows;
+                hint.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+            };
+
+            lst.SelectionChanged += delegate
+            {
+                ResourceRowVm vm = lst.SelectedItem as ResourceRowVm;
+                txtName.Text = vm == null ? string.Empty : vm.Name;
+                txtTags.Text = vm == null ? string.Empty : vm.Tags;
+            };
+
+            // Conversión a ruta relativa respecto al directorio de datos (portable).
+            Func<string, string> toRelative = delegate (string abs)
+            {
+                try
+                {
+                    Uri baseUri = new Uri(_settings.DataDir + Path.DirectorySeparatorChar);
+                    Uri absUri = new Uri(Path.GetFullPath(abs));
+                    string rel = baseUri.MakeRelativeUri(absUri).ToString().Replace('/', Path.DirectorySeparatorChar);
+                    return rel.Length > 0 ? rel : Path.GetFullPath(abs);
+                }
+                catch (Exception)
+                {
+                    return abs;   // fuera del árbol de datos: queda absoluta (funciona, menos portable)
+                }
+            };
+
+            Action<string[]> addFiles = delegate (string[] files)
+            {
+                if (files == null || files.Length == 0) return;
+                int addedRes = 0;
+                foreach (string f in files)
+                {
+                    try
+                    {
+                        string ext = Path.GetExtension(f).ToLowerInvariant();
+                        bool isImage = ext == ".jpg" || ext == ".jpeg" || ext == ".png" ||
+                                       ext == ".gif" || ext == ".bmp" || ext == ".tif" || ext == ".tiff";
+                        bool isVideo = ext == ".mp4" || ext == ".wmv" || ext == ".avi" ||
+                                       ext == ".mov" || ext == ".mkv";
+                        if (!isImage && !isVideo) continue;
+                        string rel = toRelative(f);
+                        _engine.DbExec(LuminaStorage.InsertResourceRequest(
+                            isImage ? "image" : "video",
+                            Path.GetFileNameWithoutExtension(f), rel, string.Empty));
+                        addedRes++;
+                    }
+                    catch (Exception ex) { App.LogLine("Recursos alta: " + ex.Message); }
+                }
+                Status(addedRes + " recurso(s) registrado(s) en la biblioteca.");
+                reload();
+            };
+
+            btnAdd.Click += delegate
+            {
+                Microsoft.Win32.OpenFileDialog odlg = new Microsoft.Win32.OpenFileDialog
+                {
+                    Title = "Agregar recursos (imágenes y videos)",
+                    Filter = "Imágenes y videos|*.jpg;*.jpeg;*.png;*.gif;*.bmp;*.tif;*.tiff;*.mp4;*.wmv;*.avi;*.mov;*.mkv|Todos los archivos|*.*",
+                    Multiselect = true,
+                };
+                if (odlg.ShowDialog(this) == true) addFiles(odlg.FileNames);
+            };
+
+            btnSaveTag.Click += delegate
+            {
+                ResourceRowVm vm = lst.SelectedItem as ResourceRowVm;
+                long id;
+                if (vm == null || !long.TryParse(vm.Id, out id))
+                {
+                    Status("Selecciona un recurso para editar sus etiquetas.");
+                    return;
+                }
+                try
+                {
+                    _engine.DbExec(LuminaStorage.UpdateResourceRequest(id, txtName.Text.Trim(), txtTags.Text.Trim()));
+                    Status("Recurso actualizado: " + txtName.Text.Trim());
+                }
+                catch (Exception ex) { Status("No se pudo actualizar: " + ex.Message); }
+                reload();
+            };
+
+            btnUse.Click += delegate
+            {
+                ResourceRowVm vm = lst.SelectedItem as ResourceRowVm;
+                if (vm == null) { Status("Selecciona un recurso."); return; }
+                string abs = Path.Combine(_settings.DataDir, vm.Path.Replace('/', Path.DirectorySeparatorChar));
+                ScenarioItem it = vm.Kind == "video"
+                    ? ScenarioBuilder.VideoItem(vm.Name, abs)
+                    : ScenarioBuilder.ImageItem(vm.Name, abs, string.Empty);
+                _serviceItems.Add(it);
+                RefreshServiceList();
+                SelectLastServiceItem();
+                Status("Recurso agregado al culto: " + vm.Name);
+                dlg.Close();
+            };
+
+            btnRelink.Click += delegate
+            {
+                // Re-vinculación portable: prefijo viejo → nuevo en TODAS las rutas.
+                Window rel = new Window
+                {
+                    Title = "Re-vincular rutas (portable)",
+                    Owner = dlg, Width = 480, SizeToContent = SizeToContent.Height,
+                    WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                    ResizeMode = ResizeMode.NoResize,
+                    Background = (Brush)FindResource("PageBrush"),
+                };
+                StackPanel rp = new StackPanel { Margin = new Thickness(12) };
+                rp.Children.Add(new TextBlock { Text = "Prefijo viejo (p. ej. datos_old):", Style = (Style)FindResource("TxtCaption") });
+                TextBox tOld = new TextBox { MinHeight = 28, Margin = new Thickness(0, 4, 0, 0) };
+                rp.Children.Add(tOld);
+                rp.Children.Add(new TextBlock { Text = "Prefijo nuevo (p. ej. datos):", Style = (Style)FindResource("TxtCaption"), Margin = new Thickness(0, 8, 0, 0) });
+                TextBox tNew = new TextBox { MinHeight = 28, Margin = new Thickness(0, 4, 0, 0) };
+                rp.Children.Add(tNew);
+                Button okRel = new LumButton { Text = "Re-vincular", Variant = "Primary", MinWidth = 120, Margin = new Thickness(0, 10, 0, 0) };
+                rp.Children.Add(okRel);
+                rel.Content = rp;
+                okRel.Click += delegate
+                {
+                    rel.Close();
+                    try
+                    {
+                        string res = _engine.DbExec(LuminaStorage.RelinkResourcesRequest(tOld.Text.Trim(), tNew.Text.Trim()));
+                        object changes;
+                        long n = 0;
+                        Dictionary<string, object> map = MiniJson.Parse(res);
+                        if (map != null && map.TryGetValue("changes", out changes))
+                            long.TryParse(changes.ToString(), out n);
+                        Status("Re-vinculación aplicada a " + n + " recurso(s).");
+                    }
+                    catch (Exception ex) { Status("No se pudo re-vincular: " + ex.Message); }
+                    reload();
+                };
+                rel.ShowDialog();
+            };
+
+            btnDelete.Click += delegate
+            {
+                ResourceRowVm vm = lst.SelectedItem as ResourceRowVm;
+                long id;
+                if (vm == null || !long.TryParse(vm.Id, out id)) { Status("Selecciona un recurso."); return; }
+                try
+                {
+                    _engine.DbExec(LuminaStorage.DeleteResourceRequest(id));
+                    Status("Registro quitado (el archivo físico NO se borra): " + vm.Name);
+                }
+                catch (Exception ex) { Status("No se pudo quitar: " + ex.Message); }
+                reload();
+            };
+
+            // F2.14: arrastrar y soltar desde el Explorador.
+            dlg.PreviewDragOver += delegate (object sender, DragEventArgs e)
+            {
+                e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop)
+                    ? DragDropEffects.Copy : DragDropEffects.None;
+                e.Handled = true;
+            };
+            dlg.Drop += delegate (object sender, DragEventArgs e)
+            {
+                string[] files = e.Data.GetData(DataFormats.FileDrop) as string[];
+                addFiles(files);
+            };
+
+            reload();
+            dlg.ShowDialog();
         }
 
         internal List<ExportSlide> BuildExportSlides()

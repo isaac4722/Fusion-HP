@@ -28,7 +28,7 @@
          normativo del documento técnico (1.x.y-beta+z): 1.0.0-beta.1. La
          línea histórica v7.1.0 «OPERADOR» queda congelada como prototipo
          anterior (núcleo CMake heredado). -->
-    <Version>1.0.0-beta.2</Version> <!-- beta.2: mismo ciclo beta, evidencia F6.08 completa -->
+    <Version>1.0.0-beta.3</Version> <!-- beta.3: cierre de brechas de la auditoría 80/80 -->
     <Product>LuminaPresentation Suite</Product>
     <Company>Isaac</Company>
     <Authors>Isaac</Authors>

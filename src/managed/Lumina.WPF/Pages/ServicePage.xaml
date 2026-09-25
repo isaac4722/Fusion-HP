@@ -37,6 +37,9 @@
                              Margin="0,0,6,6" Click="OnAddCurrentScripture"/>
             <local:LumButton Variant="Secondary" Icon="{StaticResource IconImage}" Text="Imagen…"
                              Margin="0,0,6,6" Click="OnAddImage"/>
+            <local:LumButton Variant="Secondary" Icon="{StaticResource IconImage}" Text="Biblioteca de recursos…"
+                             Margin="0,0,6,6" Click="OnResourceLibrary"
+                             ToolTip="F2.14: imágenes y videos con etiquetas, rutas relativas (portable) y re-vinculación"/>
             <local:LumButton Variant="Secondary" Icon="{StaticResource IconMessage}" Text="Texto/aviso…"
                              Margin="0,0,6,6" Click="OnAddText"/>
             <local:LumButton Variant="Secondary" Icon="{StaticResource IconBlack}" Text="En blanco"

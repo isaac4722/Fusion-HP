@@ -386,6 +386,89 @@ void TestStorageFts() {
           ok ? "rows ok" : err);
 }
 
+/* --------------------------------- 8b. Storage usage/resources F2.12/F2.14 */
+void TestStorageSongUsage() {
+    using namespace lumina;
+    Database db;
+    std::string err;
+    const std::string dir = "logs-core-tests";
+    const std::string path = dir + "/core-tests-usage.db";
+    (void)std::system(("mkdir -p '" + dir + "'").c_str());
+    std::remove(path.c_str());
+    bool ok = db.Open(path, &err);
+    if (!ok) {
+        Check(false, "storage-usage: open+schema (F2.12)", err);
+        return;
+    }
+    auto exec = [&](const std::string& sql, const std::vector<std::string>& params,
+                    std::string* out) {
+        json req;
+        req["sql"] = sql;
+        req["params"] = params;
+        return db.ExecJson(req.dump(), out, &err);
+    };
+    std::string out;
+    // Insert (migration columns appear on the new DB too).
+    ok = exec("INSERT INTO songs(title, lyrics, annotations) VALUES(?,?,?)",
+              {"Uso frecuente", "gloria gloria", "anotacion del operador"}, &out);
+    // Annotation readable back (F2.12 annotations).
+    ok = ok && exec("SELECT annotations FROM songs WHERE title=?",
+                    {"Uso frecuente"}, &out);
+    json res = ok ? json::parse(out) : json();
+    ok = ok && !res["rows"].empty() && res["rows"][0][0] == "anotacion del operador";
+    // Usage history: two uses -> usage_count=2, ordered top-first (popularity).
+    ok = ok && exec("UPDATE songs SET usage_count=usage_count+1, last_used_at=datetime('now') WHERE title=?",
+                    {"Uso frecuente"}, &out);
+    ok = ok && exec("UPDATE songs SET usage_count=usage_count+1 WHERE title=?",
+                    {"Uso frecuente"}, &out);
+    ok = ok && exec("SELECT usage_count FROM songs WHERE title=?", {"Uso frecuente"}, &out);
+    res = ok ? json::parse(out) : json();
+    ok = ok && !res["rows"].empty() && res["rows"][0][0] == 2;
+    Check(ok, "storage: song annotations + usage history (F2.12)",
+          ok ? "count=2, annotation ok" : err);
+}
+
+void TestStorageResources() {
+    using namespace lumina;
+    Database db;
+    std::string err;
+    const std::string dir = "logs-core-tests";
+    const std::string path = dir + "/core-tests-resources.db";
+    (void)std::system(("mkdir -p '" + dir + "'").c_str());
+    std::remove(path.c_str());
+    bool ok = db.Open(path, &err);
+    if (!ok) {
+        Check(false, "storage-resources: open+schema (F2.14)", err);
+        return;
+    }
+    auto exec = [&](const std::string& sql, const std::vector<std::string>& params,
+                    std::string* out) {
+        json req;
+        req["sql"] = sql;
+        req["params"] = params;
+        return db.ExecJson(req.dump(), out, &err);
+    };
+    std::string out;
+    // Register a relative-path resource (portable layout).
+    ok = exec("INSERT INTO resources(kind, name, path, tags) VALUES(?,?,?,?)",
+              {"image", "Fondo cruz", "resources/img/cruz.jpg", "adoracion fondo"}, &out);
+    json res = ok ? json::parse(out) : json();
+    ok = ok && res["changes"] == 1;
+    // FTS over name+tags.
+    ok = ok && exec("SELECT name FROM resources_fts WHERE resources_fts MATCH ?",
+                    {"adoracion"}, &out);
+    res = ok ? json::parse(out) : json();
+    ok = ok && !res["rows"].empty() && res["rows"][0][0] == "Fondo cruz";
+    // Portable re-link: path prefix swap in one UPDATE (relative paths only).
+    ok = ok && exec("UPDATE resources SET path = ? || substr(path, ?) WHERE id=?",
+                    {"datos/", "1", "1"}, &out);
+    ok = ok && exec("SELECT path FROM resources WHERE id=?", {"1"}, &out);
+    res = ok ? json::parse(out) : json();
+    ok = ok && !res["rows"].empty() && res["rows"][0][0] == "datos/resources/img/cruz.jpg";
+    Check(ok, "storage: resource library FTS + relative-path relink (F2.14)",
+          ok ? "fts + relink ok" : err);
+}
+
 /* --------------------------------- 9. EnvironmentReport F0.09/F6.01 ---- */
 void TestEnvironmentReport() {
     using namespace lumina;
@@ -437,6 +520,8 @@ int main() {
     TestHighlight();
     TestChords();
     TestStorageFts();
+    TestStorageSongUsage();
+    TestStorageResources();
     TestEnvironmentReport();
 
     const int total = g_pass + g_fail;

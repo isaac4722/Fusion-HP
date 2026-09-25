@@ -50,7 +50,7 @@ concurrency:
 
 env:
   DOTNET_VERSION: '8.0.x'
-  APP_VERSION: '1.0.0-beta.2'
+  APP_VERSION: '1.0.0-beta.3'
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -282,6 +282,22 @@ jobs:
         run: |
           dotnet run --project src/managed/Tests --configuration Release --framework net8.0
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # v1.0.0-beta.3: el MISMO arnés compilado net48 (GDI+ real, F4.13).
+      # Sin LuminaCore.dll en este job → los tests nativo-dependientes saltan
+      # (están gated en el job interop, que sí coloca la DLL).
+      - name: Tests net48 (mismo arnés; GDI+ real para F4.13)
+        shell: pwsh
+        env:
+          LUMINA_SKIP_NATIVE: '1'
+        run: |
+          dotnet build src/managed/Tests -f net48 -c Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $out = & "src/managed/Tests/bin/Release/net48/Lumina.Tests.exe" 2>&1
+          $code = $LASTEXITCODE
+          $out | ForEach-Object { Write-Host "$_" }
+          if ($code -ne 0) { Write-Host "EXIT CODE: $code"; exit 1 }
+          if (-not ($out -match 'TESTS PASS')) { Write-Host 'Sin TESTS PASS'; exit 1 }
 
       - name: 'GATE exportadores: python-pptx + pypdf (PPTX/PDF válidos)'
         shell: pwsh
@@ -557,6 +573,23 @@ jobs:
           if (-not ($out -match 'POC PASS 12/12')) {
             Write-Host 'No apareció "POC PASS 12/12" en la salida'; exit 1
           }
+
+      # v1.0.0-beta.3 (F1.07/F2.12/F2.14): el arnés gestionado CON el núcleo
+      # real — los tests nativo-dependientes (BD/FTS5/recursos/uso) corren de
+      # verdad aquí (en «managed» saltan por ausencia de la DLL).
+      - name: 'Tests gestionados net48 con núcleo (${{ matrix.arch }})'
+        shell: pwsh
+        run: |
+          dotnet build src/managed/Tests -f net48 -c Release -p:PlatformTarget=${{ matrix.arch }}
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item "artifacts/native-${{ matrix.arch }}/LuminaCore.dll" `
+                    "src/managed/Tests/bin/Release/net48/"
+          $out = & "src/managed/Tests/bin/Release/net48/Lumina.Tests.exe" 2>&1
+          $code = $LASTEXITCODE
+          $out | ForEach-Object { Write-Host "$_" }
+          if ($code -ne 0) { Write-Host "EXIT CODE: $code"; exit 1 }
+          if (-not ($out -match 'TESTS PASS')) { Write-Host 'Sin TESTS PASS'; exit 1 }
+          if ($out -match '\[FAIL\]') { Write-Host 'Hay tests en fallo'; exit 1 }
 
       # Informativo: SOLO si el runtime 3.5 está disponible en el runner
       # (windows-latest no siempre lo trae). Nunca rompe el CI.
@@ -1092,7 +1125,7 @@ jobs:
         with:
           name: "LuminaPresentation ${{ github.ref_name }} «REESTRUCTURA» — BETA"
           body: |
-            **LuminaPresentation v1.0.0-beta.2 «REESTRUCTURA» — PRERELEASE · línea normativa del doc técnico v1.1 · núcleo C++ (vcxproj MSVC /MT, ruta Direct2D) + WPF (.NET 4.8) + WinForms (.NET 3.5)**
+            **LuminaPresentation v1.0.0-beta.3 «REESTRUCTURA» — PRERELEASE · línea normativa del doc técnico v1.1 · núcleo C++ (vcxproj MSVC /MT, ruta Direct2D) + WPF (.NET 4.8) + WinForms (.NET 3.5)**
 
             > Reestructuración completa al mapa normativo de AGENT.md (`src/core` · `src/managed` con
             > `core|data|services|state|features` · `tests` · `installer` · `spec` · `skills`) y cierre
@@ -1103,13 +1136,24 @@ jobs:
             > ⚠ **ESTA PUBLICACIÓN ES UNA PRERELEASE (beta)**: funcionalidad completa y gates de CI
             > en verde, pero sujeta a cambios. Reporte de fallos bienvenido.
 
-            ## Novedades respecto a v1.0.0-beta.1
-            - Evidencia F6.08 completa (campaña de 60 min en runner CI): 60,00 min · 33.138 ops ·
-              0 errores no justificados · RAM pico 52 MB (objetivo ≤ 300 MB) · 59 dumps de métricas
-              (F6.01) — `docs/verification/sesion60.md`.
-            - Bitácora HOT rotada a WARM conforme a la norma AGENT.md (≤ 10 líneas).
-            - Cuerpo de la release corregido: nombres de descarga reales de esta línea (las betas
-              anteriores arrastraban la plantilla de la línea histórica v7.x).
+            ## Novedades de v1.0.0-beta.3 (auditoría 80/80 + experiencia PowerStudio)
+            - **Auditoría fixture a fixture F0.01–F6.10** (80/80): matriz de cumplimiento y
+              mapa de gates en `docs/verification/`.
+            - **Nueva experiencia PowerStudio** (referencia H-P-Web-Version-Ref): pantalla de
+              **Inicio** con mosaicos (continuar último proyecto, crear, presentar) y
+              **Estudio**: cinta de tareas, miniaturas, lienzo 16:9 con textos/imágenes
+              arrastrables y redimensionables, propiedades y notas — el diseño viaja al culto
+              como ítem compuesto (proyección nativa + exportación PPTX/PDF/imágenes).
+            - **Cierre de brechas**: F1.06 (último proyecto), F1.07 (búsqueda en caliente
+              Ctrl+K sin interrumpir la salida), F2.09 (shell WinForms+WPF vía ElementHost),
+              F2.12 (anotaciones/historial/popularidad de canciones), F2.14 (biblioteca de
+              recursos con re-vinculación portable), F4.13 (exportación de imágenes
+              1920×1080+, 5 formatos).
+            - **FIX preexistente**: triggers FTS5 `AFTER UPDATE/DELETE` (comando 'delete' solo
+              válido en contenido externo) y FTS5 MATCH con alias — toda búsqueda y
+              actualización de la biblioteca fallaba con núcleo real; hallado por el nuevo
+              gate (arnés net48 con LuminaCore.dll en CI).
+            - Evidencia F6.08 completa (sesion60: 60,00 min · 33.138 ops · RAM pico 52 MB).
 
             ## Descargas
             - `LuminaPresentation-${{ env.APP_VERSION }}-win-x86.zip` — **Windows 7 SP1 a Windows 11 (32 bits)**

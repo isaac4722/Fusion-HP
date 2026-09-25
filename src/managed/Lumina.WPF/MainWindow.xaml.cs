@@ -84,8 +84,8 @@ namespace lumina.wpf
 
         /* -------- navegación: índice de página activa + mapa sidebar→página -- */
         private int _activePage;
-        private static readonly int[] NavToPage = { 0, 4, 1, 2, 3, 5, 6, 7, 8 };
-        private readonly NavItem[] _navItems = new NavItem[9];
+        private static readonly int[] NavToPage = { 9, 0, 4, 1, 2, 3, 10, 5, 6, 7, 8 };
+        private readonly NavItem[] _navItems = new NavItem[11];
 
         private bool _closing;
 
@@ -104,6 +104,8 @@ namespace lumina.wpf
             _settings = Settings.Load();
 
             // Wire de páginas (les pasa el Shell y las deja listas).
+            pageHome.Wire(this);
+            pageStudio.Wire(this);
             pageLive.Wire(this);
             pageSongs.Wire(this);
             pageBible.Wire(this);
@@ -118,9 +120,10 @@ namespace lumina.wpf
             _txtRef = pageBible.txtRef;
 
             // Sidebar ordenado (posición en la barra → página).
-            _navItems[0] = navLive; _navItems[1] = navService; _navItems[2] = navSongs;
-            _navItems[3] = navBible; _navItems[4] = navThemes; _navItems[5] = navExport;
-            _navItems[6] = navIntegrations; _navItems[7] = navTriggers; _navItems[8] = navSettings;
+            _navItems[0] = navHome; _navItems[1] = navStudio; _navItems[2] = navLive;
+            _navItems[3] = navService; _navItems[4] = navSongs; _navItems[5] = navBible;
+            _navItems[6] = navThemes; _navItems[7] = navExport; _navItems[8] = navIntegrations;
+            _navItems[9] = navTriggers; _navItems[10] = navSettings;
 
             // Contexto de UI: el motor encola sus eventos a este hilo.
             _uiCtx = SynchronizationContext.Current ??
@@ -149,7 +152,15 @@ namespace lumina.wpf
             ApplySettingsToControls();
             StartIntegrationsFromSettings();
             UpdateStatusBar();
-            NavigateToIndex(0);
+            // ARRANQUE tipo PowerStudio (referencia H-P-Web-Version-Ref): la
+            // ventana abre en INICIO (mosaicos), con el último proyecto ya
+            // restaurado en el culto y «Presentar» a un clic (F5). El flujo
+            // F1.06 se conserva: restauración silenciosa + presentación a un clic.
+            NavigateToIndex(9);
+
+            // F1.06: restauración del último proyecto (silenciosa, fail-safe).
+            Dispatcher.BeginInvoke(new Action(RestoreLastProjectAtStartup),
+                System.Windows.Threading.DispatcherPriority.ApplicationIdle);
 
             // v7.1.0 «OPERADOR» (feedback #3): sondeo del proyector (1,2 s):
             // detecta el cierre con X/ESC de la ventana nativa para reflejarlo
@@ -181,8 +192,10 @@ namespace lumina.wpf
         /// <summary>Cambia la página visible y sincroniza la píldora del sidebar.</summary>
         internal void NavigateToIndex(int index)
         {
-            if (index < 0 || index >= 9) index = 0;
+            if (index < 0 || index >= 11) index = 9;   // 9 = Inicio
             _activePage = index;
+            pageHome.Visibility = index == 9 ? Visibility.Visible : Visibility.Collapsed;
+            pageStudio.Visibility = index == 10 ? Visibility.Visible : Visibility.Collapsed;
             pageLive.Visibility = index == 0 ? Visibility.Visible : Visibility.Collapsed;
             pageSongs.Visibility = index == 1 ? Visibility.Visible : Visibility.Collapsed;
             pageBible.Visibility = index == 2 ? Visibility.Visible : Visibility.Collapsed;
@@ -193,9 +206,10 @@ namespace lumina.wpf
             pageTriggers.Visibility = index == 7 ? Visibility.Visible : Visibility.Collapsed;
             pageSettings.Visibility = index == 8 ? Visibility.Visible : Visibility.Collapsed;
             int nav = PageToNav(index);
-            for (int i = 0; i < 9; i++)
+            for (int i = 0; i < _navItems.Length; i++)
                 if (_navItems[i] != null) _navItems[i].IsCurrent = i == nav;
             if (index == 0) RefreshPreview();
+            if (index == 9) pageHome.RefreshTiles();
         }
 
         private static int PageToNav(int page)
@@ -464,6 +478,23 @@ namespace lumina.wpf
             // Ctrl+1…9 salta a la página indicada (no interfiere con la edición).
             if (Keyboard.Modifiers == ModifierKeys.Control)
             {
+                // F1.07: Ctrl+K → búsqueda en caliente (desde cualquier página;
+                // salta a En Vivo y enfoca la caja sin tocar la proyección).
+                if (e.Key == Key.K)
+                {
+                    NavigateToIndex(0);
+                    pageLive.FocusHotSearch();
+                    e.Handled = true;
+                    return;
+                }
+                // Ctrl+N → nuevo diseño en Estudio (flujo PowerStudio).
+                if (e.Key == Key.N)
+                {
+                    NavigateToIndex(10);
+                    pageStudio.NewSlide();
+                    e.Handled = true;
+                    return;
+                }
                 int d = DigitFromKey(e.Key);
                 if (d >= 1 && d <= 9)
                 {
