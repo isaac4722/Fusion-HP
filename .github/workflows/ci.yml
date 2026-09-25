@@ -245,7 +245,7 @@ jobs:
           generate_release_notes: false
           body_path: .github/RELEASE_NOTES.md
           files: |
-            dist/*.exe
+            dist/installer/*.exe
             dist/*.zip
             dist/SHA256SUMS.txt
         env:
