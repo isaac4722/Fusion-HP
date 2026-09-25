@@ -111,6 +111,10 @@ int App::Run(HINSTANCE inst, int showCmd) {
 
     if (pumpTimer_) KillTimer(nullptr, pumpTimer_);
     video_.Stop();
+    // [v3.0.0] El Motor persiste su sesión en cada cambio; este guardado final
+    // garantiza que TODO camino de salida (X del estudio, Alt+F4, quit IPC,
+    // apagado del sistema) deja la sesión íntegra para la autocarga.
+    if (motor_) motor_->SavePersisted(motorSesionFile_);
     if (ipc_) ipc_->Stop();
     live_.Destroy();
     Logger::Info("core.bootstrap", "nucleo cerrado correctamente");

@@ -39,6 +39,7 @@ public:
 
     bool Create();
     void Tick();                       // reloj + reconciliación con el Motor (500 ms)
+    void SaveSessionOnExit();          // persiste borrador/recientes al cerrar [v3.0.0]
 
 private:
     // ------------------------------------------------------------ modos

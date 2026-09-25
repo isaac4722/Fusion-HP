@@ -324,8 +324,20 @@ LRESULT NativeStudio::Handle(UINT m, WPARAM w, LPARAM l) {
             break;
         case WM_CHAR:
             return 0;                          // el studio come los caracteres
+        case WM_CLOSE:
+            // [v3.0.0 — bug «cerrar con la X»] Antes no había WM_CLOSE: DefWindowProc
+            // destruía la ventana y el bucle de App::Run seguía sin PostQuitMessage
+            // (proceso zombi con la salida encendida; al relanzar parecía «duplicada»).
+            SaveSessionOnExit();
+            DestroyWindow(hwnd_);
+            return 0;
+        case WM_ENDSESSION:
+            // cierre del sistema: persistir y dejar que Windows termine
+            if (w) SaveSessionOnExit();
+            return 0;
         case WM_DESTROY:
             if (timer_) KillTimer(hwnd_, 1);
+            PostQuitMessage(0);                // termina App::Run limpiamente [v3.0.0]
             return 0;
         default:
             break;
@@ -532,6 +544,22 @@ void NativeStudio::SaveAhp() {
         PushReciente(path, draft_.name);
     } else {
         MessageBoxW(hwnd_, L"No se pudo guardar el proyecto.", L"Fusion HP", MB_ICONWARNING);
+    }
+}
+
+// [v3.0.0 — bug «cerrar con la X»] Persistencia silenciosa al salir: guarda el
+// borrador (recuperable en Inicio → borrador) y los recientes, sin diálogos.
+// Nunca lanza: el cierre debe completarse aunque el disco falle.
+void NativeStudio::SaveSessionOnExit() {
+    try {
+        if (!draft_.items.empty()) {
+            std::wstring path = !ahpPath_.empty() ? ahpPath_
+                                                  : DataDir() + L"\\borrador.ahp";
+            SaveDraftAhp(draft_, path);
+            if (ahpPath_.empty()) PushReciente(path, draft_.name);
+        }
+    } catch (...) {
+        Logger::Warn("core.studio", "no se pudo persistir el borrador al salir");
     }
 }
 

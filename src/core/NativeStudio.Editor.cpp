@@ -1138,8 +1138,10 @@ void NativeStudio::PaintLibrary(Gdiplus::Graphics& g, const RECT& r) {
     y += 34;
 
     if (libTab_ == LIB_CANTOS) {
-        // resultados (máx 200, scroll)
-        songHits_ = songs_.Search(libQuery_, 200);
+        // resultados (lista directa completa, scroll)
+        // [v3.0.0 — bug «bibliotecas»] Lista directa COMPLETA, sin tope de 200:
+        // la consulta vacía devuelve todos los cantos y la lista hace scroll.
+        songHits_ = songs_.Search(libQuery_, songs_.Count());
         RECT listR{r.left, y, r.right, r.bottom};
         int rowH = 44, total = (int)songHits_.size() * rowH;
         ScrollAdd(listR, scLib_, std::max(0, (int)(total - (listR.bottom - listR.top))));
