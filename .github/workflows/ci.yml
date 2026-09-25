@@ -157,8 +157,8 @@ jobs:
           Copy-Item (Find-First "$root/gestionada" "FusionStudio.exe")     installer/staging/
           Copy-Item (Find-First "$root/gestionada" "FusionStudio.Lite.exe") installer/staging/
           # recursos: TODO el árbol (img con iconos, fuentes, fondos, biblias)
-          New-Item -ItemType Directory -Force -Path installer/staging/resources | Out-Null
-          Copy-Item resources installer/staging/resources -Recurse -Force
+          # (destino = staging ya existente: resources queda como staging/resources)
+          Copy-Item resources installer/staging -Recurse -Force
           # verificación de assets críticos de la fusión web (v2.1)
           if (-not (Test-Path installer/staging/resources/fonts)) { throw 'faltan fuentes de la GUI' }
           if (-not (Test-Path installer/staging/resources/backgrounds)) { throw 'faltan fondos de la referencia' }
