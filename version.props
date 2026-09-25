@@ -2,7 +2,7 @@
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <!-- Versión del prototipo: esquema 1.x.y-beta+z ligado a ahp.v1 [AGENT.md] -->
   <PropertyGroup>
-    <FusionVersion>2.3.0</FusionVersion>
-    <FusionStage>estudio-nativo-web</FusionStage>
+    <FusionVersion>3.0.0</FusionVersion>
+    <FusionStage>reestructuracion</FusionStage>
   </PropertyGroup>
 </Project>

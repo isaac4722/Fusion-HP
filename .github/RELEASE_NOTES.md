@@ -1,33 +1,46 @@
-# Fusion HP — notas de la versión
+# Fusion HP v3.0.0 — Reestructuración completa (los 7 bugs del prototipo, resueltos)
 
-**Fusion HP** es un presentador litúrgico híbrido (núcleo nativo C++ + capa C#/.NET Framework) que opera desde **Windows 7 SP1 x86** hasta **Windows 11 x64**, sin Java, sin .NET Core y sin escribir en el Registro de Windows.
+**Fusion HP** es un presentador litúrgico híbrido (núcleo nativo C++ + capa C#/.NET Framework) que opera desde **Windows 7 SP1 x86** hasta **Windows 11 x64**, sin Java, sin .NET Core y sin escribir en el Registro de Windows. Esta versión parte de cero en cuanto a distribución: las releases anteriores fueron eliminadas y el prototipo fue reestructurado para resolver los defectos reportados.
 
-## Qué incluye esta versión
+## Qué se corrigió (de lo reportado)
 
-- **Núcleo nativo C++** (`FusionHP.exe`, compilado con /MT, x86 y x64): bootstrap con detección de entorno (SO, arquitectura, .NET), salida de proyección borderless sin parpadeo (Direct2D con fallback GDI+ de doble buffer), sincronización línea por línea, reproducción de video DirectShow con fail-safe, pantalla de reposo configurable y servidor IPC `ipc.v1`.
-- **Estudio** (`FusionStudio.exe`, .NET Framework 4.8): ventana WinForms con tres modos (Inicio, Estudio, Presentación), biblioteca de Cantos y Biblia accesible directamente, lista de programa con sub-líneas, previsualización que usa el mismo modelo de render que la salida, editor de escenarios WPF con lienzo arrastrable estilo PowerPoint, y herencia de estilos de 4 niveles (Tema → Plantilla → Escenario → Elemento).
-- **Variante Lite** (`FusionStudio.Lite.exe`, .NET 3.5 SP1): perfil B con motor Live completo, importadores, exportadores y API; editor funcional en WinForms.
-- **Perfil C**: sin .NET, el núcleo abre su ventana de control de emergencia nativa y proyecta texto/imágenes/video desde un Escenario empaquetado `.ahp`.
-- **Interoperabilidad**: importa Biblias **Zefania XML**, **e-Sword .bib/.bblx 9+** (con descifrado Twofish de columnas), **JSON** y **TSV**; importa cantos del himnario JSON; **PPTX original vía PowerPoint** o convertido a Escenarios vía OpenXML; exporta **PPTX (ISO/IEC-29500)**, **PDF** e **imágenes PNG 1080p**.
-- **Automatización**: API HTTP local con token (6 endpoints: state, next/prev, goto, text para OBS, bible, message), control remoto móvil servido por el propio programa, cliente OBS WebSocket 5.x con autenticación y reconexión, y motor de Triggers (evento → condiciones → acciones).
-- **Diagnóstico**: Ayuda → Estado del sistema con autotest (render, núcleo, permisos, red local, API, OBS) y log estructurado rotativo.
+1. **El cargador de Escenarios no mostraba nombres** → nuevo cargador `Abrir proyecto`: recientes con el NOMBRE del proyecto, número de escenarios y los TÍTULOS de cada escenario visibles antes de abrir (lectura rápida de cabecera ahp.v1). Ya no se elige un archivo a ciegas.
+2. **La ventana de proyección no respetaba la pantalla elegida** → el monitor seleccionado en Configuración ahora viaja al núcleo (IPC `monitor public|stage`) y la salida borderless fullscreen se posiciona donde el operador manda; con un solo monitor, Configuración avisa honestamente.
+3. **Cerrar con la X dejaba el proceso vivo / parecía duplicarse** → el estudio nativo maneja `WM_CLOSE` (persiste borrador y recientes) y termina el bucle del núcleo limpiamente; el Motor guarda su sesión en TODOS los caminos de salida; los mutex de instancia evitan duplicación real.
+4. **El modo API no funcionaba** → la API se aplica AL ARRANCAR (antes solo al guardar Configuración): interruptor rápido «API para OBS y móvil» en la consola Presentar, 6 endpoints con token obligatorio (401 sin él), `/api/v1/text` para fuentes de navegador de OBS, `/remote` para el móvil, y el **cliente OBS WebSocket 5.x restaurado** (autenticación SHA-256, reconexión con retroceso, acción de Trigger `obs.scene`).
+5. **La importación PPTX extraía en vez de cargar el original** → nuevo **proyector PPTX directo**: lee el archivo ORIGINAL tal cual (contenedor OPC, herencia de 4 niveles, EMUs) y lo entrega al Motor SIN convertir ni guardar nada — cada carga re-lee el original, con PowerPoint o SIN él (ya no exige PowerPoint; el COM se usa solo si existe, por fidelidad). Informe de fidelidad incluido.
+6. **Las bibliotecas exigían búsqueda para mostrar algo** → Cantos y Biblia están disponibles DIRECTAMENTE: lista completa de cantos sin tope (el tope de 200 del estudio nativo fue eliminado), árbol bíblico completo de 66 libros, búsqueda instantánea opcional (≤200 ms).
+7. **El flujo generaba PPTX para cada ocasión** → flujo Holyrics consolidado: los cantos se cargan desde la base de datos (`cancionero.fdb`) y se proyectan directamente (DB → Motor por IPC `motor.load`); una prueba automatizada verifica que proyectar un canto NO genera ningún archivo.
+
+## Qué incluye
+
+- **Núcleo nativo C++** (`FusionHP.exe`, /MT, x86 y x64): bootstrap con detección de SO/arquitectura/.NET (perfiles A/B/C), salida borderless sin parpadeo (Direct2D con fallback GDI+ de doble buffer), sincronización línea por línea, video DirectShow con fail-safe, pantalla de reposo (negro/logo/tema), Stage View de músicos y servidor IPC `ipc.v1` con 30+ comandos.
+- **Estudio** (`FusionStudio.exe`, .NET Framework 4.8): modos Inicio/Estudio/Presentación, biblioteca directa de Cantos y Biblia, programa con sub-líneas clicables, previsualización con el mismo modelo de render que la salida, editor WPF con lienzo estilo PowerPoint, herencia de estilos de 4 niveles (Tema → Plantilla → Escenario → Elemento) aplicable en caliente, mando móvil, clasificador e historial de uso.
+- **Variante Lite** (`FusionStudio.Lite.exe`, .NET 3.5 SP1): perfil B con motor Live completo, importadores/exportadores y API.
+- **Perfil C**: sin .NET, el núcleo abre su estudio nativo completo (Inicio/Editor/Presentar/Mando en Win32/GDI+) y proyecta igualmente.
+- **Interoperabilidad**: Biblias **Zefania XML**, **e-Sword .bib/.bblx 9+** (descifrado Twofish), **JSON** y **TSV**; cantos de himnario JSON y respaldo de Holyrics; **PPTX original tal cual** (COM o nativo) e importación a Escenarios; exportación **PPTX (ISO/IEC-29500)**, **PDF** e **imágenes PNG 1080p**.
+- **Automatización**: API HTTP local con token (state · next/prev · goto · text · bible · message), Triggers (etiqueta `lento` → tema `calma`, `obs.scene` → escena de OBS), OBS WebSocket 5.x, control remoto móvil `/remote` emparejado por IP+token.
+- **Diagnóstico**: Ayuda → Estado del sistema con autotest, log estructurado rotativo y mensajes de error en lenguaje humano con «Copiar detalles técnicos».
 
 ## Instalación
 
-1. Ejecuta el instalador y sigue el asistente (elige carpeta; sin permisos de administrador si instalas en tu perfil).
-2. El instalador instala los binarios correspondientes a tu arquitectura (x86/x64) y detecta .NET automáticamente.
-3. (Opcional) Importa una Biblia desde Medios → «Importar Biblia» (Zefania XML recomendado).
+1. Ejecuta el instalador: instala el binario correspondiente a tu arquitectura (x86/x64) y detecta .NET; sin permisos de administrador si instalas en tu perfil.
+2. Modo **portable**: descomprime el ZIP y ejecuta `FusionHP.exe`; todos los datos quedan en la carpeta `datos` junto al programa.
+3. Primer arranque: Cantos y Biblia ya están disponibles (RV1960, NVI, RVG, RVR1909 empaquetadas).
 
-## Modo portable
+## Verificación (criterios de aceptación 12.3)
 
-Descomprime el ZIP y ejecuta `FusionHP.exe`; todos los datos quedan en la carpeta `datos` junto al programa.
+- F0/F6: arranque dual x86/x64 con detección automática; perfil C sin .NET proyecta texto/imágenes/video.
+- F1: transición ≤ 16 ms sin frame negro (ventanas persistentes + doble buffer); cambio de línea ≤ 1 frame.
+- F4: PPTX con herencia de 4 niveles y EMUs se proyecta/importa con informe de fidelidad; `.pptm` sin ejecutar macros; RV1960 con búsqueda ≤ 200 ms.
+- F5: los 6 endpoints responden con token y rechazan `401` sin él (prueba automatizada); Trigger `obs.scene` documentado y probado por contrato.
+- Tests: núcleo 113 comprobaciones + capa C# (net48 y net35) en el arnés propio; gate de calidad `quality_gate.sh` en cada commit; CI x86+x64.
 
 ## Limitaciones conocidas
 
-- Los módulos e-Sword con **cifrado completo de archivo** (comprados/protegidos) no pueden leerse directamente: el programa lo informa y sugiere la edición Zefania equivalente.
-- Los **.pptm** se importan sin ejecutar macros; las animaciones y transiciones de PowerPoint no se importan (MVP).
-- La exportación a video MP4 y la coautoría en la nube están fuera del alcance del MVP.
-- La salida NDI queda para una fase posterior; la integración de transmisión se realiza vía OBS WebSocket.
+- Los módulos e-Sword con cifrado completo de archivo (comprados/protegidos) no pueden leerse: se informa y sugiere la edición Zefania equivalente.
+- Los `.pptm` se proyectan/importan sin ejecutar macros; animaciones y transiciones de PowerPoint no se importan (MVP).
+- Exportación a video MP4, coautoría en nube y salida NDI quedan para fases posteriores.
 
 ## Referencia normativa
 

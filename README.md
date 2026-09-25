@@ -4,6 +4,20 @@
 
 > Fuente normativa: [`spec/Aplicacion_Hibrida_TechnicalDoc_v1.1_2026-09-23.md`](spec/Aplicacion_Hibrida_TechnicalDoc_v1.1_2026-09-23.md) · Contrato de trabajo: [`AGENT.md`](AGENT.md)
 
+## v3.0.0 — Reestructuración: los 7 bugs del prototipo, resueltos
+
+| # | Defecto reportado | Resolución |
+|---|---|---|
+| 1 | El cargador de Escenarios no muestra nombres | Cargador dedicado: recientes con **nombre**, N escenarios y **títulos visibles** antes de abrir (`ProjectOpenForm` + `AhpProjectInfo`) |
+| 2 | La ventana de proyección no respetaba la pantalla | El monitor elegido **viaja al núcleo** (IPC `monitor`) y la salida borderless se posiciona donde manda el operador |
+| 3 | Cerrar con la X duplicaba la ventana | `WM_CLOSE`/`WM_DESTROY` correctos + sesión del Motor persistida en toda salida; sin procesos zombi ni duplicación |
+| 4 | El modo API no funciona | La API se aplica **al arrancar**, interruptor rápido en consola, 6 endpoints con token y **OBS WebSocket 5.x restaurado** (`obs.scene` en Triggers) |
+| 5 | La importación PPTX extrae en vez de cargar el original | **Proyector PPTX directo**: lee el ORIGINAL tal cual y lo entrega al Motor, sin convertir ni guardar — con o sin PowerPoint |
+| 6 | Bibliotecas (Cantos y Biblia) requieren búsqueda | **Lista directa completa** de cantos (sin tope 200) y árbol bíblico de 66 libros, siempre visibles |
+| 7 | El flujo genera PPTX para cada ocasión | Flujo Holyrics: cantos desde la BD **directo al Motor**; prueba automatizada garantiza **0 archivos** generados al proyectar |
+
+Detalle técnico completo: [`docs/agent/REESTRUCTURACION_v3.md`](docs/agent/REESTRUCTURACION_v3.md).
+
 ## Características
 
 | Área | Qué hace |
