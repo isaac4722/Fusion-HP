@@ -56,7 +56,7 @@ namespace Fusion.Studio.Ui
                 }
             }, 0);
 
-            AddTile("Cargar PPTX original", "Proyecta el archivo tal cual (PowerPoint)", "movie", delegate
+            AddTile("Cargar PPTX original", "Proyecta el archivo tal cual (COM o nativo)", "movie", delegate
             {
                 ImportPptxAsIs();
             }, 1);
@@ -166,10 +166,12 @@ namespace Fusion.Studio.Ui
         }
 #endif
 
-        // ------------------------------------------------------------ PPTX (correcciones clave)
-        /// <summary>Carga el PPTX ORIGINAL y lo proyecta tal cual vía PowerPoint (sin extraer
-        /// ni convertir) — corrección del prototipo [PPT]. Si PowerPoint no está instalado,
-        /// informa con lenguaje humano y ofrece la importación a Escenarios.</summary>
+        // ------------------------------------------------------------ PPTX (v3.0.0)
+        /// <summary>Carga el PPTX ORIGINAL y lo proyecta tal cual. Cadena de
+        /// fidelidad: (1) PowerPoint vía COM si está instalado; (2) proyección
+        /// NATIVA leyendo el archivo original (System.IO.Packaging → Motor), sin
+        /// convertir ni guardar nada — ya NO exige PowerPoint [bug del prototipo:
+        /// «extrae en vez de cargar el original»].</summary>
         void ImportPptxAsIs()
         {
             using (var d = new OpenFileDialog())
@@ -183,21 +185,42 @@ namespace Fusion.Studio.Ui
                     {
                         loader.PresentOriginal(d.FileName, Settings.PublicMonitor);
                         SetMode(Mode.Present);
+                        return;
                     }
                     catch (Exception ex)
                     {
                         MessageBox.Show(this,
-                            "PowerPoint no pudo abrir la presentación.\n\nQué puedes hacer: verifica que el archivo " +
-                            "se abra en PowerPoint, o usa «Importar PPTX a Escenarios».\n\n" + ex.Message,
+                            "PowerPoint no pudo abrir la presentación (" + ex.Message + ").\n\n" +
+                            "Se intentará con el proyector nativo de Fusion HP, que lee el archivo original.",
                             "Fusion HP", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     }
                 }
-                else
+                // Vía nativa: el ORIGINAL tal cual, sin PowerPoint.
+                if (string.Equals(Path.GetExtension(d.FileName), ".ppt", StringComparison.OrdinalIgnoreCase))
                 {
                     MessageBox.Show(this,
-                        "Para proyectar el PPTX original se necesita PowerPoint instalado en este equipo.\n\n" +
-                        "Alternativa: usa «Importar PPTX a Escenarios», que convierte el contenido al modelo de " +
-                        "Fusion HP sin depender de PowerPoint.",
+                        "El formato .ppt (binario antiguo) requiere PowerPoint instalado para proyectarse.\n\n" +
+                        "Qué puedes hacer: guárdalo como .pptx desde PowerPoint, o instala PowerPoint y vuelve a intentarlo.",
+                        "Fusion HP", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+                try
+                {
+                    var rep = PptxDirectProjector.ProjectOriginal(d.FileName, Live);
+                    RefreshLibrary();
+                    RefreshProgram();
+                    SetMode(Mode.Present);
+                    string msg = "PPTX original en vivo: " + rep.Slides + " diapositiva(s).";
+                    if (rep.Warnings.Count > 0) msg += "\n\nInforme de fidelidad:";
+                    foreach (var w in rep.Warnings) msg += "\n• " + w;
+                    MessageBox.Show(this, msg, "Fusion HP — PPTX original",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(this,
+                        "No se pudo proyectar el archivo PPTX.\n\nQué puedes hacer: verifica que el archivo " +
+                        "no esté dañado y que sea un .pptx/.pptm válido, o usa «Importar PPTX a Escenarios».\n\n" + ex.Message,
                         "Fusion HP", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
             }

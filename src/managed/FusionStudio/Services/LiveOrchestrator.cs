@@ -41,6 +41,11 @@ namespace Fusion.Studio.Services
         public readonly Shared.Bible.BibleStore Bibles;
         readonly List<string> highlight = new List<string>();   // capa activa en el Motor
 
+        // [v3.0.0] Proyección externa «tal cual» (PPTX original): el programa en
+        // vivo proviene del archivo fuente, no de un proyecto ahp del usuario.
+        public string ExternalSource;        // ruta del archivo original en vivo
+        public string ExternalBaseDir;       // base para resolver media/ (caché)
+
         /// <summary>Notifica a la UI cambios de selección/estado (hilo UI via Marshal).</summary>
         public event Action StateChanged;
         /// <summary>Evento del núcleo (advertencias, estado).</summary>
@@ -360,6 +365,8 @@ namespace Fusion.Studio.Services
             if (Project == null) return;
             Json.WriteFile(path, Project.ToJson());
             Project.SourcePath = path;
+            ExternalSource = null;              // dejar de ser proyección externa
+            ExternalBaseDir = null;
             Settings.LastProjectPath = path;
             Settings.Save();
         }
@@ -370,6 +377,8 @@ namespace Fusion.Studio.Services
             {
                 Project = AhpProject.FromJson(Json.ParseFile(path));
                 Project.SourcePath = path;
+                ExternalSource = null;          // un .ahp del usuario reemplaza lo externo
+                ExternalBaseDir = null;
                 Settings.LastProjectPath = path;
                 Settings.Save();
                 // El Motor recibe el programa completo; el reposo manda hasta que
@@ -390,6 +399,30 @@ namespace Fusion.Studio.Services
                     "Fusion HP", System.Windows.Forms.MessageBoxButtons.OK, System.Windows.Forms.MessageBoxIcon.Information);
                 return false;
             }
+        }
+
+        // ---------------------------------------------------------------- externo tal cual (v3.0.0)
+        /// <summary>Proyecta un contenedor EN MEMORIA (p. ej. el PPTX original leído
+        /// tal cual por PptxDirectProjector). Nada se guarda; el Motor recibe el
+        /// programa resuelto y la GUI opera sobre él hasta que el operador cargue
+        /// otra cosa. baseDir resuelve los media/ de la caché técnica.</summary>
+        public void ProjectExternal(AhpProject external, string sourcePath, string baseDir)
+        {
+            Project = external;
+            Project.SourcePath = Path.Combine(baseDir, "proyeccion-viva.ahp");  // solo para resolver media/
+            ExternalSource = sourcePath;
+            ExternalBaseDir = baseDir;
+            Settings.LastProjectPath = null;    // no es un proyecto ahp del usuario
+            Settings.Save();
+            int scn = Project.Scenarios.Count > 0 ? 0 : -1;
+            int el = scn >= 0 && Project.Scenarios[0].Elements.Count > 0 ? 0 : -1;
+            State.ScenarioIndex = scn;
+            State.ElementIndex = el;
+            State.LineIndex = 0;
+            SendProgram(scn, el, 0);
+            Blank("none");                      // cargar = proyectar (flujo Holyrics)
+            RefreshCurrentLocal();
+            FireStateChanged();
         }
 
         void FireStateChanged()

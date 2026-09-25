@@ -29,14 +29,17 @@ namespace Fusion.Studio.Import
     {
         const double EmuPerInch = 914400.0;
 
-        public PptxImportReport Import(string path, AhpProject project)
+        /// <summary>Importa un PPTX a Escenarios. mediaOutDir permite redirigir la
+        /// extracción de medios (v3.0.0: la proyección directa usa una caché propia
+        /// para no tocar el proyecto del usuario).</summary>
+        public PptxImportReport Import(string path, AhpProject project, string mediaOutDir = null)
         {
             var rep = new PptxImportReport();
             // Los medios extraídos viven junto al proyecto en media/ [SPEC §5.3a]
             string baseDir = !string.IsNullOrEmpty(project.SourcePath)
                 ? Path.GetDirectoryName(project.SourcePath)
                 : Path.Combine(Path.GetDirectoryName(path), "proyecto-fusion");
-            rep.MediaOutDir = Path.Combine(baseDir, "media");
+            rep.MediaOutDir = mediaOutDir ?? Path.Combine(baseDir, "media");
             if (string.Equals(Path.GetExtension(path), ".pptm", StringComparison.OrdinalIgnoreCase))
                 rep.Warnings.Add("El archivo contiene macros: se importan SIN ejecutarlas [SPEC §9.2.4].");
 
