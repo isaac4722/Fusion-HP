@@ -97,9 +97,15 @@ static void TestSlideState()
 static void TestNativeSession()
 {
     NativeSession session;
-    // fixtures/ junto al ejecutable
+    // fixtures/ junto al ejecutable (robusto ante cualquier CWD)
     std::wstring path = L"fixtures\\sesion.ahp";
     if (!std::filesystem::exists(path)) path = L"fixtures/sesion.ahp";
+    if (!std::filesystem::exists(path)) {
+        wchar_t self[MAX_PATH];
+        GetModuleFileNameW(nullptr, self, MAX_PATH);
+        std::filesystem::path base = std::filesystem::path(self).parent_path();
+        path = (base / L"fixtures" / L"sesion.ahp").wstring();
+    }
     bool ok = session.Load(path);
     CHECK(ok, "NativeSession: carga ahp.v1 (" + session.LastError() + ")");
     if (ok)

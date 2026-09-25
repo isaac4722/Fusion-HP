@@ -53,7 +53,7 @@ namespace Fusion.Studio.Export
 
                 // -------- _rels/.rels
                 AddPart(pkg, new Uri("/_rels/.rels", UriKind.Relative), "application/vnd.openxmlformats-package.relationships+xml",
-                        RelsXml(new[] { Tuple.Create("rId1", "officeDocument", "ppt/presentation.xml") }));
+                        RelsXml(new[] { new RelEntry("rId1", "officeDocument", "ppt/presentation.xml") }));
 
                 // -------- ppt/presentation.xml
                 var slideFiles = new List<string>();
@@ -119,14 +119,14 @@ namespace Fusion.Studio.Export
                 AddPart(pkg, new Uri("/ppt/slideMasters/_rels/slideMaster1.xml.rels", UriKind.Relative),
                         "application/vnd.openxmlformats-package.relationships+xml",
                         RelsXml(new[] {
-                            Tuple.Create("rId1", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme", "../theme/theme1.xml"),
-                            Tuple.Create("rId2", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout", "../slideLayouts/slideLayout1.xml")
+                            new RelEntry("rId1", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme", "../theme/theme1.xml"),
+                            new RelEntry("rId2", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout", "../slideLayouts/slideLayout1.xml")
                         }));
                 AddPart(pkg, new Uri("/ppt/slideLayouts/slideLayout1.xml", UriKind.Relative),
                         "application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml", LayoutXml());
                 AddPart(pkg, new Uri("/ppt/slideLayouts/_rels/slideLayout1.xml.rels", UriKind.Relative),
                         "application/vnd.openxmlformats-package.relationships+xml",
-                        RelsXml(new[] { Tuple.Create("rId1", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster", "../slideMasters/slideMaster1.xml") }));
+                        RelsXml(new[] { new RelEntry("rId1", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster", "../slideMasters/slideMaster1.xml") }));
                 AddPart(pkg, new Uri("/ppt/theme/theme1.xml", UriKind.Relative),
                         "application/vnd.openxmlformats-officedocument.theme+xml", ThemeXml(project));
                 rep.Slides = slideFiles.Count;
@@ -273,10 +273,16 @@ namespace Fusion.Studio.Export
             return "<Relationship Id=\"" + id + "\" Type=\"" + type + "\" Target=\"" + target + "\"/>";
         }
 
-        static string RelsXml(Tuple<string, string, string>[] rels)
+        private class RelEntry
+        {
+            public string Id, Type, Target;
+            public RelEntry(string id, string type, string target) { Id = id; Type = type; Target = target; }
+        }
+
+        static string RelsXml(RelEntry[] rels)
         {
             var sb = new StringBuilder();
-            foreach (var r in rels) sb.Append(Rel(r.Item1, r.Item2, r.Item3));
+            foreach (var r in rels) sb.Append(Rel(r.Id, r.Type, r.Target));
             return RelsXmlRaw(sb.ToString());
         }
 

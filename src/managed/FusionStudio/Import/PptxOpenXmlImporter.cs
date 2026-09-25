@@ -140,7 +140,7 @@ namespace Fusion.Studio.Import
                     Id = "el-" + Guid.NewGuid().ToString("N").Substring(0, 10),
                     Kind = ElementKind.Text,
                     Lines = txt,
-                    X = geom.Item1, Y = geom.Item2, W = geom.Item3, H = geom.Item4
+                    X = geom.X, Y = geom.Y, W = geom.W, H = geom.H
                 };
                 ApplyRunStyle(sp, el, pkg);
                 scn.Elements.Add(el);
@@ -180,7 +180,7 @@ namespace Fusion.Studio.Import
                             Id = "el-" + Guid.NewGuid().ToString("N").Substring(0, 10),
                             Kind = ElementKind.Image,
                             Src = "media/" + outName,
-                            X = geom2.Item1, Y = geom2.Item2, W = geom2.Item3, H = geom2.Item4
+                            X = geom2.X, Y = geom2.Y, W = geom2.W, H = geom2.H
                         });
                         hasContent = true;
                     }
@@ -225,7 +225,13 @@ namespace Fusion.Studio.Import
             return lines;
         }
 
-        static Tuple<double, double, double, double> ShapeGeom(XmlNode shape, double presW, double presH)
+        /// <summary>Geometría normalizada (fracciones). Struct propio: Tuple no existe en net35.</summary>
+        private class Geom
+        {
+            public double X, Y, W, H;
+        }
+
+        static Geom ShapeGeom(XmlNode shape, double presW, double presH)
         {
             var off = shape.SelectSingleNode(".//*[local-name()='off']");
             var ext = shape.SelectSingleNode(".//*[local-name()='ext']");
@@ -240,7 +246,7 @@ namespace Fusion.Studio.Import
             // normalizar a rango válido
             x = Math.Max(0, Math.Min(0.95, x)); y = Math.Max(0, Math.Min(0.95, y));
             w = Math.Max(0.05, Math.Min(1 - x, w)); h = Math.Max(0.05, Math.Min(1 - y, h));
-            return new Tuple<double, double, double, double>(x, y, w, h);
+            return new Geom { X = x, Y = y, W = w, H = h };
         }
 
         static void ApplyRunStyle(XmlNode sp, Element el, Package pkg)
