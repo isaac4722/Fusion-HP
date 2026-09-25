@@ -260,9 +260,9 @@ static void TestMotorBody()
     std::string progSrc =
         std::string(R"([{"id":"s1","title":"Adoración","elements":[)") +
         R"({"id":"e1","title":"Himno v1","kind":"text","slide":)" + e1.dump() + "}," +
-        R"({"id":"e2","title":"Himno v2","kind":"text","slide":)" + e2.dump() + "]}," +
+        R"({"id":"e2","title":"Himno v2","kind":"text","slide":)" + e2.dump() + "}]}," +
         R"({"id":"s2","title":"Avisos","elements":[)" +
-        R"({"id":"e3","title":"Anuncio","kind":"lower3","slide":)" + e3.dump() + "}]}])";
+        R"({"id":"e3","title":"Anuncio","kind":"lower3","slide":)" + e3.dump() + "}]}]";
     Json prog = Json::parse(progSrc);
 
     Motor m;
