@@ -796,7 +796,7 @@ void Renderer::RenderStageEx(const Slide& s, const StageInfo& info) {
             Gdiplus::SolidBrush tag(StageColor(0xFF42474D));
             Gdiplus::StringFormat sfL;
             sfL.SetAlignment(Gdiplus::StringAlignmentNear);
-            g.DrawString(L"SIGUIENTE", Gdiplus::StringLength, &fNext,
+            g.DrawString(L"SIGUIENTE", -1, &fNext,
                          Gdiplus::PointF(Px(24), (Gdiplus::REAL)h - Px(64)), &tag);
             Gdiplus::Font fNext2(L"Segoe UI", Px(24), Gdiplus::FontStyleBold);
             g.DrawString(info.nextFirst.c_str(), -1, &fNext2,
