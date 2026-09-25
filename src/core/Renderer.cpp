@@ -221,10 +221,10 @@ void Renderer::PresentBlendGdip(Gdiplus::Bitmap* prev, Gdiplus::Bitmap* next,
     Graphics g(&frame);
     g.SetInterpolationMode(InterpolationModeHighQualityBicubic);
     ImageAttributes ia;
-    ColorMatrix cmPrev = { {1,0,0,0,0}, {0,1,0,0,0}, {0,0,1,0,0},
-                           {0,0,0,(REAL)(1.0 - a),0}, {0,0,0,0,1} };
-    ColorMatrix cmNext = { {1,0,0,0,0}, {0,1,0,0,0}, {0,0,1,0,0},
-                           {0,0,0,(REAL)a,0}, {0,0,0,0,1} };
+    ColorMatrix cmPrev = { { {1,0,0,0,0}, {0,1,0,0,0}, {0,0,1,0,0},
+                             {0,0,0,(REAL)(1.0 - a),0}, {0,0,0,0,1} } };
+    ColorMatrix cmNext = { { {1,0,0,0,0}, {0,1,0,0,0}, {0,0,1,0,0},
+                             {0,0,0,(REAL)a,0}, {0,0,0,0,1} } };
     if (slideIn) {
         ia.SetColorMatrix(&cmPrev);
         g.DrawImage(prev, Rect(-(int)(a * w), 0, w, h), 0, 0, w, h, UnitPixel, &ia);

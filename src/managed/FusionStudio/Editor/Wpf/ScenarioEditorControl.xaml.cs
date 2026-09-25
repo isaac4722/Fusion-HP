@@ -74,9 +74,9 @@ namespace Fusion.Studio.Editor.Wpf
             try
             {
                 string dir = white ? "white20" : "ink20";
-                string path = Path.Combine(Path.Combine(Path.Combine(
+                string path = System.IO.Path.Combine(System.IO.Path.Combine(System.IO.Path.Combine(
                     AppDomain.CurrentDomain.BaseDirectory, "resources"), "img"), "icons");
-                path = Path.Combine(Path.Combine(path, dir), name + ".png");
+                path = System.IO.Path.Combine(System.IO.Path.Combine(path, dir), name + ".png");
                 if (!File.Exists(path)) return null;
                 var img = new System.Windows.Controls.Image
                 {
@@ -579,7 +579,7 @@ namespace Fusion.Studio.Editor.Wpf
                     string title = el.Lines.Count > 0 ? el.Lines[0] :
                                    el.Kind == ElementKind.Verse ? (el.Reference ?? "Versículo") :
                                    el.Kind == ElementKind.LowerThird ? (el.OverlayText ?? "zócalo") :
-                                   !string.IsNullOrEmpty(el.Src) ? Path.GetFileName(el.Src) : "Texto";
+                                   !string.IsNullOrEmpty(el.Src) ? System.IO.Path.GetFileName(el.Src) : "Texto";
                     lstElements.Items.Add(new ElementStripItem
                     {
                         Index = (i + 1).ToString(),

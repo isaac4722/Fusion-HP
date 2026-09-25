@@ -153,16 +153,16 @@ namespace Fusion.Studio.Ui
                             // Resaltado [SPEC §5.2 #2]: coincidencias en color de acento
                             var segs = Highlight.Split(slide.Lines[i], slide.HighlightWords);
                             var near = new StringFormat { Alignment = StringAlignment.Near, LineAlignment = StringAlignment.Center };
-                            float total = 0;
+                            float totalW = 0;
                             var widths = new float[segs.Count];
                             for (int k = 0; k < segs.Count; k++)
                             {
                                 widths[k] = g.MeasureString(segs[k].Text, f).Width;
-                                total += widths[k];
+                                totalW += widths[k];
                             }
                             float x0 = (st.Align ?? 1) == 0 ? box.X :
-                                       (st.Align ?? 1) == 2 ? box.X + box.Width - total :
-                                       box.X + (box.Width - total) / 2;
+                                       (st.Align ?? 1) == 2 ? box.X + box.Width - totalW :
+                                       box.X + (box.Width - totalW) / 2;
                             if (st.Shadow ?? true)
                                 using (var sb = new SolidBrush(Color.FromArgb(215, Color.Black)))
                                 {
@@ -217,7 +217,7 @@ namespace Fusion.Studio.Ui
                     g.FillRectangle(b, 0, H - bandH, W, bandH);
                 using (var b = new SolidBrush(Parse(slide.Style.ActiveColor ?? "#FFD700")))
                     g.FillRectangle(b, 0, H - bandH, W, 3);
-                using (var f = FontVault.Create(st.Font ?? "Segoe UI", bandH * 0.36f, FontStyle.Bold))
+                using (var f = FontVault.Create(slide.Style.Font ?? "Segoe UI", bandH * 0.36f, FontStyle.Bold))
                 using (var b = new SolidBrush(Color.White))
                 {
                     var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };

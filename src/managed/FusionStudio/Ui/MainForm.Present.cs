@@ -138,7 +138,7 @@ namespace Fusion.Studio.Ui
             txtHighlight = new TextBox { Location = new Point(10, y), Size = new Size(196, 24),
                                          Font = UiTheme.Normal(), BorderStyle = BorderStyle.FixedSingle };
             ToolTip tipHl = new ToolTip();
-            tipHl.SetToolTip(txtHl, "Palabras separadas por espacio. Enter aplica, vacío limpia. Ej.: Dios amor");
+            tipHl.SetToolTip(txtHighlight, "Palabras separadas por espacio. Enter aplica, vacío limpia. Ej.: Dios amor");
             txtHighlight.KeyDown += delegate(object s, KeyEventArgs e)
             {
                 if (e.KeyCode == Keys.Enter) { ApplyHighlight(); e.SuppressKeyPress = true; }
