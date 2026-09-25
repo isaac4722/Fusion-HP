@@ -5,7 +5,7 @@
 //  UX igual o superior a la referencia H-P-Web-Version-Ref (PowerStudio):
 //  biblioteca directa sin búsqueda obligatoria, lista de programa con
 //  miniaturas y sub-líneas, atajos Holyrics (flechas/Espacio/Esc/B/C/L/G/F5).
-//  v2.2: chrome modelado (FusionButton/FusionIconButton con iconos Tabler)
+//  v2.2: controles nativos modelados (FusionButton/FusionIconButton con iconos Tabler)
 //  y MOTOR como dueño del estado: cerrar la GUI NO apaga la proyección.
 // ============================================================================
 using System;
@@ -13,11 +13,11 @@ using System.Drawing;
 using System.Windows.Forms;
 using Fusion.Shared;
 using Fusion.Studio.Services;
-using Fusion.Studio.Ui.Chrome;
+using Fusion.Studio.Ui.Widgets;
 
 namespace Fusion.Studio.Ui
 {
-    /// <summary>Tokens del chrome (idénticos a la referencia web Fluent claro).</summary>
+    /// <summary>Tokens visuales (idénticos a la referencia web Fluent claro).</summary>
     public static class UiTheme
     {
         public static readonly Color Accent = ColorTranslator.FromHtml("#C43E1C");
@@ -35,13 +35,40 @@ namespace Fusion.Studio.Ui
         public static readonly Color TextDim = ColorTranslator.FromHtml("#605E5C");
         public static readonly Color LiveRed = ColorTranslator.FromHtml("#D13438");
 
-        public static Font Normal() { return new Font("Segoe UI", 9f); }
-        public static Font NormalBold() { return new Font("Segoe UI", 9f, FontStyle.Bold); }
-        public static Font Small() { return new Font("Segoe UI", 8.25f); }
-        public static Font SmallBold() { return new Font("Segoe UI", 8.25f, FontStyle.Bold); }
-        public static Font Title() { return new Font("Segoe UI", 14f, FontStyle.Bold); }
-        public static Font Big() { return new Font("Segoe UI", 12f, FontStyle.Bold); }
-        public static Font Kbd() { return new Font("Segoe UI", 7.5f); }
+        // Fuentes COMPARTIDAS de por vida del proceso (v2.2.1): los métodos se
+        // llaman desde caminos de pintado (DrawItem/OnPaint/MeasureText) y desde
+        // refrescos repetidos de listas — crear una Font por llamada fugaba
+        // handles GDI sin liberación (ExternalException tras uso prolongado).
+        // WinForms NO dispone el Font de un control al disponer el control:
+        // compartir instancias es seguro. Nadie debe envolverlas en using.
+        static readonly Font fontNormal = new Font("Segoe UI", 9f);
+        static readonly Font fontNormalBold = new Font("Segoe UI", 9f, FontStyle.Bold);
+        static readonly Font fontSmall = new Font("Segoe UI", 8.25f);
+        static readonly Font fontSmallBold = new Font("Segoe UI", 8.25f, FontStyle.Bold);
+        static readonly Font fontTitle = new Font("Segoe UI", 14f, FontStyle.Bold);
+        static readonly Font fontBig = new Font("Segoe UI", 12f, FontStyle.Bold);
+        static readonly Font fontKbd = new Font("Segoe UI", 7.5f);
+
+        public static Font Normal() { return fontNormal; }
+        public static Font NormalBold() { return fontNormalBold; }
+        public static Font Small() { return fontSmall; }
+        public static Font SmallBold() { return fontSmallBold; }
+        public static Font Title() { return fontTitle; }
+        public static Font Big() { return fontBig; }
+        public static Font Kbd() { return fontKbd; }
+
+        /// <summary>Retira y dispone los hijos de un contenedor (v2.2.1).
+        /// Controls.Clear() solo desacopla: los labels recreados en cada
+        /// navegación fugaban handles de ventana. Dispose los libera de verdad.</summary>
+        public static void DisposeChildren(Control host)
+        {
+            if (host == null || host.Controls == null || host.Controls.Count == 0) return;
+            Control[] old = new Control[host.Controls.Count];
+            host.Controls.CopyTo(old, 0);
+            host.Controls.Clear();
+            foreach (Control c in old)
+                try { c.Dispose(); } catch { }
+        }
     }
 
     public partial class MainForm : Form

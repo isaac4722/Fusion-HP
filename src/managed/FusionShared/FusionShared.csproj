@@ -7,7 +7,7 @@
     <AssemblyName>FusionShared</AssemblyName>
     <AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
-    <Version>2.2.0</Version>
+    <Version>2.2.1</Version>
     <AssemblyTitle>Fusion Shared</AssemblyTitle>
     <Product>Fusion HP</Product>
     <!-- net35: compilable con SDK moderno vía ensamblados de referencia [SPEC §3.5] -->

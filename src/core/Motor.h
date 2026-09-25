@@ -2,7 +2,7 @@
 //  Fusion-HP · Motor.h — EL MOTOR DEL PROGRAMA (v2.2, linaje beta 1)
 //  El núcleo nativo es el protagonista: es dueño del estado vivo (programa
 //  cargado, índices de escenario/elemento/línea, modo de pantalla, resaltado)
-//  y lo persiste. La GUI (chrome de la versión web) es una vista/controlador
+//  y lo persiste. La GUI (controles nativos que replican la versión web) es una vista/controlador
 //  desechable: si se cierra, el Motor SIGUE PROYECTANDO el último programa y
 //  admite control por teclado sobre la salida — el programa nunca se cae por
 //  cerrar la ventana del operador.

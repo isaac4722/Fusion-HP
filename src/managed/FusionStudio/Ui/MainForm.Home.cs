@@ -92,8 +92,8 @@ namespace Fusion.Studio.Ui
                     e.Graphics.DrawRectangle(pen, 0, 0, tile.Width - 1, tile.Height - 1);
                 using (var b = new SolidBrush(UiTheme.Accent))
                     e.Graphics.FillRectangle(b, 0, 0, 4, tile.Height);
-                Fusion.Studio.Ui.Chrome.UiIcons.Draw(e.Graphics,
-                    Fusion.Studio.Ui.Chrome.UiIcons.Get32(icon), 18, 14);
+                Fusion.Studio.Ui.Widgets.UiIcons.Draw(e.Graphics,
+                    Fusion.Studio.Ui.Widgets.UiIcons.Get32(icon), 18, 14);
             };
             var t = new Label { Text = title, Font = UiTheme.NormalBold(), ForeColor = UiTheme.Text,
                                 Location = new Point(60, 14), AutoSize = true };

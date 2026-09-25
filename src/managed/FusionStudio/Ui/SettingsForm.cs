@@ -7,7 +7,7 @@ using System;
 using System.Drawing;
 using System.Windows.Forms;
 using Fusion.Shared;
-using Fusion.Studio.Ui.Chrome;
+using Fusion.Studio.Ui.Widgets;
 
 namespace Fusion.Studio.Ui
 {

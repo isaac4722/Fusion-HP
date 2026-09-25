@@ -1,5 +1,5 @@
 // ============================================================================
-//  Fusion-HP · Ui/Chrome/FusionInput.cs — campo de texto MODELADO (v2.2).
+//  Fusion-HP · Ui/Widgets/FusionInput.cs — campo de texto MODELADO (v2.2).
 //  Borde 1 px #C8C6C4, esquinas 5 px, fondo blanco, foco terracota (análogo
 //  .ppt-input). Variantes: FusionInput (campo) y FusionSearchBox (con lupa y
 //  placeholder tipo cue banner nativo). El TextBox interno sin borde se
@@ -11,7 +11,7 @@ using System.Drawing.Drawing2D;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
-namespace Fusion.Studio.Ui.Chrome
+namespace Fusion.Studio.Ui.Widgets
 {
     public class FusionInput : Control
     {
@@ -111,19 +111,27 @@ namespace Fusion.Studio.Ui.Chrome
         /// <summary>Icono Tabler a la izquierda (por defecto la lupa).</summary>
         public string LeftIcon = "search";
 
+        string cue;
+
         public FusionSearchBox()
         {
             inner.Width = Math.Max(0, Width - 34);
+            // v2.2.1: el cue banner se pierde cuando WinForms recrea el handle
+            // (reparentado/dpi) — se reaplica en cada HandleCreated.
+            inner.HandleCreated += delegate { ApplyCue(); };
             Placeholder = "Buscar";
         }
 
         public string Placeholder
         {
-            set
-            {
-                try { SendMessage(inner.Handle, EM_SETCUEBANNER, (IntPtr)1, value ?? ""); }
-                catch { }
-            }
+            set { cue = value; ApplyCue(); }
+        }
+
+        void ApplyCue()
+        {
+            if (!inner.IsHandleCreated) return;   // pendiente para HandleCreated
+            try { SendMessage(inner.Handle, EM_SETCUEBANNER, (IntPtr)1, cue ?? ""); }
+            catch { }
         }
 
         protected override void OnResize(EventArgs e)

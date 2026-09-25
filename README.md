@@ -10,7 +10,7 @@
 |---|---|
 | **Motor (v2.2)** | El **núcleo nativo es el dueño del estado vivo**: carga el programa completo, secuencía líneas/elementos, pantallas y resaltado, y lo **persiste** (`motor/sesion.json`) — cerrar la GUI **no tira la proyección**: el Motor queda autónomo con teclado sobre la salida (Espacio/flechas avanzan · B/C/L pantallas · Esc negro · Alt+F4 apaga) y al reabrir la GUI todo se sincroniza |
 | **Modo Presentación** | Arranque directo, salida borderless sin parpadeo (Direct2D/GDI+), sincronización **línea por línea**, pantalla de reposo (negro/logo/tema), atajos Holyrics (flechas · Espacio · Esc/B/L · G búsqueda bíblica · F5) |
-| **GUI web modelada (v2.2)** | Chrome propio de la referencia web: botones tipo chip con estados hover/pressed/foco, botones de icono con estado activo, pestañas y buscadores modelados, **62 iconos Tabler** en 4 tintas y logo Lumina en la barra |
+| **GUI nativa modelada (v2.2)** | Controles **100 % nativos C#/GDI+** que replican el diseño de la referencia web (sin navegador ni motor web): botones tipo chip con estados hover/pressed/foco, botones de icono con estado activo, pestañas y buscadores modelados, **62 iconos Tabler** en 4 tintas y logo Lumina en la barra |
 | **Modo Creación** | Editor de escenarios WPF con lienzo 16:9 arrastrable, edición directa de texto y **herencia de estilos de 4 niveles** (Tema → Plantilla → Escenario → Elemento) aplicable en caliente |
 | **Biblioteca directa** | Cantos y Biblia disponibles sin buscar (paneles fijos); búsqueda instantánea opcional por cita o palabra (≤200 ms) |
 | **Biblias** | Importa **Zefania XML**, **e-Sword .bib/.bblx 9+** (descifrado Twofish de columnas), **JSON** y TSV; modelo bíblico unificado con índice en disco |
@@ -60,6 +60,17 @@ spec/                Documento Técnico v1.1 (fuente normativa)
 ## Formato de proyecto `ahp.v1`
 
 JSON versionado (`format: "ahp.v1"`) con Escenarios → Elementos (texto con marcas de sincronización, versículo, imagen, video, lower third), temas con herencia en cascada y manifiesto `media/`. Campos nuevos siempre ignorables por versiones anteriores.
+
+## Arquitectura: dos versiones, 100 % nativas
+
+El programa se compone de **dos ejecutables nativos** que colaboran por IPC (`ipc.v1`, named pipe JSON) — **sin navegador, sin Chromium/CEF, sin WebView, sin Java, sin .NET Core**:
+
+| Ejecutable | Lenguaje | Rol |
+|---|---|---|
+| `FusionHP.exe` | **C++ puro** (Win32, `/MT`) | **MOTOR**: dueño del estado vivo, proyección Direct2D/GDI+ sin parpadeo, video DirectShow, persistencia, autonomía sin GUI, UI de emergencia |
+| `FusionStudio.exe` / `FusionStudio.Lite.exe` | **C# puro** (WinForms/WPF, .NET FW 3.5–4.8) | **GUI**: estudio, biblioteca, editor, automatización — todos los controles están modelados a mano en GDI+ replicando el diseño de la referencia web (`H-P-Web-Version-Ref`) |
+
+La **referencia web se usa únicamente como diseño a replicar** — su apariencia (chips, iconos, temas, tipografías) fue recreada con controles nativos dibujados a mano; nada del código o runtime web forma parte del programa.
 
 ## Licencia
 

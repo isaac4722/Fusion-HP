@@ -1,5 +1,5 @@
 // ============================================================================
-//  Fusion-HP · Ui/Chrome/FusionIconButton.cs — botón de SOLO icono (v2.2).
+//  Fusion-HP · Ui/Widgets/FusionIconButton.cs — botón de SOLO icono (v2.2).
 //  Réplica de .ppt-iconbtn de la referencia: 34 px, esquinas 5 px, hover
 //  #F3F2F1, y estado ACTIVO (.ppt-iconbtn-on): borde terracota + fondo
 //  #FDF3F0 + icono en tinta de acento. Tooltip integrado.
@@ -9,7 +9,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 
-namespace Fusion.Studio.Ui.Chrome
+namespace Fusion.Studio.Ui.Widgets
 {
     public class FusionIconButton : Control
     {
@@ -37,6 +37,9 @@ namespace Fusion.Studio.Ui.Chrome
             Size = new Size(34, 34);
             Cursor = Cursors.Hand;
             TabStop = false;
+            // v2.2.1: el ToolTip compartido es estático — al disponer el botón
+            // se desasocia para no retener la referencia (GC correcto).
+            Disposed += delegate { try { tips.SetToolTip(this, null); } catch { } };
         }
 
         protected override void OnMouseEnter(EventArgs e)

@@ -1,7 +1,7 @@
 // ============================================================================
 //  Fusion-HP · MainForm.Present.cs — modo Presentación [SPEC §6]:
 //  biblioteca a la izquierda (acceso directo), previsualización y programa
-//  al centro, controles en vivo a la derecha (chrome modelado v2.2: chips con
+//  al centro, controles en vivo a la derecha (controles modelados v2.2: chips con
 //  iconos, transporte tipo reproductor, estados activos .ppt-iconbtn-on).
 //  Sincronización línea por línea visible como sub-lista [SPEC §6.2].
 // ============================================================================
@@ -10,7 +10,7 @@ using System.Drawing;
 using System.Windows.Forms;
 using Fusion.Shared;
 using Fusion.Shared.Model;
-using Fusion.Studio.Ui.Chrome;
+using Fusion.Studio.Ui.Widgets;
 
 namespace Fusion.Studio.Ui
 {
@@ -347,7 +347,9 @@ namespace Fusion.Studio.Ui
         void RefreshLines()
         {
             if (linesPanel == null || linesPanel.IsDisposed) return;
-            linesPanel.Controls.Clear();
+            // v2.2.1: disponer los labels retirados — Clear() solo desacopla y
+            // cada navegación recreaba el tira de líneas (fuga de handles).
+            UiTheme.DisposeChildren(linesPanel);
             var el = Live.CurrentElement;
             if (el == null) return;
             int y = 4;

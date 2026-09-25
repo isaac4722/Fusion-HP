@@ -1,5 +1,5 @@
 // ============================================================================
-//  Fusion-HP · Ui/Chrome/FusionTabs.cs — pestañas MODELADAS (v2.2).
+//  Fusion-HP · Ui/Widgets/FusionTabs.cs — pestañas MODELADAS (v2.2).
 //  Tira de chips con icono + título (como los tabs de la referencia web):
 //  seleccionado = blanco con borde; no seleccionado = texto tenue; hover
 //  suave. Contenido con separador superior. Sustituye al TabControl plano.
@@ -10,7 +10,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 
-namespace Fusion.Studio.Ui.Chrome
+namespace Fusion.Studio.Ui.Widgets
 {
     public class FusionTabs : Control
     {
@@ -79,15 +79,15 @@ namespace Fusion.Studio.Ui.Chrome
         void MeasureTabs()
         {
             int x = 2;
-            using (var f = UiTheme.Normal())
+            // Fuente compartida de UiTheme (v2.2.1): NUNCA disponer — se cachea
+            // a nivel de proceso y se usa en cada repintado.
+            Font f = UiTheme.Normal();
+            foreach (var t in tabs)
             {
-                foreach (var t in tabs)
-                {
-                    Size ts = TextRenderer.MeasureText(t.Title, f);
-                    t.W = ts.Width + 20 + (string.IsNullOrEmpty(t.Icon) ? 0 : 24);
-                    t.X = x;
-                    x += t.W + 6;
-                }
+                Size ts = TextRenderer.MeasureText(t.Title, f);
+                t.W = ts.Width + 20 + (string.IsNullOrEmpty(t.Icon) ? 0 : 24);
+                t.X = x;
+                x += t.W + 6;
             }
         }
 

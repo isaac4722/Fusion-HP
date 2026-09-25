@@ -1,5 +1,5 @@
 // ============================================================================
-//  Fusion-HP · Ui/Chrome/UiIcons.cs — iconos Tabler (trazo 1.7) de la GUI.
+//  Fusion-HP · Ui/Widgets/UiIcons.cs — iconos Tabler (trazo 1.7) de la GUI.
 //  Los PNG viajan con el programa en resources/img/icons (ink20/ink32/white20/
 //  accent20). Tinta accent = estado activo (.ppt-iconbtn-on de la referencia
 //  web). Cache global: se cargan una vez y se reutilizan sin bloquear archivos.
@@ -9,7 +9,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 
-namespace Fusion.Studio.Ui.Chrome
+namespace Fusion.Studio.Ui.Widgets
 {
     public enum IconTint { Ink, White, Accent }
 

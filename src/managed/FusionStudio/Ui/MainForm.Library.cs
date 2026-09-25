@@ -13,7 +13,7 @@ using System.Windows.Forms;
 using Fusion.Shared;
 using Fusion.Shared.Bible;
 using Fusion.Shared.Model;
-using Fusion.Studio.Ui.Chrome;
+using Fusion.Studio.Ui.Widgets;
 
 namespace Fusion.Studio.Ui
 {

@@ -61,7 +61,7 @@ namespace Fusion.Studio.Ui
             foreach (int step in new[] { -2, -1, 1, 2 })
             {
                 int st = step;
-                var b = new Fusion.Studio.Ui.Chrome.FusionButton
+                var b = new Fusion.Studio.Ui.Widgets.FusionButton
                 {
                     Text = (step > 0 ? "+" : "") + step,
                     Location = new Point(tx, y - 4),
@@ -76,7 +76,7 @@ namespace Fusion.Studio.Ui
             y += 34;
 
             L("Secciones", 14, y);
-            btnAddSection = new Fusion.Studio.Ui.Chrome.FusionButton { Text = "Sección", IconName = "plus",
+            btnAddSection = new Fusion.Studio.Ui.Widgets.FusionButton { Text = "Sección", IconName = "plus",
                 Location = new Point(90, y - 4), Size = new Size(96, 28) };
             btnAddSection.Click += delegate
             {
@@ -85,7 +85,7 @@ namespace Fusion.Studio.Ui
                 LoadFrom(s);
             };
             Controls.Add(btnAddSection);
-            btnDelSection = new Fusion.Studio.Ui.Chrome.FusionButton { Text = "Quitar", IconName = "trash",
+            btnDelSection = new Fusion.Studio.Ui.Widgets.FusionButton { Text = "Quitar", IconName = "trash",
                 Location = new Point(192, y - 4), Size = new Size(90, 28) };
             btnDelSection.Click += delegate
             {
@@ -109,9 +109,9 @@ namespace Fusion.Studio.Ui
             Controls.Add(lines);
 
             y += 308;
-            var btnSave = new Fusion.Studio.Ui.Chrome.FusionButton
+            var btnSave = new Fusion.Studio.Ui.Widgets.FusionButton
             {
-                Text = "Guardar", IconName = "check", Kind = Fusion.Studio.Ui.Chrome.FusionButtonKind.Primary,
+                Text = "Guardar", IconName = "check", Kind = Fusion.Studio.Ui.Widgets.FusionButtonKind.Primary,
                 Location = new Point(444, y), Size = new Size(88, 32)
             };
             btnSave.Click += delegate
@@ -128,7 +128,7 @@ namespace Fusion.Studio.Ui
                 Close();
             };
             Controls.Add(btnSave);
-            var btnCancel = new Fusion.Studio.Ui.Chrome.FusionButton { Text = "Cancelar", IconName = "x",
+            var btnCancel = new Fusion.Studio.Ui.Widgets.FusionButton { Text = "Cancelar", IconName = "x",
                 Location = new Point(538, y), Size = new Size(86, 32) };
             btnCancel.Click += delegate { Close(); };
             Controls.Add(btnCancel);

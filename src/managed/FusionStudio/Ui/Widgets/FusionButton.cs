@@ -1,5 +1,5 @@
 // ============================================================================
-//  Fusion-HP · Ui/Chrome/FusionButton.cs — botón MODELADO (v2.2).
+//  Fusion-HP · Ui/Widgets/FusionButton.cs — botón MODELADO (v2.2).
 //  Réplica WinForms del chip de la referencia web (.ppt-chip / .ppt-iconbtn-on
 //  / .print-toolbar-btn): rectángulo redondeado 5 px, borde 1 px, estados
 //  hover/pressed/foco, icono Tabler a la izquierda y pista de teclado (kbd)
@@ -11,9 +11,9 @@ using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
-using Fusion.Studio.Ui.Chrome;
+using Fusion.Studio.Ui.Widgets;
 
-namespace Fusion.Studio.Ui.Chrome
+namespace Fusion.Studio.Ui.Widgets
 {
     public enum FusionButtonKind { Chip, Primary, Subtle, Active }
 

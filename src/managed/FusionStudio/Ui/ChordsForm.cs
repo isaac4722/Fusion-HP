@@ -49,7 +49,7 @@ namespace Fusion.Studio.Ui
             foreach (var step in new[] { -2, -1, 1, 2 })
             {
                 int s = step;
-                var b = new Fusion.Studio.Ui.Chrome.FusionButton
+                var b = new Fusion.Studio.Ui.Widgets.FusionButton
                 {
                     Text = (step > 0 ? "+" : "") + step,
                     Location = new Point(x, 34),
@@ -59,13 +59,13 @@ namespace Fusion.Studio.Ui
                 top.Controls.Add(b);
                 x += 50;
             }
-            var btnReset = new Fusion.Studio.Ui.Chrome.FusionButton { Text = "Original", IconName = "refresh",
+            var btnReset = new Fusion.Studio.Ui.Widgets.FusionButton { Text = "Original", IconName = "refresh",
                 Location = new Point(x, 34), Size = new Size(104, 28), Font = UiTheme.Small() };
             btnReset.Click += delegate { transpose = 0; RefreshSheet(); };
             top.Controls.Add(btnReset);
             x += 108;
 
-            btnLatin = new Fusion.Studio.Ui.Chrome.FusionButton { Text = "Anglo (C D E)", IconName = "piano",
+            btnLatin = new Fusion.Studio.Ui.Widgets.FusionButton { Text = "Anglo (C D E)", IconName = "piano",
                 Location = new Point(x, 34), Size = new Size(140, 28), Font = UiTheme.Small() };
             btnLatin.Click += delegate { latin = !latin; btnLatin.Text = latin ? "Latino (Do Re Mi)" : "Anglo (C D E)"; RefreshSheet(); };
             top.Controls.Add(btnLatin);
@@ -99,7 +99,9 @@ namespace Fusion.Studio.Ui
         void BuildSheet()
         {
             if (IsDisposed) return;
-            sheet.Controls.Clear();
+            // v2.2.1: disponer los labels retirados — esta hoja se reconstruye
+            // en cada cambio de estado (los músicos la dejan abierta todo el culto).
+            UiTheme.DisposeChildren(sheet);
             var el = live.CurrentElement;
             if (el == null)
             {
@@ -132,6 +134,10 @@ namespace Fusion.Studio.Ui
             return Chords.TransposeKey(k, transpose, latin);
         }
 
+        // Fuentes compartidas (v2.2.1): una por línea por refresco fugaba handles.
+        static readonly Font chordFont = new Font("Consolas", 11f, FontStyle.Bold);
+        static readonly Font lyricFont = new Font("Segoe UI", 10f);
+
         void AddLine(string text, bool chord)
         {
             var l = new Label
@@ -140,8 +146,7 @@ namespace Fusion.Studio.Ui
                 AutoSize = true,
                 MaximumSize = new Size(sheet.ClientSize.Width - 30, 0),
                 Margin = new Padding(2, 1, 2, 1),
-                Font = chord ? new Font("Consolas", 11f, FontStyle.Bold)
-                             : new Font("Segoe UI", 10f),
+                Font = chord ? chordFont : lyricFont,
                 ForeColor = chord ? UiTheme.AccentDark : UiTheme.TextDim,
                 BackColor = Color.Transparent
             };
