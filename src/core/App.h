@@ -11,6 +11,7 @@
 #include "IpcServer.h"
 #include "VideoPlayer.h"
 #include "NativeControl.h"
+#include "Motor.h"
 
 namespace fusion {
 
@@ -28,7 +29,13 @@ private:
     void BroadcastState();
     void ApplySlide(const Json& slideJson);
     void ShowVideo(const Slide& s);
+    void ApplyBlank(const std::string& mode);       // black|logo|theme|clear|none
+    void PreloadSlideJson(const Json& slide);       // carga diferida [SPEC §6.4]
+    void BroadcastMotorState();                     // evento motor.state
+    Json DispatchMotor(const std::string& cmd, const Json& p);   // familia motor.*
+    void WatchStandalone();                        // GUI fuera => Motor autónomo
     std::wstring renderer_preload_, renderer_preload2_;   // rutas precargadas [SPEC §6.4]
+    std::wstring motorSesionFile_;                 // DataDir/motor/sesion.json
 
     HINSTANCE inst_ = nullptr;
     EnvironmentReport env_;
@@ -37,8 +44,12 @@ private:
     VideoPlayer video_;
     std::unique_ptr<IpcServer> ipc_;
     std::unique_ptr<NativeControl> nativeCtl_;
+    std::unique_ptr<Motor> motor_;          // EL MOTOR (v2.2): dueño del estado vivo
     std::atomic<bool> studioRunning_{false};
     UINT_PTR pumpTimer_ = 0;
+    DWORD bootTick_ = 0;                    // gracia antes de modo autónomo
+    bool guiEverConnected_ = false;
+    bool standalone_ = false;               // sin GUI: teclado en la salida
 };
 
 } // namespace fusion

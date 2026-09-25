@@ -11,6 +11,7 @@
 #include "../../src/core/Highlight.h"
 #include "../../src/core/NativeSession.h"
 #include "../../src/core/IpcServer.h"
+#include "../../src/core/Motor.h"
 #include <cstdio>
 #include <cstring>
 #include <cassert>
@@ -220,6 +221,147 @@ static void TestIpcLoop()
     server.Stop();
 }
 
+// ---------------------------------------------------------------- MOTOR v2.2
+// El Motor es el dueño del estado vivo: estos tests verifican la máquina de
+// estados (carga, avance línea/elemento, pantallas, resaltado, avance por
+// diapositiva) y la persistencia de sesión sin GUI conectada.
+static Json TestMotorSlide(const std::string& id, const std::string& a, const std::string& b = "",
+                           const std::string& c = "")
+{
+    Json lines = Json::array();
+    if (!a.empty()) lines.push_back(a);
+    if (!b.empty()) lines.push_back(b);
+    if (!c.empty()) lines.push_back(c);
+    return Json{{"id", id}, {"kind", "text"}, {"lines", lines},
+                {"style", {"font", "Segoe UI"}, {"size", 44}, {"color", "#FFFFFF"}}};
+}
+
+static void TestMotor()
+{
+    // programa: 2 escenarios × (2 y 1 elementos); el primero tiene 3 líneas
+    Json prog = Json::array();
+    {
+        Json els = Json::array();
+        Json e1, e2;
+        e1["id"] = "e1"; e1["title"] = "Himno v1"; e1["kind"] = "text";
+        e1["slide"] = TestMotorSlide("e1", "línea A", "línea B", "línea C");
+        e2["id"] = "e2"; e2["title"] = "Himno v2"; e2["kind"] = "text";
+        e2["slide"] = TestMotorSlide("e2", "coro", "coro 2");
+        els.push_back(e1); els.push_back(e2);
+        prog.push_back(Json{{"id", "s1"}, {"title", "Adoración"}, {"elements", els}});
+    }
+    {
+        Json els = Json::array();
+        Json e3;
+        e3["id"] = "e3"; e3["title"] = "Anuncio"; e3["kind"] = "lower3";
+        e3["slide"] = TestMotorSlide("e3", " Bienvenidos");
+        els.push_back(e3);
+        prog.push_back(Json{{"id", "s2"}, {"title", "Avisos"}, {"elements", els}});
+    }
+
+    Motor m;
+    std::vector<Json> applied;          // diapositivas que el Motor manda aplicar
+    m.ApplySlideJson = [&](const Json& j) { applied.push_back(j); };
+
+    Json payload = Json::object();
+    payload["program"] = prog;
+    payload["select"] = Json{{"scenario", 0}, {"element", 0}, {"line", 0}};
+    payload["advance"] = "line";
+    CHECK(m.LoadProgram(payload), "Motor: carga de programa");
+
+    Json st = m.StateJson();
+    CHECK(st.value("hasProgram", false), "Motor: hasProgram");
+    CHECK(st.value("scenario", -1) == 0 && st.value("element", -1) == 0, "Motor: selección inicial");
+    CHECK(st.value("lineCount", 0) == 3, "Motor: lineCount del elemento");
+    CHECK(st["program"].size() == 2, "Motor: programa con 2 escenarios");
+    CHECK(st["program"][1].value("count", 0) == 1, "Motor: conteo del 2º escenario");
+    CHECK(!applied.empty() && applied.back().value("activeLine", -1) == 0, "Motor: aplica diapositiva inicial");
+
+    // ---- avance línea por línea (Espacio): 0→1→2→ elemento siguiente
+    m.Next(); m.Next();
+    st = m.StateJson();
+    CHECK(st.value("line", -1) == 2, "Motor: Next avanza línea");
+    m.Next();                        // fin del elemento → siguiente elemento, línea 0
+    st = m.StateJson();
+    CHECK(st.value("element", -1) == 1 && st.value("line", -1) == 0, "Motor: Next cruza a elemento");
+    CHECK(applied.back().value("activeLine", -1) == 0, "Motor: elemento nuevo aplica línea 0");
+    m.Next(); m.Next();              // fin e2 → escenario 2, elemento 0
+    st = m.StateJson();
+    CHECK(st.value("scenario", -1) == 1 && st.value("element", -1) == 0, "Motor: Next cruza escenario");
+    m.Next();                        // último elemento: se queda (sin envolver)
+    st = m.StateJson();
+    CHECK(st.value("scenario", -1) == 1 && st.value("element", -1) == 0, "Motor: al final se queda");
+
+    // ---- retroceso elemento: vuelve al escenario 1, ÚLTIMO elemento
+    m.PrevElement();
+    st = m.StateJson();
+    CHECK(st.value("scenario", -1) == 0 && st.value("element", -1) == 1, "Motor: PrevElement a último");
+    CHECK(m.SetLine(1), "Motor: SetLine válido");
+    CHECK(!m.SetLine(99), "Motor: SetLine fuera de rango rechazado");
+
+    // ---- pantallas (B/C/L/Esc)
+    m.SetBlank("black");
+    CHECK(m.StateJson().value("blank", "") == "black", "Motor: blank negro");
+    m.SetBlank("none");
+    CHECK(m.StateJson().value("blank", "") == "none", "Motor: blank none");
+
+    // ---- resaltado: capa de anulación sobre la diapositiva aplicada
+    m.SetBlank("none");
+    m.Goto(0, 0, 0);
+    m.Highlight({"Dios", "amor"});
+    st = m.StateJson();
+    CHECK(st["highlight"].size() == 2, "Motor: resaltado en estado");
+    CHECK(applied.back().contains("highlight") && applied.back()["highlight"].size() == 2,
+          "Motor: resaltado aplicado a la diapositiva");
+    m.Highlight({});                   // vaciar
+    CHECK(m.StateJson()["highlight"].size() == 0, "Motor: resaltado se limpia");
+
+    // ---- avance por diapositiva (referencia web)
+    m.SetAdvance("slide");
+    CHECK(m.StateJson().value("advance", "") == "slide", "Motor: modo slide");
+    m.Goto(0, 0, 0);
+    m.Next();                        // con slide: salta el elemento entero
+    st = m.StateJson();
+    CHECK(st.value("element", -1) == 1, "Motor: slide avanza elemento completo");
+    m.SetAdvance("line");
+
+    // ---- teclas autónomas (sin GUI): Espacio/B/C/L/Esc
+    m.Goto(0, 0, 0);
+    m.StandaloneKey('B');
+    CHECK(m.StateJson().value("blank", "") == "black", "Motor: tecla B → negro");
+    m.StandaloneKey('B');
+    CHECK(m.StateJson().value("blank", "") == "none", "Motor: tecla B alterna");
+    m.StandaloneKey(VK_SPACE);
+    CHECK(m.StateJson().value("line", -1) == 1, "Motor: tecla Espacio avanza");
+    m.StandaloneKey(VK_ESCAPE);
+    CHECK(m.StateJson().value("blank", "") == "black", "Motor: Esc → reposo");
+
+    // ---- añadir escenario (Enviar a vivo)
+    Json nuevo = Json{{"scenario", Json{{"id", "s3"}, {"title", "Nuevo"},
+        {"elements", Json::array({Json{{"id", "n1"}, {"kind", "text"},
+            {"slide", TestMotorSlide("n1", "nueva")}}})}}}};
+    CHECK(m.AppendScenario(nuevo), "Motor: append escenario");
+    st = m.StateJson();
+    CHECK(st["program"].size() == 3 && st.value("scenario", -1) == 2, "Motor: append selecciona el nuevo");
+
+    // ---- persistencia: el Motor recuerda el programa entre ejecuciones
+    std::wstring tmp = std::filesystem::temp_directory_path().wstring() +
+                       L"\\FusionHP.motor.test." + std::to_wstring(GetCurrentProcessId()) + L".json";
+    DeleteFileW(tmp.c_str());
+    m.SetPersistFile(tmp);
+    m.Goto(1, 0, 0);
+    m.SavePersisted(tmp);
+    Motor m2;
+    CHECK(m2.LoadPersisted(tmp), "Motor: LoadPersisted lee sesion.json");
+    st = m2.StateJson();
+    CHECK(st["program"].size() == 3, "Motor: programa persistido completo");
+    CHECK(st.value("scenario", -1) == 1 && st.value("element", -1) == 0, "Motor: selección persistida");
+    CHECK(m2.HasProgram(), "Motor: HasProgram tras persistir");
+    m2.Clear();
+    CHECK(!m2.HasProgram(), "Motor: Clear vacía el programa");
+    DeleteFileW(tmp.c_str());
+}
+
 int main()
 {
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
@@ -231,6 +373,7 @@ int main()
     TestSlideStateV21();
     TestNativeSession();
     TestIpcLoop();
+    TestMotor();
 
     std::cout << "\nResultado: " << g_pass << " OK · " << g_fail << " FALLO" << std::endl;
     CoUninitialize();

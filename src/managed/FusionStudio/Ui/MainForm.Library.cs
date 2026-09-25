@@ -2,8 +2,8 @@
 //  Fusion-HP · MainForm.Library.cs — biblioteca lateral [SPEC §7.2]:
 //  Cantos, Biblias, Escenarios y Medios accesibles DIRECTAMENTE (corrección
 //  del prototipo: las bibliotecas ya no exigen búsqueda). Búsqueda en caliente
-//  opcional (Ctrl+K / G para Biblia) [SPEC §6.5.2]. Biblias con búsqueda
-//  instantánea por cita o palabra [SPEC §7.2.2].
+//  opcional (Ctrl+K / G para Biblia) [SPEC §6.5.2]. v2.2: pestañas modeladas
+//  con iconos, buscador con lupa y filas con icono de tipo.
 // ============================================================================
 using System;
 using System.Collections.Generic;
@@ -13,6 +13,7 @@ using System.Windows.Forms;
 using Fusion.Shared;
 using Fusion.Shared.Bible;
 using Fusion.Shared.Model;
+using Fusion.Studio.Ui.Chrome;
 
 namespace Fusion.Studio.Ui
 {
@@ -20,72 +21,61 @@ namespace Fusion.Studio.Ui
     {
         void BuildLibrary(Panel parent)
         {
-            libraryPanel = new Panel { Dock = DockStyle.Left, Width = 300, BackColor = UiTheme.Panel,
-                                       Padding = new Padding(0, 8, 0, 0), BorderStyle = BorderStyle.FixedSingle };
+            libraryPanel = new Panel { Dock = DockStyle.Left, Width = 302, BackColor = UiTheme.Panel,
+                                       Padding = new Padding(0, 10, 0, 0) };
+            libraryPanel.Paint += delegate(object s, PaintEventArgs e)
+            {
+                using (var pen = new Pen(UiTheme.InputBorder))
+                    e.Graphics.DrawLine(pen, libraryPanel.Width - 1, 0, libraryPanel.Width - 1, libraryPanel.Height);
+            };
             parent.Controls.Add(libraryPanel);
 
-            var searchBox = new TextBox { Location = new Point(10, 8), Size = new Size(270, 24), Font = UiTheme.Normal(),
-                                          ForeColor = UiTheme.TextDim, Text = "Buscar (Ctrl+K)…",
-                                          BorderStyle = BorderStyle.FixedSingle };
-            searchBox.Enter += delegate
+            var searchBox = new FusionSearchBox { Location = new Point(10, 8), Size = new Size(272, 30) };
+            searchBox.Placeholder = "Buscar (Ctrl+K)…";
+            searchBox.InnerTextChanged += delegate
             {
-                if (searchBox.Text == "Buscar (Ctrl+K)…") { searchBox.Text = ""; searchBox.ForeColor = UiTheme.Text; }
-            };
-            searchBox.Leave += delegate
-            {
-                if (searchBox.Text.Length == 0) { searchBox.Text = "Buscar (Ctrl+K)…"; searchBox.ForeColor = UiTheme.TextDim; }
-            };
-            searchBox.TextChanged += delegate
-            {
-                string q = searchBox.Text == "Buscar (Ctrl+K)…" ? "" : searchBox.Text;
-                RefreshSongs(q);
+                RefreshSongs(searchBox.Text);
             };
             libraryPanel.Controls.Add(searchBox);
 
-            libTabs = new TabControl { Location = new Point(2, 40), Size = new Size(292, 2000),
-                                       Font = UiTheme.Small(), Alignment = TabAlignment.Top };
-            libTabs.SelectedIndexChanged += delegate { LibraryTabChanged(); };
+            libTabs = new FusionTabs { Location = new Point(2, 46) };
             libraryPanel.Controls.Add(libTabs);
-            libraryPanel.SizeChanged += delegate { libTabs.Size = new Size(libraryPanel.Width - 4, libraryPanel.Height - 46); };
+            libraryPanel.SizeChanged += delegate
+            {
+                libTabs.Size = new Size(libraryPanel.Width - 2, libraryPanel.Height - 48);
+            };
 
             // ---- pestaña Cantos
-            var tabSongs = new TabPage("Cantos");
+            var tabSongs = new Panel { BackColor = Color.White };
             songsList = new ListBox { Dock = DockStyle.Fill, BorderStyle = BorderStyle.None, Font = UiTheme.Normal(),
-                                      DrawMode = DrawMode.OwnerDrawVariable, IntegralHeight = false };
+                                      DrawMode = DrawMode.OwnerDrawVariable, IntegralHeight = false,
+                                      BackColor = Color.White };
             songsList.DrawItem += SongsListDraw;
             songsList.MeasureItem += delegate(object s, MeasureItemEventArgs e) { e.ItemHeight = 44; };
             songsList.DoubleClick += delegate { PlaySelectedSong(); };
-            var songBar = new Panel { Dock = DockStyle.Bottom, Height = 34 };
-            var btnNewSong = new Button { Text = "+ Nuevo", Dock = DockStyle.Left, Width = 80, FlatStyle = FlatStyle.Flat,
-                                          Font = UiTheme.Small() };
+            var songBar = new Panel { Dock = DockStyle.Bottom, Height = 38, BackColor = UiTheme.Panel };
+            var btnNewSong = new FusionButton { Text = "Nuevo", IconName = "plus", Kind = FusionButtonKind.Chip,
+                                                Dock = DockStyle.Left, Width = 84 };
             btnNewSong.Click += delegate { EditSong(null); };
-            var btnEditSong = new Button { Text = "Editar", Dock = DockStyle.Left, Width = 70, FlatStyle = FlatStyle.Flat,
-                                           Font = UiTheme.Small() };
+            var btnEditSong = new FusionButton { Text = "Editar", IconName = "pencil", Kind = FusionButtonKind.Chip,
+                                                 Dock = DockStyle.Left, Width = 84 };
             btnEditSong.Click += delegate { EditSong(SelectedSong()); };
-            var btnImportSongs = new Button { Text = "Importar", Dock = DockStyle.Right, Width = 80, FlatStyle = FlatStyle.Flat,
-                                              Font = UiTheme.Small() };
+            var btnImportSongs = new FusionButton { Text = "Importar", IconName = "upload", Kind = FusionButtonKind.Chip,
+                                                    Dock = DockStyle.Right, Width = 92 };
             btnImportSongs.Click += delegate { ImportSongs(); };
             songBar.Controls.Add(btnNewSong); songBar.Controls.Add(btnEditSong); songBar.Controls.Add(btnImportSongs);
             tabSongs.Controls.Add(songsList);
             tabSongs.Controls.Add(songBar);
-            libTabs.TabPages.Add(tabSongs);
+            libTabs.Add("Cantos", "music", tabSongs);
 
             // ---- pestaña Biblia
-            var tabBible = new TabPage("Biblia");
+            var tabBible = new Panel { BackColor = Color.White };
             bibleVersion = new ComboBox { Dock = DockStyle.Top, FlatStyle = FlatStyle.Flat, Font = UiTheme.Normal(),
                                           DropDownStyle = ComboBoxStyle.DropDownList };
             bibleVersion.SelectedIndexChanged += delegate { RefreshBibleTree(); };
-            bibleSearch = new TextBox { Dock = DockStyle.Top, Font = UiTheme.Normal(), BorderStyle = BorderStyle.FixedSingle,
-                                        ForeColor = UiTheme.TextDim, Text = "Cita o palabra (G)…" };
-            bibleSearch.Enter += delegate
-            {
-                if (bibleSearch.Text == "Cita o palabra (G)…") { bibleSearch.Text = ""; bibleSearch.ForeColor = UiTheme.Text; }
-            };
-            bibleSearch.Leave += delegate
-            {
-                if (bibleSearch.Text.Length == 0) { bibleSearch.Text = "Cita o palabra (G)…"; bibleSearch.ForeColor = UiTheme.TextDim; }
-            };
-            bibleSearch.TextChanged += delegate { BibleSearchChanged(); };
+            bibleSearch = new FusionSearchBox { Dock = DockStyle.Top, Height = 30 };
+            bibleSearch.Placeholder = "Cita o palabra (G)…";
+            bibleSearch.InnerTextChanged += delegate { BibleSearchChanged(); };
             bibleTree = new TreeView { Dock = DockStyle.Fill, BorderStyle = BorderStyle.None, Font = UiTheme.Normal(),
                                        ShowLines = false, HideSelection = false };
             bibleTree.NodeMouseDoubleClick += delegate(object s, TreeNodeMouseClickEventArgs e)
@@ -93,7 +83,7 @@ namespace Fusion.Studio.Ui
                 if (e.Node.Tag is string) BibleGoRef(e.Node.Tag as string);
             };
             bibleResults = new ListBox { Dock = DockStyle.Bottom, Height = 180, BorderStyle = BorderStyle.None,
-                                         Font = UiTheme.Small(), IntegralHeight = false };
+                                         Font = UiTheme.Small(), IntegralHeight = false, BackColor = Color.White };
             bibleResults.DrawItem += BibleResultsDraw;
             bibleResults.MeasureItem += delegate(object s, MeasureItemEventArgs e) { e.ItemHeight = 34; };
             bibleResults.DoubleClick += delegate { BibleGoResult(); };
@@ -101,15 +91,19 @@ namespace Fusion.Studio.Ui
             tabBible.Controls.Add(bibleResults);
             tabBible.Controls.Add(bibleSearch);
             tabBible.Controls.Add(bibleVersion);
-            libTabs.TabPages.Add(tabBible);
+            libTabs.Add("Biblia", "book", tabBible);
 
             // ---- pestaña Escenarios
-            var tabScn = new TabPage("Escenarios");
+            var tabScn = new Panel { BackColor = Color.White };
             scenariosList = new ListBox { Dock = DockStyle.Fill, BorderStyle = BorderStyle.None, Font = UiTheme.Normal(),
-                                          IntegralHeight = false };
+                                          IntegralHeight = false, DrawMode = DrawMode.OwnerDrawVariable,
+                                          BackColor = Color.White };
+            scenariosList.DrawItem += ScenariosListDraw;
+            scenariosList.MeasureItem += delegate(object s, MeasureItemEventArgs e) { e.ItemHeight = 40; };
             scenariosList.DoubleClick += delegate { Live.SendToLive(SelectedScenario()); };
-            var scnBar = new Panel { Dock = DockStyle.Bottom, Height = 34 };
-            var btnNewScn = new Button { Text = "+ Nuevo", Dock = DockStyle.Left, Width = 80, FlatStyle = FlatStyle.Flat, Font = UiTheme.Small() };
+            var scnBar = new Panel { Dock = DockStyle.Bottom, Height = 38, BackColor = UiTheme.Panel };
+            var btnNewScn = new FusionButton { Text = "Nuevo", IconName = "plus", Kind = FusionButtonKind.Chip,
+                                               Dock = DockStyle.Left, Width = 84 };
             btnNewScn.Click += delegate
             {
                 if (Live.Project == null) Live.Project = AhpProject.CreateDefault();
@@ -119,7 +113,8 @@ namespace Fusion.Studio.Ui
                 RefreshLibrary();
                 RefreshProgram();
             };
-            var btnDelScn = new Button { Text = "Quitar", Dock = DockStyle.Left, Width = 70, FlatStyle = FlatStyle.Flat, Font = UiTheme.Small() };
+            var btnDelScn = new FusionButton { Text = "Quitar", IconName = "trash", Kind = FusionButtonKind.Chip,
+                                               Dock = DockStyle.Left, Width = 84 };
             btnDelScn.Click += delegate
             {
                 var scn = SelectedScenario();
@@ -133,22 +128,27 @@ namespace Fusion.Studio.Ui
             scnBar.Controls.Add(btnNewScn); scnBar.Controls.Add(btnDelScn);
             tabScn.Controls.Add(scenariosList);
             tabScn.Controls.Add(scnBar);
-            libTabs.TabPages.Add(tabScn);
+            libTabs.Add("Escenarios", "stack-2", tabScn);
 
             // ---- pestaña Medios
-            var tabMedia = new TabPage("Medios");
+            var tabMedia = new Panel { BackColor = Color.White };
             mediaList = new ListBox { Dock = DockStyle.Fill, BorderStyle = BorderStyle.None, Font = UiTheme.Normal(),
-                                      IntegralHeight = false };
+                                      IntegralHeight = false, DrawMode = DrawMode.OwnerDrawVariable,
+                                      BackColor = Color.White };
+            mediaList.DrawItem += MediaListDraw;
+            mediaList.MeasureItem += delegate(object s, MeasureItemEventArgs e) { e.ItemHeight = 40; };
             mediaList.DoubleClick += delegate { SendSelectedMedia(); };
-            var medBar = new Panel { Dock = DockStyle.Bottom, Height = 34 };
-            var btnAddMedia = new Button { Text = "+ Añadir medio", Dock = DockStyle.Left, Width = 120, FlatStyle = FlatStyle.Flat, Font = UiTheme.Small() };
+            var medBar = new Panel { Dock = DockStyle.Bottom, Height = 38, BackColor = UiTheme.Panel };
+            var btnAddMedia = new FusionButton { Text = "Añadir", IconName = "plus", Kind = FusionButtonKind.Chip,
+                                                 Dock = DockStyle.Left, Width = 88 };
             btnAddMedia.Click += delegate { AddMedia(); };
-            var btnImportBible = new Button { Text = "Importar Biblia", Dock = DockStyle.Right, Width = 110, FlatStyle = FlatStyle.Flat, Font = UiTheme.Small() };
+            var btnImportBible = new FusionButton { Text = "Biblia", IconName = "book", Kind = FusionButtonKind.Chip,
+                                                    Dock = DockStyle.Right, Width = 88 };
             btnImportBible.Click += delegate { ImportBible(); };
             medBar.Controls.Add(btnAddMedia); medBar.Controls.Add(btnImportBible);
             tabMedia.Controls.Add(mediaList);
             tabMedia.Controls.Add(medBar);
-            libTabs.TabPages.Add(tabMedia);
+            libTabs.Add("Medios", "photo", tabMedia);
         }
 
         void LibraryTabChanged() { }
@@ -179,13 +179,17 @@ namespace Fusion.Studio.Ui
             bool sel = (e.State & DrawItemState.Selected) != 0;
             using (var b = new SolidBrush(sel ? UiTheme.AccentSoft : Color.White))
                 e.Graphics.FillRectangle(b, e.Bounds);
+            UiIcons.Draw(e.Graphics, "music", IconTint.Ink, e.Bounds.X + 8, e.Bounds.Y + 12);
             using (var b = new SolidBrush(UiTheme.Text))
-                e.Graphics.DrawString(s.Title, UiTheme.NormalBold(), b, e.Bounds.X + 8, e.Bounds.Y + 4);
+                TextRenderer.DrawText(e.Graphics, s.Title, UiTheme.NormalBold(),
+                    new Rectangle(e.Bounds.X + 34, e.Bounds.Y + 3, e.Bounds.Width - 40, 18),
+                    UiTheme.Text, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
             string sub = (string.IsNullOrEmpty(s.Artist) ? "" : s.Artist + " · ") +
                          s.Sections.Count + " partes" +
                          (s.UseCount > 0 ? " · usada " + s.UseCount + "×" : "");
-            using (var b = new SolidBrush(UiTheme.TextDim))
-                e.Graphics.DrawString(sub, UiTheme.Small(), b, e.Bounds.X + 8, e.Bounds.Y + 24);
+            TextRenderer.DrawText(e.Graphics, sub, UiTheme.Small(),
+                new Rectangle(e.Bounds.X + 34, e.Bounds.Y + 21, e.Bounds.Width - 40, 16),
+                UiTheme.TextDim, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
         }
 
         Song SelectedSong()
@@ -269,7 +273,7 @@ namespace Fusion.Studio.Ui
         {
             var b = CurrentBible();
             string q = bibleSearch.Text;
-            if (b == null || q == "Cita o palabra (G)…" || q.Trim().Length < 2) { bibleResults.Items.Clear(); return; }
+            if (b == null || q == null || q.Trim().Length < 2) { bibleResults.Items.Clear(); return; }
             var hits = Live.Bibles.Search(b, q.Trim(), 30);
             bibleResults.Items.Clear();
             foreach (var h in hits) bibleResults.Items.Add(new BibleHit { Cite = h.Key, Text = h.Value });
@@ -289,10 +293,13 @@ namespace Fusion.Studio.Ui
             using (var bg = new SolidBrush(sel ? UiTheme.AccentSoft : Color.White))
                 e.Graphics.FillRectangle(bg, e.Bounds);
             using (var b = new SolidBrush(UiTheme.AccentDark))
-                e.Graphics.DrawString(h.Cite, UiTheme.NormalBold(), b, e.Bounds.X + 6, e.Bounds.Y + 2);
+                TextRenderer.DrawText(e.Graphics, h.Cite, UiTheme.NormalBold(),
+                    new Rectangle(e.Bounds.X + 6, e.Bounds.Y, e.Bounds.Width - 10, 16),
+                    UiTheme.AccentDark, TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
             string t = h.Text.Length > 64 ? h.Text.Substring(0, 64) + "…" : h.Text;
-            using (var b = new SolidBrush(UiTheme.TextDim))
-                e.Graphics.DrawString(t, UiTheme.Small(), b, e.Bounds.X + 6, e.Bounds.Y + 19);
+            TextRenderer.DrawText(e.Graphics, t, UiTheme.Small(),
+                new Rectangle(e.Bounds.X + 6, e.Bounds.Y + 16, e.Bounds.Width - 10, 16),
+                UiTheme.TextDim, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
         }
 
         void BibleGoResult()
@@ -310,7 +317,7 @@ namespace Fusion.Studio.Ui
             var verses = Live.Bibles.GetPassage(b, refr);
             if (verses.Count == 0) return;
             var scn = new Scenario { Title = refr.ToString() };
-            // Agrupar versos en bloques de hasta 4 líneas [SPEC §5.2 #2]
+            // Agrupar versos en bloques de hasta 3 líneas [SPEC §5.2 #2]
             for (int i = 0; i < verses.Count; i += 3)
             {
                 var el = new Element { Kind = ElementKind.Verse, Reference = refr.ToString() };
@@ -336,6 +343,22 @@ namespace Fusion.Studio.Ui
             scenariosList.Items.Clear();
             if (Live.Project == null) return;
             foreach (var s in Live.Project.Scenarios) scenariosList.Items.Add(s);
+        }
+
+        void ScenariosListDraw(object sender, DrawItemEventArgs e)
+        {
+            if (e.Index < 0) return;
+            var s = scenariosList.Items[e.Index] as Scenario;
+            bool sel = (e.State & DrawItemState.Selected) != 0;
+            using (var b = new SolidBrush(sel ? UiTheme.AccentSoft : Color.White))
+                e.Graphics.FillRectangle(b, e.Bounds);
+            string icon = s != null && s.Elements.Count > 0 ? IconOfKind(s.Elements[0].KindKey) : "file-text";
+            UiIcons.Draw(e.Graphics, icon, IconTint.Ink, e.Bounds.X + 8, e.Bounds.Y + 10);
+            if (s != null)
+                TextRenderer.DrawText(e.Graphics, s.Title, UiTheme.Normal(),
+                    new Rectangle(e.Bounds.X + 34, e.Bounds.Y, e.Bounds.Width - 40, e.Bounds.Height),
+                    sel ? UiTheme.AccentDark : UiTheme.Text,
+                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
         }
 
         Scenario SelectedScenario()
@@ -365,8 +388,25 @@ namespace Fusion.Studio.Ui
         class MediaItem
         {
             public string Path, Name;
-            public bool IsVideo { get { var e = System.IO.Path.GetExtension(Path).ToLowerInvariant(); return e == ".mp4" || e == ".avi" || e == ".wmv" || e == ".mov"; } }
-            public override string ToString() { return (IsVideo ? "▶ " : "🖼 ") + Name; }
+            public bool IsVideo
+            {
+                get { var e = System.IO.Path.GetExtension(Path).ToLowerInvariant(); return e == ".mp4" || e == ".avi" || e == ".wmv" || e == ".mov"; }
+            }
+        }
+
+        void MediaListDraw(object sender, DrawItemEventArgs e)
+        {
+            if (e.Index < 0) return;
+            var m = mediaList.Items[e.Index] as MediaItem;
+            if (m == null) return;
+            bool sel = (e.State & DrawItemState.Selected) != 0;
+            using (var b = new SolidBrush(sel ? UiTheme.AccentSoft : Color.White))
+                e.Graphics.FillRectangle(b, e.Bounds);
+            UiIcons.Draw(e.Graphics, m.IsVideo ? "movie" : "photo", IconTint.Ink, e.Bounds.X + 8, e.Bounds.Y + 10);
+            TextRenderer.DrawText(e.Graphics, m.Name, UiTheme.Normal(),
+                new Rectangle(e.Bounds.X + 34, e.Bounds.Y, e.Bounds.Width - 40, e.Bounds.Height),
+                sel ? UiTheme.AccentDark : UiTheme.Text,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
         }
 
         void AddMedia()

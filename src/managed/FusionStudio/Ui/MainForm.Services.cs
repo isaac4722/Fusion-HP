@@ -49,6 +49,16 @@ namespace Fusion.Studio.Ui
             // ---- presentación (referencia web)
             if (lblClock != null) lblClock.Visible = Settings.ShowClock;
             UpdateAdvanceButton();
+            UpdateLiveButtons();
+
+            // ---- Motor: avance y transiciones viven en el núcleo → sincronizar
+            // (re-entrega el programa con la transición efectiva nueva)
+            try
+            {
+                Live.SetAdvance(Settings.AdvanceMode);
+                if (Live.Project != null) Live.SendCurrent();
+            }
+            catch { }
 
             // ---- API
             if (Settings.ApiEnabled)

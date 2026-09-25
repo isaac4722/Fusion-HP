@@ -1,11 +1,12 @@
 // ============================================================================
-//  Fusion-HP · FusionStudio/Services/LiveOrchestrator.cs — cerebro del modo
-//  Live [SPEC §6]: mantiene el proyecto activo, la selección (escenario,
-//  elemento, línea), resuelve la herencia de 4 niveles y envía el estado al
-//  núcleo por ipc.v1. Carga diferida: resuelve el siguiente elemento y lo
-//  precarga [SPEC §6.4]. Tema en caliente: re-resuelve y re-envía [SPEC §7.4].
-//  NO genera PPTX para proyectar: proyecta desde la biblioteca (fix del
-//  prototipo anterior).
+//  Fusion-HP · FusionStudio/Services/LiveOrchestrator.cs (v2.2) — la GUI es
+// vista/controlador del MOTOR del núcleo. El Motor (C++) posee el estado
+// vivo: esta clase construye el programa resuelto (motor.load), envía
+// navegación (motor.next/goto/blank/highlight…) y ESPEJA el estado desde los
+// eventos motor.state. Si la GUI se cierra, el Motor sigue proyectando;
+// al reabrirla, la sincronización reconstruye la posición exacta.
+// Resuelve la herencia de 4 niveles [SPEC §5.4] al construir el programa y
+// localmente para la previsualización. NO genera PPTX para proyectar.
 // ============================================================================
 using System;
 using System.Collections.Generic;
@@ -22,9 +23,11 @@ namespace Fusion.Studio.Services
         public int ScenarioIndex = -1;
         public int ElementIndex = -1;
         public int LineIndex;
-        public bool IsBlank = true;         // arranque en reposo [SPEC §6.1.3]
+        public bool IsBlank = true;             // arranque en reposo [SPEC §6.1.3]
         public string BlankMode = "black";
-        public ResolvedSlide Current;
+        public ResolvedSlide Current;           // resuelto local para el preview
+        public bool HasProgram;                 // el Motor tiene programa cargado
+        public string AdvanceMode = "line";     // línea|diapositiva (referencia web)
         public int LineCount { get { return Current != null ? Current.Lines.Count : 0; } }
     }
 
@@ -36,6 +39,7 @@ namespace Fusion.Studio.Services
         IpcClient ipc;
         public readonly Shared.Store.SongStore Songs;
         public readonly Shared.Bible.BibleStore Bibles;
+        readonly List<string> highlight = new List<string>();   // capa activa en el Motor
 
         /// <summary>Notifica a la UI cambios de selección/estado (hilo UI via Marshal).</summary>
         public event Action StateChanged;
@@ -46,6 +50,9 @@ namespace Fusion.Studio.Services
         {
             get { return ipc != null && ipc.Connected; }
         }
+
+        /// <summary>Palabras de resaltado activas en el Motor (para la caja de la GUI).</summary>
+        public IList<string> HighlightWords { get { return highlight; } }
 
         public LiveOrchestrator(AppSettings settings)
         {
@@ -58,7 +65,7 @@ namespace Fusion.Studio.Services
         }
 
         // ---------------------------------------------------------------- núcleo
-        /// <summary>Conecta al núcleo; si no responde, intenta lanzarlo.</summary>
+        /// <summary>Conecta al Motor; si no responde, intenta lanzarlo.</summary>
         public bool ConnectCore(int attempts)
         {
             for (int i = 0; i < attempts; i++)
@@ -68,8 +75,12 @@ namespace Fusion.Studio.Services
                 {
                     if (ipc != null) ipc.Dispose();
                     ipc = new IpcClient();
-                    ipc.Event += OnCoreEvent;
-                    if (ipc.Connect(400)) return true;
+                    ipc.Event += OnIpcEvent;
+                    if (ipc.Connect(400))
+                    {
+                        SyncFromMotor();   // espejo inicial del estado del Motor
+                        return true;
+                    }
                 }
                 // Lanzar el núcleo si no está (arranque manual de Studio o fallo)
                 if (i == 0)
@@ -95,10 +106,66 @@ namespace Fusion.Studio.Services
             return ipc != null && ipc.Connected;
         }
 
-        void OnCoreEvent(string evt, JsonValue data)
+        /// <summary>Pide el estado completo al Motor y lo espeja (reconexión/GUI reabierta).</summary>
+        public void SyncFromMotor()
         {
+            if (ipc == null || !ipc.Connected) return;
+            try
+            {
+                var resp = ipc.Command("motor.state", JsonValue.Object(), 600);
+                if (resp != null && resp.GetBool("ok", false))
+                {
+                    var data = resp.Get("data");
+                    if (data != null && data.Type == JsonValue.Kind.Object)
+                        ApplyMotorState(data);
+                }
+            }
+            catch { }
+        }
+
+        void OnIpcEvent(string evt, JsonValue data)
+        {
+            if (evt == "motor" && data != null && data.Type == JsonValue.Kind.Object)
+                ApplyMotorState(data);
             var h = CoreEvent;
             if (h != null) h(evt, data);
+        }
+
+        /// <summary>Espejo del estado del Motor → LiveState (hilo de lectura IPC).</summary>
+        void ApplyMotorState(JsonValue st)
+        {
+            try
+            {
+                State.ScenarioIndex = st.GetInt("scenario", -1);
+                State.ElementIndex = st.GetInt("element", -1);
+                State.LineIndex = st.GetInt("line", 0);
+                State.BlankMode = st.GetStr("blank", "black");
+                State.IsBlank = State.BlankMode != "none";
+                State.HasProgram = st.GetBool("hasProgram", false);
+                State.AdvanceMode = st.GetStr("advance", "line");
+                highlight.Clear();
+                foreach (string w in st.GetStringArray("highlight")) highlight.Add(w);
+                RefreshCurrentLocal();
+            }
+            catch { }
+            FireStateChanged();
+        }
+
+        /// <summary>Resuelve localmente el elemento activo para la previsualización.</summary>
+        void RefreshCurrentLocal()
+        {
+            var scn = CurrentScenario;
+            var el = CurrentElement;
+            if (scn == null || el == null)
+            {
+                State.Current = null;
+                return;
+            }
+            var r = ResolvedSlide.Resolve(el, scn, Project, BaseDir());
+            if (string.IsNullOrEmpty(r.Transition)) r.Transition = Settings.DefaultTransition;
+            if (!Settings.Animation) r.Transition = "cut";
+            r.ActiveLine = State.LineIndex;
+            State.Current = r;
         }
 
         void IpcPost(string cmd, JsonValue payload)
@@ -112,7 +179,7 @@ namespace Fusion.Studio.Services
             IpcPost(cmd, payload);
         }
 
-        // ---------------------------------------------------------------- proyección
+        // ---------------------------------------------------------------- programa → Motor
         string BaseDir()
         {
             if (Project != null && !string.IsNullOrEmpty(Project.SourcePath))
@@ -120,80 +187,36 @@ namespace Fusion.Studio.Services
             return Settings.ProjectsPath;
         }
 
+        /// <summary>Construye el programa resuelto completo y lo entrega al Motor.</summary>
+        public void SendProgram(int scnIdx, int elIdx, int lineIdx)
+        {
+            var payload = MotorPayload.Build(Project, BaseDir(),
+                Settings.DefaultTransition, Settings.Animation, Settings.AdvanceMode,
+                scnIdx, elIdx, lineIdx, highlight);
+            IpcPost("motor.load", payload);
+        }
+
+        /// <summary>Reenvía el programa con la selección actual (ediciones, tema en caliente).</summary>
         public void SendCurrent()
         {
-            if (Project == null) { Blank("black"); return; }
-            var scn = CurrentScenario;
-            if (scn == null) { Blank(Settings.RestScreen); return; }
-            var el = CurrentElement;
-            if (el == null) { Blank(Settings.RestScreen); return; }
-
-            var resolved = ResolvedSlide.Resolve(el, scn, Project, BaseDir());
-            if (string.IsNullOrEmpty(resolved.Transition)) resolved.Transition = Settings.DefaultTransition;
-            if (!Settings.Animation) resolved.Transition = "cut";
-            resolved.ActiveLine = State.LineIndex;
-            State.Current = resolved;
-            State.IsBlank = false;
-
-            var payload = JsonValue.Object();
-            payload.Set("slide", resolved.ToIpcJson());
-            IpcPost("show", payload);
-            PreloadNext();
-            FireStateChanged();
+            SendProgram(State.ScenarioIndex, State.ElementIndex, State.LineIndex);
         }
 
-        /// <summary>Carga diferida estricta [SPEC §6.4]: precarga el siguiente elemento.</summary>
-        void PreloadNext()
-        {
-            var scn = CurrentScenario;
-            if (scn == null || Project == null) return;
-            int next = State.ElementIndex + 1;
-            if (next < 0 || next >= scn.Elements.Count) return;
-            var resolved = ResolvedSlide.Resolve(scn.Elements[next], scn, Project, BaseDir());
-            var payload = JsonValue.Object();
-            payload.Set("slide", resolved.ToIpcJson());
-            IpcPost("preload", payload);
-        }
-
-        public void SetLine(int line)
-        {
-            if (State.Current == null) return;
-            if (line < 0 || line >= State.Current.Lines.Count) return;
-            State.LineIndex = line;
-            var p = JsonValue.Object();
-            p.Set("index", JsonValue.Make(line));
-            IpcPost("line", p);
-            FireStateChanged();
-        }
-
-        public void Blank(string mode)
-        {
-            State.IsBlank = mode != "none";
-            State.BlankMode = mode;
-            var p = JsonValue.Object();
-            p.Set("mode", JsonValue.Make(mode));
-            IpcPost("blank", p);
-            FireStateChanged();
-        }
-
-        /// <summary>
-        /// Instala en segundo plano las biblias empaquetadas (RV1960, NVI, RVG,
-        /// RVR1909). Fuera del constructor para no frenar el arranque [SPEC §10.1];
-        /// en ejecuciones posteriores es una verificación rápida sin trabajo.
-        /// </summary>
+        /// <summary>Instala en segundo plano las biblias empaquetadas (RV1960, NVI, RVG,
+        /// RVR1909). Fuera del constructor para no frenar el arranque [SPEC §10.1].</summary>
         public int EnsureBundledBibles()
         {
             return Bibles.EnsureBundled(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
                 Path.Combine(Path.Combine("resources", "data"), "bibles")));
         }
 
-        /// <summary>Tema en caliente [SPEC §7.4.1]: re-resuelve el elemento activo.</summary>
+        /// <summary>Tema en caliente [SPEC §7.4.1]: re-resuelve el programa entero.</summary>
         public void ThemeChanged()
         {
-            if (!State.IsBlank) SendCurrent();
+            SendCurrent();
         }
 
-        // ---------------------------------------------------------------- navegación
+        // ---------------------------------------------------------------- navegación → Motor
         public Scenario CurrentScenario
         {
             get
@@ -214,68 +237,65 @@ namespace Fusion.Studio.Services
             }
         }
 
-        /// <summary>Siguiente línea; al terminar el elemento pasa al siguiente [SPEC §6.2.1].
-        /// Con AdvanceMode="slide" (referencia web) avanza el elemento completo.</summary>
-        public void NextLine()
-        {
-            if (Settings.AdvanceMode == "slide") { NextElement(); return; }
-            if (State.Current == null) { NextElement(); return; }
-            if (State.LineIndex + 1 < State.Current.Lines.Count) SetLine(State.LineIndex + 1);
-            else NextElement();
-        }
-
-        public void PrevLine()
-        {
-            if (Settings.AdvanceMode == "slide") { PrevElement(); return; }
-            if (State.LineIndex > 0) SetLine(State.LineIndex - 1);
-            else PrevElement();
-        }
-
-        public void NextElement()
-        {
-            var scn = CurrentScenario;
-            if (scn == null || Project == null)
-            {
-                if (Project != null && Project.Scenarios.Count > 0) Select(Project.Scenarios.Count - 1, 0, 0);
-                return;
-            }
-            if (State.ElementIndex + 1 < scn.Elements.Count)
-                Select(State.ScenarioIndex, State.ElementIndex + 1, 0);
-            else if (State.ScenarioIndex + 1 < Project.Scenarios.Count)
-                Select(State.ScenarioIndex + 1, 0, 0);
-        }
-
-        public void PrevElement()
-        {
-            if (State.ElementIndex > 0) Select(State.ScenarioIndex, State.ElementIndex - 0 - 1, 0);
-            else if (State.ScenarioIndex > 0)
-            {
-                var prev = Project.Scenarios[State.ScenarioIndex - 1];
-                Select(State.ScenarioIndex - 1, prev.Elements.Count - 1, 0);
-            }
-        }
+        public void NextLine()  { IpcPost("motor.next", JsonValue.Object()); }
+        public void PrevLine()  { IpcPost("motor.prev", JsonValue.Object()); }
+        public void NextElement() { IpcPost("motor.nextElement", JsonValue.Object()); }
+        public void PrevElement() { IpcPost("motor.prevElement", JsonValue.Object()); }
 
         public void Select(int scenarioIdx, int elementIdx, int lineIdx)
         {
-            State.ScenarioIndex = scenarioIdx;
-            State.ElementIndex = elementIdx;
-            State.LineIndex = lineIdx;
-            SendCurrent();
+            var p = JsonValue.Object();
+            p.Set("scenario", JsonValue.Make(scenarioIdx));
+            p.Set("element", JsonValue.Make(elementIdx));
+            p.Set("line", JsonValue.Make(lineIdx));
+            IpcPost("motor.goto", p);
         }
 
-        public void GoLive(Scenario scn)
+        public void SetLine(int line)
         {
-            if (Project == null || scn == null) return;
-            int i = Project.Scenarios.IndexOf(scn);
-            if (i >= 0) Select(i, scn.Elements.Count > 0 ? 0 : -1, 0);
+            var p = JsonValue.Object();
+            p.Set("index", JsonValue.Make(line));
+            IpcPost("motor.line", p);
         }
 
-        /// <summary>Añade un Escenario al final de la lista y lo proyecta [SPEC §7.5.1].</summary>
+        public void Blank(string mode)
+        {
+            var p = JsonValue.Object();
+            p.Set("mode", JsonValue.Make(mode));
+            IpcPost("motor.blank", p);
+        }
+
+        /// <summary>Resaltado en proyección: el Motor lo aplica y persiste.</summary>
+        public void SetHighlight(IList<string> words)
+        {
+            highlight.Clear();
+            if (words != null) foreach (string w in words) highlight.Add(w);
+            var p = JsonValue.Object();
+            var arr = JsonValue.Array();
+            foreach (string w in highlight) arr.Add(JsonValue.Make(w));
+            p.Set("words", arr);
+            IpcPost("motor.highlight", p);
+        }
+
+        /// <summary>Avance línea por línea / por diapositiva (referencia web).</summary>
+        public void SetAdvance(string mode)
+        {
+            Settings.AdvanceMode = mode == "slide" ? "slide" : "line";
+            Settings.Save();
+            var p = JsonValue.Object();
+            p.Set("mode", JsonValue.Make(Settings.AdvanceMode));
+            IpcPost("motor.advance", p);
+        }
+
+        /// <summary>Añade un Escenario al final del proyecto, lo entrega al Motor
+        /// y lo proyecta [SPEC §7.5.1].</summary>
         public void SendToLive(Scenario scn)
         {
             if (Project == null) Project = AhpProject.CreateDefault();
             if (!Project.Scenarios.Contains(scn)) Project.Scenarios.Add(scn);
-            GoLive(scn);
+            int i = Project.Scenarios.IndexOf(scn);
+            SendProgram(i, scn.Elements.Count > 0 ? 0 : -1, 0);
+            Blank("none");   // enviar a pantalla = mostrar
         }
 
         // ---------------------------------------------------------------- persistencia
@@ -294,13 +314,14 @@ namespace Fusion.Studio.Services
             {
                 Project = AhpProject.FromJson(Json.ParseFile(path));
                 Project.SourcePath = path;
-                State.ScenarioIndex = Project.Scenarios.Count > 0 ? 0 : -1;
-                State.ElementIndex = Project.Scenarios.Count > 0 && Project.Scenarios[0].Elements.Count > 0 ? 0 : -1;
-                State.LineIndex = 0;
-                Blank(Settings.RestScreen);
                 Settings.LastProjectPath = path;
                 Settings.Save();
-                FireStateChanged();
+                // El Motor recibe el programa completo; el reposo manda hasta que
+                // el operador envíe (comportamiento beta 1: nada se proyecta solo).
+                SendProgram(Project.Scenarios.Count > 0 ? 0 : -1,
+                            Project.Scenarios.Count > 0 && Project.Scenarios[0].Elements.Count > 0 ? 0 : -1,
+                            0);
+                Blank(Settings.RestScreen);
                 return true;
             }
             catch (Exception ex)

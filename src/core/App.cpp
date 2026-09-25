@@ -36,6 +36,26 @@ int App::Run(HINSTANCE inst, int showCmd) {
     live_.GetRenderer().SetLogoPath(DataDir() + L"\\logo.png");
     live_.RenderNow();   // pantalla de reposo negra inicial [SPEC §6.1.3]
 
+    // ---- EL MOTOR (v2.2): dueño del estado vivo del programa ----
+    // Se crea ANTES del IPC: cualquier comando motor.* encuentra el Motor listo.
+    // Recupera el último servicio persistido (sesion.json): el programa vive en
+    // el Motor, no en la GUI — si la GUI se cierra, la proyección continúa.
+    motor_ = std::make_unique<Motor>();
+    motor_->ApplySlideJson = [this](const Json& j) { ApplySlide(j); };
+    motor_->ApplyBlank = [this](const std::string& m) { ApplyBlank(m); };
+    motor_->PreloadSlide = [this](const Json& s) { PreloadSlideJson(s); };
+    motor_->Broadcast = [this] { BroadcastMotorState(); };
+    {
+        std::wstring mdir = DataDir() + L"\\motor";
+        CreateDirectoryW(mdir.c_str(), nullptr);          // idempotente
+        motorSesionFile_ = mdir + L"\\sesion.json";
+        motor_->SetPersistFile(motorSesionFile_);
+    }
+    if (motor_->LoadPersisted(motorSesionFile_))
+        Logger::Info("core.motor", "programa anterior recuperado (motor/sesion.json)");
+    live_.KeyHook = [this](UINT vk) { if (motor_) motor_->StandaloneKey(vk); };
+    bootTick_ = GetTickCount();
+
     // ---- IPC ipc.v1 ----
     IpcContext ctx;
     ctx.state = &state_;
@@ -59,7 +79,7 @@ int App::Run(HINSTANCE inst, int showCmd) {
         if (!nativeCtl_->Create()) Logger::Error("core.native", "no se pudo crear el control nativo");
     }
 
-    // Bombeo de eventos de video (loop/fin) cada 250 ms
+    // Bombeo de eventos de video (loop/fin) + vigilancia del Motor cada 250 ms
     pumpTimer_ = SetTimer(nullptr, 0, 250, nullptr);
 
     // ---- Bomba de mensajes ----
@@ -67,9 +87,7 @@ int App::Run(HINSTANCE inst, int showCmd) {
     while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
         if (msg.message == WM_TIMER && msg.wParam == pumpTimer_) {
             video_.PumpEvents();
-            if (studioRunning_.load()) {
-                // vigilancia liviana del proceso Studio
-            }
+            WatchStandalone();
             continue;
         }
         TranslateMessage(&msg);
@@ -159,8 +177,60 @@ void App::BroadcastState() {
     ipc_->BroadcastEvent("state", state_.StateJson());
 }
 
+void App::BroadcastMotorState() {
+    if (!ipc_ || !motor_) return;
+    ipc_->BroadcastEvent("motor", motor_->StateJson());
+}
+
+void App::ApplyBlank(const std::string& mode) {
+    if (video_.IsPlaying() && mode != "none") video_.Pause();
+    if (video_.IsPlaying() && mode == "none") video_.Resume();
+    state_.SetBlank(mode == "black" ? BlankMode::Black :
+                    mode == "logo" ? BlankMode::Logo :
+                    mode == "theme" ? BlankMode::Theme :
+                    mode == "clear" ? BlankMode::Clear : BlankMode::None);
+    live_.RenderNow();
+    BroadcastState();
+}
+
+void App::PreloadSlideJson(const Json& slide) {
+    Slide s;
+    if (!SlideState::ParseSlide(slide, s)) return;
+    if (!s.bg.image.empty()) renderer_preload_ = s.bg.image;
+    if (!s.media.src.empty() && s.kind == SlideKind::Image) renderer_preload2_ = s.media.src;
+    live_.GetRenderer().PreloadImage(renderer_preload_);
+    if (!renderer_preload2_.empty()) live_.GetRenderer().PreloadImage(renderer_preload2_);
+}
+
+void App::WatchStandalone() {
+    if (!motor_) return;
+    int clients = ipc_ ? ipc_->ClientCount() : 0;
+    if (clients > 0) {
+        guiEverConnected_ = true;
+        if (standalone_) {
+            standalone_ = false;
+            motor_->SetStandaloneKeys(false);
+            live_.SetStandalone(false);
+            Logger::Info("core.motor", "GUI reconectada: teclado devuelto al operador");
+        }
+        return;
+    }
+    // Perfil C tiene su propia UI nativa: nunca compite con el Motor.
+    if (nativeCtl_) return;
+    if (!motor_->HasProgram()) return;
+    bool grace = guiEverConnected_ || (GetTickCount() - bootTick_ > 6000);
+    if (grace && !standalone_) {
+        standalone_ = true;
+        motor_->SetStandaloneKeys(true);
+        live_.SetStandalone(true);
+        Logger::Info("core.motor", "sin GUI: motor autonomo (teclado sobre la salida)");
+    }
+}
+
 Json App::Dispatch(const std::string& cmd, const Json& p) {
     Json ok = {{"ok", true}};
+
+    if (cmd.rfind("motor.", 0) == 0) return DispatchMotor(cmd, p);
 
     if (cmd == "show") {
         if (p.contains("slide")) ApplySlide(p["slide"]);
@@ -170,13 +240,7 @@ Json App::Dispatch(const std::string& cmd, const Json& p) {
     if (cmd == "preload") {
         // Carga diferida [SPEC §6.4]: decodifica el fondo/imagen del SIGUIENTE
         // elemento sin dibujarlo; la conmutación queda en intercambio rápido.
-        Slide s;
-        if (p.contains("slide") && SlideState::ParseSlide(p["slide"], s)) {
-            if (!s.bg.image.empty()) renderer_preload_ = s.bg.image;
-            if (!s.media.src.empty() && s.kind == SlideKind::Image) renderer_preload2_ = s.media.src;
-            live_.GetRenderer().PreloadImage(renderer_preload_);
-            if (!renderer_preload2_.empty()) live_.GetRenderer().PreloadImage(renderer_preload2_);
-        }
+        if (p.contains("slide")) PreloadSlideJson(p["slide"]);
         return ok;
     }
     if (cmd == "line") {
@@ -188,14 +252,7 @@ Json App::Dispatch(const std::string& cmd, const Json& p) {
     }
     if (cmd == "blank") {
         std::string mode = p.value("mode", std::string("none"));
-        if (video_.IsPlaying() && mode != "none") video_.Pause();
-        if (video_.IsPlaying() && mode == "none") video_.Resume();
-        state_.SetBlank(mode == "black" ? BlankMode::Black :
-                        mode == "logo" ? BlankMode::Logo :
-                        mode == "theme" ? BlankMode::Theme :
-                        mode == "clear" ? BlankMode::Clear : BlankMode::None);
-        live_.RenderNow();
-        BroadcastState();
+        ApplyBlank(mode);
         return ok;
     }
     if (cmd == "clear") {
@@ -245,6 +302,52 @@ Json App::Dispatch(const std::string& cmd, const Json& p) {
         return ok;
     }
     return {{"ok", false}, {"error", "comando desconocido: " + cmd}};
+}
+
+// ------------------------------------------------------------ familia motor.*
+Json App::DispatchMotor(const std::string& cmd, const Json& p) {
+    if (!motor_) return {{"ok", false}, {"error", "motor no disponible"}};
+    Json ok = {{"ok", true}};
+    std::string err;
+
+    if (cmd == "motor.load") {
+        if (!motor_->LoadProgram(p, &err)) return {{"ok", false}, {"error", err}};
+        return ok;
+    }
+    if (cmd == "motor.append") {
+        if (!motor_->AppendScenario(p, &err)) return {{"ok", false}, {"error", err}};
+        return ok;
+    }
+    if (cmd == "motor.clear") { motor_->Clear(); return ok; }
+    if (cmd == "motor.next")  { motor_->Next(); return ok; }
+    if (cmd == "motor.prev")  { motor_->Prev(); return ok; }
+    if (cmd == "motor.nextElement") { motor_->NextElement(); return ok; }
+    if (cmd == "motor.prevElement") { motor_->PrevElement(); return ok; }
+    if (cmd == "motor.goto") {
+        int s = p.value("scenario", -1), e = p.value("element", -1), l = p.value("line", 0);
+        if (!motor_->Goto(s, e, l)) return {{"ok", false}, {"error", "seleccion invalida"}};
+        return ok;
+    }
+    if (cmd == "motor.line") {
+        if (!motor_->SetLine(p.value("index", -1)))
+            return {{"ok", false}, {"error", "linea fuera de rango"}};
+        return ok;
+    }
+    if (cmd == "motor.blank") { motor_->SetBlank(p.value("mode", std::string("none"))); return ok; }
+    if (cmd == "motor.advance") { motor_->SetAdvance(p.value("mode", std::string("line"))); return ok; }
+    if (cmd == "motor.highlight") {
+        std::vector<std::string> words;
+        if (p.contains("words") && p["words"].is_array())
+            for (const auto& w : p["words"])
+                if (w.is_string()) words.push_back(w.get<std::string>());
+        motor_->Highlight(words);
+        return ok;
+    }
+    if (cmd == "motor.state") {
+        ok["data"] = motor_->StateJson();
+        return ok;
+    }
+    return {{"ok", false}, {"error", "comando motor desconocido: " + cmd}};
 }
 
 } // namespace fusion

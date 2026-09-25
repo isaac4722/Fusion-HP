@@ -61,18 +61,23 @@ namespace Fusion.Studio.Ui
             foreach (int step in new[] { -2, -1, 1, 2 })
             {
                 int st = step;
-                var b = new Button { Text = (step > 0 ? "+" : "") + step, Location = new Point(tx, y - 4),
-                                     Size = new Size(38, 26), FlatStyle = FlatStyle.Flat, Font = UiTheme.Small() };
+                var b = new Fusion.Studio.Ui.Chrome.FusionButton
+                {
+                    Text = (step > 0 ? "+" : "") + step,
+                    Location = new Point(tx, y - 4),
+                    Size = new Size(40, 28), Font = UiTheme.Small()
+                };
                 b.Click += delegate { TransposeAll(st); };
                 Controls.Add(b);
-                tx += 42;
+                tx += 44;
             }
             var trTip = new ToolTip();
             trTip.SetToolTip(lblTr, "Reconoce líneas de acordes (C, Do, Am, Lam, C/E, maj7, sus4…) y las transporta.");
             y += 34;
 
             L("Secciones", 14, y);
-            btnAddSection = new Button { Text = "+ Sección", Location = new Point(90, y - 4), AutoSize = true, FlatStyle = FlatStyle.Flat };
+            btnAddSection = new Fusion.Studio.Ui.Chrome.FusionButton { Text = "Sección", IconName = "plus",
+                Location = new Point(90, y - 4), Size = new Size(96, 28) };
             btnAddSection.Click += delegate
             {
                 var s = Result != null ? Result : Build();
@@ -80,7 +85,8 @@ namespace Fusion.Studio.Ui
                 LoadFrom(s);
             };
             Controls.Add(btnAddSection);
-            btnDelSection = new Button { Text = "Quitar", Location = new Point(180, y - 4), AutoSize = true, FlatStyle = FlatStyle.Flat };
+            btnDelSection = new Fusion.Studio.Ui.Chrome.FusionButton { Text = "Quitar", IconName = "trash",
+                Location = new Point(192, y - 4), Size = new Size(90, 28) };
             btnDelSection.Click += delegate
             {
                 var s = Result != null ? Result : Build();
@@ -103,8 +109,11 @@ namespace Fusion.Studio.Ui
             Controls.Add(lines);
 
             y += 308;
-            var btnSave = new Button { Text = "Guardar", Location = new Point(450, y), Size = new Size(80, 32),
-                                       BackColor = UiTheme.Accent, ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
+            var btnSave = new Fusion.Studio.Ui.Chrome.FusionButton
+            {
+                Text = "Guardar", IconName = "check", Kind = Fusion.Studio.Ui.Chrome.FusionButtonKind.Primary,
+                Location = new Point(444, y), Size = new Size(88, 32)
+            };
             btnSave.Click += delegate
             {
                 SyncToModel();
@@ -119,7 +128,8 @@ namespace Fusion.Studio.Ui
                 Close();
             };
             Controls.Add(btnSave);
-            var btnCancel = new Button { Text = "Cancelar", Location = new Point(538, y), Size = new Size(80, 32), FlatStyle = FlatStyle.Flat };
+            var btnCancel = new Fusion.Studio.Ui.Chrome.FusionButton { Text = "Cancelar", IconName = "x",
+                Location = new Point(538, y), Size = new Size(86, 32) };
             btnCancel.Click += delegate { Close(); };
             Controls.Add(btnCancel);
 

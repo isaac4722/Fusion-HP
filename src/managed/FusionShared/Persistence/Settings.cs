@@ -44,6 +44,10 @@ namespace Fusion.Shared
         public bool ShowClock = true;           // reloj en la consola
         public bool Animation = true;           // transiciones animadas (fade/slide)
         public string DefaultTransition = "fade";   // cut | fade | slide
+        // Motor (v2.2): al cerrar la GUI, el Motor sigue proyectando el programa
+        // cargado (comportamiento beta 1) con teclado sobre la salida. Alt+F4
+        // sobre la salida lo apaga. Si es false, cerrar la GUI apaga todo.
+        public bool KeepEngineAlive = true;
 
         public static AppSettings Load()
         {
@@ -81,6 +85,7 @@ namespace Fusion.Shared
                     s.ShowClock = j.GetBool("showClock", true);
                     s.Animation = j.GetBool("animation", true);
                     s.DefaultTransition = j.GetStr("defaultTransition", "fade");
+                    s.KeepEngineAlive = j.GetBool("keepEngineAlive", true);
                 }
             }
             catch
@@ -116,6 +121,7 @@ namespace Fusion.Shared
                 j.Set("showClock", JsonValue.Make(ShowClock));
                 j.Set("animation", JsonValue.Make(Animation));
                 j.Set("defaultTransition", JsonValue.Make(DefaultTransition));
+                j.Set("keepEngineAlive", JsonValue.Make(KeepEngineAlive));
                 Json.WriteFile(Path.Combine(DataDir, "settings.json"), j);
             }
             catch

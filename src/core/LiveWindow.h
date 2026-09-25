@@ -31,6 +31,13 @@ public:
     void RenderNow();                           // dibuja el estado actual (público para eventos)
     void SetVideoChildVisible(bool v);
 
+    // ---- modo autónomo del Motor (v2.2): sin GUI conectada ----
+    // Teclas sobre la salida (las traduce el Motor). Se activa al hacer clic.
+    std::function<void(UINT)> KeyHook;
+    // on: la salida admite foco/teclado y muestra el aviso del Motor;
+    // off: comportamiento normal (no roba foco del operador [SPEC §6.1.2]).
+    void SetStandalone(bool on);
+
     // Estado compartido que dibuja esta ventana
     void Bind(SlideState* state) { state_ = state; }
 
@@ -43,16 +50,21 @@ public:
 
 private:
     LRESULT Handle(HWND, UINT, WPARAM, LPARAM);
+    void ShowHint(bool on);                     // aviso "MOTOR ACTIVO" (8 s)
+    static LRESULT CALLBACK HintWndProc(HWND, UINT, WPARAM, LPARAM);
 
     HWND hwnd_ = nullptr;
     HWND videoHwnd_ = nullptr;
     HWND stageHwnd_ = nullptr;
+    HWND hintHwnd_ = nullptr;
     Renderer renderer_;
     Renderer stageRenderer_;
     SlideState* state_ = nullptr;
     VideoPlayer* video_ = nullptr;
     int monitorIdx_ = -1;
     std::wstring class_;
+    bool standalone_ = false;
+    UINT_PTR hintTimer_ = 0;
 };
 
 } // namespace fusion

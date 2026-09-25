@@ -1,19 +1,25 @@
 // ============================================================================
 //  Fusion-HP · MainForm.Present.cs — modo Presentación [SPEC §6]:
 //  biblioteca a la izquierda (acceso directo), previsualización y programa
-//  al centro, controles en vivo a la derecha. Sincronización línea por línea
-//  visible como sub-lista bajo el elemento activo [SPEC §6.2].
+//  al centro, controles en vivo a la derecha (chrome modelado v2.2: chips con
+//  iconos, transporte tipo reproductor, estados activos .ppt-iconbtn-on).
+//  Sincronización línea por línea visible como sub-lista [SPEC §6.2].
 // ============================================================================
 using System;
 using System.Drawing;
 using System.Windows.Forms;
 using Fusion.Shared;
 using Fusion.Shared.Model;
+using Fusion.Studio.Ui.Chrome;
 
 namespace Fusion.Studio.Ui
 {
     public partial class MainForm
     {
+        FusionButton btnSend, btnBlack, btnLogo, btnClear, btnShow, btnMsg, btnVerse, btnChords, btnAdvance;
+        FusionIconButton ibPrevEl, ibPrevLine, ibNextLine, ibNextEl;
+        FusionSearchBox txtHighlight;
+
         void BuildPresent()
         {
             presentPanel = new Panel { Dock = DockStyle.Fill, BackColor = UiTheme.Bg, Visible = false };
@@ -28,24 +34,34 @@ namespace Fusion.Studio.Ui
             center.BringToFront();
 
             var previewFrame = new Panel { Dock = DockStyle.Top, Height = 330, BackColor = UiTheme.Panel,
-                                           Padding = new Padding(1), BorderStyle = BorderStyle.FixedSingle };
+                                           Padding = new Padding(1) };
+            previewFrame.Paint += delegate(object s, PaintEventArgs e)
+            {
+                using (var pen = new Pen(UiTheme.InputBorder))
+                    e.Graphics.DrawRectangle(pen, 0, 0, previewFrame.Width - 1, previewFrame.Height - 1);
+            };
             preview = new SlidePreview { Dock = DockStyle.Fill };
-            var previewLabel = new Label { Text = "Previsualización", Dock = DockStyle.Bottom, Height = 22,
-                                           Font = UiTheme.Small(), ForeColor = UiTheme.TextDim,
+            var previewLabel = new Label { Text = "PREVISUALIZACIÓN", Dock = DockStyle.Bottom, Height = 22,
+                                           Font = UiTheme.SmallBold(), ForeColor = UiTheme.TextDim,
                                            TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(8, 0, 0, 0),
                                            BackColor = UiTheme.Panel };
             preview.Controls.Add(previewLabel);
             previewFrame.Controls.Add(preview);
             center.Controls.Add(previewFrame);
 
-            // programa con miniaturas y sub-líneas
+            // programa con iconos de tipo y sub-líneas
             programPanel = new Panel { Dock = DockStyle.Fill, BackColor = UiTheme.Panel, Padding = new Padding(8),
-                                       BorderStyle = BorderStyle.FixedSingle, AutoScroll = true };
+                                       AutoScroll = true };
+            programPanel.Paint += delegate(object s, PaintEventArgs e)
+            {
+                using (var pen = new Pen(UiTheme.InputBorder))
+                    e.Graphics.DrawRectangle(pen, 0, 0, programPanel.Width - 1, programPanel.Height - 1);
+            };
             var programTitle = new Label { Text = "Programa", Dock = DockStyle.Top, Height = 26, Font = UiTheme.NormalBold(),
                                            ForeColor = UiTheme.Text, TextAlign = ContentAlignment.MiddleLeft };
             programList = new ListBox { Dock = DockStyle.Fill, BorderStyle = BorderStyle.None,
                                         DrawMode = DrawMode.OwnerDrawVariable, ItemHeight = 46,
-                                        IntegralHeight = false, Font = UiTheme.Normal() };
+                                        IntegralHeight = false, Font = UiTheme.Normal(), BackColor = Color.White };
             programList.DrawItem += ProgramListDraw;
             programList.MeasureItem += delegate(object s, MeasureItemEventArgs e) { e.ItemHeight = 46; };
             programList.SelectedIndexChanged += delegate
@@ -72,132 +88,181 @@ namespace Fusion.Studio.Ui
             split.Panel2.Controls.Add(programInner);
             center.Controls.Add(split);
 
-            // ---------------- controles en vivo (derecha) ----------------
-            var right = new Panel { Dock = DockStyle.Right, Width = 220, BackColor = UiTheme.Panel,
-                                    Padding = new Padding(10), BorderStyle = BorderStyle.FixedSingle };
+            // ---------------- controles en vivo (derecha, modelados) ----------------
+            var right = new Panel { Dock = DockStyle.Right, Width = 232, BackColor = UiTheme.Panel,
+                                    Padding = new Padding(10, 10, 10, 8) };
+            right.Paint += delegate(object s, PaintEventArgs e)
+            {
+                using (var pen = new Pen(UiTheme.InputBorder))
+                    e.Graphics.DrawRectangle(pen, 0, 0, right.Width - 1, right.Height - 1);
+            };
             int y = 12;
-            var lblCtl = new Label { Text = "CONTROL EN VIVO", Font = UiTheme.SmallBold(), ForeColor = UiTheme.TextDim,
-                                     Location = new Point(10, y), AutoSize = true };
-            right.Controls.Add(lblCtl); y += 28;
 
-            var btnSend = MakeLiveButton("Enviar a pantalla", y, UiTheme.Accent, Color.White);
+            var lblCtl = new Label { Text = "CONTROL EN VIVO", Font = UiTheme.SmallBold(), ForeColor = UiTheme.TextDim,
+                                     Location = new Point(12, y), AutoSize = true };
+            right.Controls.Add(lblCtl); y += 26;
+
+            // Transporte tipo reproductor (línea y elemento) — fila de 4
+            ibPrevEl = MakeLiveIcon(right, "chevrons-left", "Elemento anterior (↑)", y, 0);
+            ibPrevLine = MakeLiveIcon(right, "player-skip-back", "Línea anterior (←)", y, 1);
+            ibNextLine = MakeLiveIcon(right, "player-skip-forward", "Línea siguiente (Espacio)", y, 2);
+            ibNextEl = MakeLiveIcon(right, "chevrons-right", "Elemento siguiente (↓)", y, 3);
+            ibPrevEl.Click += delegate { Live.PrevElement(); };
+            ibPrevLine.Click += delegate { Live.PrevLine(); };
+            ibNextLine.Click += delegate { Live.NextLine(); };
+            ibNextEl.Click += delegate { Live.NextElement(); };
+            y += 42;
+
+            btnSend = MakeLiveButton("Enviar a pantalla", "player-play", ref y, FusionButtonKind.Primary);
+            btnSend.Kbd = "Enter";
             btnSend.Click += delegate
             {
                 var scn = CurrentScenarioUi;
                 if (scn != null) Live.SendToLive(scn);
             };
-            right.Controls.Add(btnSend); y += 42;
+            right.Controls.Add(btnSend); y += 40;
 
-            var btnBlack = MakeLiveButton("Negro (Esc/B)", y, Color.Black, Color.White);
+            var lblScreens = new Label { Text = "PANTALLAS", Font = UiTheme.SmallBold(), ForeColor = UiTheme.TextDim,
+                                         Location = new Point(12, y), AutoSize = true };
+            right.Controls.Add(lblScreens); y += 22;
+
+            btnBlack = MakeLiveButton("Negro", "square", ref y, FusionButtonKind.Chip);
+            btnBlack.Kbd = "B";
             btnBlack.Click += delegate { Live.Blank(Live.State.BlankMode == "black" ? "none" : "black"); };
-            right.Controls.Add(btnBlack); y += 38;
+            right.Controls.Add(btnBlack); y += 36;
 
-            var btnLogo = MakeLiveButton("Logo (L)", y, UiTheme.Bg, UiTheme.Text);
+            btnLogo = MakeLiveButton("Logo", "photo", ref y, FusionButtonKind.Chip);
+            btnLogo.Kbd = "L";
             btnLogo.Click += delegate { Live.Blank(Live.State.BlankMode == "logo" ? "none" : "logo"); };
-            right.Controls.Add(btnLogo); y += 38;
+            right.Controls.Add(btnLogo); y += 36;
 
-            var btnClear = MakeLiveButton("Ocultar texto (C)", y, UiTheme.Bg, UiTheme.Text);
+            btnClear = MakeLiveButton("Ocultar texto", "eye-off", ref y, FusionButtonKind.Chip);
+            btnClear.Kbd = "C";
             btnClear.Click += delegate { Live.Blank(Live.State.BlankMode == "clear" ? "none" : "clear"); };
-            right.Controls.Add(btnClear); y += 44;
+            right.Controls.Add(btnClear); y += 36;
 
-            var btnShow = MakeLiveButton("Mostrar", y, UiTheme.Bg, UiTheme.Text);
+            btnShow = MakeLiveButton("Mostrar", "eye", ref y, FusionButtonKind.Chip);
             btnShow.Click += delegate { Live.Blank("none"); };
-            right.Controls.Add(btnShow); y += 44;
+            right.Controls.Add(btnShow); y += 40;
 
-            var btnPrevEl = MakeLiveButton("◀ Elemento", y, UiTheme.Bg, UiTheme.Text);
-            btnPrevEl.Click += delegate { Live.PrevElement(); };
-            right.Controls.Add(btnPrevEl); y += 38;
-            var btnNextEl = MakeLiveButton("Elemento ▶", y, UiTheme.Bg, UiTheme.Text);
-            btnNextEl.Click += delegate { Live.NextElement(); };
-            right.Controls.Add(btnNextEl); y += 44;
+            var lblTools = new Label { Text = "HERRAMIENTAS", Font = UiTheme.SmallBold(), ForeColor = UiTheme.TextDim,
+                                       Location = new Point(12, y), AutoSize = true };
+            right.Controls.Add(lblTools); y += 22;
 
-            var btnPrevLine = MakeLiveButton("◀ Línea", y, UiTheme.Bg, UiTheme.Text);
-            btnPrevLine.Click += delegate { Live.PrevLine(); };
-            right.Controls.Add(btnPrevLine); y += 38;
-            var btnNextLine = MakeLiveButton("Línea ▶ (Espacio)", y, UiTheme.AccentSoft, UiTheme.AccentDark);
-            btnNextLine.Click += delegate { Live.NextLine(); };
-            right.Controls.Add(btnNextLine); y += 46;
-
-            var btnMsg = MakeLiveButton("Mensaje (lower third)", y, UiTheme.Bg, UiTheme.Text);
-            btnMsg.Click += delegate { ShowMessageDialog(); };
-            right.Controls.Add(btnMsg); y += 44;
-
-            var btnVerse = MakeLiveButton("Versículo rápido (G)", y, UiTheme.Bg, UiTheme.Text);
+            btnVerse = MakeLiveButton("Versículo rápido", "book", ref y, FusionButtonKind.Chip);
+            btnVerse.Kbd = "G";
             btnVerse.Click += delegate { FocusBibleSearch(); };
-            right.Controls.Add(btnVerse); y += 38;
+            right.Controls.Add(btnVerse); y += 36;
 
-            var btnChords = MakeLiveButton("Acordes (músicos)", y, UiTheme.Bg, UiTheme.Text);
+            btnMsg = MakeLiveButton("Mensaje en pantalla", "app-window-bottom", ref y, FusionButtonKind.Chip);
+            btnMsg.Click += delegate { ShowMessageDialog(); };
+            right.Controls.Add(btnMsg); y += 36;
+
+            btnChords = MakeLiveButton("Acordes (músicos)", "piano", ref y, FusionButtonKind.Chip);
             btnChords.Click += delegate { ShowChordsWindow(); };
-            right.Controls.Add(btnChords); y += 44;
+            right.Controls.Add(btnChords); y += 40;
 
-            // Resaltado en proyección [SPEC §5.2 #2]: palabras que se dibujan
-            // en color de acento (port de las betas 1). Enter aplica, vacío limpia.
+            // Resaltado en proyección [SPEC §5.2 #2] (port de las betas 1):
+            // el MOTOR aplica y persiste las palabras; Enter aplica, vacío limpia.
             var lblHl = new Label { Text = "RESALTAR EN PANTALLA", Font = UiTheme.SmallBold(),
-                                    ForeColor = UiTheme.TextDim, Location = new Point(10, y), AutoSize = true };
+                                    ForeColor = UiTheme.TextDim, Location = new Point(12, y), AutoSize = true };
             right.Controls.Add(lblHl); y += 22;
-            txtHighlight = new TextBox { Location = new Point(10, y), Size = new Size(196, 24),
-                                         Font = UiTheme.Normal(), BorderStyle = BorderStyle.FixedSingle };
+            txtHighlight = new FusionSearchBox
+            {
+                LeftIcon = "wand",
+                Location = new Point(12, y), Size = new Size(206, 30)
+            };
+            txtHighlight.Placeholder = "Palabras (p. ej. Dios amor)";
             ToolTip tipHl = new ToolTip();
-            tipHl.SetToolTip(txtHighlight, "Palabras separadas por espacio. Enter aplica, vacío limpia. Ej.: Dios amor");
-            txtHighlight.KeyDown += delegate(object s, KeyEventArgs e)
+            tipHl.SetToolTip(txtHighlight, "Palabras separadas por espacio. Enter aplica, vacío limpia.");
+            txtHighlight.Inner.KeyDown += delegate(object s, KeyEventArgs e)
             {
                 if (e.KeyCode == Keys.Enter) { ApplyHighlight(); e.SuppressKeyPress = true; }
                 if (e.KeyCode == Keys.Escape) { txtHighlight.Text = ""; ApplyHighlight(); e.SuppressKeyPress = true; }
             };
-            right.Controls.Add(txtHighlight); y += 30;
+            right.Controls.Add(txtHighlight); y += 36;
 
             // Avance línea/diapositiva (referencia web) conmutable al vuelo
-            btnAdvance = MakeLiveButton("Avance: línea por línea", y, UiTheme.AccentSoft, UiTheme.AccentDark);
+            btnAdvance = MakeLiveButton("Avance: línea por línea", "list", ref y, FusionButtonKind.Chip);
             btnAdvance.Click += delegate { ToggleAdvanceMode(); };
             right.Controls.Add(btnAdvance); y += 38;
-            UpdateAdvanceButton();
 
             var lblLines = new Label { Text = "LÍNEAS DEL ELEMENTO", Font = UiTheme.SmallBold(), ForeColor = UiTheme.TextDim,
-                                       Location = new Point(10, y), AutoSize = true };
+                                       Location = new Point(12, y), AutoSize = true };
             right.Controls.Add(lblLines); y += 24;
-            linesPanel = new Panel { Location = new Point(10, y), Size = new Size(196, 240), AutoScroll = true,
-                                     BackColor = UiTheme.Panel, BorderStyle = BorderStyle.FixedSingle };
+            linesPanel = new Panel { Location = new Point(12, y), Size = new Size(206, 220), AutoScroll = true,
+                                     BackColor = Color.White };
+            linesPanel.Paint += delegate(object s, PaintEventArgs e)
+            {
+                using (var pen = new Pen(UiTheme.InputBorder))
+                    e.Graphics.DrawRectangle(pen, 0, 0, linesPanel.Width - 1, linesPanel.Height - 1);
+            };
             right.Controls.Add(linesPanel);
 
             presentPanel.Controls.Add(right);
         }
 
-        Button MakeLiveButton(string text, int y, Color bg, Color fg)
+        FusionIconButton MakeLiveIcon(Panel parent, string icon, string tooltip, int y, int col)
         {
-            var b = new Button { Text = text, Location = new Point(10, y), Size = new Size(196, 32),
-                                 FlatStyle = FlatStyle.Flat, BackColor = bg, ForeColor = fg,
-                                 Font = UiTheme.Normal(), UseVisualStyleBackColor = false };
-            b.FlatAppearance.BorderSize = 0;
+            var b = new FusionIconButton
+            {
+                IconName = icon,
+                Location = new Point(12 + col * 50, y)
+            };
+            new ToolTip().SetToolTip(b, tooltip);
+            parent.Controls.Add(b);
             return b;
         }
 
-        TextBox txtHighlight;
-        Button btnAdvance;
+        FusionButton MakeLiveButton(string text, string icon, ref int y, FusionButtonKind kind)
+        {
+            var b = new FusionButton
+            {
+                Text = text, IconName = icon, Kind = kind,
+                Location = new Point(12, y), Size = new Size(206, 32)
+            };
+            return b;
+        }
+
         ChordsForm chordsForm;
 
         void ToggleAdvanceMode()
         {
-            Settings.AdvanceMode = Settings.AdvanceMode == "line" ? "slide" : "line";
-            Settings.Save();
-            UpdateAdvanceButton();
+            Live.SetAdvance(Settings.AdvanceMode == "line" ? "slide" : "line");
         }
 
         void UpdateAdvanceButton()
         {
             if (btnAdvance == null) return;
             btnAdvance.Text = Settings.AdvanceMode == "line" ? "Avance: línea por línea" : "Avance: por diapositiva";
+            btnAdvance.Invalidate();
+        }
+
+        /// <summary>Sincroniza los estados activos de los botones con el Motor.</summary>
+        void UpdateLiveButtons()
+        {
+            if (btnBlack == null) return;
+            string b = Live.State.BlankMode;
+            SetActiveKind(btnBlack, b == "black");
+            SetActiveKind(btnLogo, b == "logo");
+            SetActiveKind(btnClear, b == "clear");
+            SetActiveKind(btnAdvance, Settings.AdvanceMode == "line");
+            UpdateAdvanceButton();
+        }
+
+        static void SetActiveKind(FusionButton b, bool on)
+        {
+            var k = on ? FusionButtonKind.Active : FusionButtonKind.Chip;
+            if (b.Kind != k) { b.Kind = k; b.Invalidate(); }
         }
 
         void ApplyHighlight()
         {
-            var el = Live.CurrentElement;
-            if (el == null) return;
-            el.HighlightWords.Clear();
             string t = txtHighlight.Text.Trim();
-            if (t.Length > 0)
-                foreach (string w in t.Split((char[])null, StringSplitOptions.RemoveEmptyEntries))
-                    el.HighlightWords.Add(w);
-            Live.SendCurrent();
+            var words = new System.Collections.Generic.List<string>();
+            foreach (string w in t.Split((char[])null, StringSplitOptions.RemoveEmptyEntries))
+                words.Add(w);
+            Live.SetHighlight(words);
         }
 
         void ShowChordsWindow()
@@ -227,9 +292,7 @@ namespace Fusion.Studio.Ui
                 for (int i = 0; i < Live.Project.Scenarios.Count; i++)
                 {
                     var s = Live.Project.Scenarios[i];
-                    string label = (i + 1) + ".  " + s.Title;
-                    if (s.Elements.Count > 0) label += "   [" + s.Elements.Count + "]";
-                    programList.Items.Add(label);
+                    programList.Items.Add(s);
                 }
             }
             if (Live.State.ScenarioIndex >= 0 && Live.State.ScenarioIndex < programList.Items.Count)
@@ -237,11 +300,25 @@ namespace Fusion.Studio.Ui
             suppressPreviewRefresh = false;
             RefreshLines();
             UpdatePreview();
+            UpdateLiveButtons();
+        }
+
+        static string IconOfKind(string kind)
+        {
+            switch (kind)
+            {
+                case "verse": return "book";
+                case "image": return "photo";
+                case "video": return "movie";
+                case "lower3": return "app-window-bottom";
+                default: return "file-text";
+            }
         }
 
         void ProgramListDraw(object sender, DrawItemEventArgs e)
         {
             if (e.Index < 0) return;
+            var s = programList.Items[e.Index] as Scenario;
             bool selected = (e.State & DrawItemState.Selected) != 0;
             bool active = e.Index == Live.State.ScenarioIndex;
             using (var b = new SolidBrush(selected ? UiTheme.AccentSoft : (e.Index % 2 == 0 ? Color.White : UiTheme.Bg)))
@@ -249,9 +326,22 @@ namespace Fusion.Studio.Ui
             if (active)
                 using (var b = new SolidBrush(UiTheme.Accent))
                     e.Graphics.FillRectangle(b, e.Bounds.X, e.Bounds.Y, 3, e.Bounds.Height);
-            string text = e.Index < programList.Items.Count ? (string)programList.Items[e.Index] : "";
+            string icon = s != null && s.Elements.Count > 0 ? IconOfKind(s.Elements[0].KindKey) : "file-text";
+            UiIcons.Draw(e.Graphics, icon, IconTint.Ink, e.Bounds.X + 10, e.Bounds.Y + 13);
+            string title = s != null ? s.Title : "";
             using (var b = new SolidBrush(active ? UiTheme.AccentDark : UiTheme.Text))
-                e.Graphics.DrawString(text, UiTheme.Normal(), b, e.Bounds.X + 10, e.Bounds.Y + 12);
+                TextRenderer.DrawText(e.Graphics, (e.Index + 1) + ".  " + title, UiTheme.NormalBold(),
+                    new Rectangle(e.Bounds.X + 38, e.Bounds.Y, e.Bounds.Width - 92, e.Bounds.Height),
+                    b.Color, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+            if (s != null && s.Elements.Count > 0)
+            {
+                string count = s.Elements.Count.ToString();
+                var cr = new Rectangle(e.Bounds.Right - 46, e.Bounds.Y + 14, 34, 18);
+                using (var pen = new Pen(UiTheme.ChipBorder))
+                    e.Graphics.DrawRectangle(pen, cr);
+                TextRenderer.DrawText(e.Graphics, count, UiTheme.Small(), cr, UiTheme.TextDim,
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+            }
         }
 
         void RefreshLines()
@@ -264,17 +354,18 @@ namespace Fusion.Studio.Ui
             for (int i = 0; i < el.Lines.Count; i++)
             {
                 int idx = i;
+                bool on = i == Live.State.LineIndex;
                 var ln = new Label
                 {
                     Text = el.Lines[i],
                     AutoSize = false,
-                    Size = new Size(184, 24),
+                    Size = new Size(194, 24),
                     Location = new Point(4, y),
-                    Font = UiTheme.Small(),
-                    ForeColor = i == Live.State.LineIndex ? UiTheme.AccentDark : UiTheme.TextDim,
-                    BackColor = i == Live.State.LineIndex ? UiTheme.AccentSoft : Color.Transparent,
+                    Font = on ? UiTheme.SmallBold() : UiTheme.Small(),
+                    ForeColor = on ? UiTheme.AccentDark : UiTheme.TextDim,
+                    BackColor = on ? UiTheme.AccentSoft : Color.Transparent,
                     TextAlign = ContentAlignment.MiddleLeft,
-                    Padding = new Padding(4, 0, 0, 0),
+                    Padding = new Padding(6, 0, 0, 0),
                     Cursor = Cursors.Hand
                 };
                 ln.Click += delegate { Live.SetLine(idx); };
@@ -295,6 +386,7 @@ namespace Fusion.Studio.Ui
                 preview.ShowSlide(Live.State.Current, Live.State.LineIndex);
             }
             RefreshLines();
+            UpdateLiveButtons();
         }
 
         // ------------------------------------------------------------ diálogo mensaje
@@ -303,14 +395,18 @@ namespace Fusion.Studio.Ui
             using (var f = new Form())
             {
                 f.Text = "Mensaje en pantalla (lower third)";
-                f.Size = new Size(460, 170);
+                f.Size = new Size(470, 190);
                 f.StartPosition = FormStartPosition.CenterParent;
                 f.FormBorderStyle = FormBorderStyle.FixedDialog;
                 f.MaximizeBox = false; f.MinimizeBox = false;
-                var lbl = new Label { Text = "Texto del aviso:", Location = new Point(12, 14), AutoSize = true };
-                var txt = new TextBox { Location = new Point(12, 36), Size = new Size(420, 24) };
-                var ok = new Button { Text = "Mostrar", DialogResult = DialogResult.OK, Location = new Point(260, 80), Size = new Size(80, 30) };
-                var hide = new Button { Text = "Ocultar", Location = new Point(348, 80), Size = new Size(80, 30) };
+                f.Font = UiTheme.Normal();
+                f.BackColor = UiTheme.Bg;
+                var lbl = new Label { Text = "Texto del aviso:", Location = new Point(14, 16), AutoSize = true };
+                var txt = new FusionInput { Location = new Point(14, 40), Size = new Size(428, 30) };
+                var ok = new FusionButton { Text = "Mostrar", IconName = "check", Kind = FusionButtonKind.Primary,
+                                            DialogResult = DialogResult.OK, Location = new Point(262, 88), Size = new Size(88, 32) };
+                var hide = new FusionButton { Text = "Ocultar", IconName = "eye-off", Kind = FusionButtonKind.Chip,
+                                              Location = new Point(356, 88), Size = new Size(86, 32) };
                 hide.Click += delegate
                 {
                     // quitar el overlay del elemento actual

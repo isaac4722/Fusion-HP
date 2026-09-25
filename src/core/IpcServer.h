@@ -29,6 +29,13 @@ public:
     // Difunde un evento a todos los clientes conectados {v:1, evt:..., data:...}
     void BroadcastEvent(const std::string& evt, const Json& data);
 
+    // Clientes GUI conectados ahora mismo (0 => el Motor puede ser autónomo)
+    int ClientCount()
+    {
+        std::lock_guard<std::mutex> lk(clientsMutex_);
+        return (int)clients_.size();
+    }
+
 private:
     void AcceptLoop();
     void ClientLoop(HANDLE pipe);

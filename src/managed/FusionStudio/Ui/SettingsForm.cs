@@ -7,6 +7,7 @@ using System;
 using System.Drawing;
 using System.Windows.Forms;
 using Fusion.Shared;
+using Fusion.Studio.Ui.Chrome;
 
 namespace Fusion.Studio.Ui
 {
@@ -22,13 +23,13 @@ namespace Fusion.Studio.Ui
         CheckBox chkStartPresent;
         Label lblQrHint;
         ComboBox cmbAdvance, cmbTransition;
-        CheckBox chkClock, chkAnimation;
+        CheckBox chkClock, chkAnimation, chkKeepEngine;
 
         public SettingsForm(MainForm owner)
         {
             this.owner = owner;
             Text = "Configuración";
-            Size = new Size(560, 660);
+            Size = new Size(560, 710);
             StartPosition = FormStartPosition.CenterParent;
             Font = UiTheme.Normal();
             BackColor = UiTheme.Panel;
@@ -61,19 +62,21 @@ namespace Fusion.Studio.Ui
             Controls.Add(lblPort);
             numPort = new NumericUpDown { Location = new Point(80, y), Width = 80, Minimum = 1024, Maximum = 65535, Value = S.ApiPort };
             Controls.Add(numPort);
-            btnToken = new Button { Text = "Regenerar token", Location = new Point(180, y - 2), AutoSize = true, FlatStyle = FlatStyle.Flat };
+            btnToken = new FusionButton { Text = "Regenerar token", IconName = "refresh",
+                                          Location = new Point(180, y - 3), Size = new Size(150, 32) };
             btnToken.Click += delegate { txtToken.Text = NewToken(); };
             Controls.Add(btnToken);
-            txtToken = new TextBox { Location = new Point(24, y + 30), Width = 320, ReadOnly = true };
+            txtToken = new TextBox { Location = new Point(24, y + 34), Width = 320, ReadOnly = true, BorderStyle = BorderStyle.FixedSingle };
             txtToken.Text = string.IsNullOrEmpty(S.ApiToken) ? NewToken() : S.ApiToken;
             Controls.Add(txtToken);
-            btnQr = new Button { Text = "Ver código QR de emparejamiento", Location = new Point(24, y + 58), AutoSize = true, FlatStyle = FlatStyle.Flat };
+            btnQr = new FusionButton { Text = "Ver código QR de emparejamiento", IconName = "device-mobile",
+                                      Location = new Point(24, y + 72), Size = new Size(244, 32) };
             btnQr.Click += delegate { ShowQr(); };
             Controls.Add(btnQr);
             lblQrHint = new Label { Text = "El control remoto móvil se empareja por IP + token, sin nube ni cuentas.",
-                                    Location = new Point(24, y + 86), AutoSize = true, ForeColor = UiTheme.TextDim, Font = UiTheme.Small() };
+                                    Location = new Point(24, y + 108), AutoSize = true, ForeColor = UiTheme.TextDim, Font = UiTheme.Small() };
             Controls.Add(lblQrHint);
-            y += 116;
+            y += 136;
 
             var g3 = Group("OBS Studio (WebSocket)", y); y = g3;
             chkObs = new CheckBox { Text = "Conectar con obs-websocket 5.x", Location = new Point(24, y), AutoSize = true, Checked = S.ObsEnabled };
@@ -119,13 +122,32 @@ namespace Fusion.Studio.Ui
             y += 28;
             chkClock = new CheckBox { Text = "Mostrar reloj en la consola", Location = new Point(24, y), AutoSize = true, Checked = S.ShowClock };
             Controls.Add(chkClock);
-            y += 40;
+            y += 34;
 
-            var btnSave = new Button { Text = "Guardar", Location = new Point(370, 570), Size = new Size(80, 32),
-                                       BackColor = UiTheme.Accent, ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
+            var g5 = Group("Motor (núcleo de proyección)", y); y = g5;
+            chkKeepEngine = new CheckBox
+            {
+                Text = "Al cerrar esta ventana el Motor sigue proyectando (recomendado)",
+                Location = new Point(24, y), AutoSize = true, Checked = S.KeepEngineAlive
+            };
+            Controls.Add(chkKeepEngine);
+            var lblKeep = new Label
+            {
+                Text = "El Motor queda autónomo: teclado sobre la salida (Espacio avanza,\n" +
+                       "B/C/L pantallas, Esc negro, Alt+F4 apaga) y al reabrir la GUI todo\n" +
+                       "se sincroniza desde el estado del Motor.",
+                Location = new Point(24, y + 24), Size = new Size(500, 48),
+                ForeColor = UiTheme.TextDim, Font = UiTheme.Small()
+            };
+            Controls.Add(lblKeep);
+            y += 80;
+
+            var btnSave = new FusionButton { Text = "Guardar", IconName = "check", Kind = FusionButtonKind.Primary,
+                                            Location = new Point(360, 620), Size = new Size(90, 34) };
             btnSave.Click += delegate { Save(); Close(); };
             Controls.Add(btnSave);
-            var btnClose = new Button { Text = "Cancelar", Location = new Point(458, 570), Size = new Size(80, 32), FlatStyle = FlatStyle.Flat };
+            var btnClose = new FusionButton { Text = "Cancelar", IconName = "x",
+                                            Location = new Point(458, 620), Size = new Size(86, 34) };
             btnClose.Click += delegate { Close(); };
             Controls.Add(btnClose);
         }
@@ -211,6 +233,7 @@ namespace Fusion.Studio.Ui
             S.DefaultTransition = cmbTransition.SelectedIndex == 1 ? "slide" : cmbTransition.SelectedIndex == 2 ? "cut" : "fade";
             S.Animation = chkAnimation.Checked;
             S.ShowClock = chkClock.Checked;
+            S.KeepEngineAlive = chkKeepEngine.Checked;
             S.Save();
             owner.ApplySettings();
         }

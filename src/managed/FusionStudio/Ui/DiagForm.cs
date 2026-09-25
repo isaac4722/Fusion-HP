@@ -48,8 +48,12 @@ namespace Fusion.Studio.Ui
             lblSummary = new Label { Dock = DockStyle.Top, Height = 40, Font = UiTheme.NormalBold(), ForeColor = UiTheme.Text,
                                      TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(12, 6, 0, 0),
                                      Text = "Pulsa «Verificar entorno» para ejecutar el autotest." };
-            btnVerify = new Button { Text = "Verificar entorno", Dock = DockStyle.Fill, FlatStyle = FlatStyle.Flat,
-                                     BackColor = UiTheme.Accent, ForeColor = Color.White, Font = UiTheme.Big() };
+            btnVerify = new Fusion.Studio.Ui.Chrome.FusionButton
+            {
+                Text = "Verificar entorno", IconName = "activity",
+                Kind = Fusion.Studio.Ui.Chrome.FusionButtonKind.Primary,
+                Dock = DockStyle.Fill, Font = UiTheme.Big()
+            };
             btnVerify.Click += delegate { RunAutoTest(); };
             bottom.Controls.Add(btnVerify);
             bottom.Controls.Add(lblSummary);

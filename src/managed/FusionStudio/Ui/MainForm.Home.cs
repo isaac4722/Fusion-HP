@@ -30,7 +30,7 @@ namespace Fusion.Studio.Ui
                 RepositionTiles();
             };
 
-            AddTile("Nuevo proyecto", "Crea un servicio desde cero", delegate
+            AddTile("Nuevo proyecto", "Crea un servicio desde cero", "layout-grid", delegate
             {
                 Live.Project = AhpProject.CreateDefault();
                 Live.Project.Name = "Culto " + DateTime.Now.ToString("dd/MM");
@@ -39,7 +39,7 @@ namespace Fusion.Studio.Ui
                 SetMode(Mode.Studio);
             }, 0);
 
-            AddTile("Abrir proyecto", "Continúa un .ahp guardado", delegate
+            AddTile("Abrir proyecto", "Continúa un .ahp guardado", "folder-open", delegate
             {
                 using (var d = new OpenFileDialog())
                 {
@@ -56,46 +56,50 @@ namespace Fusion.Studio.Ui
                 }
             }, 0);
 
-            AddTile("Cargar PPTX original", "Proyecta el archivo tal cual (PowerPoint)", delegate
+            AddTile("Cargar PPTX original", "Proyecta el archivo tal cual (PowerPoint)", "movie", delegate
             {
                 ImportPptxAsIs();
             }, 1);
 
-            AddTile("Importar PPTX a Escenarios", "Convierte diapositivas al modelo ahp.v1", delegate
+            AddTile("Importar PPTX a Escenarios", "Convierte diapositivas al modelo ahp.v1", "stack-2", delegate
             {
                 ImportPptxConvert();
             }, 1);
 
-            AddTile("Importar Biblia", "Zefania XML · e-Sword .bib · JSON", delegate
+            AddTile("Importar Biblia", "Zefania XML · e-Sword .bib · JSON", "book", delegate
             {
                 ImportBible();
             }, 2);
 
-            AddTile("Importar cantos", "Himnario JSON o respaldo Holyrics", delegate
+            AddTile("Importar cantos", "Himnario JSON o respaldo Holyrics", "music", delegate
             {
                 ImportSongs();
             }, 2);
 
-            AddTile("Exportar proyecto", "PPTX · PDF · imágenes", delegate
+            AddTile("Exportar proyecto", "PPTX · PDF · imágenes", "download", delegate
             {
                 ExportProject();
             }, 3);
-
-            var lblRecent = new Label { Text = "Recientes", Font = UiTheme.NormalBold(), ForeColor = UiTheme.Text,
-                                        Location = new Point(40, 460), AutoSize = true };
-            homePanel.Controls.Add(lblRecent);
         }
 
-        void AddTile(string title, string subtitle, EventHandler onClick, int column)
+        void AddTile(string title, string subtitle, string icon, EventHandler onClick, int column)
         {
-            var tile = new Panel { Size = new Size(240, 110), BackColor = UiTheme.Panel, BorderStyle = BorderStyle.FixedSingle,
+            var tile = new Panel { Size = new Size(250, 112), BackColor = UiTheme.Panel,
                                    Cursor = Cursors.Hand, Tag = column };
+            tile.Paint += delegate(object s, PaintEventArgs e)
+            {
+                using (var pen = new Pen(UiTheme.ChipBorder))
+                    e.Graphics.DrawRectangle(pen, 0, 0, tile.Width - 1, tile.Height - 1);
+                using (var b = new SolidBrush(UiTheme.Accent))
+                    e.Graphics.FillRectangle(b, 0, 0, 4, tile.Height);
+                Fusion.Studio.Ui.Chrome.UiIcons.Draw(e.Graphics,
+                    Fusion.Studio.Ui.Chrome.UiIcons.Get32(icon), 18, 14);
+            };
             var t = new Label { Text = title, Font = UiTheme.NormalBold(), ForeColor = UiTheme.Text,
-                                Dock = DockStyle.Top, Height = 34, TextAlign = ContentAlignment.BottomLeft, Padding = new Padding(12, 0, 6, 0) };
+                                Location = new Point(60, 14), AutoSize = true };
             var s = new Label { Text = subtitle, Font = UiTheme.Small(), ForeColor = UiTheme.TextDim,
-                                Dock = DockStyle.Fill, TextAlign = ContentAlignment.TopLeft, Padding = new Padding(12, 4, 8, 0) };
-            var accent = new Panel { Dock = DockStyle.Left, Width = 4, BackColor = UiTheme.Accent };
-            tile.Controls.Add(s); tile.Controls.Add(t); tile.Controls.Add(accent);
+                                Location = new Point(60, 40), Size = new Size(178, 44) };
+            tile.Controls.Add(s); tile.Controls.Add(t);
             tile.Click += onClick;
             foreach (Control c in tile.Controls) c.Click += delegate { onClick(null, null); };
             tile.MouseEnter += delegate { tile.BackColor = UiTheme.AccentSoft; };
@@ -109,11 +113,11 @@ namespace Fusion.Studio.Ui
             int col = -1;
             foreach (Control c in homePanel.Controls)
             {
-                if (!(c is Panel) || c.Width != 240 || c.Height != 110) continue;
+                if (!(c is Panel) || c.Width != 250 || c.Height != 112) continue;
                 int thisCol = (int)c.Tag;
-                if (thisCol != col) { if (col >= 0) { y += 124; x = 40; } col = thisCol; }
+                if (thisCol != col) { if (col >= 0) { y += 126; x = 40; } col = thisCol; }
                 c.Location = new Point(x, y);
-                x += 254;
+                x += 264;
             }
         }
 

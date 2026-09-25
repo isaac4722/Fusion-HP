@@ -49,26 +49,24 @@ namespace Fusion.Studio.Ui
             foreach (var step in new[] { -2, -1, 1, 2 })
             {
                 int s = step;
-                var b = new Button { Text = (step > 0 ? "+" : "") + step, Location = new Point(x, 34),
-                                     Size = new Size(44, 28), FlatStyle = FlatStyle.Flat,
-                                     BackColor = UiTheme.Bg, ForeColor = UiTheme.Text, Font = UiTheme.SmallBold() };
-                b.FlatAppearance.BorderSize = 0;
+                var b = new Fusion.Studio.Ui.Chrome.FusionButton
+                {
+                    Text = (step > 0 ? "+" : "") + step,
+                    Location = new Point(x, 34),
+                    Size = new Size(46, 28), Font = UiTheme.SmallBold()
+                };
                 b.Click += delegate { transpose = Clamp12(transpose + s); RefreshSheet(); };
                 top.Controls.Add(b);
-                x += 48;
+                x += 50;
             }
-            var btnReset = new Button { Text = "Original", Location = new Point(x, 34), Size = new Size(70, 28),
-                                        FlatStyle = FlatStyle.Flat, BackColor = UiTheme.Bg, ForeColor = UiTheme.Text,
-                                        Font = UiTheme.Small() };
-            btnReset.FlatAppearance.BorderSize = 0;
+            var btnReset = new Fusion.Studio.Ui.Chrome.FusionButton { Text = "Original", IconName = "refresh",
+                Location = new Point(x, 34), Size = new Size(104, 28), Font = UiTheme.Small() };
             btnReset.Click += delegate { transpose = 0; RefreshSheet(); };
             top.Controls.Add(btnReset);
-            x += 74;
+            x += 108;
 
-            btnLatin = new Button { Text = "Anglo (C D E)", Location = new Point(x, 34), Size = new Size(96, 28),
-                                    FlatStyle = FlatStyle.Flat, BackColor = UiTheme.Bg, ForeColor = UiTheme.Text,
-                                    Font = UiTheme.Small() };
-            btnLatin.FlatAppearance.BorderSize = 0;
+            btnLatin = new Fusion.Studio.Ui.Chrome.FusionButton { Text = "Anglo (C D E)", IconName = "piano",
+                Location = new Point(x, 34), Size = new Size(140, 28), Font = UiTheme.Small() };
             btnLatin.Click += delegate { latin = !latin; btnLatin.Text = latin ? "Latino (Do Re Mi)" : "Anglo (C D E)"; RefreshSheet(); };
             top.Controls.Add(btnLatin);
 

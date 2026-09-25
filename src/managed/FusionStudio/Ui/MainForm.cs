@@ -5,24 +5,32 @@
 //  UX igual o superior a la referencia H-P-Web-Version-Ref (PowerStudio):
 //  biblioteca directa sin búsqueda obligatoria, lista de programa con
 //  miniaturas y sub-líneas, atajos Holyrics (flechas/Espacio/Esc/B/C/L/G/F5).
+//  v2.2: chrome modelado (FusionButton/FusionIconButton con iconos Tabler)
+//  y MOTOR como dueño del estado: cerrar la GUI NO apaga la proyección.
 // ============================================================================
 using System;
 using System.Drawing;
 using System.Windows.Forms;
 using Fusion.Shared;
 using Fusion.Studio.Services;
+using Fusion.Studio.Ui.Chrome;
 
 namespace Fusion.Studio.Ui
 {
-    /// <summary>Color corporativo (idéntico al acento de la referencia).</summary>
+    /// <summary>Tokens del chrome (idénticos a la referencia web Fluent claro).</summary>
     public static class UiTheme
     {
         public static readonly Color Accent = ColorTranslator.FromHtml("#C43E1C");
         public static readonly Color AccentDark = ColorTranslator.FromHtml("#8A1F11");
-        public static readonly Color AccentSoft = ColorTranslator.FromHtml("#F3E9E4");
+        public static readonly Color AccentHover = ColorTranslator.FromHtml("#A83318");
+        public static readonly Color AccentSoft = ColorTranslator.FromHtml("#FDF3F0");
         public static readonly Color Bg = ColorTranslator.FromHtml("#F3F2F1");
         public static readonly Color Panel = Color.White;
         public static readonly Color Border = ColorTranslator.FromHtml("#EDEBE9");
+        public static readonly Color ChipBorder = ColorTranslator.FromHtml("#E1DFDD");
+        public static readonly Color Hover = ColorTranslator.FromHtml("#F3F2F1");
+        public static readonly Color Pressed = ColorTranslator.FromHtml("#EDEBE9");
+        public static readonly Color InputBorder = ColorTranslator.FromHtml("#C8C6C4");
         public static readonly Color Text = ColorTranslator.FromHtml("#201F1E");
         public static readonly Color TextDim = ColorTranslator.FromHtml("#605E5C");
         public static readonly Color LiveRed = ColorTranslator.FromHtml("#D13438");
@@ -33,6 +41,7 @@ namespace Fusion.Studio.Ui
         public static Font SmallBold() { return new Font("Segoe UI", 8.25f, FontStyle.Bold); }
         public static Font Title() { return new Font("Segoe UI", 14f, FontStyle.Bold); }
         public static Font Big() { return new Font("Segoe UI", 12f, FontStyle.Bold); }
+        public static Font Kbd() { return new Font("Segoe UI", 7.5f); }
     }
 
     public partial class MainForm : Form
@@ -47,12 +56,13 @@ namespace Fusion.Studio.Ui
         // layout
         Panel topBar;
         Label lblProject;
-        Button btnModeHome, btnModeStudio, btnModePresent;
+        FusionButton btnModeHome, btnModeStudio, btnModePresent;
         Label lblClock;
         Label lblLive;
         Panel content;
         Panel status;
         Label lblStatus;
+        Label lblMotor;
         Timer clockTimer;
 
         // present
@@ -65,10 +75,10 @@ namespace Fusion.Studio.Ui
 
         // biblioteca
         Panel libraryPanel;
-        TabControl libTabs;
+        FusionTabs libTabs;
         ListBox songsList, scenariosList, mediaList;
         TreeView bibleTree;
-        TextBox bibleSearch;
+        FusionSearchBox bibleSearch;
         ListBox bibleResults;
         ComboBox bibleVersion;
 
@@ -128,6 +138,7 @@ namespace Fusion.Studio.Ui
                 p = System.IO.Path.Combine(
                     System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "resources"),
                     System.IO.Path.Combine("img", "app.ico"));
+                if (System.IO.File.Exists(p)) return new Icon(p);
             }
             catch { }
             return null;
@@ -136,74 +147,99 @@ namespace Fusion.Studio.Ui
         // ------------------------------------------------------------ barra superior
         void BuildTopBar()
         {
-            topBar = new Panel { Dock = DockStyle.Top, Height = 46, BackColor = UiTheme.Panel };
+            topBar = new Panel { Dock = DockStyle.Top, Height = 48, BackColor = UiTheme.Panel };
             var sep = new Panel { Dock = DockStyle.Bottom, Height = 1, BackColor = UiTheme.Border };
             topBar.Controls.Add(sep);
 
-            var logo = new Panel { Size = new Size(28, 28), Location = new Point(12, 9), BackColor = UiTheme.Accent };
-            var logoTxt = new Label { Text = "F", ForeColor = Color.White, Dock = DockStyle.Fill,
-                                      TextAlign = ContentAlignment.MiddleCenter, Font = UiTheme.Big() };
-            logo.Controls.Add(logoTxt);
+            // Marca Lumina (logo vectorial propio de la referencia) + título
+            var logo = new PictureBox { Size = new Size(32, 32), Location = new Point(12, 8),
+                                        SizeMode = PictureBoxSizeMode.Zoom, BackColor = Color.Transparent };
+            try
+            {
+                string lp = System.IO.Path.Combine(
+                    System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "resources"),
+                    System.IO.Path.Combine("img", "lumina-logo-32.png"));
+                if (System.IO.File.Exists(lp)) logo.Image = Image.FromFile(lp);
+            }
+            catch { }
             topBar.Controls.Add(logo);
 
-            var title = new Label { Text = "Fusion HP", Font = UiTheme.Title(), Location = new Point(48, 10),
-                                    AutoSize = true, ForeColor = UiTheme.Text };
+            var title = new Label { Text = "Fusion HP", Font = UiTheme.Title(), Location = new Point(52, 11),
+                                    AutoSize = true, ForeColor = UiTheme.Text, BackColor = Color.Transparent };
             topBar.Controls.Add(title);
 
             lblProject = new Label { Text = "Sin proyecto", Font = UiTheme.Small(), ForeColor = UiTheme.TextDim,
-                                     Location = new Point(160, 22), AutoSize = true };
+                                     Location = new Point(170, 24), AutoSize = true, BackColor = Color.Transparent };
             topBar.Controls.Add(lblProject);
 
-            btnModeHome = MakeModeButton("Inicio", 460);
-            btnModeStudio = MakeModeButton("Estudio", 530);
-            btnModePresent = MakeModeButton("Presentación", 606);
+            // Pestañas de modo (chips modelados con iconos, como la referencia)
+            btnModeHome = MakeModeButton("Inicio", "home", 460);
+            btnModeStudio = MakeModeButton("Estudio", "pencil", 540);
+            btnModePresent = MakeModeButton("Presentación", "device-desktop", 620);
             btnModeHome.Click += delegate { SetMode(Mode.Home); };
             btnModeStudio.Click += delegate { SetMode(Mode.Studio); };
             btnModePresent.Click += delegate { SetMode(Mode.Present); };
 
+            // En vivo (anclado a la derecha)
             lblLive = new Label { Text = "● EN VIVO", Font = UiTheme.SmallBold(), ForeColor = UiTheme.LiveRed,
-                                  Location = new Point(730, 15), AutoSize = true, Visible = false };
+                                  AutoSize = true, BackColor = Color.Transparent,
+                                  Anchor = AnchorStyles.Top | AnchorStyles.Right, Visible = false };
             topBar.Controls.Add(lblLive);
 
-            var btnSettings = MakeToolButton("⚙ Configuración", 730);
-            btnSettings.Click += delegate
-            {
-                using (var f = new SettingsForm(this)) f.ShowDialog(this);
-            };
-            topBar.Controls.Add(btnSettings);
-
-            var btnDiag = MakeToolButton("Estado del sistema", 880);
+            var btnDiag = new FusionIconButton { IconName = "activity", ToolTipText = "Estado del sistema",
+                                                 Anchor = AnchorStyles.Top | AnchorStyles.Right };
             btnDiag.Click += delegate
             {
                 using (var f = new DiagForm(this)) f.ShowDialog(this);
             };
             topBar.Controls.Add(btnDiag);
 
+            var btnSettings = new FusionIconButton { IconName = "settings", ToolTipText = "Configuración",
+                                                     Anchor = AnchorStyles.Top | AnchorStyles.Right };
+            btnSettings.Click += delegate
+            {
+                using (var f = new SettingsForm(this)) f.ShowDialog(this);
+            };
+            topBar.Controls.Add(btnSettings);
+
             lblClock = new Label { Text = DateTime.Now.ToString("HH:mm:ss"), Font = new Font("Consolas", 10f),
-                                   ForeColor = UiTheme.TextDim, Location = new Point(1120, 14), AutoSize = true,
+                                   ForeColor = UiTheme.TextDim, AutoSize = true, BackColor = Color.Transparent,
                                    Anchor = AnchorStyles.Top | AnchorStyles.Right };
             topBar.Controls.Add(lblClock);
 
+            // posición derecha exacta al cambiar tamaño
+            topBar.Resize += delegate { LayoutTopRight(); };
+            LayoutTopRight();
             Controls.Add(topBar);
         }
 
-        Button MakeModeButton(string text, int x)
+        void LayoutTopRight()
         {
-            var b = new Button { Text = text, Location = new Point(x, 8), Size = new Size(text.Length * 7 + 24, 30),
-                                 FlatStyle = FlatStyle.Flat, BackColor = UiTheme.Bg, ForeColor = UiTheme.Text,
-                                 Font = UiTheme.Normal(), UseVisualStyleBackColor = false,
-                                 Anchor = AnchorStyles.Top | AnchorStyles.Left };
-            b.FlatAppearance.BorderSize = 0;
-            topBar.Controls.Add(b);
-            return b;
+            // De derecha a izquierda: reloj · configuración · diagnóstico · EN VIVO
+            int right = topBar.Width - 12;
+            lblClock.Location = new Point(right - lblClock.PreferredWidth, 16);
+            right = lblClock.Left - 10;
+            Control btnSet = null, btnDia = null;
+            foreach (Control c in topBar.Controls)
+            {
+                var ib = c as FusionIconButton;
+                if (ib == null) continue;
+                if (ib.IconName == "settings") btnSet = ib;
+                else if (ib.IconName == "activity") btnDia = ib;
+            }
+            if (btnSet != null) { btnSet.Location = new Point(right - 34, 7); right = btnSet.Left - 4; }
+            if (btnDia != null) { btnDia.Location = new Point(right - 34, 7); right = btnDia.Left - 4; }
+            lblLive.Location = new Point(right - lblLive.PreferredWidth - 4, 16);
         }
 
-        Button MakeToolButton(string text, int x)
+        FusionButton MakeModeButton(string text, string icon, int x)
         {
-            var b = new Button { Text = text, Location = new Point(x, 8), AutoSize = true, Padding = new Padding(8, 0, 8, 0),
-                                 FlatStyle = FlatStyle.Flat, BackColor = UiTheme.Panel, ForeColor = UiTheme.TextDim,
-                                 Font = UiTheme.Small(), UseVisualStyleBackColor = false, Height = 30 };
-            b.FlatAppearance.BorderSize = 0;
+            var b = new FusionButton
+            {
+                Text = text, IconName = icon, Kind = FusionButtonKind.Subtle,
+                Location = new Point(x, 8), AutoSize = false, Size = new Size(text.Length * 7 + 48, 32),
+                Anchor = AnchorStyles.Top | AnchorStyles.Left
+            };
             topBar.Controls.Add(b);
             return b;
         }
@@ -217,6 +253,14 @@ namespace Fusion.Studio.Ui
             lblStatus = new Label { Text = "Iniciando…", Dock = DockStyle.Fill, Font = UiTheme.Small(),
                                     ForeColor = UiTheme.TextDim, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(8, 0, 0, 0) };
             status.Controls.Add(lblStatus);
+            lblMotor = new Label { Text = "", Font = UiTheme.SmallBold(), ForeColor = UiTheme.AccentDark,
+                                   AutoSize = true, Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                                   BackColor = Color.Transparent };
+            status.Controls.Add(lblMotor);
+            status.Resize += delegate
+            {
+                lblMotor.Location = new Point(status.Width - lblMotor.PreferredWidth - 10, 5);
+            };
             Controls.Add(status);
         }
 
@@ -224,12 +268,12 @@ namespace Fusion.Studio.Ui
         void SetMode(Mode m)
         {
             mode = m;
-            btnModeHome.BackColor = m == Mode.Home ? UiTheme.AccentSoft : UiTheme.Bg;
-            btnModeHome.ForeColor = m == Mode.Home ? UiTheme.AccentDark : UiTheme.Text;
-            btnModeStudio.BackColor = m == Mode.Studio ? UiTheme.AccentSoft : UiTheme.Bg;
-            btnModeStudio.ForeColor = m == Mode.Studio ? UiTheme.AccentDark : UiTheme.Text;
-            btnModePresent.BackColor = m == Mode.Present ? UiTheme.AccentSoft : UiTheme.Bg;
-            btnModePresent.ForeColor = m == Mode.Present ? UiTheme.AccentDark : UiTheme.Text;
+            btnModeHome.Kind = m == Mode.Home ? FusionButtonKind.Active : FusionButtonKind.Subtle;
+            btnModeStudio.Kind = m == Mode.Studio ? FusionButtonKind.Active : FusionButtonKind.Subtle;
+            btnModePresent.Kind = m == Mode.Present ? FusionButtonKind.Active : FusionButtonKind.Subtle;
+            btnModeHome.Invalidate();
+            btnModeStudio.Invalidate();
+            btnModePresent.Invalidate();
 
             homePanel.Visible = m == Mode.Home;
             presentPanel.Visible = m == Mode.Present;
@@ -241,13 +285,13 @@ namespace Fusion.Studio.Ui
 
         void OnFormLoad(object sender, EventArgs e)
         {
-            // Conexión al núcleo en segundo plano (arranque ≤3 s [SPEC §10.1])
+            // Conexión al Motor en segundo plano (arranque ≤3 s [SPEC §10.1])
             System.Threading.ThreadPool.QueueUserWorkItem(delegate
             {
                 // Biblias completas empaquetadas (RV1960, NVI, RVG, RVR1909):
                 // instalación única en el primer arranque, después solo consulta.
                 try { Live.EnsureBundledBibles(); } catch { }
-                bool ok = Live.ConnectCore(1);   // núcleo ya lanzado por el bootstrap
+                bool ok = Live.ConnectCore(1);   // Motor ya lanzado por el bootstrap
                 BeginInvoke((Action)delegate
                 {
                     UpdateStatus();
@@ -256,6 +300,13 @@ namespace Fusion.Studio.Ui
                     {
                         Live.LoadProject(Settings.LastProjectPath);
                         RefreshLibrary();
+                        RefreshProgram();
+                    }
+                    else if (ok)
+                    {
+                        // sin proyecto local: sincronizar con el Motor (p.ej. GUI
+                        // reabierta tras un cierre con el servicio en marcha)
+                        Live.SyncFromMotor();
                         RefreshProgram();
                     }
                 });
@@ -298,13 +349,15 @@ namespace Fusion.Studio.Ui
 
         public void UpdateStatus()
         {
-            string core = Live.CoreConnected ? "núcleo ● conectado" : "núcleo ○ desconectado";
+            string core = Live.CoreConnected ? "motor ● conectado" : "motor ○ desconectado";
             string api = Settings.ApiEnabled ? ("API :" + Settings.ApiPort) : "API apagada";
             int scen = Live.Project != null ? Live.Project.Scenarios.Count : 0;
             string proj = Live.Project != null ? Live.Project.Name : "Sin proyecto";
             lblProject.Text = proj;
             lblStatus.Text = core + "   ·   " + api + "   ·   " + scen + " escenarios   ·   perfil " + DetectProfile();
             lblLive.Visible = !Live.State.IsBlank;
+            lblMotor.Text = Live.State.HasProgram ? "MOTOR ● programa activo" : "";
+            lblMotor.Location = new Point(status.Width - lblMotor.PreferredWidth - 10, 5);
         }
 
         static string DetectProfile()
@@ -370,26 +423,20 @@ namespace Fusion.Studio.Ui
         // ------------------------------------------------------------ cierre correcto
         void OnFormClosing(object sender, FormClosingEventArgs e)
         {
-            // Corrección del prototipo: cerrar con la X debe cerrar TODO el
-            // sistema (núcleo incluido), sin duplicar ventanas ni procesos.
+            // v2.2 — EL MOTOR ES LO PRINCIPAL (linaje beta 1): cerrar la GUI NO
+            // tira la proyección si hay programa cargado y así está configurado.
+            // El Motor queda autónomo (teclado sobre la salida, Alt+F4 apaga) y
+            // al reabrir la GUI todo se sincroniza desde motor.state.
             clockTimer.Stop();
+            bool keep = Settings.KeepEngineAlive && Live.State.HasProgram;
             try
             {
-                Live.Dispose();       // cierra el pipe ipc.v1
-            }
-            catch { }
-            try
-            {
-                // pedir apagado ordenado del núcleo si sigue vivo
-                var p = System.Diagnostics.Process.GetProcessesByName("FusionHP");
-                foreach (var proc in p)
+                if (!keep)
                 {
-                    try
-                    {
-                        if (!proc.CloseMainWindow()) proc.Kill();
-                    }
-                    catch { }
+                    var p = JsonValue.Object();
+                    Live.PostCore("quit", p);   // apagado ordenado de todo el sistema
                 }
+                Live.Dispose();                 // cierra el pipe ipc.v1 (el Motor sigue)
             }
             catch { }
         }

@@ -10,6 +10,8 @@ namespace fusion {
 
 static const wchar_t* kClassPublic = L"FusionHP.LiveWindow";
 static const wchar_t* kClassStage  = L"FusionHP.StageWindow";
+static const wchar_t* kClassHint   = L"FusionHP.MotorHint";
+static const UINT_PTR kHintTimerId = 0x4D48;   // 'MH'
 
 LiveWindow::LiveWindow() {}
 LiveWindow::~LiveWindow() { Destroy(); }
@@ -88,6 +90,8 @@ void LiveWindow::ShowOnMonitor(int monitorIndex) {
 }
 
 void LiveWindow::Destroy() {
+    if (hintTimer_) { KillTimer(hwnd_, kHintTimerId); hintTimer_ = 0; }
+    if (hintHwnd_) { DestroyWindow(hintHwnd_); hintHwnd_ = nullptr; }
     if (stageHwnd_) { DestroyWindow(stageHwnd_); stageHwnd_ = nullptr; }
     if (videoHwnd_) { DestroyWindow(videoHwnd_); videoHwnd_ = nullptr; }
     if (hwnd_) { DestroyWindow(hwnd_); hwnd_ = nullptr; }
@@ -150,12 +154,108 @@ LRESULT LiveWindow::Handle(HWND h, UINT m, WPARAM w, LPARAM l) {
             SetCursor(nullptr);          // cursor invisible sobre la salida [SPEC §6.1]
             return TRUE;
         case WM_MOUSEACTIVATE:
-            return MA_NOACTIVATE;        // la salida no roba foco del operador [SPEC §6.1.2]
+            // Autónomo: el clic da foco a la salida para controlar el Motor.
+            // Con GUI: la salida no roba foco del operador [SPEC §6.1.2].
+            return standalone_ ? MA_ACTIVATE : MA_NOACTIVATE;
+        case WM_KEYDOWN:
+        case WM_SYSKEYDOWN:
+            if (standalone_ && KeyHook) {
+                ShowHint(false);         // el operador ya sabe que el teclado vive
+                KeyHook((UINT)w);
+                return 0;
+            }
+            break;
+        case WM_CLOSE:
+            // Ventana PERSISTENTE [SPEC §6.3.1]: nunca se destruye por su cuenta.
+            // En modo autónomo Alt+F4 APAGA el Motor (única salida sin GUI);
+            // con GUI conectada el cierre ordenado lo pide la propia GUI.
+            if (standalone_) PostQuitMessage(0);
+            return 0;
+        case WM_TIMER:
+            if (w == kHintTimerId) { ShowHint(false); return 0; }
+            break;
         case WM_DESTROY:
             return 0;
         default:
             return DefWindowProcW(h, m, w, l);
     }
+    return DefWindowProcW(h, m, w, l);
+}
+
+// ------------------------------------------------------------ modo autónomo
+void LiveWindow::SetStandalone(bool on) {
+    if (standalone_ == on) return;
+    standalone_ = on;
+    Logger::Info("core.live", on ? "salida en modo motor autonomo (clic = teclado)"
+                                  : "salida de vuelta a modo operado por GUI");
+    if (on) ShowHint(true);
+    else ShowHint(false);
+}
+
+void LiveWindow::ShowHint(bool on) {
+    if (!hwnd_) return;
+    if (hintTimer_) { KillTimer(hwnd_, kHintTimerId); hintTimer_ = 0; }
+    if (!on) {
+        if (hintHwnd_) ShowWindow(hintHwnd_, SW_HIDE);
+        return;
+    }
+    if (!hintHwnd_) {
+        WNDCLASSEXW wc = {};
+        wc.cbSize = sizeof(wc);
+        wc.lpfnWndProc = LiveWindow::HintWndProc;
+        wc.hInstance = GetModuleHandleW(nullptr);
+        wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+        wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
+        wc.lpszClassName = kClassHint;
+        RegisterClassExW(&wc);
+        // WS_POPUP con dueño (no hijo: los hijos capa no existen en Win7) →
+        // coordenadas de PANTALLA sobre el monitor de la salida.
+        RECT rc;
+        if (!Monitors::RectOf(monitorIdx_, &rc)) GetWindowRect(hwnd_, &rc);
+        hintHwnd_ = CreateWindowExW(WS_EX_LAYERED | WS_EX_TRANSPARENT, kClassHint,
+                                    L"", WS_POPUP, rc.left + 24, rc.bottom - 68, 620, 44,
+                                    hwnd_, nullptr, GetModuleHandleW(nullptr), nullptr);
+        if (!hintHwnd_) return;
+        SetLayeredWindowAttributes(hintHwnd_, 0, 216, LWA_ALPHA);
+    }
+    ShowWindow(hintHwnd_, SW_SHOWNOACTIVATE);
+    // Se esconde solo a los 8 s: informa sin invadir la proyección.
+    hintTimer_ = SetTimer(hwnd_, kHintTimerId, 8000, nullptr);
+}
+
+LRESULT CALLBACK LiveWindow::HintWndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
+    if (m == WM_PAINT) {
+        PAINTSTRUCT ps;
+        HDC dc = BeginPaint(h, &ps);
+        RECT rc;
+        GetClientRect(h, &rc);
+        HBRUSH bg = CreateSolidBrush(RGB(16, 16, 18));
+        FillRect(dc, &rc, bg);
+        DeleteObject(bg);
+        HPEN pen = CreatePen(PS_SOLID, 1, RGB(196, 62, 28));
+        HGDIOBJ oldPen = SelectObject(dc, pen);
+        HGDIOBJ oldBrush = SelectObject(dc, GetStockObject(NULL_BRUSH));
+        Rectangle(dc, rc.left, rc.top, rc.right, rc.bottom);
+        SelectObject(dc, oldPen);
+        SelectObject(dc, oldBrush);
+        DeleteObject(pen);
+        HFONT f = CreateFontW(-16, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
+                              DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                              CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
+        HGDIOBJ oldF = SelectObject(dc, f);
+        SetBkMode(dc, TRANSPARENT);
+        SetTextColor(dc, RGB(255, 248, 236));
+        RECT txt = rc;
+        txt.left += 14;
+        DrawTextW(dc,
+                  L"MOTOR ACTIVO — Espacio/\u2190\u2192 avanza · B negro · C texto · L logo · Alt+F4 apaga",
+                  -1, &txt, DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+        SelectObject(dc, oldF);
+        DeleteObject(f);
+        EndPaint(h, &ps);
+        return 0;
+    }
+    return DefWindowProcW(h, m, w, l);
 }
 
 } // namespace fusion

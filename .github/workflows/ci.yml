@@ -163,6 +163,15 @@ jobs:
           if (-not (Test-Path installer/staging/resources/fonts)) { throw 'faltan fuentes de la GUI' }
           if (-not (Test-Path installer/staging/resources/backgrounds)) { throw 'faltan fondos de la referencia' }
           if (-not (Test-Path installer/staging/resources/img/icons)) { throw 'faltan iconos Tabler' }
+          # v2.2: sets completos (62 iconos × 4 tintas) + logo para la barra
+          foreach ($set in @('ink20','ink32','white20','accent20')) {
+            $n = (Get-ChildItem "installer/staging/resources/img/icons/$set" -Filter *.png -ErrorAction SilentlyContinue).Count
+            if ($n -lt 62) { throw "set de iconos $set incompleto ($n < 62)" }
+          }
+          foreach ($must in @('eye','piano','wand','chevrons-left','chevrons-right','device-floppy','folder-open','activity')) {
+            if (-not (Test-Path "installer/staging/resources/img/icons/ink20/$must.png")) { throw "falta icono nuevo: $must" }
+          }
+          if (-not (Test-Path installer/staging/resources/img/lumina-logo-32.png)) { throw 'falta logo Lumina 32px' }
           if ((Get-ChildItem installer/staging/resources/data/bibles -Filter *.json -ErrorAction SilentlyContinue).Count -lt 4) { throw 'faltan las 4 biblias completas' }
           # arranque: FusionHP.exe final por arquitectura (renombrado al instalar)
           Get-ChildItem installer/staging

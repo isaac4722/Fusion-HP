@@ -8,7 +8,9 @@
 
 | Área | Qué hace |
 |---|---|
+| **Motor (v2.2)** | El **núcleo nativo es el dueño del estado vivo**: carga el programa completo, secuencía líneas/elementos, pantallas y resaltado, y lo **persiste** (`motor/sesion.json`) — cerrar la GUI **no tira la proyección**: el Motor queda autónomo con teclado sobre la salida (Espacio/flechas avanzan · B/C/L pantallas · Esc negro · Alt+F4 apaga) y al reabrir la GUI todo se sincroniza |
 | **Modo Presentación** | Arranque directo, salida borderless sin parpadeo (Direct2D/GDI+), sincronización **línea por línea**, pantalla de reposo (negro/logo/tema), atajos Holyrics (flechas · Espacio · Esc/B/L · G búsqueda bíblica · F5) |
+| **GUI web modelada (v2.2)** | Chrome propio de la referencia web: botones tipo chip con estados hover/pressed/foco, botones de icono con estado activo, pestañas y buscadores modelados, **62 iconos Tabler** en 4 tintas y logo Lumina en la barra |
 | **Modo Creación** | Editor de escenarios WPF con lienzo 16:9 arrastrable, edición directa de texto y **herencia de estilos de 4 niveles** (Tema → Plantilla → Escenario → Elemento) aplicable en caliente |
 | **Biblioteca directa** | Cantos y Biblia disponibles sin buscar (paneles fijos); búsqueda instantánea opcional por cita o palabra (≤200 ms) |
 | **Biblias** | Importa **Zefania XML**, **e-Sword .bib/.bblx 9+** (descifrado Twofish de columnas), **JSON** y TSV; modelo bíblico unificado con índice en disco |
@@ -44,11 +46,12 @@ bash scripts/package_portable.sh x86
 ## Estructura
 
 ```
-src/core/            Núcleo C++ (bootstrap · render D2D/GDI+ · IPC ipc.v1 · DirectShow · UI emergencia)
-src/managed/         FusionShared (modelo ahp.v1, net35) · FusionStudio (net48) · Lite (net35)
+src/core/            MOTOR C++ (bootstrap · Motor del programa · render D2D/GDI+ · IPC ipc.v1 · DirectShow · UI emergencia)
+src/managed/         FusionShared (modelo ahp.v1 + payload del Motor, net35) · FusionStudio (net48) · Lite (net35)
 tests/               Arnés nativo y administrado + fixtures (bib e-Sword cifrada real, Zefania, himnario)
 installer/           Inno Setup dual x86/x64
 scripts/             quality_gate.sh · package_portable.sh
+resources/           Fuentes/fondos/iconos Tabler/logo (viajan con el programa) · 4 biblias completas
 docs/agent/          Documentación para agentes (arquitectura, compatibilidad, testing…)
 spec/                Documento Técnico v1.1 (fuente normativa)
 .agents/skills/      Skills del contrato AGENT.md

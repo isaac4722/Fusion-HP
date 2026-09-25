@@ -16,7 +16,7 @@
     <AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>2.1.0</Version>
+    <Version>2.2.0</Version>
     <AssemblyTitle>Fusion HP Studio Lite</AssemblyTitle>
     <Product>Fusion HP</Product>
     <Description>Variante de perfil B (.NET 3.5) del estudio</Description>
@@ -38,6 +38,7 @@
     <!-- Fuentes compartidas con FusionStudio (excluye el editor WPF) -->
     <Compile Include="..\FusionStudio\Program.cs" Link="Program.cs" />
     <Compile Include="..\FusionStudio\Ui\*.cs" Link="Ui\%(Filename)%(Extension)" />
+    <Compile Include="..\FusionStudio\Ui\Chrome\*.cs" Link="Ui\Chrome\%(Filename)%(Extension)" />
     <Compile Include="..\FusionStudio\Services\*.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\FusionStudio\Import\*.cs" Link="Import\%(Filename)%(Extension)" />
     <Compile Include="..\FusionStudio\Export\*.cs" Link="Export\%(Filename)%(Extension)" />
