@@ -47,6 +47,7 @@ namespace Fusion.Tests
                 // sin token → 401 [SPEC §8.1.4]
                 using (var c = new WebClient())
                 {
+                    c.Encoding = Encoding.UTF8;
                     try
                     {
                         c.DownloadString(baseUri + "/api/v1/state");
@@ -87,6 +88,7 @@ namespace Fusion.Tests
                 {
                     c.Headers["Authorization"] = "Bearer " + settings.ApiToken;
                     c.Headers[HttpRequestHeader.ContentType] = "application/json";
+                    c.Encoding = Encoding.UTF8;
                     c.UploadString(baseUri + "/api/v1/next", "POST", "");
                     string st2 = c.DownloadString(baseUri + "/api/v1/state");
                     TestRunner.CheckEq(JsonValue.Parse(st2).GetStr("text"), "línea dos", "next avanzó línea");
@@ -133,18 +135,21 @@ namespace Fusion.Tests
 
         public static void TestTriggerObsScene()
         {
+            string dir = TestRunner.TempDir();
+            var live = new LiveOrchestrator(new AppSettings { DataDir = dir });
+            live.Project = AhpProject.CreateDefault();
             var te = new TriggerEngine();
             te.Add(new TriggerRule { Event = "tag", Tag = "rápido", Action = "obs.scene", Parameter = "Escena Adboracion" });
             bool called = false;
             te.ObsSceneChanger = delegate(string s) { called = s == "Escena Adboracion"; return true; };
             var scn = new Scenario { Title = "x" };
             scn.Tags.Add("rápido");
-            te.Fire("tag", scn, null, null);
+            te.Fire("tag", scn, null, live);
             TestRunner.Check(called, "acción OBS ejecutada");
             // sin etiqueta → no dispara
             bool called2 = false;
             te.ObsSceneChanger = delegate { called2 = true; return true; };
-            te.Fire("tag", new Scenario { Title = "y" }, null, null);
+            te.Fire("tag", new Scenario { Title = "y" }, null, live);
             TestRunner.Check(!called2, "sin coincidencia no dispara");
         }
 

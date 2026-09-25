@@ -118,11 +118,12 @@ namespace Fusion.Shared.Bible
             for (int i = 0; i < n; i++)
             {
                 int o = i * 12;
+                // BinaryWriter escribe LITTLE-endian [coherencia de extremo a extremo]
                 r[i].Book = bytes[o];
                 r[i].Chapter = bytes[o + 1];
-                r[i].Verse = (bytes[o + 2] << 8) | bytes[o + 3];
-                r[i].Offset = (uint)(bytes[o + 4] << 24 | bytes[o + 5] << 16 | bytes[o + 6] << 8 | bytes[o + 7]);
-                r[i].Length = (uint)(bytes[o + 8] << 24 | bytes[o + 9] << 16 | bytes[o + 10] << 8 | bytes[o + 11]);
+                r[i].Verse = bytes[o + 2] | (bytes[o + 3] << 8);
+                r[i].Offset = (uint)(bytes[o + 4] | (bytes[o + 5] << 8) | (bytes[o + 6] << 16) | (bytes[o + 7] << 24));
+                r[i].Length = (uint)(bytes[o + 8] | (bytes[o + 9] << 8) | (bytes[o + 10] << 16) | (bytes[o + 11] << 24));
             }
             lock (indexCache) indexCache[b.DataPath] = r;
             return r;
