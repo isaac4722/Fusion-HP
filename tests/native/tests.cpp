@@ -225,24 +225,23 @@ static void TestIpcLoop()
 // El Motor es el dueño del estado vivo: estos tests verifican la máquina de
 // estados (carga, avance línea/elemento, pantallas, resaltado, avance por
 // diapositiva) y la persistencia de sesión sin GUI conectada.
+// NOTA: todo el JSON de prueba se construye con Json::parse, el patrón del
+// resto de la suite (inmune a las listas de inicialización mal anidadas).
 static Json TestMotorSlide(const std::string& id, const std::string& a, const std::string& b = "",
                            const std::string& c = "")
 {
-    Json lines = Json::array();
-    if (!a.empty()) lines.push_back(a);
-    if (!b.empty()) lines.push_back(b);
-    if (!c.empty()) lines.push_back(c);
-    return Json{{"id", id}, {"kind", "text"}, {"lines", lines},
-                {"style", {"font", "Segoe UI"}, {"size", 44}, {"color", "#FFFFFF"}}};
+    std::string s = "{\"id\":\"" + id + "\",\"kind\":\"text\",\"lines\":[\"" + a + "\"";
+    if (!b.empty()) s += ",\"" + b + "\"";
+    if (!c.empty()) s += ",\"" + c + "\"";
+    s += "],\"style\":{\"font\":\"Segoe UI\",\"size\":44,\"color\":\"#FFFFFF\"}}";
+    return Json::parse(s);
 }
 
 static void TestMotorBody();
 static void TestMotor()
 {
-    std::cout << "[diag] TestMotor inicia" << std::endl;
     try {
         TestMotorBody();
-        std::cout << "[diag] TestMotor termina OK" << std::endl;
     } catch (const std::exception& e) {
         std::cout << "[diag] TestMotor EXCEPCION: " << e.what() << std::endl;
         g_fail++;
@@ -255,34 +254,24 @@ static void TestMotor()
 static void TestMotorBody()
 {
     // programa: 2 escenarios × (2 y 1 elementos); el primero tiene 3 líneas
-    Json prog = Json::array();
-    {
-        Json els = Json::array();
-        Json e1, e2;
-        e1["id"] = "e1"; e1["title"] = "Himno v1"; e1["kind"] = "text";
-        e1["slide"] = TestMotorSlide("e1", "línea A", "línea B", "línea C");
-        e2["id"] = "e2"; e2["title"] = "Himno v2"; e2["kind"] = "text";
-        e2["slide"] = TestMotorSlide("e2", "coro", "coro 2");
-        els.push_back(e1); els.push_back(e2);
-        prog.push_back(Json{{"id", "s1"}, {"title", "Adoración"}, {"elements", els}});
-    }
-    {
-        Json els = Json::array();
-        Json e3;
-        e3["id"] = "e3"; e3["title"] = "Anuncio"; e3["kind"] = "lower3";
-        e3["slide"] = TestMotorSlide("e3", " Bienvenidos");
-        els.push_back(e3);
-        prog.push_back(Json{{"id", "s2"}, {"title", "Avisos"}, {"elements", els}});
-    }
+    Json e1 = TestMotorSlide("e1", "línea A", "línea B", "línea C");
+    Json e2 = TestMotorSlide("e2", "coro", "coro 2");
+    Json e3 = TestMotorSlide("e3", " Bienvenidos");
+    std::string progSrc =
+        std::string(R"([{"id":"s1","title":"Adoración","elements":[)") +
+        R"({"id":"e1","title":"Himno v1","kind":"text","slide":)" + e1.dump() + "}," +
+        R"({"id":"e2","title":"Himno v2","kind":"text","slide":)" + e2.dump() + "]}," +
+        R"({"id":"s2","title":"Avisos","elements":[)" +
+        R"({"id":"e3","title":"Anuncio","kind":"lower3","slide":)" + e3.dump() + "}]}])";
+    Json prog = Json::parse(progSrc);
 
     Motor m;
     std::vector<Json> applied;          // diapositivas que el Motor manda aplicar
     m.ApplySlideJson = [&](const Json& j) { applied.push_back(j); };
 
-    Json payload = Json::object();
+    Json payload = Json::parse(
+        R"({"select":{"scenario":0,"element":0,"line":0},"advance":"line"})");
     payload["program"] = prog;
-    payload["select"] = Json{{"scenario", 0}, {"element", 0}, {"line", 0}};
-    payload["advance"] = "line";
     CHECK(m.LoadProgram(payload), "Motor: carga de programa");
 
     Json st = m.StateJson();
@@ -353,9 +342,10 @@ static void TestMotorBody()
     CHECK(m.StateJson().value("blank", "") == "black", "Motor: Esc → reposo");
 
     // ---- añadir escenario (Enviar a vivo)
-    Json nuevo = Json{{"scenario", Json{{"id", "s3"}, {"title", "Nuevo"},
-        {"elements", Json::array({Json{{"id", "n1"}, {"kind", "text"},
-            {"slide", TestMotorSlide("n1", "nueva")}}})}}}};
+    Json n1 = TestMotorSlide("n1", "nueva");
+    Json nuevo = Json::parse(
+        std::string(R"({"scenario":{"id":"s3","title":"Nuevo","elements":[)") +
+        R"({"id":"n1","kind":"text","slide":)" + n1.dump() + "}]}}");
     CHECK(m.AppendScenario(nuevo), "Motor: append escenario");
     st = m.StateJson();
     CHECK(st["program"].size() == 3 && st.value("scenario", -1) == 2, "Motor: append selecciona el nuevo");
@@ -388,11 +378,8 @@ int main()
     TestHighlight();
     TestSlideStateV21();
     TestNativeSession();
-    std::cout << "[diag] antes de TestMotor" << std::endl;
-    TestMotor();
-    std::cout << "[diag] antes de TestIpcLoop" << std::endl;
     TestIpcLoop();
-    std::cout << "[diag] suite completa" << std::endl;
+    TestMotor();
 
     std::cout << "\nResultado: " << g_pass << " OK · " << g_fail << " FALLO" << std::endl;
     CoUninitialize();
