@@ -1,0 +1,88 @@
+<!--
+  HomePage.xaml — «Inicio» (mosaicos, flujo PowerStudio de la referencia
+  H-P-Web-Version-Ref): continuar el último proyecto, presentar, crear en
+  Estudio, bibliotecas y ajustes — todo a un clic.
+-->
+<UserControl x:Class="lumina.wpf.HomePage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:lumina.wpf">
+  <DockPanel>
+    <local:PageHeader DockPanel.Dock="Top" Title="LuminaPresentation Suite"
+                      Subtitle="¿Qué hacemos ahora?"
+                      Icon="{StaticResource IconHome}"/>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+      <StackPanel MaxWidth="980" HorizontalAlignment="Left" Margin="0,4,0,0">
+
+        <!-- Continuar (solo si hay último proyecto) -->
+        <local:Card x:Name="cardResume" Title="Continuar" Icon="{StaticResource IconFolder}"
+                    Margin="0,0,0,14" Visibility="Collapsed">
+          <StackPanel>
+            <TextBlock x:Name="txtResumePath" Style="{StaticResource TxtSmall}"
+                       Foreground="{StaticResource TextSecondaryBrush}"
+                       TextTrimming="CharacterEllipsis" Text="—"/>
+            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+              <local:LumButton Variant="Primary" Icon="{StaticResource IconPlay}"
+                               Text="Abrir y presentar" MinWidth="170" Click="OnResumePresent"
+                               ToolTip="Carga el último plan guardado y abre la proyección (F5)"/>
+              <local:LumButton Variant="Secondary" Icon="{StaticResource IconEdit}"
+                               Text="Abrir en Estudio" MinWidth="150" Margin="8,0,0,0"
+                               Click="OnResumeStudio"/>
+            </StackPanel>
+          </StackPanel>
+        </local:Card>
+
+        <!-- Crear -->
+        <local:Card Title="Crear" Icon="{StaticResource IconEdit}" Margin="0,0,0,14">
+          <WrapPanel>
+            <local:LumButton Variant="Primary" Icon="{StaticResource IconEdit}"
+                             Text="Nuevo diseño (Estudio)" MinWidth="190" Margin="0,0,8,8"
+                             ToolTip="Editor de diapositivas estilo PowerPoint: lienzo libre, textos e imágenes"
+                             Click="OnNewStudio"/>
+            <local:LumButton Variant="Secondary" Icon="{StaticResource IconFolder}"
+                             Text="Abrir plan JSON…" MinWidth="170" Margin="0,0,8,8"
+                             Click="OnOpenPlan"/>
+            <local:LumButton Variant="Secondary" Icon="{StaticResource IconTv}"
+                             Text="Importar PPTX…" MinWidth="160" Margin="0,0,8,8"
+                             Click="OnImportPptx"/>
+          </WrapPanel>
+        </local:Card>
+
+        <!-- Presentar -->
+        <local:Card Title="Presentar" Icon="{StaticResource IconLive}" Margin="0,0,0,14">
+          <WrapPanel>
+            <local:LumButton Variant="Primary" Icon="{StaticResource IconLive}"
+                             Text="En vivo (operador)" MinWidth="190" Margin="0,0,8,8"
+                             ToolTip="Modo operador: lista de dos niveles, búsqueda en caliente, EN VIVO"
+                             Click="OnGoLive"/>
+            <local:LumButton Variant="Secondary" Icon="{StaticResource IconCast}"
+                             Text="Abrir proyector (F5)" MinWidth="180" Margin="0,0,8,8"
+                             Click="OnProjector"/>
+            <local:LumButton Variant="Secondary" Icon="{StaticResource IconClipboard}"
+                             Text="Orden del culto" MinWidth="170" Margin="0,0,8,8"
+                             Click="OnService"/>
+          </WrapPanel>
+        </local:Card>
+
+        <!-- Biblioteca -->
+        <local:Card Title="Biblioteca" Icon="{StaticResource IconBook}" Margin="0,0,0,14">
+          <WrapPanel>
+            <local:LumButton Variant="Secondary" Icon="{StaticResource IconSong}"
+                             Text="Canciones" MinWidth="150" Margin="0,0,8,8" Click="OnSongs"/>
+            <local:LumButton Variant="Secondary" Icon="{StaticResource IconBook}"
+                             Text="Biblia" MinWidth="130" Margin="0,0,8,8" Click="OnBible"/>
+            <local:LumButton Variant="Secondary" Icon="{StaticResource IconDroplet}"
+                             Text="Temas" MinWidth="130" Margin="0,0,8,8" Click="OnThemes"/>
+            <local:LumButton Variant="Secondary" Icon="{StaticResource IconImage}"
+                             Text="Recursos" MinWidth="140" Margin="0,0,8,8" Click="OnResources"
+                             ToolTip="Biblioteca de imágenes/videos con etiquetas y re-vinculación"/>
+          </WrapPanel>
+        </local:Card>
+
+        <TextBlock Style="{StaticResource TxtCaption}" TextWrapping="Wrap"
+                   Text="Atajos: Ctrl+N nuevo diseño · Ctrl+K búsqueda en caliente · F5 proyector · F6 monitor de escenario · F7 director · F8 zócalo · B negro · L limpiar · F1 todos los atajos."/>
+      </StackPanel>
+    </ScrollViewer>
+  </DockPanel>
+</UserControl>

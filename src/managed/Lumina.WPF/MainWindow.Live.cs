@@ -783,8 +783,49 @@ namespace lumina.wpf
             dlg.ShowDialog();
         }
 
+        /// <summary>Ruta del último proyecto (para el mosaico «Continuar» de Inicio).</summary>
+        internal string LastProjectPath
+        {
+            get { return _settings != null ? _settings.LastProjectPath : string.Empty; }
+        }
+
+        /// <summary>
+        /// «Continuar» desde Inicio: carga el último plan guardado. true si se
+        /// restauró algo (ítems > 0). Errores al log, nunca lanza.
+        /// </summary>
+        internal bool ResumeLastProject()
+        {
+            string path = _settings.LastProjectPath;
+            if (string.IsNullOrEmpty(path) || !File.Exists(path))
+            {
+                Status("No hay último proyecto guardado.");
+                return false;
+            }
+            try
+            {
+                int added = ImportPlanCore(File.ReadAllText(path, new UTF8Encoding(false)));
+                if (added > 0)
+                {
+                    SelectLastServiceItem();
+                    RefreshPreview();
+                    RememberProjectPath(path);
+                    Status("Proyecto abierto: " + Path.GetFileName(path)
+                        + " (" + added + " ítems).");
+                    return true;
+                }
+                Status("El plan no trae ítems.");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                App.LogLine("ResumeLastProject: " + ex.Message);
+                Status("El último proyecto no se pudo abrir (ver log).");
+                return false;
+            }
+        }
+
         /* ======================================================================
-         *  F1.06 «Arranque en Presentación» — la ventana abre en En Vivo
+         *  F1.06 «Arranque en Presentación» — la ventana abre en Inicio
          *  (NavigateToIndex(0), constructor) y RESTAURA el último plan de
          *  culto guardado (settings.json → lastProjectPath). La creación de
          *  contenido sigue siendo explícita por página/atajo; entrar/salir

@@ -33,7 +33,7 @@
 | F1.03 | Texto: multilínea, `syncMark`, resaltado | `Lyrics.cpp` · `Highlight.cpp` · `Models.h` | `TestHighlight` + Scripture/Chords | `core-portable` |
 | F1.04 | Tema (colores/fondo) aplicado en vivo | `Engine::SetTheme` · `Models.h` | arnés | `core-portable` |
 | F1.05 | Atajos personalizables (JSON) | `Settings.cs` (ShortcutActions, defaults, persistencia) + UI (F1/F5-F8/Ctrl+K) | `TestSettingsShortcuts` | `managed` |
-| F1.06 | **Arranque en Presentación** | WPF: abre en En Vivo (`NavigateToIndex(0)`) + `RestoreLastProjectAtStartup()` (MainWindow.Live.cs) · WinForms: ídem (MainForm.cs) · `Settings.LastProjectPath` (settings.json) | `TestSettingsLastProject` | `managed` |
+| F1.06 | **Arranque en Presentación** | beta.4: abre en INICIO (flujo PowerStudio de la referencia) con mosaico «Abrir y presentar» a un clic + restauración silenciosa del último plan (`RestoreLastProjectAtStartup`/`ResumeLastProject`) · WinForms: ídem · `Settings.LastProjectPath` | `TestSettingsLastProject` | `managed` |
 | F1.07 | **Búsqueda en caliente** | WPF LivePage: caja + popup + **Ctrl+K**; global canciones+versículos vía FTS5; agregar NO interrumpe la salida (`HotSearchRun/Add`, `SearchVersesRequest`, `FtsQuery`) | `TestFtsQuery` + `TestHotSearchQueries` (nativo) | `managed`, `interop` |
 | F1.08 | Fail-safe del motor (salida permanece) | `Engine.cpp` (captura por slide) + §11 | arnés | `core-portable` |
 | F1.09 | **Gate F1** | 16 ms/frame y cambio ≤1 frame: métricas reales del render (F6.01) + campaña sesion60 (renderAvgMs 0.06, max 2.3) | sesion60 dumps | `sesion60` |

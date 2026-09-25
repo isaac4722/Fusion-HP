@@ -7,3 +7,4 @@
 2026-09-24 · DONE · F6.08: campaña completa al job sesion60 del CI (sandbox local mata procesos largos — documentado) + sesion60.md con criterio 11.4/11/10 · dispatch/tags · 7_PERSIST
 2026-09-24 · DONE · F6.08 campaña completa 60 min EN CI: success (run 36040245651, 33k ops, 0 errores no justificados, RAM pico 52 MB) + evidencia en docs/verification/sesion60.md · artefacto sesion60 · 9_CLOSE
 2026-09-24 · DONE · auditoría 80/80: F1.06 último proyecto · F1.07 búsqueda caliente (Ctrl+K, FtsQuery) · F2.09 ElementHost net48 · F2.12 uso/anotaciones · F2.14 recursos+relink · F4.13 ImageExporter · fix triggers FTS5 preexistente · tests 44/53 + g++ 15/15 · matriz en docs/verification · 10_AUDIT
+2026-09-24 · DONE · experiencia PowerStudio (ref H-P-Web-Version-Ref): Inicio (mosaicos+continuar) + Estudio (cinta, miniaturas, lienzo 16:9 drag/resize, propiedades, notas) + Ctrl+N · beta.4 · 11_RELEASE

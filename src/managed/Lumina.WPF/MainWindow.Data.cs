@@ -1506,8 +1506,42 @@ namespace lumina.wpf
             opt.ShowDialog();
         }
 
-        /* ============================================ F2.14: recursos ===== */
+        /* ===================================== ESTUDIO — flujo PowerStudio == */
 
+        /// <summary>
+        /// Serializa las diapositivas del Estudio como ítems "composed" del
+        /// culto (REEMPLAZA los composed anteriores: el Estudio es dueño de los
+        /// diseños). Persisten en el plan JSON y se proyectan/exportan igual
+        /// que cualquier ítem.
+        /// </summary>
+        internal void SaveStudioToService(IList<StudioSlide> slides)
+        {
+            for (int i = _serviceItems.Count - 1; i >= 0; i--)
+                if (_serviceItems[i].Kind == "composed") _serviceItems.RemoveAt(i);
+            foreach (StudioSlide s in slides)
+            {
+                ScenarioItem it = ScenarioBuilder.ComposedItem(s.Title, s.Elements);
+                it.Notes = s.Notes;
+                _serviceItems.Add(it);
+            }
+            RefreshServiceList();
+            Status("Diseños guardados en el culto: " + slides.Count + " diapositiva(s).");
+        }
+
+        /// <summary>Carga al Estudio los ítems "composed" presentes en el culto.</summary>
+        internal int LoadStudioFromService(IList<StudioSlide> studio)
+        {
+            studio.Clear();
+            foreach (ScenarioItem it in _serviceItems)
+            {
+                if (it.Kind != "composed" || it.Composed == null) continue;
+                studio.Add(StudioSlide.From(
+                    string.IsNullOrEmpty(it.Title) ? "Diseño" : it.Title, it.Notes, it.Composed));
+            }
+            return studio.Count;
+        }
+
+        /* ============================================ F2.14: recursos ===== */
         /// <summary>Fila de la biblioteca de recursos (listado del diálogo).</summary>
         internal sealed class ResourceRowVm
         {

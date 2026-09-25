@@ -104,7 +104,12 @@
         <!-- Navegación (arriba, con scroll) -->
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
           <StackPanel Margin="0,12,0,4">
-            <TextBlock Text="PRESENTACIÓN" Style="{StaticResource TxtCaption}" Margin="22,8,0,5"/>
+            <local:NavItem x:Name="navHome" Icon="{StaticResource IconDroplet}" Label="Inicio"
+                           Click="OnNavClick" Tag="9"/>
+
+            <TextBlock Text="PRESENTACIÓN" Style="{StaticResource TxtCaption}" Margin="22,10,0,5"/>
+            <local:NavItem x:Name="navStudio" Icon="{StaticResource IconEdit}" Label="Estudio"
+                           Click="OnNavClick" Tag="10"/>
             <local:NavItem x:Name="navLive" Icon="{StaticResource IconLive}" Label="En Vivo"
                            Click="OnNavClick" Tag="0"/>
             <local:NavItem x:Name="navService" Icon="{StaticResource IconClipboard}" Label="Culto"
@@ -137,9 +142,11 @@
       </DockPanel>
     </Border>
 
-    <!-- =================== CONTENIDO (9 páginas) =================== -->
+    <!-- =================== CONTENIDO (11 páginas) =================== -->
     <Border Grid.Row="1" Grid.Column="1" Background="{StaticResource PageBrush}">
       <Grid Margin="20,14,20,12">
+        <pages:HomePage x:Name="pageHome" Visibility="Collapsed"/>
+        <pages:StudioPage x:Name="pageStudio" Visibility="Collapsed"/>
         <pages:LivePage x:Name="pageLive" Visibility="Collapsed"/>
         <pages:SongsPage x:Name="pageSongs" Visibility="Collapsed"/>
         <pages:BiblePage x:Name="pageBible" Visibility="Collapsed"/>
