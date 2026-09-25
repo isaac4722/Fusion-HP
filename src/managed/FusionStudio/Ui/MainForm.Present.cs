@@ -160,7 +160,13 @@ namespace Fusion.Studio.Ui
 
             btnChords = MakeLiveButton("Acordes (músicos)", "piano", ref y, FusionButtonKind.Chip);
             btnChords.Click += delegate { ShowChordsWindow(); };
-            right.Controls.Add(btnChords); y += 40;
+            right.Controls.Add(btnChords); y += 36;
+
+            // Mando / Clasificador / Historial (GUI web + función beta-1)
+            BuildWebExtras(right, ref y);
+
+            // Escenario de músicos (Stage View beta-1): alerta, temporizador, tono/BPM
+            BuildStageTools(right, ref y);
 
             // Resaltado en proyección [SPEC §5.2 #2] (port de las betas 1):
             // el MOTOR aplica y persiste las palabras; Enter aplica, vacío limpia.
@@ -389,6 +395,7 @@ namespace Fusion.Studio.Ui
             }
             RefreshLines();
             UpdateLiveButtons();
+            RecordHistoryFromLive();      // beta-1: historial + tono/BPM al escenario
         }
 
         // ------------------------------------------------------------ diálogo mensaje

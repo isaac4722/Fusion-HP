@@ -1,7 +1,10 @@
 // ============================================================================
 //  Fusion-HP · MainForm.Services.cs — servicios de plataforma [SPEC §8]:
-// API HTTP, cliente OBS y motor de Triggers, activados desde la configuración
-// (desactivados por defecto [SPEC §8]) e iniciados bajo demanda [SPEC §10.3.5].
+// API HTTP de control remoto y motor de Triggers, activados desde la
+// configuración (desactivados por defecto [SPEC §8]) e iniciados bajo demanda
+// [SPEC §10.3.5].
+// v2.3: el cliente OBS fue ELIMINADO por decisión del usuario — queda solo la
+// API de control remoto (HTTP + /remote).
 // ============================================================================
 using System;
 using Fusion.Shared;
@@ -12,9 +15,7 @@ namespace Fusion.Studio.Ui
     public partial class MainForm
     {
         ApiServer api;
-        ObsClient obs;
         TriggerEngine triggers;
-        bool obsTextHooked;
 
         public TriggerEngine Triggers
         {
@@ -23,11 +24,6 @@ namespace Fusion.Studio.Ui
                 if (triggers == null)
                 {
                     triggers = new TriggerEngine();
-                    triggers.ObsSceneChanger = delegate(string scene)
-                    {
-                        if (obs != null && obs.Connected) { obs.SetScene(scene); return true; }
-                        return false;
-                    };
                     triggers.ThemeChanger = delegate(string name)
                     {
                         Live.ThemeChanged();       // re-resuelve en caliente [SPEC §7.4.1]
@@ -60,7 +56,7 @@ namespace Fusion.Studio.Ui
             }
             catch { }
 
-            // ---- API
+            // ---- API de control remoto
             if (Settings.ApiEnabled)
             {
                 if (api == null)
@@ -73,37 +69,6 @@ namespace Fusion.Studio.Ui
             else if (api != null)
             {
                 api.Stop();
-            }
-
-            // ---- OBS
-            if (Settings.ObsEnabled)
-            {
-                if (obs == null)
-                {
-                    obs = new ObsClient(Settings);
-                    obs.Logged += delegate(string m) { AppendStatusLog(m); };
-                }
-                if (!obsTextHooked)
-                {
-                    obsTextHooked = true;
-                    // El texto activo se empuja a OBS en cada cambio de línea [SPEC §8.4.3]
-                    Live.StateChanged += delegate
-                    {
-                        if (obs != null && obs.Connected && Live.State.Current != null &&
-                            !string.IsNullOrEmpty(Settings.ObsTextSource))
-                        {
-                            var cur = Live.State.Current;
-                            string text = cur.Lines.Count > 0 && Live.State.LineIndex < cur.Lines.Count
-                                ? cur.Lines[Live.State.LineIndex] : "";
-                            obs.PushText(text);
-                        }
-                    };
-                }
-                obs.Start();
-            }
-            else if (obs != null)
-            {
-                obs.Stop();
             }
 
             // ---- Pantalla de reposo del logo
@@ -132,7 +97,6 @@ namespace Fusion.Studio.Ui
         internal void HandleFormClosedForServices(object sender, EventArgs e)
         {
             if (api != null) api.Stop();
-            if (obs != null) obs.Stop();
         }
     }
 }

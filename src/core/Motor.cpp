@@ -452,6 +452,36 @@ Json Motor::StateJson() const {
     return j;
 }
 
+Json Motor::ProgramSnapshot() const {
+    std::lock_guard<std::mutex> lk(m_);
+    Json j = Json::object();
+    j["hasProgram"] = !scenarios_.empty();
+    j["scenario"] = scnIdx_;
+    j["element"] = elIdx_;
+    j["line"] = lineIdx_;
+    j["blank"] = blank_;
+    j["advance"] = advance_;
+    Json prog = Json::array();
+    for (const auto& s : scenarios_) {
+        Json sj = Json::object();
+        sj["id"] = s.id;
+        sj["title"] = s.title;
+        Json els = Json::array();
+        for (const auto& e : s.elements) {
+            Json ej = Json::object();
+            ej["id"] = e.id;
+            ej["title"] = e.title;
+            ej["kind"] = e.kindHint;
+            ej["slide"] = e.slide;
+            els.push_back(ej);
+        }
+        sj["elements"] = els;
+        prog.push_back(sj);
+    }
+    j["program"] = prog;
+    return j;
+}
+
 // ---------------------------------------------------------------- teclas autónomas
 void Motor::StandaloneKey(UINT vk) {
     std::string curBlank;

@@ -10,12 +10,14 @@
 #include "../../src/core/SlideState.h"
 #include "../../src/core/Highlight.h"
 #include "../../src/core/NativeSession.h"
+#include "../../src/core/NativeLibrary.h"
 #include "../../src/core/IpcServer.h"
 #include "../../src/core/Motor.h"
 #include <cstdio>
 #include <cstring>
 #include <cassert>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <iomanip>
 
@@ -368,6 +370,115 @@ static void TestMotorBody()
     DeleteFileW(tmp.c_str());
 }
 
+// ================================================================== v2.3
+// NativeLibrary: cancionero fdb.v1, biblias JSON, borrador → motor.load,
+// guardado .ahp (round-trip con NativeSession) e historial (beta-1).
+static void TestNativeLibrary()
+{
+    namespace fs = std::filesystem;
+    fs::path dir = fs::temp_directory_path() / ("FusionHP.lib." + std::to_string(GetCurrentProcessId()));
+    std::error_code ec;
+    fs::create_directories(dir, ec);
+
+    // ---- cancionero fdb.v1
+    fs::path fdb = dir / "cancionero.fdb";
+    {
+        std::ofstream f(fdb, std::ios::binary);
+        f << R"({"format":"fdb.v1","songs":[)"
+          << R"({"id":"c1","title":"Dios es amor","artist":"Autor A","key":"Re","bpm":72,"language":"es",)"
+          << R"("tags":["adoracion"],"sections":[{"name":"Coro","lines":["Dios es amor","Su misericordia"]}]},)"
+          << R"({"id":"c2","title":"Santo Espíritu","artist":"Autor B","key":"Mi","bpm":80,"language":"es",)"
+          << R"("sections":[{"name":"Estrofa 1","lines":["Ven Espíritu"]}]})]})";
+    }
+    SongLibrary songs;
+    CHECK(songs.Load(fdb.wstring()), "Library: fdb.v1 carga");
+    CHECK(songs.Count() == 2, "Library: 2 cantos");
+    auto hits = songs.Search(L"dios es amor");
+    CHECK(hits.size() == 1 && hits[0] == 0, "Library: búsqueda normalizada (sin/prefijo)");
+    CHECK(songs.Search(L"esp").size() == 1, "Library: búsqueda parcial");
+    const LibSong* s1 = songs.At(0);
+    CHECK(s1 && s1->key_ == L"Re" && s1->bpm == 72, "Library: tono y BPM");
+    CHECK(s1 && s1->sections.size() == 1 && s1->sections[0].lines.size() == 2, "Library: secciones web");
+
+    // ---- biblia empaquetada
+    fs::path bibDir = dir / "bibles";
+    fs::create_directories(bibDir, ec);
+    fs::path bib = bibDir / "mini.json";
+    {
+        std::ofstream f(bib, std::ios::binary);
+        f << R"({"version":"MINI","name":"Biblia Mini","books":[{"name":"Juan",)"
+          << R"("chapters":[["En el principio era el Verbo.","Y el Verbo era con Dios.",)"
+          << R"("Y el Verbo era Dios."]]}]})";
+    }
+    BibleLibrary bibles;
+    CHECK(bibles.Discover(bibDir.wstring()), "Bible: discover empaquetadas");
+    CHECK(bibles.Count() == 1 && bibles.At(0)->id == "MINI", "Bible: índice sin parsear todo");
+    CHECK(bibles.Select(0), "Bible: select carga libros");
+    CHECK(bibles.BookCount() == 1 && bibles.BookName(0) == L"Juan", "Bible: libro");
+    CHECK(bibles.Verse(L"Juan", 1, 3) == L"Y el Verbo era Dios.", "Bible: versículo directo");
+    CHECK(bibles.VerseCount(L"Juan", 1) == 3, "Bible: conteo de versículos");
+    std::wstring ref;
+    std::vector<std::wstring> lns;
+    CHECK(bibles.Range(L"juan 1:1-2", ref, lns), "Bible: rango juan 1:1-2");
+    CHECK(ref == L"Juan 1:1-2" && lns.size() == 1, "Bible: referencia del rango");
+    std::wstring bk; int ch, vv;
+    CHECK(BibleLibrary::ParseRef(L"salmos 23", bk, ch, vv) && bk == L"salmos" && ch == 23,
+          "Bible: ParseRef salmos 23");
+
+    // ---- borrador → motor.load
+    Draft d;
+    d.name = L"Culto de prueba";
+    AddSongToDraft(d, *s1, "tema-clasico");
+    AddVerseToDraft(d, L"Juan 1:1", L"En el principio era el Verbo.", false, "");
+    CHECK(d.items.size() == 2, "Draft: canto + versículo");
+    CHECK(d.items[0].slides.size() == 1 && d.items[0].slides[0].lines.size() == 2,
+          "Draft: secciones → diapositivas");
+    Json payload = DraftToProgram(d, true, true);
+    CHECK(payload["program"].size() == 2, "Program: 2 escenarios");
+    CHECK(payload["program"][0]["elements"].size() == 1, "Program: elemento por diapositiva");
+    Json slide = payload["program"][0]["elements"][0]["slide"];
+    CHECK(slide.contains("style") && slide["style"].value("font", "") == "Outfit",
+          "Program: estilo resuelto del tema");
+    CHECK(slide.contains("bg") && slide["bg"].value("image", "").find("gold-rays") != std::string::npos,
+          "Program: fondo del tema");
+    CHECK(slide.value("transition", "") == "fade", "Program: transición horneada");
+    Json vs = payload["program"][1]["elements"][0]["slide"];
+    CHECK(vs.value("reference", "") == "Juan 1:1", "Program: referencia del versículo");
+    SetDefaultTransition("cut");
+    payload = DraftToProgram(d, true, true);
+    CHECK(payload["program"][0]["elements"][0]["slide"].value("transition", "") == "cut",
+          "Program: transición predeterminada global");
+    SetDefaultTransition("fade");
+
+    // ---- SaveDraftAhp ↔ NativeSession (round-trip)
+    fs::path ahp = dir / "prueba.ahp";
+    CHECK(SaveDraftAhp(d, ahp.wstring()), "AhpWriter: guarda .ahp");
+    NativeSession ses;
+    CHECK(ses.Load(ahp.wstring()), "AhpWriter: NativeSession reabre el archivo");
+    CHECK(ses.Items().size() == 2, "AhpWriter: 2 escenarios reabiertos");
+    CHECK(ses.Items()[1].slides.size() == 1 &&
+          ses.Items()[1].slides[0].kind == SlideKind::Verse,
+          "AhpWriter: versículo preservado");
+    CHECK(ses.ProjectName() == L"Culto de prueba", "AhpWriter: nombre del proyecto");
+
+    // ---- historial (beta-1)
+    fs::path hfile = dir / "historial.jsonl";
+    History hist;
+    hist.SetFile(hfile.wstring());
+    hist.Record(L"Canto A", L"text");
+    hist.Record(L"Canto B", L"text");
+    hist.Record(L"Canto A", L"text");
+    CHECK(hist.Recent(2).size() == 2 && hist.Recent(2)[0].title == L"Canto A",
+          "History: recientes en orden");
+    auto top = hist.Top(5);
+    CHECK(top.size() == 2 && top[0].title == L"Canto A" && top[0].count == 2,
+          "History: más usadas primero");
+    fs::path csv = dir / "historial.csv";
+    CHECK(hist.ExportCsv(csv.wstring()), "History: exportar CSV");
+
+    fs::remove_all(dir, ec);
+}
+
 int main()
 {
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
@@ -380,6 +491,7 @@ int main()
     TestNativeSession();
     TestIpcLoop();
     TestMotor();
+    TestNativeLibrary();
 
     std::cout << "\nResultado: " << g_pass << " OK · " << g_fail << " FALLO" << std::endl;
     CoUninitialize();

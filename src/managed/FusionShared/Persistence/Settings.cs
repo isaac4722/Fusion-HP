@@ -24,12 +24,6 @@ namespace Fusion.Shared
         public int ApiPort = 27117;
         public string ApiToken = "";            // autogenerado al activar
 
-        // OBS WebSocket [SPEC §8.4]
-        public bool ObsEnabled;
-        public string ObsHost = "127.0.0.1";
-        public int ObsPort = 4455;
-        public string ObsPassword = "";
-        public string ObsTextSource = "";       // fuente de texto a alimentar
 
         // Comportamiento
         public string RestScreen = "black";     // negro|logo|theme
@@ -70,11 +64,6 @@ namespace Fusion.Shared
                     s.ApiEnabled = j.GetBool("apiEnabled", false);
                     s.ApiPort = j.GetInt("apiPort", 27117);
                     s.ApiToken = j.GetStr("apiToken", "");
-                    s.ObsEnabled = j.GetBool("obsEnabled", false);
-                    s.ObsHost = j.GetStr("obsHost", "127.0.0.1");
-                    s.ObsPort = j.GetInt("obsPort", 4455);
-                    s.ObsPassword = j.GetStr("obsPassword", "");
-                    s.ObsTextSource = j.GetStr("obsTextSource", "");
                     s.RestScreen = j.GetStr("restScreen", "black");
                     s.LogoPath = j.GetStr("logoPath", "");
                     s.StartInPresentMode = j.GetBool("startInPresentMode", true);
@@ -106,11 +95,6 @@ namespace Fusion.Shared
                 j.Set("apiEnabled", JsonValue.Make(ApiEnabled));
                 j.Set("apiPort", JsonValue.Make(ApiPort));
                 j.Set("apiToken", JsonValue.Make(ApiToken));
-                j.Set("obsEnabled", JsonValue.Make(ObsEnabled));
-                j.Set("obsHost", JsonValue.Make(ObsHost));
-                j.Set("obsPort", JsonValue.Make(ObsPort));
-                j.Set("obsPassword", JsonValue.Make(ObsPassword));
-                j.Set("obsTextSource", JsonValue.Make(ObsTextSource));
                 j.Set("restScreen", JsonValue.Make(RestScreen));
                 j.Set("logoPath", JsonValue.Make(LogoPath));
                 j.Set("startInPresentMode", JsonValue.Make(StartInPresentMode));

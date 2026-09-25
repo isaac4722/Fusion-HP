@@ -42,8 +42,18 @@ public:
     /// Decodifica una imagen en la caché sin dibujar (carga diferida [SPEC §6.4]).
     void PreloadImage(const std::wstring& path);
 
-    // Vista de retorno (Stage View) [SPEC §8.5]: letra + línea activa + reloj
-    void RenderStage(const Slide& s);
+    // Vista de retorno (Stage View) [SPEC §8.5] — función beta-1 enriquecida
+    // (v1.6 StageWindow): reloj, tono/BPM, alertas, temporizador y vista
+    // previa del siguiente elemento para los músicos.
+    struct StageInfo {
+        std::wstring clock;            // hh:mm:ss (la actualiza App cada segundo)
+        std::wstring keyBpm;           // p. ej. "Re · 72 BPM"
+        std::wstring alert;            // mensaje dorado (vacío = sin alerta)
+        int countdown = -1;            // segundos restantes; <0 = desactivado
+        std::wstring nextFirst;        // primera línea del siguiente elemento
+    };
+    void RenderStage(const Slide& s);                 // compatible (sin extras)
+    void RenderStageEx(const Slide& s, const StageInfo& info);
 
     void SetLogoPath(const std::wstring& p) { logoPath_ = p; }
 

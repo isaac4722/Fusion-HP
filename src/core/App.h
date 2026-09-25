@@ -10,7 +10,7 @@
 #include "LiveWindow.h"
 #include "IpcServer.h"
 #include "VideoPlayer.h"
-#include "NativeControl.h"
+#include "NativeStudio.h"
 #include "Motor.h"
 
 namespace fusion {
@@ -34,8 +34,11 @@ private:
     void BroadcastMotorState();                     // evento motor.state
     Json DispatchMotor(const std::string& cmd, const Json& p);   // familia motor.*
     void WatchStandalone();                        // GUI fuera => Motor autónomo
+    void UpdateStage(bool force);                   // reloj/temporizador/next del escenario
     std::wstring renderer_preload_, renderer_preload2_;   // rutas precargadas [SPEC §6.4]
     std::wstring motorSesionFile_;                 // DataDir/motor/sesion.json
+    Renderer::StageInfo stageInfo_;                // estado del Stage View (beta-1)
+    DWORD lastStageSecond_ = 0;
 
     HINSTANCE inst_ = nullptr;
     EnvironmentReport env_;
@@ -43,7 +46,7 @@ private:
     LiveWindow live_;
     VideoPlayer video_;
     std::unique_ptr<IpcServer> ipc_;
-    std::unique_ptr<NativeControl> nativeCtl_;
+    std::unique_ptr<NativeStudio> studio_;  // GUI web replicada en C++ (v2.3)
     std::unique_ptr<Motor> motor_;          // EL MOTOR (v2.2): dueño del estado vivo
     std::atomic<bool> studioRunning_{false};
     UINT_PTR pumpTimer_ = 0;

@@ -147,7 +147,11 @@
     <ClCompile Include="Logger.cpp" />
     <ClCompile Include="IpcServer.cpp" />
     <ClCompile Include="Motor.cpp" />
-    <ClCompile Include="NativeControl.cpp" />
+    <ClCompile Include="NativeLibrary.cpp" />
+    <ClCompile Include="NativeStudio.cpp" />
+    <ClCompile Include="NativeStudio.Editor.cpp" />
+    <ClCompile Include="NativeStudio.Present.cpp" />
+    <ClCompile Include="UiTheme.cpp" />
     <ClCompile Include="NativeSession.cpp" />
     <ClCompile Include="Renderer.cpp" />
     <ClCompile Include="SlideState.cpp" />
@@ -162,7 +166,9 @@
     <ClInclude Include="LiveWindow.h" />
     <ClInclude Include="Logger.h" />
     <ClInclude Include="Motor.h" />
-    <ClInclude Include="NativeControl.h" />
+    <ClInclude Include="NativeLibrary.h" />
+    <ClInclude Include="NativeStudio.h" />
+    <ClInclude Include="UiTheme.h" />
     <ClInclude Include="NativeSession.h" />
     <ClInclude Include="Renderer.h" />
     <ClInclude Include="SlideState.h" />

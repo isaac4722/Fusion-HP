@@ -41,10 +41,13 @@ public:
     // Estado compartido que dibuja esta ventana
     void Bind(SlideState* state) { state_ = state; }
 
-    // Vista de retorno (Stage View) [SPEC §8.5]
+    // Vista de retorno (Stage View) [SPEC §8.5] — beta-1 enriquecida (v2.3):
+    // la info (reloj/tono/alerta/temporizador/siguiente) la posee App.
     bool CreateStage(int monitorIndex);
     HWND StageHwnd() const { return stageHwnd_; }
     void RenderStageNow();
+    void SetStageInfo(const Renderer::StageInfo& si) { stageInfo_ = si; }
+    Renderer::StageInfo& StageInfoRef() { return stageInfo_; }
 
     void SetVideoPlayer(VideoPlayer* vp) { video_ = vp; }
 
@@ -59,6 +62,7 @@ private:
     HWND hintHwnd_ = nullptr;
     Renderer renderer_;
     Renderer stageRenderer_;
+    Renderer::StageInfo stageInfo_;
     SlideState* state_ = nullptr;
     VideoPlayer* video_ = nullptr;
     int monitorIdx_ = -1;

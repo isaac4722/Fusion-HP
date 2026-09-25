@@ -145,6 +145,7 @@
     <ClCompile Include="..\..\src\core\Logger.cpp" />
     <ClCompile Include="..\..\src\core\Motor.cpp" />
     <ClCompile Include="..\..\src\core\NativeSession.cpp" />
+    <ClCompile Include="..\..\src\core\NativeLibrary.cpp" />
     <ClCompile Include="..\..\src\core\SlideState.cpp" />
     <ClCompile Include="..\..\src\core\IpcServer.cpp" />
   </ItemGroup>

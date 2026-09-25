@@ -11,14 +11,17 @@
 | **Motor (v2.2)** | El **núcleo nativo es el dueño del estado vivo**: carga el programa completo, secuencía líneas/elementos, pantallas y resaltado, y lo **persiste** (`motor/sesion.json`) — cerrar la GUI **no tira la proyección**: el Motor queda autónomo con teclado sobre la salida (Espacio/flechas avanzan · B/C/L pantallas · Esc negro · Alt+F4 apaga) y al reabrir la GUI todo se sincroniza |
 | **Modo Presentación** | Arranque directo, salida borderless sin parpadeo (Direct2D/GDI+), sincronización **línea por línea**, pantalla de reposo (negro/logo/tema), atajos Holyrics (flechas · Espacio · Esc/B/L · G búsqueda bíblica · F5) |
 | **GUI nativa modelada (v2.2)** | Controles **100 % nativos C#/GDI+** que replican el diseño de la referencia web (sin navegador ni motor web): botones tipo chip con estados hover/pressed/foco, botones de icono con estado activo, pestañas y buscadores modelados, **62 iconos Tabler** en 4 tintas y logo Lumina en la barra |
+| **Estudio nativo C++ (v2.3)** | `FusionHP.exe --gui=native` (o perfil C sin .NET) abre el **estudio 100 % C++** con la GUI web replicada: pantalla de Inicio con tarjetas y recientes, editor **PowerStudio** (barra de título con acceso rápido, cinta de 8 pestañas con Backstage de Archivo, miniaturas por secciones, lienzo con edición directa + notas, panel Formato/Biblioteca con Cantos/Biblia/Medios/Temas, barra de estado con vistas Normal/Clasificador), consola **Presentar** (programa con sub-líneas, Biblia rápida G, transporte con avance conmutable, EN VIVO + reloj) y **Mando** (réplica del control remoto móvil) — botones modelados, iconos Tabler y atajos web completos (F5 · Ctrl+M/S/Z/Y/C/V/D · Supr · B/C/L/G · ? · Esc) |
 | **Modo Creación** | Editor de escenarios WPF con lienzo 16:9 arrastrable, edición directa de texto y **herencia de estilos de 4 niveles** (Tema → Plantilla → Escenario → Elemento) aplicable en caliente |
 | **Biblioteca directa** | Cantos y Biblia disponibles sin buscar (paneles fijos); búsqueda instantánea opcional por cita o palabra (≤200 ms) |
 | **Biblias** | Importa **Zefania XML**, **e-Sword .bib/.bblx 9+** (descifrado Twofish de columnas), **JSON** y TSV; modelo bíblico unificado con índice en disco |
 | **Cantos** | Himnario JSON y respaldo de Holyrics → un elemento por sección (Verso/Coro…); historial de uso |
 | **PPTX** | Proyecta el **archivo original tal cual** vía PowerPoint (COM) o lo importa a Escenarios vía OpenXML; exporta **PPTX ISO/IEC-29500**, **PDF** e **imágenes 1080p** |
-| **Automatización** | API HTTP local con token (state · next/prev · goto · text para OBS · bible · message), control remoto móvil servido por el propio programa, cliente **OBS WebSocket 5.x**, motor de **Triggers** (etiqueta `lento` → tema `calma` → escena OBS) |
-| **Perfiles A/B/C** | Detecta .NET 4.x / 3.5 / ninguno y degrada sin romper: sin .NET, el núcleo abre su **UI de emergencia nativa** y proyecta igualmente |
-| **Diagnóstico** | Ayuda → Estado del sistema con autotest (render, núcleo, permisos, red, API, OBS) y log estructurado rotativo |
+| **Automatización** | **API HTTP de control remoto** con token (state · next/prev · goto · text · bible · message), control remoto móvil servido por el propio programa (`/remote`), motor de **Triggers** (etiqueta `lento` → tema `calma`). *(v2.3: el cliente OBS WebSocket fue **eliminado por decisión del usuario** — queda solo la API de control remoto)* |
+| **Escenario de músicos (v2.3)** | **Stage View beta-1**: monitor de retorno de alto contraste con reloj, **tono/BPM del canto**, alertas doradas, **temporizador regresivo** y vista previa del siguiente elemento — controlado desde la consola (C# o estudio C++) con los comandos `stage.*` |
+| **Historial (v2.3)** | Función beta-1: `historial.jsonl` compartido — **más usadas**, uso reciente y **exportación CSV** (C# y C++ leen y escriben el mismo archivo) |
+| **Perfiles A/B/C** | Detecta .NET 4.x / 3.5 / ninguno y degrada sin romper: sin .NET, el núcleo abre su **estudio nativo completo** (v2.3) y proyecta igualmente |
+| **Diagnóstico** | Ayuda → Estado del sistema con autotest (render, núcleo, permisos, red, API) y log estructurado rotativo |
 
 ## Compilación
 
@@ -67,7 +70,7 @@ El programa se compone de **dos ejecutables nativos** que colaboran por IPC (`ip
 
 | Ejecutable | Lenguaje | Rol |
 |---|---|---|
-| `FusionHP.exe` | **C++ puro** (Win32, `/MT`) | **MOTOR**: dueño del estado vivo, proyección Direct2D/GDI+ sin parpadeo, video DirectShow, persistencia, autonomía sin GUI, UI de emergencia |
+| `FusionHP.exe` | **C++ puro** (Win32, `/MT`) | **MOTOR**: dueño del estado vivo, proyección Direct2D/GDI+ sin parpadeo, video DirectShow, persistencia, autonomía sin GUI, y desde v2.3 **estudio nativo completo** (GUI web replicada en Win32/GDI+: `--gui=native` o perfil C) |
 | `FusionStudio.exe` / `FusionStudio.Lite.exe` | **C# puro** (WinForms/WPF, .NET FW 3.5–4.8) | **GUI**: estudio, biblioteca, editor, automatización — todos los controles están modelados a mano en GDI+ replicando el diseño de la referencia web (`H-P-Web-Version-Ref`) |
 
 La **referencia web se usa únicamente como diseño a replicar** — su apariencia (chips, iconos, temas, tipografías) fue recreada con controles nativos dibujados a mano; nada del código o runtime web forma parte del programa.

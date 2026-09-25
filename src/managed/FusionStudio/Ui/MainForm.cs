@@ -122,6 +122,7 @@ namespace Fusion.Studio.Ui
         {
             Settings = AppSettings.Load();
             Live = new LiveOrchestrator(Settings);
+            UsageHistory.Init(Settings.DataDir);   // beta-1: historial compartido con el estudio C++
             Text = "Fusion HP — Estudio de presentación";
             Icon = LoadIcon();
             StartPosition = FormStartPosition.CenterScreen;

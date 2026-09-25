@@ -118,7 +118,7 @@ void LiveWindow::RenderStageNow() {
         stageRenderer_.Render(s, BlankMode::Black);
         return;
     }
-    stageRenderer_.RenderStage(s);
+    stageRenderer_.RenderStageEx(s, stageInfo_);
 }
 
 LRESULT CALLBACK LiveWindow::WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {

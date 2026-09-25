@@ -19,6 +19,16 @@ int App::Run(HINSTANCE inst, int showCmd) {
     Logger::Init();
     _set_se_translator(UnhandledSeh);   // SEH → log estructurado [SPEC §11.2.1]
 
+    // --gui=native: forzar el estudio 100 % C++ aunque haya .NET (v2.3)
+    bool forceNative = false;
+    {
+        LPWSTR cmdline = GetCommandLineW();
+        std::wstring cl = cmdline ? cmdline : L"";
+        if (cl.find(L"--gui=native") != std::wstring::npos ||
+            cl.find(L"--gui native") != std::wstring::npos)
+            forceNative = true;
+    }
+
     // ---- PASO 1-3: detección de entorno [SPEC §4.1] ----
     env_ = Environment::Detect();
     Logger::Info("core.bootstrap", "entorno: " + ToUtf8(env_.Summary()));
@@ -64,19 +74,23 @@ int App::Run(HINSTANCE inst, int showCmd) {
     ipc_->Start(kPipeName);
 
     // ---- PASO 4-5: estrategia por perfil ----
+    // La GUI web replicada vive en C++ (NativeStudio) y en C# (FusionStudio):
+    // por defecto manda la C# si hay .NET; --gui=native o perfil C usan la C++.
     bool launched = false;
-    if (env_.net == NetRuntime::Net4x) {
-        launched = RunManaged(L"FusionStudio.exe");
-    } else if (env_.net == NetRuntime::Net35) {
-        launched = RunManaged(L"FusionStudio.Lite.exe");
-    }
-    if (!launched && env_.net != NetRuntime::None) {
-        Logger::Warn("core.bootstrap", "la capa administrada no pudo iniciarse; usando control nativo");
+    if (!forceNative) {
+        if (env_.net == NetRuntime::Net4x) {
+            launched = RunManaged(L"FusionStudio.exe");
+        } else if (env_.net == NetRuntime::Net35) {
+            launched = RunManaged(L"FusionStudio.Lite.exe");
+        }
+        if (!launched && env_.net != NetRuntime::None) {
+            Logger::Warn("core.bootstrap", "la capa administrada no pudo iniciarse; usando estudio nativo");
+        }
     }
     if (!launched) {
-        // Perfil C: UI mínima de emergencia nativa [SPEC §4.2]
-        nativeCtl_ = std::make_unique<NativeControl>(&state_, &live_, &video_);
-        if (!nativeCtl_->Create()) Logger::Error("core.native", "no se pudo crear el control nativo");
+        // Perfil C / --gui=nativo: estudio nativo con la GUI web replicada [v2.3]
+        studio_ = std::make_unique<NativeStudio>(&state_, &live_, &video_, motor_.get());
+        if (!studio_->Create()) Logger::Error("core.studio", "no se pudo crear el estudio nativo");
     }
 
     // Bombeo de eventos de video (loop/fin) + vigilancia del Motor cada 250 ms
@@ -88,6 +102,7 @@ int App::Run(HINSTANCE inst, int showCmd) {
         if (msg.message == WM_TIMER && msg.wParam == pumpTimer_) {
             video_.PumpEvents();
             WatchStandalone();
+            UpdateStage(false);          // reloj/temporizador del escenario (beta-1)
             continue;
         }
         TranslateMessage(&msg);
@@ -142,10 +157,11 @@ void App::ApplySlide(const Json& slideJson) {
         live_.RenderNow();
         return;
     }
-    if (video_.IsPlaying()) video_.Stop();   // carga diferida: liberar el anterior
+    if (video_.IsPlaying()) video_->Stop();   // carga diferida: liberar el anterior
     state_.Set(s);
     state_.SetBlank(BlankMode::None);
     live_.RenderNow();
+    UpdateStage(true);                        // "siguiente" del escenario
     BroadcastState();
 }
 
@@ -215,8 +231,8 @@ void App::WatchStandalone() {
         }
         return;
     }
-    // Perfil C tiene su propia UI nativa: nunca compite con el Motor.
-    if (nativeCtl_) return;
+    // El estudio nativo tiene su propia UI: nunca compite con el Motor.
+    if (studio_) return;
     if (!motor_->HasProgram()) return;
     bool grace = guiEverConnected_ || (GetTickCount() - bootTick_ > 6000);
     if (grace && !standalone_) {
@@ -224,6 +240,58 @@ void App::WatchStandalone() {
         motor_->SetStandaloneKeys(true);
         live_.SetStandalone(true);
         Logger::Info("core.motor", "sin GUI: motor autonomo (teclado sobre la salida)");
+    }
+}
+
+// ------------------------------------------------------------ escenario (beta-1)
+// Actualiza reloj, temporizador y "siguiente" del Stage View. Se llama desde
+// el bombeo de 250 ms (con force=false: solo si cambió el segundo) y tras
+// cambios de estado (force=true).
+void App::UpdateStage(bool force) {
+    if (!live_.StageHwnd()) return;
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+    DWORD sec = st.wHour * 3600u + st.wMinute * 60u + st.wSecond;
+    bool tick = (sec != lastStageSecond_);
+
+    // reloj hh:mm:ss
+    wchar_t buf[16];
+    swprintf(buf, 16, L"%02d:%02d:%02d", st.wHour, st.wMinute, st.wSecond);
+    stageInfo_.clock = buf;
+
+    // temporizador regresivo (stage.timer)
+    if (stageInfo_.countdown > 0 && tick) stageInfo_.countdown--;
+
+    // "siguiente": primera línea del próximo elemento del Motor
+    if (motor_ && (force || tick)) {
+        Json snap = motor_->ProgramSnapshot();
+        std::wstring nextFirst;
+        try {
+            int scn = snap.value("scenario", -1), el = snap.value("element", -1);
+            const Json& prog = snap["program"];
+            const Json* nxt = nullptr;
+            if (scn >= 0 && scn < (int)prog.size()) {
+                const Json& els = prog[(size_t)scn]["elements"];
+                if (el + 1 < (int)els.size()) nxt = &els[(size_t)el + 1];
+                else if (scn + 1 < (int)prog.size() && !prog[(size_t)(scn + 1)]["elements"].empty())
+                    nxt = &prog[(size_t)(scn + 1)]["elements"][0];
+            }
+            if (nxt && nxt->contains("slide")) {
+                const Json& sl = (*nxt)["slide"];
+                if (sl.contains("lines") && sl["lines"].is_array() && !sl["lines"].empty() &&
+                    sl["lines"][0].is_string())
+                    nextFirst = ToWide(sl["lines"][0].get<std::string>());
+                else if (sl.contains("reference"))
+                    nextFirst = ToWide(sl["reference"].get<std::string>());
+            }
+        } catch (...) {}
+        stageInfo_.nextFirst = nextFirst;
+    }
+
+    if (force || tick || stageInfo_.countdown >= 0) {
+        lastStageSecond_ = sec;
+        live_.SetStageInfo(stageInfo_);
+        live_.RenderStageNow();
     }
 }
 
@@ -299,6 +367,36 @@ Json App::Dispatch(const std::string& cmd, const Json& p) {
     }
     if (cmd == "blanklogo") {   // actualizar ruta de logo en caliente
         if (p.contains("path")) live_.GetRenderer().SetLogoPath(ToWide(p["path"].get<std::string>()));
+        return ok;
+    }
+    // ---- Stage View (beta-1): alertas, temporizador y tono/BPM ----
+    if (cmd == "stage.alert") {
+        stageInfo_.alert = p.contains("message") ? ToWide(p["message"].get<std::string>())
+                                                  : std::wstring();
+        UpdateStage(true);
+        return ok;
+    }
+    if (cmd == "stage.timer") {
+        stageInfo_.countdown = p.value("seconds", -1);
+        UpdateStage(true);
+        return ok;
+    }
+    if (cmd == "stage.info") {
+        std::wstring key = p.contains("key") ? ToWide(p["key"].get<std::string>()) : L"";
+        int bpm = p.value("bpm", 0);
+        stageInfo_.keyBpm.clear();
+        if (!key.empty()) stageInfo_.keyBpm = key;
+        if (bpm > 0) {
+            if (!stageInfo_.keyBpm.empty()) stageInfo_.keyBpm += L" · ";
+            stageInfo_.keyBpm += std::to_wstring(bpm) + L" BPM";
+        }
+        UpdateStage(true);
+        return ok;
+    }
+    if (cmd == "stage.show") {          // abrir/cerrar la ventana de retorno
+        int idx = p.value("index", -1);
+        if (!live_.StageHwnd()) live_.CreateStage(idx);
+        UpdateStage(true);
         return ok;
     }
     return {{"ok", false}, {"error", "comando desconocido: " + cmd}};

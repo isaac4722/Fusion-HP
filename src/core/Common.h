@@ -33,7 +33,7 @@ using Json = nlohmann::json;
 
 // --- Versión del núcleo (version.props es la fuente en MSBuild; se refleja aquí) ---
 #ifndef FUSION_VERSION
-#define FUSION_VERSION "2.0.0-beta.1"
+#define FUSION_VERSION "2.3.0"
 #endif
 #define FUSION_IPC_PROTOCOL "ipc.v1"   // [SPEC §3.4] protocolo versionado
 

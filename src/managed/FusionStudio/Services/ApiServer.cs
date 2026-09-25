@@ -3,7 +3,7 @@
 //  [SPEC §8.1]: HttpListener SOLO en red local, token obligatorio
 //  (Authorization: Bearer), 6 endpoints normativos + control remoto móvil
 //  servido como página ligera [SPEC §8.2]. Registro de cada petición [§8.1.4].
-//  Corrección del prototipo: el modo API funciona (integración OBS y estado).
+//  Corrección del prototipo: el modo API funciona (control remoto y estado).
 // ============================================================================
 using System;
 using System.Collections.Generic;
@@ -48,7 +48,7 @@ namespace Fusion.Studio.Services
             }
             // Preferencia normativa: red local completa [SPEC §8.1.1] (http://+)
             // — pero el comodín fuerte exige ACL de URL (elevación prohibida [SPEC §11.4]):
-            // sin permisos se degrada a localhost (OBS en la misma máquina funciona igual)
+            // sin permisos se degrada a localhost (el mando en la misma máquina funciona igual)
             // y se registra la limitación sin fallo silencioso.
             string[] attempts = new string[]
             {
@@ -82,7 +82,7 @@ namespace Fusion.Studio.Services
             }
             if (!used.StartsWith("http://+"))
                 Log("API activa en " + used + " (solo este equipo). El control remoto desde el teléfono " +
-                    "requiere el prefijo http://+, que Windows reserva a administradores; OBS en este equipo funciona igual.");
+                    "requiere el prefijo http://+, que Windows reserva a administradores; el mando en este equipo funciona igual.");
             else
                 Log("API activa en la red local, puerto " + settings.ApiPort);
             running = true;
@@ -127,7 +127,7 @@ namespace Fusion.Studio.Services
             string path = ctx.Request.Url.AbsolutePath;
             string method = ctx.Request.HttpMethod;
 
-            // Control remoto móvil [SPEC §8.2] y página de texto para OBS [SPEC §8.4.3]
+            // Control remoto móvil [SPEC §8.2] y página de texto plano [SPEC §8.4.3]
             if (path == "/remote" || path == "/" || path == "/index.html")
             {
                 string token = ctx.Request.QueryString["token"];
@@ -176,7 +176,7 @@ namespace Fusion.Studio.Services
                 return;
             }
 
-            // ---- GET /api/v1/text?format=plain|json (para OBS) [SPEC §8.4.3] ----
+            // ---- GET /api/v1/text?format=plain|json (texto activo) [SPEC §8.4.3] ----
             if (path == "/api/v1/text" && method == "GET")
             {
                 string fmt = ctx.Request.QueryString["format"] ?? "plain";

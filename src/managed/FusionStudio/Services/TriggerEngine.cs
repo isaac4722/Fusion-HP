@@ -1,9 +1,11 @@
 // ============================================================================
 //  Fusion-HP · FusionStudio/Services/TriggerEngine.cs — motor de Triggers
 //  [SPEC §8.3]: reglas evento → condiciones → acciones, definibles como JSON
-//  (sin código) con orden de evaluación determinista. Acciones MVP: cambiar
-//  escena en OBS, cambiar tema, mostrar mensaje. Las etiquetas semánticas
-//  ("lento" → tema "calma") son el caso canónico [SPEC §5.1.4].
+//  (sin código) con orden de evaluación determinista. Acciones: cambiar tema,
+//  mostrar mensaje. Las etiquetas semánticas ("lento" → tema "calma") son el
+//  caso canónico [SPEC §5.1.4].
+//  v2.3: acción "obs.scene" ELIMINADA junto con el cliente OBS (decisión del
+//  usuario: queda solo la API de control remoto).
 // ============================================================================
 using System;
 using System.Collections.Generic;
@@ -18,8 +20,8 @@ namespace Fusion.Studio.Services
         public string Event;                 // "projection" | "tag" | "video.start" | "video.end" | "api" | "schedule"
         public string Tag;                   // etiqueta semántica (evento "tag")
         public List<string> Conditions = new List<string>();   // "theme:calma", "element:text"
-        public string Action;                // "obs.scene" | "theme.change" | "message"
-        public string Parameter;             // nombre de escena / tema / texto
+        public string Action;                // "theme.change" | "message"
+        public string Parameter;             // nombre de tema / texto
         public bool Enabled = true;
 
         public static TriggerRule FromJson(JsonValue j)
@@ -55,7 +57,6 @@ namespace Fusion.Studio.Services
     {
         readonly List<TriggerRule> rules = new List<TriggerRule>();
         public event Action<string> Logged;
-        public Func<string, bool> ObsSceneChanger;     // devuelve true si OK
         public Action<string> ThemeChanger;
         public Action<string> MessageShower;
 
@@ -124,14 +125,6 @@ namespace Fusion.Studio.Services
 
                 switch (r.Action)
                 {
-                    case "obs.scene":
-                        {
-                            var f = ObsSceneChanger;
-                            bool ok = f != null && f(r.Parameter);
-                            Log(ok ? "Trigger " + r.Id + ": escena OBS → " + r.Parameter
-                                   : "Trigger " + r.Id + ": OBS no disponible");
-                            break;
-                        }
                     case "theme.change":
                         {
                             if (live.Project != null)

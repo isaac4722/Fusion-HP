@@ -692,11 +692,118 @@ void Renderer::DrawTextLinesGdip(Gdiplus::Graphics& g, const Slide& s, int w, in
     }
 }
 
+
+// Color packed 0xAARRGGBB → Gdiplus::Color (uso local del Stage View)
+static Gdiplus::Color StageColor(uint32_t c) {
+    return Gdiplus::Color((c >> 24) & 0xFF, (c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF);
+}
+
 void Renderer::RenderStage(const Slide& s) {
     // Stage View (retorno): reutiliza el pipeline con estilo ampliado
     Slide st = s;
     st.style.vAlign = 1;
     Render(st, BlankMode::None);
+}
+
+// ------------------------------------------------- Stage View beta-1 (v1.6)
+// Monitor de retorno de músicos: alto contraste sobre negro con reloj verde,
+// tono/BPM azul, alerta dorada, estrofa grande (línea activa dorada) y vista
+// previa del siguiente elemento. Temporizador regresivo cuando está activo.
+void Renderer::RenderStageEx(const Slide& s, const StageInfo& info) {
+    RECT rc;
+    if (!GetClientRect(hwnd_, &rc)) return;
+    int w = rc.right, h = rc.bottom;
+    if (w <= 0 || h <= 0) return;
+    if (!InitGdiplus() && gdipToken_ == 0) return;
+
+    HDC dc = GetDC(hwnd_);
+    if (!dc) return;
+    {
+        Gdiplus::Graphics g(dc);
+        g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+        Gdiplus::SolidBrush black(StageColor(0xFF000000));
+        g.FillRectangle(&black, 0, 0, (Gdiplus::REAL)w, (Gdiplus::REAL)h);
+
+        double scale = (double)h / 720.0;                 // diseño base 720p
+        if (scale < 0.5) scale = 0.5;
+        auto Px = [&](double v) { return (Gdiplus::REAL)(v * scale); };
+
+        // ---- barra superior: reloj · tono/BPM · alerta ----
+        Gdiplus::REAL topY = Px(14);
+        if (!info.clock.empty()) {
+            Gdiplus::Font fClock(L"Consolas", Px(30), Gdiplus::FontStyleBold);
+            Gdiplus::SolidBrush green(StageColor(0xFF00FF66));
+            g.DrawString(info.clock.c_str(), -1, &fClock, Gdiplus::PointF(Px(24), topY), &green);
+        }
+        if (!info.keyBpm.empty()) {
+            Gdiplus::Font fKey(L"Consolas", Px(30), Gdiplus::FontStyleBold);
+            Gdiplus::SolidBrush blue(StageColor(0xFF5588FF));
+            g.DrawString(info.keyBpm.c_str(), -1, &fKey,
+                         Gdiplus::PointF(Px(230), topY), &blue);
+        }
+        if (!info.alert.empty()) {
+            Gdiplus::Font fAlert(L"Segoe UI", Px(26), Gdiplus::FontStyleBold);
+            Gdiplus::SolidBrush gold(StageColor(0xFFFFD700));
+            Gdiplus::RectF box(Px(520), topY, (Gdiplus::REAL)w - Px(540), Px(44));
+            g.DrawString(info.alert.c_str(), -1, &fAlert, box, nullptr, &gold);
+        }
+        // ---- temporizador (centro superior cuando activo) ----
+        if (info.countdown >= 0) {
+            int mm = info.countdown / 60, ss = info.countdown % 60;
+            wchar_t buf[16];
+            swprintf(buf, 16, L"%02d:%02d", mm, ss);
+            Gdiplus::Font fCd(L"Consolas", Px(44), Gdiplus::FontStyleBold);
+            Gdiplus::SolidBrush cd(info.countdown <= 60 ? StageColor(0xFFFF5555)
+                                                         : StageColor(0xFFFFD700));
+            g.DrawString(buf, -1, &fCd, Gdiplus::PointF(Px(24), Px(58)), &cd);
+        }
+
+        // ---- estrofa actual (grande, línea activa dorada) ----
+        int n = (int)s.lines.size();
+        int active = s.activeLine;
+        if (n > 0) {
+            double fs = 46.0 * scale;
+            if (n > 6) fs = 38.0 * scale;
+            if (n > 10) fs = 30.0 * scale;
+            Gdiplus::Font fTxt(s.style.font.c_str(), (Gdiplus::REAL)fs,
+                               s.style.bold ? Gdiplus::FontStyleBold : Gdiplus::FontStyleRegular);
+            Gdiplus::SolidBrush white(StageColor(0xFFFFFFFF));
+            Gdiplus::SolidBrush gold(StageColor(0xFFFFD700));
+            Gdiplus::StringFormat sf;
+            sf.SetAlignment(Gdiplus::StringAlignmentCenter);
+            Gdiplus::REAL lh = (Gdiplus::REAL)(fs * 1.35);
+            Gdiplus::REAL blockH = lh * n;
+            Gdiplus::REAL y0 = (Gdiplus::REAL)(h * 0.58) - blockH / 2;
+            if (y0 < Px(120)) y0 = Px(120);
+            for (int i = 0; i < n; i++) {
+                Gdiplus::RectF box(0, y0 + lh * i, (Gdiplus::REAL)w, lh);
+                g.DrawString(s.lines[(size_t)i].c_str(), -1, &fTxt, box, &sf,
+                             i == active ? &gold : &white);
+            }
+            // referencia (versículos) bajo el bloque
+            if (!s.reference.empty()) {
+                Gdiplus::Font fRef(L"Segoe UI", Px(20), Gdiplus::FontStyleItalic);
+                Gdiplus::SolidBrush gray(StageColor(0xFF9AA0A6));
+                Gdiplus::RectF box(0, y0 + blockH + Px(6), (Gdiplus::REAL)w, Px(28));
+                g.DrawString(s.reference.c_str(), -1, &fRef, box, &sf, &gray);
+            }
+        }
+
+        // ---- vista previa del siguiente elemento (abajo, tenue) ----
+        if (!info.nextFirst.empty()) {
+            Gdiplus::Font fNext(L"Segoe UI", Px(20));
+            Gdiplus::SolidBrush dim(StageColor(0xFF8A9199));
+            Gdiplus::SolidBrush tag(StageColor(0xFF42474D));
+            Gdiplus::StringFormat sfL;
+            sfL.SetAlignment(Gdiplus::StringAlignmentNear);
+            g.DrawString(L"SIGUIENTE", Gdiplus::StringLength, &fNext,
+                         Gdiplus::PointF(Px(24), (Gdiplus::REAL)h - Px(64)), &tag);
+            Gdiplus::Font fNext2(L"Segoe UI", Px(24), Gdiplus::FontStyleBold);
+            g.DrawString(info.nextFirst.c_str(), -1, &fNext2,
+                         Gdiplus::PointF(Px(24), (Gdiplus::REAL)h - Px(40)), &dim);
+        }
+    }
+    ReleaseDC(hwnd_, dc);
 }
 
 } // namespace fusion

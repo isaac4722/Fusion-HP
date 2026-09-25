@@ -77,8 +77,6 @@ namespace Fusion.Studio.Ui
                 owner.Live.CoreConnected ? "Conectado por ipc.v1" : "Sin conectar (¿se cerró FusionHP.exe?)");
             Add("Servidor API", owner.Settings.ApiEnabled ? "OK" : "APAGADO",
                 owner.Settings.ApiEnabled ? "Puerto " + owner.Settings.ApiPort + " (solo red local)" : "Desactivado en Configuración");
-            Add("OBS WebSocket", owner.Settings.ObsEnabled ? "OK" : "APAGADO",
-                owner.Settings.ObsEnabled ? owner.Settings.ObsHost + ":" + owner.Settings.ObsPort : "Desactivado en Configuración");
             int bibles = owner.Live.Bibles.List().Count;
             int songs = owner.Live.Songs.All().Count;
             Add("Biblioteca", bibles > 0 ? "OK" : "ÁMBAR",
@@ -150,24 +148,6 @@ namespace Fusion.Studio.Ui
                 }
             }
             else { Add("Autotest: API HTTP", "ÁMBAR", "Desactivada (actívala en Configuración si la necesitas)"); amber++; }
-
-            // 6) OBS (si está activo)
-            if (owner.Settings.ObsEnabled)
-            {
-                try
-                {
-                    using (var t = new TcpClient())
-                    {
-                        var ar = t.BeginConnect(owner.Settings.ObsHost, owner.Settings.ObsPort, null, null);
-                        bool ok = ar.AsyncWaitHandle.WaitOne(2000, false);
-                        Add("Autotest: OBS WebSocket", ok ? "OK" : "ÁMBAR",
-                            ok ? "Puerto de OBS accesible" : "OBS no responde (¿está abierto con obs-websocket?)");
-                        if (ok) green++; else amber++;
-                    }
-                }
-                catch (Exception ex) { Add("Autotest: OBS WebSocket", "ÁMBAR", ex.Message); amber++; }
-            }
-            else { Add("Autotest: OBS WebSocket", "ÁMBAR", "Desactivado"); amber++; }
 
             lblSummary.Text = "Resultado: " + green + " en verde · " + amber + " en ámbar · " + red + " en rojo" +
                 (red == 0 ? "  —  entorno apto para proyectar" : "  —  corrige los puntos en rojo antes del servicio");

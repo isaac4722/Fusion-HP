@@ -69,6 +69,9 @@ public:
 
     // ---- consultas ----
     Json StateJson() const;          // estado completo (evento/respuesta motor.state)
+    // Programa completo con diapositivas (para la GUI nativa en proceso;
+    // NO se emite por IPC: solo la consulta la GUI que vive en el exe).
+    Json ProgramSnapshot() const;
     bool HasProgram() const;
     bool ValidSelection() const;
     int LineIndexOfCurrent() const { return lineIdx_; }

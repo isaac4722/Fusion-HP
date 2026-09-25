@@ -1,6 +1,6 @@
 // ============================================================================
 //  Fusion-HP · SettingsForm — configuración [SPEC §4.4, §8.1, §8.4]:
-// pantallas, API HTTP (token autogenerado), OBS WebSocket, pantalla de reposo
+// pantallas, API HTTP de control remoto (token autogenerado), pantalla de reposo
 // y comportamiento de arranque. Persistencia en JSON (nunca el Registro).
 // ============================================================================
 using System;
@@ -15,9 +15,8 @@ namespace Fusion.Studio.Ui
     {
         readonly MainForm owner;
         ComboBox cmbPublic, cmbStage;
-        CheckBox chkApi, chkObs;
-        NumericUpDown numPort, numObsPort;
-        TextBox txtObsHost, txtObsPass, txtObsSource;
+        CheckBox chkApi;
+        NumericUpDown numPort;
         Button btnToken, btnQr;
         ComboBox cmbRest;
         CheckBox chkStartPresent;
@@ -54,7 +53,7 @@ namespace Fusion.Studio.Ui
             Controls.Add(cmbStage);
             y += 40;
 
-            var g2 = Group("API HTTP (para OBS y control remoto)", y); y = g2;
+            var g2 = Group("API HTTP (control remoto)", y); y = g2;
             chkApi = new CheckBox { Text = "Activar servidor API local", Location = new Point(24, y), AutoSize = true, Checked = S.ApiEnabled };
             Controls.Add(chkApi);
             y += 28;
@@ -77,16 +76,6 @@ namespace Fusion.Studio.Ui
                                     Location = new Point(24, y + 108), AutoSize = true, ForeColor = UiTheme.TextDim, Font = UiTheme.Small() };
             Controls.Add(lblQrHint);
             y += 136;
-
-            var g3 = Group("OBS Studio (WebSocket)", y); y = g3;
-            chkObs = new CheckBox { Text = "Conectar con obs-websocket 5.x", Location = new Point(24, y), AutoSize = true, Checked = S.ObsEnabled };
-            Controls.Add(chkObs);
-            y += 28;
-            AddField("Host:", ref y, out txtObsHost, S.ObsHost);
-            numObsPort = AddNum("Puerto:", ref y, S.ObsPort);
-            AddField("Contraseña:", ref y, out txtObsPass, S.ObsPassword, true);
-            AddField("Fuente de texto:", ref y, out txtObsSource, S.ObsTextSource);
-            y += 10;
 
             var g4 = Group("Comportamiento", y); y = g4;
             cmbRest = new ComboBox { Location = new Point(24, y), Size = new Size(200, 24), DropDownStyle = ComboBoxStyle.DropDownList };
@@ -222,11 +211,6 @@ namespace Fusion.Studio.Ui
             S.ApiEnabled = chkApi.Checked;
             S.ApiPort = (int)numPort.Value;
             S.ApiToken = txtToken.Text;
-            S.ObsEnabled = chkObs.Checked;
-            S.ObsHost = txtObsHost.Text;
-            S.ObsPort = (int)numObsPort.Value;
-            S.ObsPassword = txtObsPass.Text;
-            S.ObsTextSource = txtObsSource.Text;
             S.RestScreen = cmbRest.SelectedIndex == 1 ? "logo" : cmbRest.SelectedIndex == 2 ? "theme" : "black";
             S.StartInPresentMode = chkStartPresent.Checked;
             S.AdvanceMode = cmbAdvance.SelectedIndex == 1 ? "slide" : "line";

@@ -48,6 +48,8 @@ public:
         return list.empty() ? 0 : list[0].index;
     }
 
+    static int Count() { return (int)Enumerate().size(); }
+
     static bool RectOf(int index, RECT* out) {
         auto list = Enumerate();
         for (auto& m : list) if (m.index == index) { *out = m.rect; return true; }

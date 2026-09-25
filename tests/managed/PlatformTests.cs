@@ -72,13 +72,13 @@ namespace Fusion.Tests
                 TestRunner.CheckEq(sj.GetStr("scenarioTitle"), "Canto API", "state con título");
                 TestRunner.CheckEq(sj.GetStr("text"), "línea uno", "state con línea activa");
 
-                // /api/v1/text?format=plain (para OBS) [SPEC §8.4.3]
+                // /api/v1/text?format=plain (texto para tooling externo) [SPEC §8.4.3]
                 using (var c = new WebClient())
                 {
                     c.Headers["Authorization"] = "Bearer " + settings.ApiToken;
                     c.Encoding = Encoding.UTF8;
                     string plain = c.DownloadString(baseUri + "/api/v1/text?format=plain");
-                    TestRunner.CheckEq(plain, "línea uno", "texto plano para OBS");
+                    TestRunner.CheckEq(plain, "línea uno", "texto plano para tooling externo");
                     string json = c.DownloadString(baseUri + "/api/v1/text?format=json");
                     TestRunner.CheckEq(JsonValue.Parse(json).GetStr("text"), "línea uno", "json");
                 }
@@ -133,24 +133,26 @@ namespace Fusion.Tests
             TestRunner.Check(changed == "Calma", "callback del tema: " + changed);
         }
 
-        public static void TestTriggerObsScene()
+        public static void TestTriggerMessage()
         {
             string dir = TestRunner.TempDir();
             var live = new LiveOrchestrator(new AppSettings { DataDir = dir });
             live.Project = AhpProject.CreateDefault();
-            var te = new TriggerEngine();
-            te.Add(new TriggerRule { Event = "tag", Tag = "rápido", Action = "obs.scene", Parameter = "Escena Adboracion" });
-            bool called = false;
-            te.ObsSceneChanger = delegate(string s) { called = s == "Escena Adboracion"; return true; };
             var scn = new Scenario { Title = "x" };
-            scn.Tags.Add("rápido");
-            te.Fire("tag", scn, null, live);
-            TestRunner.Check(called, "acción OBS ejecutada");
+            var el = new Element { KindKey = "text" };
+            el.Lines.Add("hola");
+            scn.Elements.Add(el);
+            var te = new TriggerEngine();
+            te.Add(new TriggerRule { Event = "tag", Tag = "anuncio", Action = "message", Parameter = "5 minutos" });
+            string shown = null;
+            te.MessageShower = delegate(string s) { shown = s; };
+            te.Fire("tag", scn, el, live);
+            TestRunner.Check(shown == "5 minutos", "acción message ejecutada");
             // sin etiqueta → no dispara
-            bool called2 = false;
-            te.ObsSceneChanger = delegate { called2 = true; return true; };
+            string shown2 = null;
+            te.MessageShower = delegate(string s) { shown2 = s; };
             te.Fire("tag", new Scenario { Title = "y" }, null, live);
-            TestRunner.Check(!called2, "sin coincidencia no dispara");
+            TestRunner.Check(shown2 == null, "sin coincidencia no dispara");
         }
 
         // ---------------------------------------------------------------- exportadores
