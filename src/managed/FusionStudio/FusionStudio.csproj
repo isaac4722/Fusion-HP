@@ -29,6 +29,10 @@
       <HintPath>..\..\..\third_party\net\NLog\4.7.15\NLog.dll</HintPath>
       <Private>true</Private>
     </Reference>
+    <Reference Include="PdfSharp">
+      <HintPath>..\..\..\third_party\net\PdfSharp\1.50.5147\PdfSharp.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
   </ItemGroup>
 
 </Project>

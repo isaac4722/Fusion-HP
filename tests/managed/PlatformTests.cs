@@ -56,7 +56,13 @@ namespace Fusion.Tests
         {
             var p = AhpProject.CreateDefault();
             var scn = new Scenario { Title = "PDF" };
-            scn.Elements.Add(new Element { Kind = ElementKind.Verse, Reference = "Juan 3:16", Lines = { "texto del verso" } });
+            // v4.1.0: Unicode real (ñ, acentos, em-dash) — antes se filtraba a '?'
+            scn.Elements.Add(new Element
+            {
+                Kind = ElementKind.Verse,
+                Reference = "Juan 3:16",
+                Lines = { "texto del verso — Señor de los Ejércitos, año 1960 (ñ)" }
+            });
             p.Scenarios.Add(scn);
             string dir = TestRunner.TempDir();
             string outPath = Path.Combine(dir, "t.pdf");
@@ -68,6 +74,21 @@ namespace Fusion.Tests
             string tail = Encoding.ASCII.GetString(bytes, bytes.Length - 8, 8);
             TestRunner.Check(tail.Contains("%%EOF"), "EOF");
             TestRunner.Check(bytes.Length > 800, "tamaño razonable: " + bytes.Length);
+            // fuentes del producto incrustadas (subset TrueType): nombre + FontFile2
+            TestRunner.Check(ContainsAscii(bytes, "Outfit"), "fuente Outfit incrustada");
+            TestRunner.Check(ContainsAscii(bytes, "FontFile2"), "TrueType embebido (FontFile2)");
+        }
+
+        static bool ContainsAscii(byte[] data, string needle)
+        {
+            var p = Encoding.ASCII.GetBytes(needle);
+            for (int i = 0; i + p.Length <= data.Length; i++)
+            {
+                int k = 0;
+                while (k < p.Length && data[i + k] == p[k]) k++;
+                if (k == p.Length) return true;
+            }
+            return false;
         }
 
         public static void TestImageExporter()
