@@ -57,8 +57,10 @@ void Logger::Init() {
     if (g_logger) return;
     std::wstring dir = DataDir() + L"\\logs";
     if (!DirWritable(dir)) return;                    // degradación silenciosa
+    // filename_t es std::string (UTF-8) salvo SPDLOG_WCHAR_FILENAMES — convertir.
+    spdlog::filename_t base = ToUtf8(dir + L"\\core.log");
     auto sink = std::make_shared<spdlog::sinks::daily_file_sink_mt>(
-        dir + L"\\core.log", /*hour*/0, /*minute*/0, /*truncate*/false, /*max_files*/14);
+        base, /*hour*/0, /*minute*/0, /*truncate*/false, /*max_files*/14);
     sink->set_formatter(spdlog::details::make_unique<spdlog::pattern_formatter>("%v"));
     g_logger = std::make_shared<spdlog::logger>("core", sink);
     g_logger->flush_on(spdlog::level::trace);         // durabilidad por línea

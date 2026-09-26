@@ -540,7 +540,7 @@ static void TestWil()
     // 2) unique_find_handle trata INVALID_HANDLE_VALUE como vacio
     {
         WIN32_FIND_DATAW fdz = {};
-        wil::unique_find_handle none(FindFirstFileW(L"Z:\\__no_existe_fusion__\\*.x", &fdz));
+        wil::unique_hfind none(FindFirstFileW(L"Z:\\__no_existe_fusion__\\*.x", &fdz));
         CHECK(!none, "WIL: find handle vacio en ruta inexistente");
     }
 

@@ -29,6 +29,6 @@ int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmdLine, int showCmd) {
     int rc = fusion::App::Get().Run(inst, showCmd);
 
     CoUninitialize();
-    if (mutex) ReleaseMutex(mutex);
+    if (mutex) ReleaseMutex(mutex.get());
     return rc;
 }

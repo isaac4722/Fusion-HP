@@ -156,7 +156,7 @@ void Renderer::LoadPrivateFonts() {
 
     WIN32_FIND_DATAW fd;
     // WIL (v4.1.0): unique_find_handle — FindClose garantizado en toda salida.
-    wil::unique_find_handle h(FindFirstFileW((dir + L"\\*.ttf").c_str(), &fd));
+    wil::unique_hfind h(FindFirstFileW((dir + L"\\*.ttf").c_str(), &fd));
     if (!h) return;
     fonts_ = new Gdiplus::PrivateFontCollection();
     std::vector<std::wstring> files;
