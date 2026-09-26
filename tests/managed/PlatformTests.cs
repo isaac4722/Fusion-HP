@@ -70,8 +70,11 @@ namespace Fusion.Tests
             p.Scenarios.Add(scn);
             string dir = TestRunner.TempDir();
             string outPath = Path.Combine(dir, "t.pdf");
-            int pages = new PdfExporter().Export(p, outPath, dir);
-            TestRunner.CheckEq(pages, 1, "una página");
+            int pages = -1;
+            string detail = "";
+            try { pages = new PdfExporter().Export(p, outPath, dir); }
+            catch (Exception ex) { detail = ex.ToString(); }
+            TestRunner.CheckEq(pages, 1, "una página " + detail);
             var bytes = File.ReadAllBytes(outPath);
             string head = Encoding.ASCII.GetString(bytes, 0, 5);
             TestRunner.CheckEq(head, "%PDF-", "cabecera PDF");
