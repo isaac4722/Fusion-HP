@@ -165,7 +165,10 @@ namespace Fusion.Studio.Export
             using (var fs = File.OpenRead(path))
             {
                 var ms = new MemoryStream();
-                fs.CopyTo(ms);
+                // net35: Stream.CopyTo no existe — copia manual
+                var buf2 = new byte[8192];
+                int r3;
+                while ((r3 = fs.Read(buf2, 0, buf2.Length)) > 0) ms.Write(buf2, 0, r3);
                 ms.Position = 0;
                 XPrivateFontCollection.AddFont(ms, family);
             }
