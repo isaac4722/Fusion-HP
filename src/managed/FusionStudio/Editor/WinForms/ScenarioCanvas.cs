@@ -31,6 +31,13 @@ namespace Fusion.Studio.Editor.WinForms
         PropertyGrid props;
         TextBox lines;
         SplitContainer split;
+        CanvasSurface surface;
+
+        /// <summary>Invalida SOLO la superficie del lienzo (v4.2.0 C10).</summary>
+        internal void InvalidateCanvas()
+        {
+            if (surface != null && !surface.IsDisposed) surface.Invalidate();
+        }
 
         public ScenarioCanvas()
         {
@@ -77,7 +84,8 @@ namespace Fusion.Studio.Editor.WinForms
             // centro: lienzo
             var center = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal };
             var canvasHost = new Panel { Dock = DockStyle.Fill, Padding = new Padding(20), AutoScroll = true };
-            canvasHost.Controls.Add(new CanvasSurface(this) { Location = new Point(20, 20), Size = new Size(960, 540) });
+            surface = new CanvasSurface(this) { Location = new Point(20, 20), Size = new Size(960, 540) };
+            canvasHost.Controls.Add(surface);
             toolbar = new Panel { Dock = DockStyle.Top, Height = 36, BackColor = Color.White };
             string[] tools = { "+ Texto", "+ Versículo", "+ Imagen…", "+ Video…", "+ Lower", "Quitar" };
             int x = 8;
@@ -107,7 +115,7 @@ namespace Fusion.Studio.Editor.WinForms
                     var t2 = ln.Trim();
                     if (t2.Length > 0) selected.Lines.Add(t2);
                 }
-                canvasHost.Invalidate();
+                InvalidateCanvas();   // v4.2.0 (C10): superficie, no el contenedor
             };
             right.Controls.Add(lines);
             right.Controls.Add(lbl);
@@ -168,18 +176,24 @@ namespace Fusion.Studio.Editor.WinForms
             selected = el;
             props.SelectedObject = el != null ? new ElementProxy(el) : null;
             lines.Text = el != null ? string.Join("\n", el.Lines.ToArray()) : "";
-            Invalidate();
+            InvalidateCanvas();   // v4.2.0 (C10): repinta el lienzo real
         }
 
         void RefreshCanvasItems()
         {
-            foreach (Control c in Controls)
-                if (c is CanvasSurface) c.Invalidate();
+            // v4.2.0 (C10): la superficie NO es hijo directo de este control (vive
+            // en canvasHost → center → split): el bucle sobre this.Controls nunca
+            // la encontraba y «+ Texto»/«Quitar» no se veían hasta arrastrar algo.
+            InvalidateCanvas();
         }
 
         class CanvasSurface : Control
         {
             readonly ScenarioCanvas owner;
+            // v4.2.0: fuente COMPARTIDA (una Font por elemento por repintado
+            // fugaba handles GDI en el perfil B)
+            static readonly Font previewFont = new Font("Segoe UI", 11f);
+
             public CanvasSurface(ScenarioCanvas owner)
             {
                 this.owner = owner;
@@ -207,7 +221,7 @@ namespace Fusion.Studio.Editor.WinForms
                                      el.Kind == ElementKind.Image ? "🖼 " + System.IO.Path.GetFileName(el.Src ?? "") :
                                      el.Kind == ElementKind.Video ? "▶ " + System.IO.Path.GetFileName(el.Src ?? "") : "Elemento";
                     using (var b = new SolidBrush(Color.White))
-                        g.DrawString(preview, new Font("Segoe UI", 11), b, new RectangleF(rect.X + 6, rect.Y + 6, rect.Width - 12, rect.Height - 12));
+                        g.DrawString(preview, previewFont, b, new RectangleF(rect.X + 6, rect.Y + 6, rect.Width - 12, rect.Height - 12));
                 }
             }
 
@@ -238,8 +252,12 @@ namespace Fusion.Studio.Editor.WinForms
                 base.OnMouseMove(e);
                 if (owner.dragging && owner.selected != null)
                 {
-                    owner.selected.X = Math.Max(0, Math.Min(0.95, owner.origX + (e.X - owner.dragOrigin.X) / (double)Width));
-                    owner.selected.Y = Math.Max(0, Math.Min(0.95, owner.origY + (e.Y - owner.dragOrigin.Y) / (double)Height));
+                    // v4.2.0: copias locales — acceder a dragOrigin campo a campo
+                    // disparaba CS1690 y complica el marshal
+                    Point origin = owner.dragOrigin;
+                    double ox = owner.origX, oy = owner.origY;
+                    owner.selected.X = Math.Max(0, Math.Min(0.95, ox + (e.X - origin.X) / (double)Width));
+                    owner.selected.Y = Math.Max(0, Math.Min(0.95, oy + (e.Y - origin.Y) / (double)Height));
                     Invalidate();
                 }
             }

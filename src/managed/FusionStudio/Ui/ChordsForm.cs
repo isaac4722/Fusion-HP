@@ -29,9 +29,11 @@ namespace Fusion.Studio.Ui
             live = orchestrator;
             Text = "Acordes — músicos";
             StartPosition = FormStartPosition.Manual;
-            Location = new Point(owner.Right - 460, Math.Max(40, owner.Top + 90));
-            Size = new Size(440, 520);
-            MinimumSize = new Size(360, 320);
+            Location = new Point(Math.Max(0, owner.Right - 520), Math.Max(40, owner.Top + 90));
+            // v4.2.0 (G3): 440→500 px — «Anglo (C D E)» terminaba en x=460 y
+            // quedaba RECORTADO (~32 px) en el ancho por defecto
+            Size = new Size(500, 520);
+            MinimumSize = new Size(420, 320);
             Font = UiTheme.Normal();
             BackColor = UiTheme.Panel;
             TopMost = true;
@@ -76,6 +78,9 @@ namespace Fusion.Studio.Ui
                                          FlowDirection = FlowDirection.TopDown, WrapContents = false, Padding = new Padding(10) };
             Controls.Add(sheet);
             sheet.BringToFront();
+            // v4.2.0 (menor): re-envolver las líneas al cambiar el ancho de la
+            // ventana (el MaximumSize quedaba congelado con el ancho inicial)
+            sheet.Resize += delegate { if (!IsDisposed) BuildSheet(); };
 
             live.StateChanged += RefreshSheet;
             FormClosed += delegate { live.StateChanged -= RefreshSheet; };

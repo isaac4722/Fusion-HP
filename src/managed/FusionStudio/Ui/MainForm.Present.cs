@@ -473,7 +473,11 @@ namespace Fusion.Studio.Ui
                 {
                     // quitar el overlay del elemento actual
                     var el = Live.CurrentElement;
-                    if (el != null) { el.OverlayText = null; Live.SendCurrent(); }
+                    if (el != null && !string.IsNullOrEmpty(el.OverlayText))
+                    {
+                        el.OverlayText = null;
+                        Live.SendCurrent();
+                    }
                     f.Close();
                 };
                 f.Controls.Add(lbl); f.Controls.Add(txt); f.Controls.Add(ok); f.Controls.Add(hide);
@@ -482,17 +486,21 @@ namespace Fusion.Studio.Ui
                 {
                     var el = Live.CurrentElement;
                     var scn = Live.CurrentScenario;
-                    if (el == null && scn == null)
+                    if (el != null)
                     {
-                        // sin elemento activo: crear elemento lower3 efímero
+                        // elemento activo: el aviso viaja como overlay del propio elemento
+                        el.OverlayText = txt.Text.Trim();
+                        Live.SendCurrent();
+                    }
+                    else
+                    {
+                        // v4.2.0 (C9): caso muerto corregido — con escenario seleccionado
+                        // pero sin elemento activo el botón NO HACÍA NADA; ahora crea
+                        // el lower third efímero igual que sin programa (y «Ocultar»
+                        // puede retirarlo porque el elemento pasa a ser el activo).
                         var s2 = new Scenario { Title = "Aviso" };
                         s2.Elements.Add(new Element { Kind = ElementKind.LowerThird, OverlayText = txt.Text.Trim(), Lines = { txt.Text.Trim() } });
                         Live.SendToLive(s2);
-                    }
-                    else if (el != null)
-                    {
-                        el.OverlayText = txt.Text.Trim();
-                        Live.SendCurrent();
                     }
                 }
             }

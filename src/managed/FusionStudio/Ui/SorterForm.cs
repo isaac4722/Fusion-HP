@@ -88,7 +88,17 @@ namespace Fusion.Studio.Ui
                 using (var pen = new Pen(active ? UiTheme.Accent : UiTheme.ChipBorder, active ? 2f : 1f))
                     e.Graphics.DrawRectangle(pen, 0, 0, card.Width - 1, card.Height - 1);
             };
-            var prev = new SlidePreview { Dock = DockStyle.Top, Height = 98 };
+            // v4.2.0 (G4): la leyenda se agrega PRIMERO con Dock=Bottom — con el
+            // orden anterior el preview (Fill/Top, delante en z-order) TAPABA el
+            // texto de la tarjeta
+            var cap = new Label
+            {
+                Dock = DockStyle.Bottom, Height = 30, Font = UiTheme.Small(), ForeColor = UiTheme.Text,
+                TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(6, 0, 2, 0),
+                Text = ElementCaption(scn, el)
+            };
+            card.Controls.Add(cap);
+            var prev = new SlidePreview { Dock = DockStyle.Fill };
             try
             {
                 var slide = Fusion.Shared.Model.ResolvedSlide.Resolve(el, scn, live.Project,
@@ -97,13 +107,7 @@ namespace Fusion.Studio.Ui
             }
             catch { /* miniatura: nunca tumba el clasificador */ }
             card.Controls.Add(prev);
-            var cap = new Label
-            {
-                Dock = DockStyle.Fill, Font = UiTheme.Small(), ForeColor = UiTheme.Text,
-                TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(6, 0, 2, 0),
-                Text = ElementCaption(scn, el)
-            };
-            card.Controls.Add(cap);
+            prev.BringToFront();
             card.Click += delegate { SelectCard(scn, el); };
             prev.Click += delegate { SelectCard(scn, el); };
             cap.Click += delegate { SelectCard(scn, el); };

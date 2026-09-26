@@ -218,6 +218,7 @@ namespace Fusion.Studio.Editor.Wpf
 
             // interacción: arrastre + selección + doble clic edición directa
             bool dragging = false;
+            bool moved = false;                       // v4.2.0 (G10): ¿hubo arrastre?
             Point origin = new Point();
             double origX = 0, origY = 0;
             b.MouseLeftButtonDown += (s, e2) =>
@@ -225,6 +226,7 @@ namespace Fusion.Studio.Editor.Wpf
                 e2.Handled = true;
                 SelectElement(el);
                 dragging = true;
+                moved = false;
                 origin = e2.GetPosition(canvas);
                 origX = el.X; origY = el.Y;
                 b.CaptureMouse();
@@ -232,6 +234,7 @@ namespace Fusion.Studio.Editor.Wpf
             b.MouseMove += (s, e2) =>
             {
                 if (!dragging) return;
+                moved = true;
                 var p = e2.GetPosition(canvas);
                 double nx = origX + (p.X - origin.X) / canvas.Width;
                 double ny = origY + (p.Y - origin.Y) / canvas.Height;
@@ -242,6 +245,9 @@ namespace Fusion.Studio.Editor.Wpf
             };
             b.MouseLeftButtonUp += (s, e2) =>
             {
+                // v4.2.0 (G10): un arrastre es un cambio de geometría — entra al
+                // historial (antes Ctrl+Z NO deshacía movimientos)
+                if (moved && live != null && current != null) PushHistory();
                 dragging = false;
                 b.ReleaseMouseCapture();
                 SyncProperties();
@@ -553,6 +559,14 @@ namespace Fusion.Studio.Editor.Wpf
         // ------------------------------------------------------------ teclado
         void OnEditorKey(object sender, KeyEventArgs e)
         {
+            // v4.2.0 (C7): PreviewKeyDown es de TÚNEL — corre ANTES de que el
+            // TextBox interno procese la tecla. Con el foco en txtLines/
+            // txtTags/txtHighlight/inlineEditor, Ctrl+C/V copiaban el ELEMENTO
+            // en vez del texto y Delete BORRABA el elemento mientras se editaba.
+            if (Keyboard.FocusedElement is System.Windows.Controls.TextBox ||
+                Keyboard.FocusedElement is System.Windows.Controls.RichTextBox ||
+                ReferenceEquals(Keyboard.FocusedElement, inlineEditor))
+                return;   // el texto manda: comportamiento estándar de edición
             var mod = Keyboard.Modifiers & ModifierKeys.Control;
             if (mod == ModifierKeys.Control)
             {

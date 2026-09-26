@@ -25,6 +25,10 @@ namespace Fusion.Studio.Ui
             Text = song == null ? "Nuevo canto" : "Editar canto";
             Size = new Size(640, 560);
             StartPosition = FormStartPosition.CenterParent;
+            // v4.2.0 (menor): layout absoluto — como diálogo fijo no se rompe al
+            // agrandar (el resto de diálogos ya lo fijaban)
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            MaximizeBox = false; MinimizeBox = false;
             Font = UiTheme.Normal();
             BackColor = UiTheme.Panel;
 

@@ -230,6 +230,13 @@ namespace Fusion.Studio.Ui
             };
             topBar.Controls.Add(btnDiag);
 
+            // v4.2.0 (C5): GUARDAR — existía Live.SaveProject pero NINGUNA vía en la
+            // GUI lo invocaba: el trabajo de escenarios se perdía al cerrar.
+            var btnSave = new FusionIconButton { IconName = "device-floppy", ToolTipText = "Guardar proyecto (Ctrl+S)",
+                                                 Anchor = AnchorStyles.Top | AnchorStyles.Right };
+            btnSave.Click += delegate { SaveProjectUi(); };
+            topBar.Controls.Add(btnSave);
+
             var btnSettings = new FusionIconButton { IconName = "settings", ToolTipText = "Configuración",
                                                      Anchor = AnchorStyles.Top | AnchorStyles.Right };
             btnSettings.Click += delegate
@@ -252,20 +259,22 @@ namespace Fusion.Studio.Ui
 
         void LayoutTopRight()
         {
-            // De derecha a izquierda: reloj · configuración · diagnóstico · EN VIVO
+            // De derecha a izquierda: reloj · configuración · diagnóstico · guardar · EN VIVO
             int right = topBar.Width - 12;
             lblClock.Location = new Point(right - lblClock.PreferredWidth, 16);
             right = lblClock.Left - 10;
-            Control btnSet = null, btnDia = null;
+            Control btnSet = null, btnDia = null, btnSave = null;
             foreach (Control c in topBar.Controls)
             {
                 var ib = c as FusionIconButton;
                 if (ib == null) continue;
                 if (ib.IconName == "settings") btnSet = ib;
                 else if (ib.IconName == "activity") btnDia = ib;
+                else if (ib.IconName == "device-floppy") btnSave = ib;
             }
             if (btnSet != null) { btnSet.Location = new Point(right - 34, 7); right = btnSet.Left - 4; }
             if (btnDia != null) { btnDia.Location = new Point(right - 34, 7); right = btnDia.Left - 4; }
+            if (btnSave != null) { btnSave.Location = new Point(right - 34, 7); right = btnSave.Left - 4; }
             lblLive.Location = new Point(right - lblLive.PreferredWidth - 4, 16);
         }
 
@@ -431,6 +440,43 @@ namespace Fusion.Studio.Ui
             return "C";
         }
 
+        // ------------------------------------------------------------ guardar (v4.2.0 C5)
+        /// <summary>Guarda el proyecto: a su ruta conocida, o con diálogo la
+        /// primera vez. Única vía de persistencia del trabajo del operador.</summary>
+        internal void SaveProjectUi()
+        {
+            if (Live.Project == null)
+            {
+                MessageBox.Show(this, "No hay proyecto que guardar. Crea uno nuevo en Inicio.",
+                    "Fusion HP", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            string path = Live.Project.SourcePath;
+            if (string.IsNullOrEmpty(path) || path.EndsWith("proyeccion-viva.ahp", StringComparison.OrdinalIgnoreCase))
+            {
+                using (var d = new SaveFileDialog())
+                {
+                    d.Filter = "Proyecto Fusion HP (*.ahp)|*.ahp";
+                    d.InitialDirectory = Settings.ProjectsPath;
+                    d.FileName = PathSafe(Live.Project.Name) + ".ahp";
+                    if (d.ShowDialog(this) != DialogResult.OK) return;
+                    path = d.FileName;
+                }
+            }
+            try
+            {
+                Live.SaveProject(path);
+                UpdateStatus();
+                lblStatus.Text = "Proyecto guardado: " + path + "   ·   " + lblStatus.Text;
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "No se pudo guardar el proyecto.\n\n" + ex.Message +
+                    "\n\nVerifica que la carpeta sea escribible e inténtalo de nuevo.",
+                    "Fusion HP", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+
         // ------------------------------------------------------------ atajos [SPEC §6.5.1]
         void OnGlobalKey(object sender, KeyEventArgs e)
         {
@@ -443,6 +489,11 @@ namespace Fusion.Studio.Ui
             {
                 FocusBibleSearch();          // v4.2.0 (G1): Ctrl+K real (la pista ya estaba)
                 e.Handled = true;
+                return;
+            }
+            if (e.Control && e.KeyCode == Keys.S)
+            {
+                if (!typing) { SaveProjectUi(); e.Handled = true; }   // v4.2.0 (C5): Ctrl+S
                 return;
             }
             if (e.KeyCode == Keys.Escape && !typing)

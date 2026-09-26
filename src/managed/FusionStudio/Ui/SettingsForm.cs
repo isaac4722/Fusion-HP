@@ -20,6 +20,7 @@ namespace Fusion.Studio.Ui
         CheckBox chkStartPresent;
         ComboBox cmbAdvance, cmbTransition;
         CheckBox chkClock, chkAnimation, chkKeepEngine;
+        TextBox txtLogo;
 
         public SettingsForm(MainForm owner)
         {
@@ -70,6 +71,31 @@ namespace Fusion.Studio.Ui
             cmbRest.SelectedIndex = S.RestScreen == "logo" ? 1 : S.RestScreen == "theme" ? 2 : 0;
             Controls.Add(cmbRest);
             y += 32;
+
+            // v4.2.0 (G5): el reposo «Logo» era inalcanzable — NO había selector de
+            // archivo (LogoPath solo editable a mano en settings.json)
+            var lblLogo = new Label { Text = "Imagen del logo:", Location = new Point(24, y + 3), AutoSize = true };
+            Controls.Add(lblLogo);
+            txtLogo = new TextBox { Location = new Point(220, y), Size = new Size(200, 24), ReadOnly = true };
+            txtLogo.Text = S.LogoPath ?? "";
+            Controls.Add(txtLogo);
+            var btnBrowse = new FusionButton { Text = "Examinar…", IconName = "folder-open", Kind = FusionButtonKind.Chip,
+                                               Location = new Point(430, y - 4), Size = new Size(100, 30) };
+            btnBrowse.Click += delegate
+            {
+                using (var d = new OpenFileDialog())
+                {
+                    d.Filter = "Imágenes (*.png;*.jpg;*.jpeg;*.bmp)|*.png;*.jpg;*.jpeg;*.bmp";
+                    if (d.ShowDialog(this) == DialogResult.OK) txtLogo.Text = d.FileName;
+                }
+            };
+            Controls.Add(btnBrowse);
+            var btnNoLogo = new FusionButton { Text = "Quitar logo", IconName = "x", Kind = FusionButtonKind.Chip,
+                                               Location = new Point(220, y + 32), Size = new Size(110, 28) };
+            btnNoLogo.Click += delegate { txtLogo.Text = ""; };
+            Controls.Add(btnNoLogo);
+            y += 66;
+
             chkStartPresent = new CheckBox { Text = "Iniciar en modo Presentación (recomendado)", Location = new Point(24, y), AutoSize = true, Checked = S.StartInPresentMode };
             Controls.Add(chkStartPresent);
             y += 30;
@@ -146,6 +172,8 @@ namespace Fusion.Studio.Ui
             S.PublicMonitor = cmbPublic.SelectedIndex;
             S.StageMonitor = cmbStage.SelectedIndex - 1;
             S.RestScreen = cmbRest.SelectedIndex == 1 ? "logo" : cmbRest.SelectedIndex == 2 ? "theme" : "black";
+            // v4.2.0 (G5): sin IsNullOrWhiteSpace (no existe en net35 — Lite compila este archivo)
+            S.LogoPath = txtLogo.Text == null || txtLogo.Text.Trim().Length == 0 ? "" : txtLogo.Text.Trim();
             S.StartInPresentMode = chkStartPresent.Checked;
             S.AdvanceMode = cmbAdvance.SelectedIndex == 1 ? "slide" : "line";
             S.DefaultTransition = cmbTransition.SelectedIndex == 1 ? "slide" : cmbTransition.SelectedIndex == 2 ? "cut" : "fade";
