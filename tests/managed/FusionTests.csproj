@@ -26,4 +26,14 @@
     <None Include="..\fixtures\**\*" CopyToOutputDirectory="PreserveNewest" Link="fixtures\%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- dependencias nombradas por las pruebas (hint directo) -->
+    <Reference Include="Ookii.Dialogs.Wpf">
+      <HintPath>..\..\third_party\net\Ookii.Dialogs\1.0.0\Ookii.Dialogs.Wpf.dll</HintPath>
+    </Reference>
+    <Reference Include="BouncyCastle.Crypto">
+      <HintPath>..\..\third_party\net\BouncyCastle\1.8.9\BouncyCastle.Crypto.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
 </Project>
