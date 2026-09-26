@@ -28,7 +28,7 @@ namespace Fusion.Studio.Ui
             if (_init) return;
             try
             {
-                Init(Path.Combine(Fusion.Shared.AppSettings.Load().LogsPath));
+                Init(Fusion.Shared.AppSettings.Load().LogsPath);
             }
             catch
             {
