@@ -16,6 +16,11 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="All" />
+    <!-- Newtonsoft.Json 13.0.3 (MIT, net35) — motor detrás de la fachada JsonValue [DEPENDENCIAS.md] -->
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>..\..\..\third_party\net\Newtonsoft.Json\13.0.3\Newtonsoft.Json.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
   </ItemGroup>
 
 </Project>

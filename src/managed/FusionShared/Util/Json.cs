@@ -1,12 +1,22 @@
 // ============================================================================
-//  Fusion-HP · FusionShared/Util/Json.cs — JSON mínimo sin dependencias
+//  Fusion-HP · FusionShared/Util/Json.cs — fachada JSON del producto (v4.1.0).
 //  Compatible .NET Framework 3.5 SP1 → 4.8 [SPEC §3.5]. Lectura tolerante
 //  (campos nuevos ignorables [SPEC §5.3b]) y escritura estable (orden fijo).
+//
+//  v4.1.0: el MOTOR de parseo/serialización es Newtonsoft.Json 13.0.3 (MIT,
+//  net35 — [DEPENDENCIAS.md]); la API pública de JsonValue/Json NO cambia
+//  (campos Type/Bool/Number/Str/Items/Fields, fábricas, Get*, ToJsonString,
+//  Parse con FormatException). Newtonsoft corrige los casos límite del parser
+//  propio: escapes \u con pares sustitutos, números exóticos (1e999, -0),
+//  BOM y profundidad extrema.
 // ============================================================================
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Text;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace Fusion.Shared
 {
@@ -113,198 +123,90 @@ namespace Fusion.Shared
             get { return Type == Kind.Array ? Items : new List<JsonValue>(); }
         }
 
-        // ---------------- Escritura ----------------
+        // ---------------- Escritura (motor Newtonsoft, reglas estables) --------
         public string ToJsonString()
         {
+            var t = ToJToken(this);
             var sb = new StringBuilder();
-            Write(sb, this);
+            using (var sw = new StringWriter(sb, CultureInfo.InvariantCulture))
+            using (var w = new JsonTextWriter(sw))
+            {
+                w.Formatting = Formatting.None;
+                t.WriteTo(w);
+            }
             return sb.ToString();
         }
 
-        private static void Write(StringBuilder sb, JsonValue v)
+        private static JToken ToJToken(JsonValue v)
         {
             switch (v.Type)
             {
-                case Kind.Null: sb.Append("null"); break;
-                case Kind.Bool: sb.Append(v.Bool ? "true" : "false"); break;
+                case Kind.Null: return JValue.CreateNull();
+                case Kind.Bool: return new JValue(v.Bool);
                 case Kind.Number:
-                    if (double.IsInfinity(v.Number) || double.IsNaN(v.Number)) sb.Append("null");
-                    else if (v.Number == Math.Floor(v.Number) && Math.Abs(v.Number) < 9.00719925474099E+15)
-                        sb.Append(((long)v.Number).ToString(CultureInfo.InvariantCulture));
-                    else sb.Append(v.Number.ToString("R", CultureInfo.InvariantCulture));
-                    break;
-                case Kind.String: WriteString(sb, v.Str); break;
+                    // mismos umbrales que el escritor histórico: enteros sin .0
+                    if (double.IsInfinity(v.Number) || double.IsNaN(v.Number)) return JValue.CreateNull();
+                    if (v.Number == Math.Floor(v.Number) && Math.Abs(v.Number) < 9.00719925474099E+15)
+                        return new JValue((long)v.Number);
+                    return new JValue(v.Number);
+                case Kind.String: return new JValue(v.Str);
                 case Kind.Array:
-                    sb.Append('[');
+                    var a = new JArray();
                     if (v.Items != null)
-                        for (int i = 0; i < v.Items.Count; i++)
-                        {
-                            if (i > 0) sb.Append(',');
-                            Write(sb, v.Items[i]);
-                        }
-                    sb.Append(']');
-                    break;
+                        foreach (var i in v.Items) a.Add(ToJToken(i));
+                    return a;
                 case Kind.Object:
-                    sb.Append('{');
+                    var o = new JObject();
                     if (v.Fields != null)
-                        for (int i = 0; i < v.Fields.Count; i++)
-                        {
-                            if (i > 0) sb.Append(',');
-                            WriteString(sb, v.Fields[i].Key);
-                            sb.Append(':');
-                            Write(sb, v.Fields[i].Value ?? Null());
-                        }
-                    sb.Append('}');
-                    break;
+                        foreach (var p in v.Fields) o[p.Key] = ToJToken(p.Value ?? Null());
+                    return o;
+                default: return JValue.CreateNull();
             }
         }
 
-        private static void WriteString(StringBuilder sb, string s)
-        {
-            sb.Append('"');
-            foreach (char c in s)
-            {
-                switch (c)
-                {
-                    case '"': sb.Append("\\\""); break;
-                    case '\\': sb.Append("\\\\"); break;
-                    case '\n': sb.Append("\\n"); break;
-                    case '\r': sb.Append("\\r"); break;
-                    case '\t': sb.Append("\\t"); break;
-                    case '\b': sb.Append("\\b"); break;
-                    case '\f': sb.Append("\\f"); break;
-                    default:
-                        if (c < ' ') sb.Append("\\u").Append(((int)c).ToString("x4", CultureInfo.InvariantCulture));
-                        else sb.Append(c);
-                        break;
-                }
-            }
-            sb.Append('"');
-        }
-
-        // ---------------- Lectura ----------------
+        // ---------------- Lectura (motor Newtonsoft) ---------------------------
         public static JsonValue Parse(string text)
         {
-            int pos = 0;
-            var v = ParseValue(text, ref pos);
-            SkipWs(text, ref pos);
-            if (pos != text.Length) throw new FormatException("contenido adicional al final del JSON (pos " + pos + ")");
+            if (text == null) throw new FormatException("JSON nulo");
+            JToken token;
+            try
+            {
+                token = JToken.Parse(text);
+            }
+            catch (JsonReaderException e)
+            {
+                throw new FormatException(e.Message);
+            }
+            var v = FromJToken(token);
+            if (v == null) throw new FormatException("JSON sin valor raíz");
             return v;
         }
 
-        private static void SkipWs(string s, ref int pos)
+        private static JsonValue FromJToken(JToken t)
         {
-            while (pos < s.Length && (s[pos] == ' ' || s[pos] == '\t' || s[pos] == '\n' || s[pos] == '\r')) pos++;
-        }
-
-        private static JsonValue ParseValue(string s, ref int pos)
-        {
-            SkipWs(s, ref pos);
-            if (pos >= s.Length) throw new FormatException("JSON truncado");
-            char c = s[pos];
-            if (c == '{') return ParseObject(s, ref pos);
-            if (c == '[') return ParseArray(s, ref pos);
-            if (c == '"')
+            if (t == null) return Null();
+            switch (t.Type)
             {
-                string str;
-                ParseString(s, ref pos, out str);
-                return Make(str);
+                case JTokenType.Null: return Null();
+                case JTokenType.Boolean: return Make((bool)t);
+                case JTokenType.Integer:
+                    long l;
+                    try { l = (long)t; return Make(l); }
+                    catch (OverflowException) { return Make((double)t); }
+                case JTokenType.Float: return Make((double)t);
+                case JTokenType.String: return Make((string)t);
+                case JTokenType.Array:
+                    var a = Array();
+                    foreach (var i in (JArray)t) a.Add(FromJToken(i));
+                    return a;
+                case JTokenType.Object:
+                    var o = Object();
+                    foreach (var p in (JObject)t) o.Set(p.Key, FromJToken(p.Value));
+                    return o;
+                default:
+                    // casos exóticos (fecha/bytes): se conservan como texto JSON
+                    return Make(t.ToString(Formatting.None));
             }
-            if (c == 't' && pos + 4 <= s.Length && s.Substring(pos, 4) == "true") { pos += 4; return Make(true); }
-            if (c == 'f' && pos + 5 <= s.Length && s.Substring(pos, 5) == "false") { pos += 5; return Make(false); }
-            if (c == 'n' && pos + 4 <= s.Length && s.Substring(pos, 4) == "null") { pos += 4; return Null(); }
-            return ParseNumber(s, ref pos);
-        }
-
-        private static JsonValue ParseObject(string s, ref int pos)
-        {
-            var v = Object();
-            pos++; // {
-            SkipWs(s, ref pos);
-            if (pos < s.Length && s[pos] == '}') { pos++; return v; }
-            while (true)
-            {
-                SkipWs(s, ref pos);
-                if (pos >= s.Length || s[pos] != '"') throw new FormatException("clave de objeto esperada (pos " + pos + ")");
-                string key;
-                ParseString(s, ref pos, out key);
-                SkipWs(s, ref pos);
-                if (pos >= s.Length || s[pos] != ':') throw new FormatException("':' esperado (pos " + pos + ")");
-                pos++;
-                var val = ParseValue(s, ref pos);
-                v.Set(key, val);
-                SkipWs(s, ref pos);
-                if (pos >= s.Length) throw new FormatException("objeto sin cerrar");
-                if (s[pos] == ',') { pos++; continue; }
-                if (s[pos] == '}') { pos++; return v; }
-                throw new FormatException("',' o '}' esperado (pos " + pos + ")");
-            }
-        }
-
-        private static JsonValue ParseArray(string s, ref int pos)
-        {
-            var v = Array();
-            pos++; // [
-            SkipWs(s, ref pos);
-            if (pos < s.Length && s[pos] == ']') { pos++; return v; }
-            while (true)
-            {
-                var val = ParseValue(s, ref pos);
-                v.Add(val);
-                SkipWs(s, ref pos);
-                if (pos >= s.Length) throw new FormatException("arreglo sin cerrar");
-                if (s[pos] == ',') { pos++; continue; }
-                if (s[pos] == ']') { pos++; return v; }
-                throw new FormatException("',' o ']' esperado (pos " + pos + ")");
-            }
-        }
-
-        private static void ParseString(string s, ref int pos, out string result)
-        {
-            pos++; // comilla inicial
-            var sb = new StringBuilder();
-            while (pos < s.Length)
-            {
-                char c = s[pos++];
-                if (c == '"') { result = sb.ToString(); return; }
-                if (c == '\\')
-                {
-                    if (pos >= s.Length) break;
-                    char e = s[pos++];
-                    switch (e)
-                    {
-                        case '"': sb.Append('"'); break;
-                        case '\\': sb.Append('\\'); break;
-                        case '/': sb.Append('/'); break;
-                        case 'n': sb.Append('\n'); break;
-                        case 'r': sb.Append('\r'); break;
-                        case 't': sb.Append('\t'); break;
-                        case 'b': sb.Append('\b'); break;
-                        case 'f': sb.Append('\f'); break;
-                        case 'u':
-                            if (pos + 4 > s.Length) throw new FormatException("\\uXXXX incompleto");
-                            sb.Append((char)int.Parse(s.Substring(pos, 4), NumberStyles.HexNumber, CultureInfo.InvariantCulture));
-                            pos += 4;
-                            break;
-                        default: throw new FormatException("escape desconocido \\" + e);
-                    }
-                }
-                else sb.Append(c);
-            }
-            throw new FormatException("cadena sin cerrar");
-        }
-
-        private static JsonValue ParseNumber(string s, ref int pos)
-        {
-            int start = pos;
-            if (pos < s.Length && (s[pos] == '-' || s[pos] == '+')) pos++;
-            while (pos < s.Length && (char.IsDigit(s[pos]) || s[pos] == '.' || s[pos] == 'e' || s[pos] == 'E' ||
-                   s[pos] == '-' || s[pos] == '+')) pos++;
-            if (pos == start) throw new FormatException("valor no reconocido (pos " + pos + ")");
-            double d;
-            if (!double.TryParse(s.Substring(start, pos - start), NumberStyles.Float, CultureInfo.InvariantCulture, out d))
-                throw new FormatException("numero invalido: " + s.Substring(start, pos - start));
-            return Make(d);
         }
     }
 
@@ -313,12 +215,12 @@ namespace Fusion.Shared
     {
         public static JsonValue ParseFile(string path)
         {
-            return JsonValue.Parse(System.IO.File.ReadAllText(path, System.Text.Encoding.UTF8));
+            return JsonValue.Parse(File.ReadAllText(path, Encoding.UTF8));
         }
         public static JsonValue ParseText(string text) { return JsonValue.Parse(text); }
         public static void WriteFile(string path, JsonValue v)
         {
-            System.IO.File.WriteAllText(path, v.ToJsonString(), System.Text.Encoding.UTF8);
+            File.WriteAllText(path, v.ToJsonString(), Encoding.UTF8);
         }
     }
 }
