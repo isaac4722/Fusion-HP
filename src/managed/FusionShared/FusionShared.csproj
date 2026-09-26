@@ -21,6 +21,23 @@
       <HintPath>..\..\..\third_party\net\Newtonsoft.Json\13.0.3\Newtonsoft.Json.dll</HintPath>
       <Private>true</Private>
     </Reference>
+    <!-- System.Data.SQLite.Core 1.0.118 (PD/MIT, net20) — vía ADO.NET con
+         fallback al lector puro; interop x86/x64 viaja junto al exe [DEPENDENCIAS.md] -->
+    <Reference Include="System.Data.SQLite">
+      <HintPath>..\..\..\third_party\net\System.Data.SQLite\1.0.118\System.Data.SQLite.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\..\third_party\net\System.Data.SQLite\1.0.118\x86\SQLite.Interop.dll">
+      <Link>x86\SQLite.Interop.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\..\..\third_party\net\System.Data.SQLite\1.0.118\x64\SQLite.Interop.dll">
+      <Link>x64\SQLite.Interop.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>

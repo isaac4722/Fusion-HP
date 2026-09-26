@@ -19,9 +19,13 @@ namespace Fusion.Shared.Bible
         public List<object> Values = new List<object>();
     }
 
-    /// <summary>Lector mínimo de archivos SQLite (solo lectura, tablas rowid).</summary>
+    /// <summary>Lector mínimo de archivos SQLite (solo lectura, tablas rowid).
+    /// v4.1.0: despachador — vía primaria ADO.NET (SqliteAdoReader, motor
+    /// nativo con SQL real) y fallback al lector puro de B-Tree (perfil B o
+    /// interop ausente). BibleStore no cambia.</summary>
     public class SQLiteFileReader : IDisposable
     {
+        readonly SqliteAdoReader ado;   // null → motor puro
         FileStream fs;
         int pageSize;
         int usableSize;
@@ -31,6 +35,11 @@ namespace Fusion.Shared.Bible
 
         public SQLiteFileReader(string path)
         {
+            // v4.1.0: ADO.NET primero; si el interop falla, lector puro.
+            try { ado = new SqliteAdoReader(path); }
+            catch { ado = null; }
+            if (ado != null) return;
+
             fs = File.OpenRead(path);
             var hdr = new byte[100];
             int got = fs.Read(hdr, 0, 100);
@@ -62,11 +71,13 @@ namespace Fusion.Shared.Bible
 
         public bool HasTable(string name)
         {
+            if (ado != null) return ado.HasTable(name);
             return tableRoots.ContainsKey(name);
         }
 
         public List<SqliteRow> ReadTable(string name)
         {
+            if (ado != null) return ado.ReadTable(name);
             long root;
             if (!tableRoots.TryGetValue(name, out root)) return new List<SqliteRow>();
             return ReadTableBtree(root, name);
@@ -252,6 +263,7 @@ namespace Fusion.Shared.Bible
 
         public void Dispose()
         {
+            if (ado != null) { ado.Dispose(); return; }
             if (fs != null) fs.Dispose();
             fs = null;
         }
