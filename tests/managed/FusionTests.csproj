@@ -37,6 +37,9 @@
     <Reference Include="PdfSharp">
       <HintPath>..\..\third_party\net\PdfSharp\6.1.1\PdfSharp.dll</HintPath>
     </Reference>
+    <Reference Include="PdfSharp.System">
+      <HintPath>..\..\third_party\net\PdfSharp\6.1.1\PdfSharp.System.dll</HintPath>
+    </Reference>
     <Reference Include="Microsoft.Extensions.Logging.Abstractions">
       <HintPath>..\..\third_party\net\Microsoft.Extensions.Logging.Abstractions\6.0.0\Microsoft.Extensions.Logging.Abstractions.dll</HintPath>
     </Reference>
