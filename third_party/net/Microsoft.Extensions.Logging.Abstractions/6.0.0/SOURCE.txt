@@ -1,0 +1,1 @@
+Microsoft.Extensions.Logging.Abstractions 6.0.0 (MIT) — dependencia de PDFsharp 6.1.1
