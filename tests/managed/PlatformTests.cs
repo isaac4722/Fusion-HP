@@ -6,6 +6,7 @@
 //  control remoto). La suite cubre solo funcionalidad local.
 // ============================================================================
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Text;
