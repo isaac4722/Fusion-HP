@@ -1,5 +1,5 @@
 # LICENCIA DE SOLO LECTURA (VIEW-ONLY LICENSE)
-## LuminaPresentation Suite — v1.0
+## LuminaPresentation Suite — v1.1
 ### Copyright (c) 2026 Isaac. Todos los derechos reservados.
 
 ---
@@ -34,17 +34,34 @@ Queda **PROHIBIDO**, salvo autorización previa, expresa y por escrito del autor
      los binarios, excepto en la medida permitida por la ley aplicable.
 
 ### 4. COMPONENTES DE TERCEROS (SE MANTENEN SUS LICENCIAS ORIGINALES)
-Este proyecto incorpora, de forma separada y sin ánimo de apropiación, los siguientes
-componentes de terceros, cuyas licencias originales prevalecen sobre esta licencia en
-lo que a dichos componentes respecta:
-- **SQLite 3** (amalgamation, dominio público) — https://sqlite.org
-- **miniz** (licencia MIT) — https://github.com/richgel999/miniz
-- **Qt 5.15 LTS** (licencia comercial / GPL/LGPL de The Qt Company) — enlazado dinámico;
-  el usuario final puede reemplazar o actualizar las bibliotecas Qt incluidas conforme
-  a la LGPL.
-- **LibVLC 3.x** (LGPL-2.1, VideoLAN) — cargada dinámicamente en tiempo de ejecución;
-  los binarios de VLC distribuidos junto al programa conservan su licencia original.
-- **Biblia Reina-Valera 1909** — texto de dominio público.
+Este proyecto incorpora, de forma separada y sin ánimo de apropiación, componentes de
+terceros con licencias **permisivas** (MIT, BSD, Apache-2.0, Zlib, dominio público,
+SIL OFL). Las licencias originales de dichos componentes prevalecen sobre esta
+licencia en lo que a dichos componentes respecta. La obligación de esos componentes
+es **atribución, no reciprocidad**, y ninguno transfiere derechos sobre el Software.
+
+**La lista completa, normativa y verificada por hash, está en [`DEPENDENCIAS.md`](DEPENDENCIAS.md).**
+Resumen de los componentes incluidos en el instalador (versión vigente v4.1.0):
+- **C++**: Microsoft WIL 1.0.240803.1 (MIT) · doctest 2.4.11 (MIT, solo pruebas) ·
+  SQLite amalgamation 3.45.1 (dominio público) · spdlog 1.12.0 (MIT) ·
+  nlohmann/json 3.11.x (MIT, preexistente).
+- **C#**: Newtonsoft.Json 13.0.3 (MIT) · NLog 4.7.15 (BSD-3) · PDFsharp 1.50.5147 y
+  6.1.1 (MIT) · Microsoft.Extensions.Logging.Abstractions 6.0.0 (MIT) ·
+  System.Data.SQLite.Core 1.0.118 (dominio público/MIT) · DocumentFormat.OpenXml
+  2.7.2 (MIT) · Ookii.Dialogs 1.0.0 (BSD-3) · Portable.BouncyCastle 1.8.9 (MIT).
+- **Assets**: fuentes Outfit, Cormorant Garamond y Libre Baskerville (SIL OFL 1.1) ·
+  Tabler Icons (MIT) · Biblia Reina-Valera 1909 (texto de dominio público).
+
+**Regla de oro permanente:** solo se incorporan componentes permisivos. Queda
+**prohibido** incorporar componentes GPL/AGPL/LGPL en código enlazado estáticamente
+o derivado, salvo (a) licencia comercial adquirida al autor del componente, o
+(b) LGPL con enlace dinámico y cláusula que permita al usuario reemplazar la
+biblioteca. La distribución **no incluye** Qt, LibVLC ni ningún otro componente
+copyleft.
+
+**Cláusula de actualización:** la lista de componentes de terceros de
+`DEPENDENCIAS.md` es **normativa**, se actualiza con cada release y **prevalece
+sobre esta sección cualquier divergencia** entre ambos documentos.
 
 ### 5. SOLICITUDES DE PERMISO
 Para obtener permisos adicionales (modificación, redistribución, integración comercial
@@ -62,3 +79,5 @@ sin perjuicio de los derechos irrenunciables que asistan al usuario conforme a l
 
 ---
 *"Solo ver" significa exactamente eso: puede leer el código, no tomarlo.*
+*Las librerías abiertas que viajan dentro respetan sus licencias originales; la
+autoría, el diseño y la propiedad del producto siguen siendo del autor.*
