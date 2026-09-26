@@ -13,6 +13,7 @@
 #include "../../src/core/NativeLibrary.h"
 #include "../../src/core/IpcServer.h"
 #include "../../src/core/Motor.h"
+#include "../../src/core/SqliteDb.h"
 #include <cstdio>
 #include <cstring>
 #include <cassert>
@@ -562,6 +563,131 @@ static void TestWil()
     DOCTEST_CHECK_EQ(seq.get() != nullptr, true);
 }
 
+// ----------------------------------------------------------------- SQLite
+// v4.1.0: amalgamation 3.45.1 embebida — lector nativo fdb/biblias con SQL
+// real. Escenario 4 usa el fixture REAL del repo (e-Sword = SQLite).
+static fs::path FindRepoFile(const char* rel) {
+    std::error_code ec;
+    fs::path dir = fs::current_path(ec);
+    for (int i = 0; i < 8 && !dir.empty(); ++i) {
+        fs::path cand = dir / rel;
+        if (fs::exists(cand, ec)) return cand;
+        dir = dir.parent_path();
+    }
+    return {};
+}
+
+static void TestSqlite()
+{
+    std::cout << "\n-- SQLite (nativo 3.45.1) --" << std::endl;
+
+    // 1) SQL real en memoria: tabla + índice B-tree + 30 000 filas + consulta
+    SqliteDb mem;
+    CHECK(mem.OpenMemory(), "SQLite: bd en memoria abierta");
+    CHECK(mem.Exec("CREATE TABLE verses(book INTEGER, chapter INTEGER, verse INTEGER, text TEXT);"
+                   "CREATE INDEX ix_verses ON verses(book, chapter, verse);"),
+          "SQLite: DDL con índice B-tree");
+    {
+        SqliteDb::Stmt ins;
+        CHECK(mem.Prepare("INSERT INTO verses VALUES(?,?,?,?);", &ins), "SQLite: prepare INSERT");
+        CHECK(mem.Exec("BEGIN;"), "SQLite: transacción abierta");
+        const int N = 30000;
+        for (int i = 0; i < N; ++i) {
+            ins.BindInt(1, 1 + (i % 66));
+            ins.BindInt(2, 1 + (i % 150));
+            ins.BindInt(3, 1 + (i % 176));
+            ins.BindText(4, "v" + std::to_string(i));
+            ins.Step();
+            ins.Reset();
+        }
+        CHECK(mem.Exec("COMMIT;"), "SQLite: transacción confirmada");
+        {
+            SqliteDb::Stmt q;
+            CHECK(mem.Prepare("SELECT COUNT(*) FROM verses;", &q) && q.Step() &&
+                  q.ColumnInt(0) == N, "SQLite: 30 000 filas contadas");
+        }
+        {
+            // búsqueda por índice B-tree (book,chapter,verse) con fila repetida
+            SqliteDb::Stmt q;
+            CHECK(mem.Prepare("SELECT COUNT(*) FROM verses WHERE book=5 AND chapter=7 AND verse=9;", &q) &&
+                  q.Step() && q.ColumnInt(0) >= 1, "SQLite: búsqueda por índice encuentra filas");
+        }
+        {
+            // acceso directo por rowid: contenido exacto de la fila 4243
+            SqliteDb::Stmt q;
+            CHECK(mem.Prepare("SELECT text FROM verses WHERE rowid=4243;", &q) &&
+                  q.Step() && q.ColumnText(0) == "v4242",
+                  "SQLite: contenido de la fila exacto");
+        }
+    }
+
+    // 2) WAL: journal_mode persiste y una segunda conexión lee los datos
+    std::error_code ec;
+    fs::path dir = fs::temp_directory_path(ec) / ("fusion_sqlite_" + std::to_string(GetCurrentProcessId()));
+    fs::create_directories(dir, ec);
+    fs::path dbf = dir / "prueba.fdb";
+    {
+        SqliteDb w;
+        CHECK(w.OpenReadWrite(dbf.wstring()), "SQLite: archivo abierto rw");
+        CHECK(w.Exec("PRAGMA journal_mode=WAL;"), "SQLite: journal_mode=WAL aceptado");
+        CHECK(w.Exec("CREATE TABLE meta(k TEXT PRIMARY KEY, v TEXT);"
+                     "INSERT INTO meta VALUES('format','fdb.v2');"),
+              "SQLite: escritura en WAL");
+        CHECK(w.LastInsertRowId() == 1, "SQLite: rowid tras INSERT");
+    }
+    {
+        SqliteDb r;
+        CHECK(r.OpenReadOnly(dbf.wstring()), "SQLite: reapertura en solo lectura");
+        SqliteDb::Stmt q;
+        CHECK(r.Prepare("SELECT v FROM meta WHERE k='format';", &q) && q.Step() &&
+              q.ColumnText(0) == "fdb.v2", "SQLite: WAL visible desde otra conexión");
+    }
+
+    // 3) encoding UTF-16 de una bd nueva, texto con Ñ y acentos
+    {
+        SqliteDb u;
+        CHECK(u.OpenMemory(), "SQLite: bd para encoding");
+        CHECK(u.Exec("PRAGMA encoding='UTF-16';"), "SQLite: encoding UTF-16 aceptado");
+        CHECK(u.Exec("CREATE TABLE t(x TEXT);"), "SQLite: tabla en UTF-16");
+        std::string esperado = "Señor de los Ejércitos — salmo 23, año 1960";
+        SqliteDb::Stmt ins;
+        CHECK(u.Prepare("INSERT INTO t VALUES(?);", &ins) && ins.BindText(1, esperado) &&
+              ins.Step(), "SQLite: texto español en UTF-16");
+        SqliteDb::Stmt q;
+        CHECK(u.Prepare("SELECT x FROM t;", &q) && q.Step() &&
+              q.ColumnText(0) == esperado, "SQLite: UTF-16 ↔ UTF-8 sin pérdida");
+    }
+
+    // 4) fixture REAL: módulo e-Sword del repo (SQLite con Scripture cifrada)
+    fs::path bib = FindRepoFile("tests/fixtures/esword_rv1960_mini.bib");
+    CHECK(!bib.empty(), "SQLite: fixture e-Sword localizado");
+    if (!bib.empty()) {
+        SqliteDb b;
+        CHECK(b.OpenReadOnly(bib.wstring()), "SQLite: módulo e-Sword abierto");
+        {
+            SqliteDb::Stmt q;
+            CHECK(b.Prepare("SELECT count(*) FROM Bible;", &q) && q.Step() &&
+                  q.ColumnInt(0) == 5, "SQLite: 5 versículos en el módulo");
+        }
+        {
+            SqliteDb::Stmt q;
+            CHECK(b.Prepare("SELECT Book, Chapter, Verse, Scripture FROM Bible "
+                            "WHERE Book=1 AND Chapter=1 AND Verse=1;", &q) && q.Step() &&
+                  q.ColumnInt(0) == 1 && q.ColumnInt(1) == 1 && q.ColumnInt(2) == 1,
+                  "SQLite: referencia Génesis 1:1 localizada");
+            CHECK((int)q.ColumnBlob(3).size() > 16, "SQLite: Scripture cifrada presente (BLOB)");
+        }
+        {
+            // sqlite_master refleja el esquema real
+            SqliteDb::Stmt q;
+            CHECK(b.Prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;", &q) &&
+                  q.Step() && q.ColumnText(0) == "Bible", "SQLite: sqlite_master lee esquema");
+        }
+    }
+
+    fs::remove_all(dir, ec);
+}
+
 int main()
 {
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
@@ -581,6 +707,7 @@ int main()
 
     TestEnvironment();
     TestWil();
+    TestSqlite();
     TestJson();
     TestSlideState();
     TestHighlight();

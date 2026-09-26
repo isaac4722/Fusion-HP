@@ -66,10 +66,10 @@
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>WIN32;_WINDOWS;NDEBUG;_WIN32_WINNT=0x0601;WINVER=0x0601;_CRT_SECURE_NO_WARNINGS;WIL_EXCEPTION_MODE=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;NDEBUG;_WIN32_WINNT=0x0601;WINVER=0x0601;_CRT_SECURE_NO_WARNINGS;WIL_EXCEPTION_MODE=1;SQLITE_OMIT_DEPRECATED;SQLITE_OMIT_LOAD_EXTENSION;SQLITE_OMIT_PROGRESS_CALLBACK;SQLITE_LIKE_DOESNT_MATCH_BLOBS;SQLITE_DEFAULT_MEMSTATUS=0;SQLITE_MAX_EXPR_DEPTH=0;SQLITE_DQS=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)..\..\third_party\nlohmann;$(MSBuildThisFileDirectory)..\..\src\core;$(MSBuildThisFileDirectory)..\..\src\core\third_party\wil\include;$(MSBuildThisFileDirectory)..\..\src\core\third_party\doctest\doctest;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)..\..\third_party\nlohmann;$(MSBuildThisFileDirectory)..\..\src\core;$(MSBuildThisFileDirectory)..\..\src\core\third_party\wil\include;$(MSBuildThisFileDirectory)..\..\src\core\third_party\doctest\doctest;$(MSBuildThisFileDirectory)..\..\src\core\third_party\sqlite;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <ConformanceMode>true</ConformanceMode>
       <AdditionalOptions>/utf-8 /Zc:__cplusplus %(AdditionalOptions)</AdditionalOptions>
@@ -89,10 +89,10 @@
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>WIN64;_WINDOWS;NDEBUG;_WIN32_WINNT=0x0601;WINVER=0x0601;_CRT_SECURE_NO_WARNINGS;WIL_EXCEPTION_MODE=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN64;_WINDOWS;NDEBUG;_WIN32_WINNT=0x0601;WINVER=0x0601;_CRT_SECURE_NO_WARNINGS;WIL_EXCEPTION_MODE=1;SQLITE_OMIT_DEPRECATED;SQLITE_OMIT_LOAD_EXTENSION;SQLITE_OMIT_PROGRESS_CALLBACK;SQLITE_LIKE_DOESNT_MATCH_BLOBS;SQLITE_DEFAULT_MEMSTATUS=0;SQLITE_MAX_EXPR_DEPTH=0;SQLITE_DQS=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)..\..\third_party\nlohmann;$(MSBuildThisFileDirectory)..\..\src\core;$(MSBuildThisFileDirectory)..\..\src\core\third_party\wil\include;$(MSBuildThisFileDirectory)..\..\src\core\third_party\doctest\doctest;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)..\..\third_party\nlohmann;$(MSBuildThisFileDirectory)..\..\src\core;$(MSBuildThisFileDirectory)..\..\src\core\third_party\wil\include;$(MSBuildThisFileDirectory)..\..\src\core\third_party\doctest\doctest;$(MSBuildThisFileDirectory)..\..\src\core\third_party\sqlite;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <ConformanceMode>true</ConformanceMode>
       <AdditionalOptions>/utf-8 /Zc:__cplusplus %(AdditionalOptions)</AdditionalOptions>
@@ -110,10 +110,10 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>WIN32;_WINDOWS;_DEBUG;_WIN32_WINNT=0x0601;WINVER=0x0601;_CRT_SECURE_NO_WARNINGS;WIL_EXCEPTION_MODE=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;_DEBUG;_WIN32_WINNT=0x0601;WINVER=0x0601;_CRT_SECURE_NO_WARNINGS;WIL_EXCEPTION_MODE=1;SQLITE_OMIT_DEPRECATED;SQLITE_OMIT_LOAD_EXTENSION;SQLITE_OMIT_PROGRESS_CALLBACK;SQLITE_LIKE_DOESNT_MATCH_BLOBS;SQLITE_DEFAULT_MEMSTATUS=0;SQLITE_MAX_EXPR_DEPTH=0;SQLITE_DQS=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)..\..\third_party\nlohmann;$(MSBuildThisFileDirectory)..\..\src\core;$(MSBuildThisFileDirectory)..\..\src\core\third_party\wil\include;$(MSBuildThisFileDirectory)..\..\src\core\third_party\doctest\doctest;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)..\..\third_party\nlohmann;$(MSBuildThisFileDirectory)..\..\src\core;$(MSBuildThisFileDirectory)..\..\src\core\third_party\wil\include;$(MSBuildThisFileDirectory)..\..\src\core\third_party\doctest\doctest;$(MSBuildThisFileDirectory)..\..\src\core\third_party\sqlite;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <AdditionalOptions>/utf-8 /Zc:__cplusplus %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
@@ -126,10 +126,10 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>WIN64;_WINDOWS;_DEBUG;_WIN32_WINNT=0x0601;WINVER=0x0601;_CRT_SECURE_NO_WARNINGS;WIL_EXCEPTION_MODE=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN64;_WINDOWS;_DEBUG;_WIN32_WINNT=0x0601;WINVER=0x0601;_CRT_SECURE_NO_WARNINGS;WIL_EXCEPTION_MODE=1;SQLITE_OMIT_DEPRECATED;SQLITE_OMIT_LOAD_EXTENSION;SQLITE_OMIT_PROGRESS_CALLBACK;SQLITE_LIKE_DOESNT_MATCH_BLOBS;SQLITE_DEFAULT_MEMSTATUS=0;SQLITE_MAX_EXPR_DEPTH=0;SQLITE_DQS=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)..\..\third_party\nlohmann;$(MSBuildThisFileDirectory)..\..\src\core;$(MSBuildThisFileDirectory)..\..\src\core\third_party\wil\include;$(MSBuildThisFileDirectory)..\..\src\core\third_party\doctest\doctest;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)..\..\third_party\nlohmann;$(MSBuildThisFileDirectory)..\..\src\core;$(MSBuildThisFileDirectory)..\..\src\core\third_party\wil\include;$(MSBuildThisFileDirectory)..\..\src\core\third_party\doctest\doctest;$(MSBuildThisFileDirectory)..\..\src\core\third_party\sqlite;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <AdditionalOptions>/utf-8 /Zc:__cplusplus %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
@@ -143,6 +143,8 @@
     <ClCompile Include="..\..\src\core\Common.cpp" />
     <ClCompile Include="..\..\src\core\Environment.cpp" />
     <ClCompile Include="..\..\src\core\Logger.cpp" />
+    <ClCompile Include="..\..\src\core\SqliteDb.cpp" />
+    <ClCompile Include="..\..\src\core\third_party\sqlite\sqlite3.c" />
     <ClCompile Include="..\..\src\core\Motor.cpp" />
     <ClCompile Include="..\..\src\core\NativeSession.cpp" />
     <ClCompile Include="..\..\src\core\NativeLibrary.cpp" />
