@@ -30,8 +30,8 @@ namespace Fusion.Studio.Ui
                                   ForeColor = UiTheme.TextDim, Location = new Point(12, y), AutoSize = true };
             right.Controls.Add(lbl); y += 22;
 
-            txtStageAlert = new FusionInput { Location = new Point(12, y), Size = new Size(206, 30) };
-            new ToolTip().SetToolTip(txtStageAlert, "Mensaje dorado en el monitor de retorno (Enter envía).");
+            txtStageAlert = new FusionInput { Location = new Point(12, y), Size = new Size(RightWidth - 24, 30) };
+            Tips.SetToolTip(txtStageAlert, "Mensaje dorado en el monitor de retorno (Enter envía).");
             txtStageAlert.KeyDown += delegate(object s, KeyEventArgs e)
             {
                 if (e.KeyCode == Keys.Enter) { SendStageAlert(); e.SuppressKeyPress = true; }
@@ -143,21 +143,10 @@ namespace Fusion.Studio.Ui
             catch { }
         }
 
-        /// <summary>Botones de la GUI web/beta-1 en el panel de herramientas.</summary>
-        void BuildWebExtras(Panel right, ref int y)
-        {
-            btnSorter = new FusionButton { Text = "Clasificador", IconName = "layout-grid",
-                                           Kind = FusionButtonKind.Chip,
-                                           Location = new Point(12, y), Size = new Size(206, 30) };
-            btnSorter.Click += delegate { ShowSorter(); };
-            right.Controls.Add(btnSorter); y += 32;
-
-            btnHistory = new FusionButton { Text = "Historial de uso", IconName = "clock",
-                                            Kind = FusionButtonKind.Chip,
-                                            Location = new Point(12, y), Size = new Size(206, 30) };
-            btnHistory.Click += delegate { ShowHistory(); };
-            right.Controls.Add(btnHistory); y += 34;
-        }
+        /// <summary>Botones de la GUI web/beta-1 en el panel de herramientas.
+        /// v4.2.0: Clasificador e Historial se crean ahora en la cuadrícula de
+        /// HERRAMIENTAS (BuildPresent) — el método separado duplicaba la fila y
+        /// consumía 66 px de la columna derecha que ya no existían (C2).</summary>
 
         SorterForm sorterForm;
         void ShowSorter()

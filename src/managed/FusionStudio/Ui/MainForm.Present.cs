@@ -21,6 +21,12 @@ namespace Fusion.Studio.Ui
         FusionSearchBox txtHighlight;
         System.Collections.Generic.Dictionary<int, Bitmap> progThumbs;
 
+        // modificación de anchos del panel derecho (v4.2.0): 252 px y chips en
+        // cuadrícula 2×N — la columna antigua de 232 px apilaba TODO en vertical
+        // hasta y≈1010 y «LÍNEAS DEL ELEMENTO» quedaba invisible (C2).
+        const int RightWidth = 264;
+        const int GridW = 116;      // (264 - 2*12 - 8) / 2
+
         void BuildPresent()
         {
             presentPanel = new Panel { Dock = DockStyle.Fill, BackColor = UiTheme.Bg, Visible = false };
@@ -34,6 +40,8 @@ namespace Fusion.Studio.Ui
             presentPanel.Controls.Add(center);
             center.BringToFront();
 
+            // v4.2.0 (G9): la preview guarda el aspecto 16:9 — antes un alto fijo
+            // de 330 px la estiraba en pantallas grandes y no encogía en pequeñas.
             var previewFrame = new Panel { Dock = DockStyle.Top, Height = 330, BackColor = UiTheme.Panel,
                                            Padding = new Padding(1) };
             previewFrame.Paint += delegate(object s, PaintEventArgs e)
@@ -51,13 +59,6 @@ namespace Fusion.Studio.Ui
             center.Controls.Add(previewFrame);
 
             // programa con iconos de tipo y sub-líneas
-            programPanel = new Panel { Dock = DockStyle.Fill, BackColor = UiTheme.Panel, Padding = new Padding(8),
-                                       AutoScroll = true };
-            programPanel.Paint += delegate(object s, PaintEventArgs e)
-            {
-                using (var pen = new Pen(UiTheme.InputBorder))
-                    e.Graphics.DrawRectangle(pen, 0, 0, programPanel.Width - 1, programPanel.Height - 1);
-            };
             var programTitle = new Label { Text = "Programa", Dock = DockStyle.Top, Height = 26, Font = UiTheme.NormalBold(),
                                            ForeColor = UiTheme.Text, TextAlign = ContentAlignment.MiddleLeft };
             programList = new ListBox { Dock = DockStyle.Fill, BorderStyle = BorderStyle.None,
@@ -85,13 +86,20 @@ namespace Fusion.Studio.Ui
             var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal,
                                              SplitterDistance = 330, FixedPanel = FixedPanel.Panel1,
                                              BackColor = UiTheme.Bg };
+            split.Panel1MinSize = 180;
             split.Panel1.Controls.Add(previewFrame);
             split.Panel2.Controls.Add(programInner);
             center.Controls.Add(split);
+            split.Panel1.Resize += delegate
+            {
+                int h = Math.Max(160, split.Panel1.ClientSize.Width * 9 / 16);
+                if (Math.Abs(previewFrame.Height - h) > 1 && h < split.Panel1.ClientSize.Height - 24)
+                    previewFrame.Height = h;      // 16:9, sin aplastar el programa
+            };
 
-            // ---------------- controles en vivo (derecha, modelados) ----------------
-            var right = new Panel { Dock = DockStyle.Right, Width = 232, BackColor = UiTheme.Panel,
-                                    Padding = new Padding(10, 10, 10, 8) };
+            // ---------------- controles en vivo (derecha, cuadrícula compacta) ----------------
+            var right = new Panel { Dock = DockStyle.Right, Width = RightWidth, BackColor = UiTheme.Panel,
+                                    Padding = new Padding(10, 10, 10, 8), AutoScroll = true };
             right.Paint += delegate(object s, PaintEventArgs e)
             {
                 using (var pen = new Pen(UiTheme.InputBorder))
@@ -115,7 +123,8 @@ namespace Fusion.Studio.Ui
             y += 42;
 
             btnSend = MakeLiveButton("Enviar a pantalla", "player-play", ref y, FusionButtonKind.Primary);
-            btnSend.Kbd = "Enter";
+            // v4.2.0 (G2): la pista «Enter» era falsa (Enter no enviaba nada) —
+            // se retira en lugar de secuestrar el Enter de los campos de texto.
             btnSend.Click += delegate
             {
                 var scn = CurrentScenarioUi;
@@ -127,44 +136,30 @@ namespace Fusion.Studio.Ui
                                          Location = new Point(12, y), AutoSize = true };
             right.Controls.Add(lblScreens); y += 22;
 
-            btnBlack = MakeLiveButton("Negro", "square", ref y, FusionButtonKind.Chip);
-            btnBlack.Kbd = "B";
-            btnBlack.Click += delegate { Live.Blank(Live.State.BlankMode == "black" ? "none" : "black"); };
-            right.Controls.Add(btnBlack); y += 36;
-
-            btnLogo = MakeLiveButton("Logo", "photo", ref y, FusionButtonKind.Chip);
-            btnLogo.Kbd = "L";
-            btnLogo.Click += delegate { Live.Blank(Live.State.BlankMode == "logo" ? "none" : "logo"); };
-            right.Controls.Add(btnLogo); y += 36;
-
-            btnClear = MakeLiveButton("Ocultar texto", "eye-off", ref y, FusionButtonKind.Chip);
-            btnClear.Kbd = "C";
-            btnClear.Click += delegate { Live.Blank(Live.State.BlankMode == "clear" ? "none" : "clear"); };
-            right.Controls.Add(btnClear); y += 36;
-
-            btnShow = MakeLiveButton("Mostrar", "eye", ref y, FusionButtonKind.Chip);
-            btnShow.Click += delegate { Live.Blank("none"); };
-            right.Controls.Add(btnShow); y += 40;
+            // v4.2.0 (C2): cuadrícula 2×2 — Negro/Logo y Ocultar/Mostrar comparten
+            // filas (antes 4 chips apilados consumían 144 px y empujaban el resto)
+            btnBlack = MakeGridButton(right, "Negro", "square", "B", 0, ref y, delegate
+            { Live.Blank(Live.State.BlankMode == "black" ? "none" : "black"); });
+            btnLogo = MakeGridButton(right, "Logo", "photo", "L", 1, ref y, delegate
+            { Live.Blank(Live.State.BlankMode == "logo" ? "none" : "logo"); });
+            y += 36;
+            btnClear = MakeGridButton(right, "Ocultar", "eye-off", "C", 0, ref y, delegate
+            { Live.Blank(Live.State.BlankMode == "clear" ? "none" : "clear"); });
+            btnShow = MakeGridButton(right, "Mostrar", "eye", null, 1, ref y, delegate { Live.Blank("none"); });
+            y += 40;
 
             var lblTools = new Label { Text = "HERRAMIENTAS", Font = UiTheme.SmallBold(), ForeColor = UiTheme.TextDim,
                                        Location = new Point(12, y), AutoSize = true };
             right.Controls.Add(lblTools); y += 22;
 
-            btnVerse = MakeLiveButton("Versículo rápido", "book", ref y, FusionButtonKind.Chip);
-            btnVerse.Kbd = "G";
-            btnVerse.Click += delegate { ShowQuickVerse(); };
-            right.Controls.Add(btnVerse); y += 36;
-
-            btnMsg = MakeLiveButton("Mensaje en pantalla", "app-window-bottom", ref y, FusionButtonKind.Chip);
-            btnMsg.Click += delegate { ShowMessageDialog(); };
-            right.Controls.Add(btnMsg); y += 36;
-
-            btnChords = MakeLiveButton("Acordes (músicos)", "piano", ref y, FusionButtonKind.Chip);
-            btnChords.Click += delegate { ShowChordsWindow(); };
-            right.Controls.Add(btnChords); y += 36;
-
-            // Clasificador / Historial (GUI web + función beta-1)
-            BuildWebExtras(right, ref y);
+            btnVerse = MakeGridButton(right, "Versículo", "book", "G", 0, ref y, delegate { ShowQuickVerse(); });
+            btnMsg = MakeGridButton(right, "Mensaje", "app-window-bottom", null, 1, ref y, delegate { ShowMessageDialog(); });
+            y += 36;
+            btnChords = MakeGridButton(right, "Acordes", "piano", null, 0, ref y, delegate { ShowChordsWindow(); });
+            btnSorter = MakeGridButton(right, "Clasificador", "layout-grid", null, 1, ref y, delegate { ShowSorter(); });
+            y += 36;
+            btnHistory = MakeGridButton(right, "Historial", "clock", null, 0, ref y, delegate { ShowHistory(); });
+            y += 40;
 
             // Escenario de músicos (Stage View beta-1): alerta, temporizador, tono/BPM
             BuildStageTools(right, ref y);
@@ -177,11 +172,10 @@ namespace Fusion.Studio.Ui
             txtHighlight = new FusionSearchBox
             {
                 LeftIcon = "wand",
-                Location = new Point(12, y), Size = new Size(206, 30)
+                Location = new Point(12, y), Size = new Size(RightWidth - 24, 30)
             };
             txtHighlight.Placeholder = "Palabras (p. ej. Dios amor)";
-            ToolTip tipHl = new ToolTip();
-            tipHl.SetToolTip(txtHighlight, "Palabras separadas por espacio. Enter aplica, vacío limpia.");
+            Tips.SetToolTip(txtHighlight, "Palabras separadas por espacio. Enter aplica, vacío limpia.");
             txtHighlight.Inner.KeyDown += delegate(object s, KeyEventArgs e)
             {
                 if (e.KeyCode == Keys.Enter) { ApplyHighlight(); e.SuppressKeyPress = true; }
@@ -192,12 +186,12 @@ namespace Fusion.Studio.Ui
             // Avance línea/diapositiva (referencia web) conmutable al vuelo
             btnAdvance = MakeLiveButton("Avance: línea por línea", "list", ref y, FusionButtonKind.Chip);
             btnAdvance.Click += delegate { ToggleAdvanceMode(); };
-            right.Controls.Add(btnAdvance); y += 38;
+            right.Controls.Add(btnAdvance); y += 36;
 
             var lblLines = new Label { Text = "LÍNEAS DEL ELEMENTO", Font = UiTheme.SmallBold(), ForeColor = UiTheme.TextDim,
                                        Location = new Point(12, y), AutoSize = true };
             right.Controls.Add(lblLines); y += 24;
-            linesPanel = new Panel { Location = new Point(12, y), Size = new Size(206, 220), AutoScroll = true,
+            linesPanel = new Panel { Location = new Point(12, y), Size = new Size(RightWidth - 24, 190), AutoScroll = true,
                                      BackColor = Color.White };
             linesPanel.Paint += delegate(object s, PaintEventArgs e)
             {
@@ -209,6 +203,19 @@ namespace Fusion.Studio.Ui
             presentPanel.Controls.Add(right);
         }
 
+        /// <summary>Botón chip de la cuadrícula 2×N del panel derecho (v4.2.0).</summary>
+        FusionButton MakeGridButton(Panel parent, string text, string icon, string kbd, int col, ref int y, EventHandler onClick)
+        {
+            var b = new FusionButton
+            {
+                Text = text, IconName = icon, Kind = FusionButtonKind.Chip, Kbd = kbd,
+                Location = new Point(12 + col * (GridW + 8), y), Size = new Size(GridW, 32)
+            };
+            b.Click += onClick;
+            parent.Controls.Add(b);
+            return b;
+        }
+
         FusionIconButton MakeLiveIcon(Panel parent, string icon, string tooltip, int y, int col)
         {
             var b = new FusionIconButton
@@ -216,7 +223,7 @@ namespace Fusion.Studio.Ui
                 IconName = icon,
                 Location = new Point(12 + col * 50, y)
             };
-            new ToolTip().SetToolTip(b, tooltip);
+            Tips.SetToolTip(b, tooltip);   // v4.2.0 (G12): tooltip compartido
             parent.Controls.Add(b);
             return b;
         }
@@ -413,7 +420,7 @@ namespace Fusion.Studio.Ui
                 {
                     Text = el.Lines[i],
                     AutoSize = false,
-                    Size = new Size(194, 24),
+                    Size = new Size(linesPanel.ClientSize.Width - 12, 24),
                     Location = new Point(4, y),
                     Font = on ? UiTheme.SmallBold() : UiTheme.Small(),
                     ForeColor = on ? UiTheme.AccentDark : UiTheme.TextDim,

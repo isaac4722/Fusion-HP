@@ -19,7 +19,10 @@ namespace Fusion.Studio.Ui
     {
         void BuildHome()
         {
-            homePanel = new Panel { Dock = DockStyle.Fill, BackColor = UiTheme.Bg, Visible = false };
+            // v4.2.0 (C3): AutoScroll — en el tamaño mínimo la última fila de
+            // mosaicos y los PROYECTOS RECIENTES quedaban FUERA de la vista y
+            // sin forma de alcanzarlos.
+            homePanel = new Panel { Dock = DockStyle.Fill, BackColor = UiTheme.Bg, Visible = false, AutoScroll = true };
             content.Controls.Add(homePanel);
 
             var title = new Label { Text = "¿Qué vas a hacer hoy?", Font = UiTheme.Title(), ForeColor = UiTheme.Text,
@@ -149,6 +152,7 @@ namespace Fusion.Studio.Ui
         {
             int x = 40, y = 90;
             int col = -1;
+            int maxY = y;
             foreach (Control c in homePanel.Controls)
             {
                 if (!(c is Panel) || c.Width != 250 || c.Height != 112) continue;
@@ -156,10 +160,16 @@ namespace Fusion.Studio.Ui
                 if (thisCol != col) { if (col >= 0) { y += 126; x = 40; } col = thisCol; }
                 c.Location = new Point(x, y);
                 x += 264;
+                maxY = Math.Max(maxY, c.Bottom);
             }
-            // sección de recientes (paridad web: tarjetas de presentaciones recientes)
-            if (lblRecents != null) lblRecents.Location = new Point(40, 604);
-            if (recentsList != null) recentsList.Location = new Point(40, 628);
+            // sección de recientes (paridad web): posicionada RESPECTO A LA ÚLTIMA
+            // fila de mosaicos — antes fija en y=604/628 y se cortaba al minimizar
+            if (lblRecents != null) lblRecents.Location = new Point(40, maxY + 20);
+            if (recentsList != null)
+            {
+                recentsList.Location = new Point(40, (lblRecents != null ? lblRecents.Bottom + 4 : maxY + 40));
+                recentsList.Width = Math.Max(320, homePanel.ClientSize.Width - 80);
+            }
         }
 
         // ------------------------------------------------------------ recientes (web)

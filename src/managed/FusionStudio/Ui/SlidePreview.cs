@@ -21,6 +21,15 @@ namespace Fusion.Studio.Ui
         bool blank = true;
         string blankMode = "black";
 
+        /// <summary>Ruta del logo de reposo (v4.2.0): la preview de la tecla L
+        /// muestra el MISMO logo que la salida — antes pintaba negro puro y el
+        /// operador no podía verificar el logo sin proyectarlo.</summary>
+        public static string LogoPath;
+
+        /// <summary>Fuente de reposo "logo" compartida (una sola instancia).</summary>
+        static Image cachedLogo;
+        static string cachedLogoPath;
+
         public SlidePreview()
         {
             SetStyle(System.Windows.Forms.ControlStyles.AllPaintingInWmPaint |
@@ -58,6 +67,17 @@ namespace Fusion.Studio.Ui
             {
                 using (var b = new SolidBrush(blankMode == "theme" && slide != null ? Parse(slide.Background.Color) : Color.Black))
                     g.FillRectangle(b, 0, 0, W, H);
+                if (blankMode == "logo")
+                {
+                    // v4.2.0: reposo «logo» dibuja el logo real configurado
+                    Image logo = LoadLogo();
+                    if (logo != null)
+                    {
+                        double sc = Math.Min((double)W / logo.Width, (double)H / logo.Height);
+                        int dw = (int)(logo.Width * sc), dh = (int)(logo.Height * sc);
+                        g.DrawImage(logo, (W - dw) / 2, (H - dh) / 2, dw, dh);
+                    }
+                }
                 return;
             }
             if (blank && blankMode == "clear")
@@ -128,9 +148,8 @@ namespace Fusion.Studio.Ui
             }
             else if (slide.Kind == "video")
             {
-                using (var f = new Font("Segoe UI", 11, FontStyle.Italic))
                 using (var b = new SolidBrush(Color.FromArgb(200, Color.White)))
-                    g.DrawString("▶ Video (se reproduce en la salida)", f, b, new RectangleF(8, H - 40, W - 16, 30));
+                    g.DrawString("▶ Video (se reproduce en la salida)", videoFont, b, new RectangleF(8, H - 40, W - 16, 30));
             }
             else if (slide.Lines.Count > 0)
             {
@@ -140,10 +159,19 @@ namespace Fusion.Studio.Ui
                     (float)((st.BoxW ?? 0.9) * W), (float)((st.BoxH ?? 0.84) * H));
 
                 // auto-ajuste de tamaño (igual que el núcleo)
+                // v4.2.0 (C6): se ELIMINÓ la doble escala del interlineado — lineH
+                // volvía a multiplicar por H/1080 después de que sizePt ya estaba
+                // escalado, y las líneas quedaban solapadas ~60 % en preview,
+                // miniaturas del programa y Clasificador. La fórmula ahora es la
+                // del núcleo: sizePt·spacing·96/72 (y auto-ajuste si no cabe).
                 float sizePt = (float)(st.Size ?? 48) * H / 1080f;   // escala respecto a 1080p
-                float lineH = sizePt * (float)(st.LineSpacing ?? 1.15) * 96f / 72f * (H / 1080f) * 1.15f;
+                float lineH = ComputeLineHeight(sizePt, (float)(st.LineSpacing ?? 1.15));
                 float total = lineH * slide.Lines.Count;
-                if (total > box.Height) { sizePt *= box.Height / total; lineH = sizePt * (float)(st.LineSpacing ?? 1.15) * 96f / 72f * (H / 1080f) * 1.15f; }
+                if (total > box.Height)
+                {
+                    sizePt *= box.Height / total;
+                    lineH = ComputeLineHeight(sizePt, (float)(st.LineSpacing ?? 1.15));
+                }
 
                 using (var f = FontVault.Create(st.Font ?? "Segoe UI", Math.Max(6, sizePt),
                                         ((st.Bold ?? false) ? FontStyle.Bold : FontStyle.Regular) |
@@ -235,6 +263,35 @@ namespace Fusion.Studio.Ui
                 }
             }
         }
+
+        /// <summary>Interlineado de la preview (v4.2.0): MISMA fórmula que el núcleo
+        /// C++ — pts→px (96/72) × interlineado del estilo. Pública para las pruebas
+        /// de regresión de la fórmula (C6).</summary>
+        public static float ComputeLineHeight(float sizePt, float lineSpacing)
+        {
+            return sizePt * Math.Max(0.5f, lineSpacing) * 96f / 72f;
+        }
+
+        static Image LoadLogo()
+        {
+            string p = LogoPath;
+            if (string.IsNullOrEmpty(p) || !System.IO.File.Exists(p)) return null;
+            if (cachedLogo != null && string.Equals(cachedLogoPath, p, StringComparison.OrdinalIgnoreCase))
+                return cachedLogo;
+            try
+            {
+                if (cachedLogo != null) cachedLogo.Dispose();
+                using (var src = Image.FromFile(p))
+                {
+                    cachedLogo = new Bitmap(src);        // copia: no bloquea el archivo
+                    cachedLogoPath = p;
+                }
+            }
+            catch { cachedLogo = null; }
+            return cachedLogo;
+        }
+
+        static readonly Font videoFont = new Font("Segoe UI", 11f, FontStyle.Italic);   // v4.2.0: compartida (fuga por frame)
 
         static Color Parse(string hex)
         {

@@ -104,7 +104,9 @@ namespace Fusion.Studio.Ui.Widgets
                     fg = UiTheme.Text;
                     break;
             }
-            if (disabled) { bg = Color.Transparent; border = UiTheme.Border; fg = UiTheme.TextDim; }
+            // v4.2.0: disabled VISIBLE — fondo y borde perceptibles (antes quedaba
+            // un botón fantasma blanco sobre blanco, parecía roto).
+            if (disabled) { bg = Color.FromArgb(250, 249, 248); border = UiTheme.ChipBorder; fg = UiTheme.TextDim; }
 
             Rectangle r = new Rectangle(0, 0, Width - 1, Height - 1);
             using (var path = Rounded(r, 5))

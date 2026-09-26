@@ -21,7 +21,7 @@ namespace Fusion.Studio.Ui
     {
         void BuildLibrary(Panel parent)
         {
-            libraryPanel = new Panel { Dock = DockStyle.Left, Width = 302, BackColor = UiTheme.Panel,
+            libraryPanel = new Panel { Dock = DockStyle.Left, Width = 340, BackColor = UiTheme.Panel,
                                        Padding = new Padding(0, 10, 0, 0) };
             libraryPanel.Paint += delegate(object s, PaintEventArgs e)
             {
@@ -30,7 +30,7 @@ namespace Fusion.Studio.Ui
             };
             parent.Controls.Add(libraryPanel);
 
-            var searchBox = new FusionSearchBox { Location = new Point(10, 8), Size = new Size(272, 30) };
+            var searchBox = new FusionSearchBox { Location = new Point(10, 8), Size = new Size(318, 30) };
             searchBox.Placeholder = "Buscar (Ctrl+K)…";
             searchBox.InnerTextChanged += delegate
             {

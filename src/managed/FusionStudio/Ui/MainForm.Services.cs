@@ -62,6 +62,8 @@ namespace Fusion.Studio.Ui
                 lp.Set("path", JsonValue.Make(Settings.LogoPath));
                 Live.PostCore("blanklogo", lp);
             }
+            // v4.2.0: la preview del reposo «logo» dibuja el logo real
+            SlidePreview.LogoPath = Settings.LogoPath;
 
             UpdateStatus();
         }

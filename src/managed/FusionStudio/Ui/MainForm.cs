@@ -95,10 +95,11 @@ namespace Fusion.Studio.Ui
         // present
         Panel presentPanel;
         SlidePreview preview;
-        Panel programPanel;
         ListBox programList;
         Panel linesPanel;
-        Control liveControls;
+        // v4.2.0 (G7): retirados «programPanel» (se construía con borde y jamás
+        // se agregó a ningún padre: huérfano de refactor) y «liveControls»
+        // (declarado y jamás usado).
 
         // biblioteca
         Panel libraryPanel;
@@ -117,6 +118,10 @@ namespace Fusion.Studio.Ui
         Panel homePanel;
 
         bool suppressPreviewRefresh;
+
+        // v4.2.0 (G12): UN ToolTip compartido para toda la ventana — crear uno
+        // por control fuga handles de componente sin contenedor ni Dispose.
+        internal readonly ToolTip Tips = new ToolTip();
 
         public MainForm()
         {
@@ -196,13 +201,17 @@ namespace Fusion.Studio.Ui
             topBar.Controls.Add(title);
 
             lblProject = new Label { Text = "Sin proyecto", Font = UiTheme.Small(), ForeColor = UiTheme.TextDim,
-                                     Location = new Point(170, 24), AutoSize = true, BackColor = Color.Transparent };
+                                     AutoSize = false, AutoEllipsis = true, BackColor = Color.Transparent,
+                                     Location = new Point(170, 24), Size = new Size(260, 18),
+                                     TextAlign = ContentAlignment.MiddleLeft };
             topBar.Controls.Add(lblProject);
 
-            // Pestañas de modo (chips modelados con iconos, como la referencia)
-            btnModeHome = MakeModeButton("Inicio", "home", 460);
-            btnModeStudio = MakeModeButton("Estudio", "pencil", 540);
-            btnModePresent = MakeModeButton("Presentación", "device-desktop", 620);
+            // Pestañas de modo (chips modelados con iconos, como la referencia).
+            // v4.2.0: tamaño por contenido (el texto fijo 7 px/letra dejaba
+            // «Presentación» con elipsis) y reflow al redimensionar.
+            btnModeHome = MakeModeButton("Inicio", "home");
+            btnModeStudio = MakeModeButton("Estudio", "pencil");
+            btnModePresent = MakeModeButton("Presentación", "device-desktop");
             btnModeHome.Click += delegate { SetMode(Mode.Home); };
             btnModeStudio.Click += delegate { SetMode(Mode.Studio); };
             btnModePresent.Click += delegate { SetMode(Mode.Present); };
@@ -235,8 +244,9 @@ namespace Fusion.Studio.Ui
             topBar.Controls.Add(lblClock);
 
             // posición derecha exacta al cambiar tamaño
-            topBar.Resize += delegate { LayoutTopRight(); };
+            topBar.Resize += delegate { LayoutTopRight(); LayoutModeButtons(); };
             LayoutTopRight();
+            LayoutModeButtons();   // v4.2.0: primera posición de los chips de modo
             Controls.Add(topBar);
         }
 
@@ -259,16 +269,28 @@ namespace Fusion.Studio.Ui
             lblLive.Location = new Point(right - lblLive.PreferredWidth - 4, 16);
         }
 
-        FusionButton MakeModeButton(string text, string icon, int x)
+        FusionButton MakeModeButton(string text, string icon)
         {
             var b = new FusionButton
             {
                 Text = text, IconName = icon, Kind = FusionButtonKind.Subtle,
-                Location = new Point(x, 8), AutoSize = false, Size = new Size(text.Length * 7 + 48, 32),
+                Location = new Point(0, 8), AutoSize = false,
                 Anchor = AnchorStyles.Top | AnchorStyles.Left
             };
+            b.Size = new Size(Math.Max(96, b.GetPreferredSize(Size.Empty).Width), 32);
             topBar.Controls.Add(b);
             return b;
+        }
+
+        // v4.2.0: fila de modos centrada tras el proyecto, sin solapes con él
+        void LayoutModeButtons()
+        {
+            int x = Math.Max(300, lblProject.Left + Math.Min(lblProject.Width, 200) + 16);
+            btnModeHome.Location = new Point(x, 8);
+            x += btnModeHome.Width + 6;
+            btnModeStudio.Location = new Point(x, 8);
+            x += btnModeStudio.Width + 6;
+            btnModePresent.Location = new Point(x, 8);
         }
 
         // ------------------------------------------------------------ barra de estado
@@ -320,28 +342,38 @@ namespace Fusion.Studio.Ui
                 // instalación única en el primer arranque, después solo consulta.
                 try { Live.EnsureBundledBibles(); } catch { }
                 bool ok = Live.ConnectCore(1);   // Motor ya lanzado por el bootstrap
-                BeginInvoke((Action)delegate
+                // v4.2.0 (G8): BeginInvoke protegido — cerrar la ventana durante
+                // el arranque (≤1 s) ya no tumba el proceso con una excepción no
+                // observada desde el hilo de ThreadPool.
+                try
                 {
-                    UpdateStatus();
-                    if (ok && !string.IsNullOrEmpty(Settings.LastProjectPath) &&
-                        System.IO.File.Exists(Settings.LastProjectPath))
+                    BeginInvoke((Action)delegate
                     {
-                        Live.LoadProject(Settings.LastProjectPath);
+                        UpdateStatus();
+                        if (ok && !string.IsNullOrEmpty(Settings.LastProjectPath) &&
+                            System.IO.File.Exists(Settings.LastProjectPath))
+                        {
+                            Live.LoadProject(Settings.LastProjectPath);
+                            RefreshProgram();
+                        }
+                        else if (ok)
+                        {
+                            // sin proyecto local: sincronizar con el Motor (p.ej. GUI
+                            // reabierta tras un cierre con el servicio en marcha)
+                            Live.SyncFromMotor();
+                            RefreshProgram();
+                        }
+                        // v4.2.0 (C4): la biblioteca SIEMPRE se refresca — antes solo
+                        // se llenaba con proyecto cargado y el primer arranque mostraba
+                        // Cantos/Biblia/Medios/Temas VACÍOS con las 4 biblias ya instaladas.
                         RefreshLibrary();
-                        RefreshProgram();
-                    }
-                    else if (ok)
-                    {
-                        // sin proyecto local: sincronizar con el Motor (p.ej. GUI
-                        // reabierta tras un cierre con el servicio en marcha)
-                        Live.SyncFromMotor();
-                        RefreshProgram();
-                    }
-                    // [v3.0.0 — bug «ventana de proyección»] Aplica la configuración
-                    // completa AL ARRANCAR: monitor de salida, logo de reposo, avance
-                    // y reloj quedan activos sin pasar por Configuración.
-                    ApplySettings();
-                });
+                        // [v3.0.0 — bug «ventana de proyección»] Aplica la configuración
+                        // completa AL ARRANCAR: monitor de salida, logo de reposo, avance
+                        // y reloj quedan activos sin pasar por Configuración.
+                        ApplySettings();
+                    });
+                }
+                catch { /* forma cerrada durante el arranque */ }
             });
             UpdateStatus();
         }
@@ -402,7 +434,17 @@ namespace Fusion.Studio.Ui
         // ------------------------------------------------------------ atajos [SPEC §6.5.1]
         void OnGlobalKey(object sender, KeyEventArgs e)
         {
-            bool typing = ActiveControl is TextBox || ActiveControl is ComboBox;
+            // v4.2.0 (G2): el texto del resaltado/alertas vive en FusionInput —
+            // el Enter y las teclas de navegación no deben robarse mientras se
+            // escribe en ellos.
+            bool typing = ActiveControl is TextBox || ActiveControl is ComboBox ||
+                          ActiveControl is FusionInput;
+            if (e.Control && e.KeyCode == Keys.K)
+            {
+                FocusBibleSearch();          // v4.2.0 (G1): Ctrl+K real (la pista ya estaba)
+                e.Handled = true;
+                return;
+            }
             if (e.KeyCode == Keys.Escape && !typing)
             {
                 if (mode == Mode.Present)
@@ -459,6 +501,7 @@ namespace Fusion.Studio.Ui
             // El Motor queda autónomo (teclado sobre la salida, Alt+F4 apaga) y
             // al reabrir la GUI todo se sincroniza desde motor.state.
             clockTimer.Stop();
+            Tips.Dispose();   // v4.2.0 (G12): liberar el tooltip compartido
             bool keep = Settings.KeepEngineAlive && Live.State.HasProgram;
             try
             {

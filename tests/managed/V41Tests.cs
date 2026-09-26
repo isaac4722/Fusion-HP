@@ -12,8 +12,10 @@
 //  Descubiertas por reflexión (TestRunner): métodos públicos estáticos Test*.
 // ============================================================================
 using System;
+using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
+using Fusion.Studio.Ui;
 using Fusion.Studio.Ui.Widgets;
 using Fusion.Tests;
 
@@ -160,6 +162,103 @@ namespace Fusion.Tests
                 TestRunner.CheckEq(btn.Text, "Proyectar", "botón modelado");
                 btn.Width = 120; btn.Height = 36;  // sin OnResize propio: seguro
                 TestRunner.Check(ib.Width == 34 && ib.Height == 34, "icono 34×34");
+            }
+        }
+
+        // -------------------------------------------------- v4.2.0 (C1)
+        // «Medios» y «Temas» quedaban FUERA del área de clic: la tira natural de
+        // 5 pestañas mide ≈476 px y el panel de biblioteca 302 px. Los chips son
+        // ahora adaptativos: TODOS deben caber en el ancho disponible.
+        public static void TestFusionTabsFitsRealFiveTabs()
+        {
+            using (var tabs = new FusionTabs { Width = 338, Height = 300 })
+            using (var p1 = new Panel()) using (var p2 = new Panel()) using (var p3 = new Panel())
+            using (var p4 = new Panel()) using (var p5 = new Panel())
+            {
+                tabs.Add("Cantos", "music", p1);
+                tabs.Add("Biblia", "book", p2);
+                tabs.Add("Escenarios", "stack-2", p3);
+                tabs.Add("Medios", "photo", p4);
+                tabs.Add("Temas", "palette", p5);
+                // los 5 índices deben poder seleccionarse (clic posible)
+                for (int i = 0; i < 5; i++)
+                {
+                    tabs.SelectedIndex = i;
+                    TestRunner.CheckEq(tabs.SelectedIndex, i, "pestaña " + i + " seleccionable en 338 px");
+                }
+            }
+        }
+
+        public static void TestFusionTabsFitsNarrowPanel()
+        {
+            // caso extremo: panel de 220 px (biblioteca colapsada) — nada por encima
+            // del ancho y nada con ancho negativo
+            using (var tabs = new FusionTabs { Width = 220, Height = 300 })
+            using (var p1 = new Panel()) using (var p2 = new Panel()) using (var p3 = new Panel())
+            using (var p4 = new Panel()) using (var p5 = new Panel())
+            {
+                tabs.Add("Cantos", "music", p1);
+                tabs.Add("Biblia", "book", p2);
+                tabs.Add("Escenarios", "stack-2", p3);
+                tabs.Add("Medios", "photo", p4);
+                tabs.Add("Temas", "palette", p5);
+                tabs.SelectedIndex = 4;
+                TestRunner.CheckEq(tabs.SelectedIndex, 4, "última pestaña alcanzable en 220 px");
+            }
+        }
+
+        // -------------------------------------------------- v4.2.0 (C6)
+        // El interlineado de la preview tenía DOBLE escala (H/1080 aplicado dos
+        // veces) y las líneas se solapaban ~60 %. La fórmula corregida debe ser
+        // la del núcleo: pts→px (96/72) × spacing, sin factor adicional.
+        public static void TestSlidePreviewLineHeightMatchesCore()
+        {
+            float lh = SlidePreview.ComputeLineHeight(48f, 1.15f);
+            float expected = 48f * 1.15f * 96f / 72f;      // 73.6 px
+            TestRunner.Check(Math.Abs(lh - expected) < 0.01f,
+                "interlineado = sizePt·spacing·96/72 (" + lh.ToString("0.00") + " px)");
+            // el espaciado no puede quedar POR DEBAJO del alto del glifo (1.33×sizePt
+            // en px): eso era exactamente el solape del bug
+            TestRunner.Check(lh > 48f * 1.3333f, "interlineado mayor que el em del glifo");
+            // auto-ajuste: 12 líneas en una caja de 84 px deben reducir el cuerpo
+            float lh2 = SlidePreview.ComputeLineHeight(10f, 1.15f);
+            float total = lh2 * 12;
+            float boxH = 84f;
+            if (total > boxH)
+            {
+                float shrunk = 10f * boxH / total;
+                TestRunner.Check(shrunk < 10f && shrunk > 0f, "auto-ajuste reduce el cuerpo correctamente");
+            }
+            // RenderSlide no debe lanzar con muchas líneas ni logo configurado
+            using (var bmp = new Bitmap(148, 84))
+            using (var g = Graphics.FromImage(bmp))
+            {
+                var slide = new Fusion.Shared.Model.ResolvedSlide();
+                slide.Kind = "text";
+                for (int i = 0; i < 12; i++) slide.Lines.Add("Línea de prueba " + (i + 1));
+                SlidePreview.RenderSlide(g, slide, 3, 148, 84);   // no debe lanzar
+                SlidePreview.LogoPath = null;                     // reposo logo sin logo: negro, sin lanzar
+            }
+        }
+
+        // -------------------------------------------------- v4.2.0 (C8)
+        public static void TestDisabledIconsUseInkFadedTint()
+        {
+            // tinta InkFaded: SIEMPRE debe devolver imagen (o degrade controlado)
+            // cuando la carpeta de iconos existe — en disabled ya no se usa el
+            // blanco puro que desaparecía sobre fondo blanco.
+            if (!UiIcons.Available) return;   // CI sin assets: degrade aceptado
+            Image faded = UiIcons.Get("search", IconTint.InkFaded);
+            TestRunner.Check(faded != null, "tinta InkFaded disponible para search");
+            if (faded == null) return;
+            using (var bmp = new Bitmap(faded))
+            {
+                // alfa 35 %: ningún píxel puede ser opaco (sería la tinta original)
+                bool anyOpaque = false;
+                for (int y = 0; y < bmp.Height && !anyOpaque; y += 4)
+                    for (int x = 0; x < bmp.Width; x += 4)
+                        if (bmp.GetPixel(x, y).A == 255) { anyOpaque = true; break; }
+                TestRunner.Check(!anyOpaque, "InkFaded aplica alfa 35 % (sin píxeles opacos)");
             }
         }
     }

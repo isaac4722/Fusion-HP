@@ -26,6 +26,15 @@ namespace Fusion.Studio.Ui.Widgets
         readonly List<TabInfo> tabs = new List<TabInfo>();
         readonly Panel content;
         int selected = -1;
+        // v4.2.0 (C1): chips ADAPTATIVOS — cuando la tira natural no cabe en el
+        // ancho del control, cada chip se recorta con elipsis en lugar de quedar
+        // FUERA del área de clic (los títulos largos dejaban pestañas inalcanzables).
+        // ToolTip por chip para ver el título completo recortado.
+        readonly ToolTip tips = new ToolTip();
+        int minChipW = 52;
+
+        /// <summary>Ancho mínimo de chip (icono + espacio de elipsis).</summary>
+        public int MinChipWidth { get { return minChipW; } set { minChipW = Math.Max(36, value); MeasureTabs(); Invalidate(); } }
 
         public event EventHandler SelectedIndexChanged;
 
@@ -72,6 +81,13 @@ namespace Fusion.Studio.Ui.Widgets
             }
         }
 
+        // v4.2.0: liberar el ToolTip del control
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing && tips != null) tips.Dispose();
+            base.Dispose(disposing);
+        }
+
         void SelectPage()
         {
             for (int i = 0; i < tabs.Count; i++)
@@ -80,16 +96,60 @@ namespace Fusion.Studio.Ui.Widgets
 
         void MeasureTabs()
         {
-            int x = 2;
             // Fuente compartida de UiTheme (v2.2.1): NUNCA disponer — se cachea
             // a nivel de proceso y se usa en cada repintado.
             Font f = UiTheme.Normal();
+            int gap = 6;
+            int avail = Math.Max(0, Width - 4);
+
+            // 1) anchos naturales
+            int natural = 0;
             foreach (var t in tabs)
             {
                 Size ts = TextRenderer.MeasureText(t.Title, f);
-                t.W = ts.Width + 20 + (string.IsNullOrEmpty(t.Icon) ? 0 : 24);
-                t.X = x;
-                x += t.W + 6;
+                t.W = Math.Max(minChipW, ts.Width + 20 + (string.IsNullOrEmpty(t.Icon) ? 0 : 24));
+                natural += t.W;
+            }
+            natural += Math.Max(0, tabs.Count - 1) * gap;
+
+            // 2) desbordamiento → recortar proporcionalmente hacia el mínimo
+            //    (el título ya se dibuja con EndEllipsis, así que un chip más
+            //    estrecho solo acorta el texto visible, nunca rompe el clic)
+            if (natural > avail && tabs.Count > 0)
+            {
+                int needed = natural - avail;                       // px a liberar
+                int excessTotal = 0;
+                foreach (var t in tabs) excessTotal += Math.Max(0, t.W - minChipW);
+                if (excessTotal > 0)
+                {
+                    foreach (var t in tabs)
+                    {
+                        int excess = Math.Max(0, t.W - minChipW);
+                        int cut = (int)((long)excess * needed / excessTotal);
+                        t.W = Math.Max(minChipW, t.W - Math.Min(excess, cut));
+                    }
+                }
+                // pasada final: mientras no quepa, recorta 1 px del más ancho
+                for (int guard = 0; guard < 4096; guard++)
+                {
+                    int used = 0;
+                    foreach (var t in tabs) used += t.W;
+                    used += Math.Max(0, tabs.Count - 1) * gap;
+                    if (used <= avail) break;
+                    int widest = -1, w = minChipW;
+                    for (int i = 0; i < tabs.Count; i++)
+                        if (tabs[i].W > w) { w = tabs[i].W; widest = i; }
+                    if (widest < 0) break;                          // todo al mínimo: se sale, pero clicable
+                    tabs[widest].W--;
+                }
+            }
+
+            // 3) posiciones (el tooltip completo se pone en OnMouseMove)
+            int px = 2;
+            foreach (var t in tabs)
+            {
+                t.X = px;
+                px += t.W + gap;
             }
         }
 
@@ -102,6 +162,7 @@ namespace Fusion.Studio.Ui.Widgets
         protected override void OnResize(EventArgs e)
         {
             base.OnResize(e);
+            MeasureTabs();   // v4.2.0 (C1): re-medir al cambiar el ancho disponible
             LayoutContent();
         }
 
@@ -124,12 +185,16 @@ namespace Fusion.Studio.Ui.Widgets
         protected override void OnMouseMove(MouseEventArgs e)
         {
             bool changed = false;
+            TabInfo under = null;
             foreach (var t in tabs)
             {
-                bool hov = e.Y >= 6 && e.Y < HeaderHeight - 6 &&
-                           e.X >= t.X && e.X < t.X + t.W;
+                bool hov = Enabled && e.Y >= 6 && e.Y < HeaderHeight - 6 &&
+                           e.X >= t.X && e.X < t.X + t.W;   // v4.2.0: sin hover en disabled
                 if (t.Hover != hov) { t.Hover = hov; changed = true; }
+                if (hov) under = t;
             }
+            // v4.2.0: tooltip del chip bajo el cursor (títulos recortados)
+            tips.SetToolTip(this, under != null ? under.Title : null);
             if (changed) Invalidate();
             base.OnMouseMove(e);
         }
@@ -187,8 +252,9 @@ namespace Fusion.Studio.Ui.Widgets
                 int x = r.X + 10;
                 if (!string.IsNullOrEmpty(t.Icon))
                 {
-                    // v4.1.0: icono blanco (tenue) cuando el control está deshabilitado
-                    UiIcons.Draw(g, t.Icon, Enabled ? IconTint.Ink : IconTint.White, x, r.Y + (r.Height - 20) / 2);
+                    // v4.2.0 (C8): en disabled el icono pasa a tinta tenue (35 %) —
+                    // el blanco desaparecía sobre el fondo blanco del chip.
+                    UiIcons.Draw(g, t.Icon, Enabled ? IconTint.Ink : IconTint.InkFaded, x, r.Y + (r.Height - 20) / 2);
                     x += 20 + 4;
                 }
                 Color fg = !Enabled ? UiTheme.TextDim : (on ? UiTheme.Text : UiTheme.TextDim);

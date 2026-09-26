@@ -11,7 +11,7 @@ using System.IO;
 
 namespace Fusion.Studio.Ui.Widgets
 {
-    public enum IconTint { Ink, White, Accent }
+    public enum IconTint { Ink, White, Accent, InkFaded }
 
     public static class UiIcons
     {
@@ -40,13 +40,15 @@ namespace Fusion.Studio.Ui.Widgets
         public static bool Available { get { return Directory.Exists(Root); } }
 
         /// <summary>Icono 20 px en la tinta pedida (null si no existe: la UI
-        /// degrada a texto plano, nunca falla por un asset).</summary>
+        /// degrada a texto plano, nunca falla por un asset).
+        /// v4.2.0 (C8): InkFaded = tinta normal al 35 % — en superficies blancas
+        /// el blanco puro desaparecía (buscador/chips deshabilitados sin icono).</summary>
         public static Image Get(string name, IconTint tint)
         {
             if (string.IsNullOrEmpty(name)) return null;
             string set = tint == IconTint.White ? "white20"
                        : tint == IconTint.Accent ? "accent20" : "ink20";
-            string key = set + "/" + name;
+            string key = set + "/" + name + (tint == IconTint.InkFaded ? "@faded" : "");
             Image img;
             if (cache.TryGetValue(key, out img)) return img;
             try
@@ -56,6 +58,24 @@ namespace Fusion.Studio.Ui.Widgets
                 using (Image src = Image.FromFile(p))
                 {
                     Bitmap copy = new Bitmap(src);   // copia: no bloquea el PNG
+                    if (tint == IconTint.InkFaded)
+                    {
+                        // mismo tratamiento que FusionIconButton.DrawIcon: alfa 35 %
+                        var tmp = new Bitmap(copy.Width, copy.Height);
+                        using (var attrs = new System.Drawing.Imaging.ImageAttributes())
+                        {
+                            attrs.SetColorMatrix(new System.Drawing.Imaging.ColorMatrix
+                            {
+                                Matrix33 = 0.35f                        // canal alfa × 0.35
+                            });
+                            using (var g2 = Graphics.FromImage(tmp))
+                                g2.DrawImage(copy, new Rectangle(0, 0, copy.Width, copy.Height),
+                                             0, 0, copy.Width, copy.Height,
+                                             GraphicsUnit.Pixel, attrs);
+                        }
+                        copy.Dispose();
+                        copy = tmp;
+                    }
                     cache[key] = copy;
                     return copy;
                 }

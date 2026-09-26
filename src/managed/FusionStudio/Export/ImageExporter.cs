@@ -81,11 +81,17 @@ namespace Fusion.Studio.Export
                 var st = s.Style;
                 var box = new RectangleF((float)((st.BoxX ?? 0.05) * W), (float)((st.BoxY ?? 0.08) * H),
                                          (float)((st.BoxW ?? 0.9) * W), (float)((st.BoxH ?? 0.84) * H));
-                float sizePt = (float)(st.Size ?? 48) * H / 720f;
-                float lineH = sizePt * (float)(st.LineSpacing ?? 1.15) * 1.35f;
+                // v4.2.0 (C6): MISMA fórmula que la preview y el núcleo (antes H/720
+                // + factor 1.35 propio: lo exportado no coincidía con lo previsualizado)
+                float sizePt = (float)(st.Size ?? 48) * H / 1080f;
+                float lineH = Fusion.Studio.Ui.SlidePreview.ComputeLineHeight(sizePt, (float)(st.LineSpacing ?? 1.15));
                 float total = lineH * s.Lines.Count;
-                if (total > box.Height) { sizePt *= box.Height / total; lineH = sizePt * (float)(st.LineSpacing ?? 1.15) * 1.35f; }
-                using (var f = new Font(st.Font ?? "Segoe UI", Math.Max(8, sizePt),
+                if (total > box.Height)
+                {
+                    sizePt *= box.Height / total;
+                    lineH = Fusion.Studio.Ui.SlidePreview.ComputeLineHeight(sizePt, (float)(st.LineSpacing ?? 1.15));
+                }
+                using (var f = Fusion.Shared.Media.FontVault.Create(st.Font ?? "Segoe UI", Math.Max(8, sizePt),
                                         ((st.Bold ?? false) ? FontStyle.Bold : FontStyle.Regular)))
                 {
                     var sf = new StringFormat();

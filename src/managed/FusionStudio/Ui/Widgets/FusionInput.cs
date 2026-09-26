@@ -169,9 +169,10 @@ namespace Fusion.Studio.Ui.Widgets
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
-            // v4.1.0: icono tenue cuando el control está deshabilitado
+            // v4.2.0 (C8): icono en tinta tenue (35 %) cuando está deshabilitado —
+            // el blanco puro era invisible sobre el fondo blanco del buscador.
             UiIcons.Draw(e.Graphics, string.IsNullOrEmpty(LeftIcon) ? "search" : LeftIcon,
-                Enabled ? IconTint.Ink : IconTint.White, 10, (Height - 20) / 2);
+                Enabled ? IconTint.Ink : IconTint.InkFaded, 10, (Height - 20) / 2);
         }
     }
 }
