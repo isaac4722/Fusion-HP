@@ -29,8 +29,8 @@
       <HintPath>..\..\..\third_party\net\NLog\4.7.15\NLog.dll</HintPath>
       <Private>true</Private>
     </Reference>
-    <Reference Include="PdfSharp">
-      <HintPath>..\..\..\third_party\net\PdfSharp\1.50.5147\PdfSharp.dll</HintPath>
+    <Reference Include="PdfSharp-wpf">
+      <HintPath>..\..\..\third_party\net\PdfSharp\1.50.5147\PdfSharp-wpf.dll</HintPath>
       <Private>true</Private>
     </Reference>
     <!-- DocumentFormat.OpenXml 2.7.2 (MIT, net40) — SOLO FusionStudio net48;

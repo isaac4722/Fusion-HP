@@ -131,10 +131,6 @@ namespace Fusion.Studio.Export
             return new XSolidBrush(XColor.FromArgb(argb));
         }
 
-        [System.Runtime.InteropServices.DllImport("gdi32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
-        static extern int AddFontResourceExW(string lpszFilename, uint fl, IntPtr pdv);
-        const uint FR_PRIVATE = 0x10;   // visible solo para este proceso (sin instalar)
-
         static void RegisterProductFonts()
         {
             if (_fontsRegistered) return;
@@ -143,11 +139,11 @@ namespace Fusion.Studio.Export
             {
                 string dir = FontsDir();
                 if (dir == null) return;
-                // v4.1.0: registro GDI privado (FR_PRIVATE, sin escribir nada en
-                // el sistema): GDI+ resuelve la familia y PdfSharp la embebe por
-                // GetFontData — igual que hizo con Arial en las pruebas CI.
+                // v4.1.0: XPrivateFontCollection de la build WPF — la typeface
+                // conserva la ruta del archivo y PdfSharp la EMBEBE de verdad
+                // (la build GDI sustituye fuentes privadas por la del sistema).
                 foreach (string f in Directory.GetFiles(dir, "*.ttf"))
-                    AddFontResourceExW(f, FR_PRIVATE, IntPtr.Zero);
+                    XPrivateFontCollection.AddFont(f);
             }
             catch { /* sin fuentes privadas se cae a las del sistema */ }
         }

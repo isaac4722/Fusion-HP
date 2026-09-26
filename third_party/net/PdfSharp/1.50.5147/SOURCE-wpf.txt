@@ -1,0 +1,1 @@
+PDFsharp-WPF 1.50.5147 (MIT, net30) — variante WPF para FusionStudio net48: incrustación real de fuentes privadas [DEPENDENCIAS.md]
