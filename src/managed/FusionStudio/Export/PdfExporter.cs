@@ -131,48 +131,96 @@ namespace Fusion.Studio.Export
             return new XSolidBrush(XColor.FromArgb(argb));
         }
 
+#if LITE
+        // Lite (PdfSharp 1.50 GDI): la API de fuentes privadas es un stub y la
+        // build GDI sustituye familias privadas — el export Lite usa la cara de
+        // sistema (perfil B reducido, funcional y Unicode vía GDI+).
+        static void RegisterProductFonts() { _fontsRegistered = true; }
+#else
+        // Studio (PDFsharp 6.1.1): IFontResolver con los BYTES de las fuentes del
+        // producto → incrustación REAL de Outfit/Cormorant Garamond/Libre
+        // Baskerville (motivo de la desviación de versión en DEPENDENCIAS.md:
+        // la 1.50 trae XPrivateFontCollection stub y la GDI sustituye caras).
+        sealed class ProductFontResolver : PdfSharp.Fonts.IFontResolver
+        {
+            static readonly Dictionary<string, byte[]> _cache =
+                new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase);
+
+            public PdfSharp.Fonts.FontResolverInfo ResolveTypeface(string familyName, bool bold, bool italic)
+            {
+                return new PdfSharp.Fonts.FontResolverInfo(FaceFor(familyName, bold, italic));
+            }
+
+            public byte[] GetFont(string faceName)
+            {
+                lock (_cache)
+                {
+                    byte[] data;
+                    if (!_cache.TryGetValue(faceName, out data))
+                    {
+                        string file = FileForFace(faceName);
+                        string path = Path.Combine(Path.Combine(FontsRoot(), "fonts"), file);
+                        if (!File.Exists(path)) path = Path.Combine(Path.Combine(FontsRoot(), "fonts"), "Outfit-Regular.ttf");
+                        data = File.ReadAllBytes(path);
+                        _cache[faceName] = data;
+                    }
+                    return data;
+                }
+            }
+
+            static string FaceFor(string family, bool bold, bool italic)
+            {
+                string f = (family ?? "").Trim().ToLowerInvariant();
+                if (f.StartsWith("cormorant"))
+                {
+                    if (bold && italic) return "cormorant-bi";
+                    if (bold) return "cormorant-b";
+                    if (italic) return "cormorant-i";
+                    return "cormorant-r";
+                }
+                if (f.StartsWith("libre"))
+                    return italic ? "baskerville-i" : "baskerville-r";
+                // Outfit o cualquier familia desconocida: la cara del producto
+                return bold ? "outfit-b" : "outfit-r";
+            }
+
+            static string FileForFace(string face)
+            {
+                switch (face)
+                {
+                    case "outfit-b": return "Outfit-Bold.ttf";
+                    case "cormorant-r": return "CormorantGaramond-Medium.ttf";
+                    case "cormorant-b": return "CormorantGaramond-Bold.ttf";
+                    case "cormorant-i": return "CormorantGaramond-Italic.ttf";
+                    case "cormorant-bi": return "CormorantGaramond-Bold.ttf";
+                    case "baskerville-r": return "LibreBaskerville-Regular.ttf";
+                    case "baskerville-i": return "LibreBaskerville-Italic.ttf";
+                    default: return "Outfit-Regular.ttf";
+                }
+            }
+        }
+
+        static string FontsRoot()
+        {
+            // raíz que contiene resources/fonts — mismo paseo que FontsDir()
+            for (string d = AppDomain.CurrentDomain.BaseDirectory; d != null && d.Length > 3;
+                 d = Path.GetDirectoryName(d))
+            {
+                if (Directory.Exists(Path.Combine(Path.Combine(d, "resources"), "fonts"))) return d;
+            }
+            return AppDomain.CurrentDomain.BaseDirectory;
+        }
+
         static void RegisterProductFonts()
         {
             if (_fontsRegistered) return;
             _fontsRegistered = true;
-            try
-            {
-                string dir = FontsDir();
-                if (dir == null) return;
-                // v4.1.0: XPrivateFontCollection (build WPF) vía AddFont(Stream, name)
-                // — AddFont(string) es un STUB con NotImplementedException en
-                // 1.50.5147. La clave es el nombre de familia que resuelven los
-                // temas («Outfit», «Cormorant Garamond», «Libre Baskerville»).
-                // La typeface conserva el stream y PdfSharp la EMBEBE de verdad
-                // (la build GDI sustituye familias privadas por la del sistema).
-                RegisterFamily(dir, "Outfit-Regular.ttf", "Outfit");
-                RegisterFamily(dir, "Outfit-SemiBold.ttf", "Outfit SemiBold");
-                RegisterFamily(dir, "Outfit-Bold.ttf", "Outfit");
-                RegisterFamily(dir, "CormorantGaramond-Medium.ttf", "Cormorant Garamond");
-                RegisterFamily(dir, "CormorantGaramond-SemiBold.ttf", "Cormorant Garamond");
-                RegisterFamily(dir, "CormorantGaramond-Bold.ttf", "Cormorant Garamond");
-                RegisterFamily(dir, "CormorantGaramond-Italic.ttf", "Cormorant Garamond");
-                RegisterFamily(dir, "LibreBaskerville-Regular.ttf", "Libre Baskerville");
-                RegisterFamily(dir, "LibreBaskerville-Italic.ttf", "Libre Baskerville");
-            }
-            catch { /* sin fuentes privadas se cae a las del sistema */ }
+            // GlobalFontSettings solo admite un resolver por proceso: se fija una
+            // vez con las fuentes del producto (para cualquier familia pedida).
+            try { PdfSharp.Fonts.GlobalFontSettings.FontResolver = new ProductFontResolver(); }
+            catch { /* resolver ya fijado u hostile: se usa el que haya */ }
         }
-
-        static void RegisterFamily(string dir, string file, string family)
-        {
-            string path = Path.Combine(dir, file);
-            if (!File.Exists(path)) return;
-            using (var fs = File.OpenRead(path))
-            {
-                var ms = new MemoryStream();
-                // net35: Stream.CopyTo no existe — copia manual
-                var buf2 = new byte[8192];
-                int r3;
-                while ((r3 = fs.Read(buf2, 0, buf2.Length)) > 0) ms.Write(buf2, 0, r3);
-                ms.Position = 0;
-                XPrivateFontCollection.AddFont(ms, family);
-            }
-        }
+#endif
 
         static string FontsDir()
         {
@@ -187,6 +235,7 @@ namespace Fusion.Studio.Export
 
         static XFont Font(string family, double size, bool bold, bool italic)
         {
+#if LITE
             XFontStyle style = (bold && italic) ? XFontStyle.BoldItalic
                              : bold ? XFontStyle.Bold
                              : italic ? XFontStyle.Italic
@@ -198,6 +247,16 @@ namespace Fusion.Studio.Export
                 try { return new XFont("Arial", size, style); }
                 catch { return new XFont("Times New Roman", size, style); }
             }
+#else
+            // 6.x: el enum se renombró a XFontStyleEx; el resolver sirve la cara
+            // (sin excepción para las familias del producto).
+            XFontStyleEx style = (bold && italic) ? XFontStyleEx.BoldItalic
+                              : bold ? XFontStyleEx.Bold
+                              : italic ? XFontStyleEx.Italic
+                              : XFontStyleEx.Regular;
+            string name2 = string.IsNullOrEmpty(family) ? "Outfit" : family;
+            return new XFont(name2, size, style);
+#endif
         }
     }
 }

@@ -104,49 +104,6 @@ namespace Fusion.Tests
             return string.Join(" | ", names.ToArray());
         }
 
-        public static void TestPdfFontProbe()
-        {
-            // sondeo por etapas: dónde se rompe la cadena fuentes privadas
-            string dir = null;
-            for (string d = AppDomain.CurrentDomain.BaseDirectory; d != null && d.Length > 3;
-                 d = Path.GetDirectoryName(d))
-            {
-                string cand = Path.Combine(Path.Combine(d, "resources"), "fonts");
-                if (Directory.Exists(cand)) { dir = cand; break; }
-            }
-            TestRunner.Check(dir != null, "sonda: carpeta resources/fonts encontrada: " + (dir ?? "null"));
-            if (dir == null) return;
-            string[] ttf = Directory.GetFiles(dir, "*.ttf");
-            TestRunner.Check(ttf.Length >= 9, "sonda: TTF presentes: " + ttf.Length);
-            string addErr = "";
-            try
-            {
-                // AddFont(string) es un stub (NotImplementedException) en 1.50-wpf:
-                // la vía real es AddFont(Stream, family)
-                foreach (string f in ttf)
-                {
-                    string fn = Path.GetFileName(f);
-                    if (fn.StartsWith("Outfit", StringComparison.Ordinal))
-                    {
-                        using (var ms = new MemoryStream(File.ReadAllBytes(f)))
-                            PdfSharp.Drawing.XPrivateFontCollection.AddFont(ms, "Outfit");
-                    }
-                }
-            }
-            catch (Exception ex) { addErr = ex.GetType().Name + ": " + ex.Message; }
-            TestRunner.Check(addErr.Length == 0, "sonda: AddFont(Stream,family) sin excepción — " + addErr);
-            string fontErr = "";
-            string resolved = "";
-            try
-            {
-                var fnt = new PdfSharp.Drawing.XFont("Outfit", 24);
-                resolved = fnt.Name != null ? fnt.Name : "(null)";
-            }
-            catch (Exception ex) { fontErr = ex.GetType().Name + ": " + ex.Message; }
-            TestRunner.Check(fontErr.Length == 0 && resolved.Contains("Outfit"),
-                "sonda: XFont Outfit resuelve a '" + resolved + "' — " + fontErr);
-        }
-
         static bool ContainsAscii(byte[] data, string needle)
         {
             var p = Encoding.ASCII.GetBytes(needle);

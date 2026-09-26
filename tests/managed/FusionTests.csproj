@@ -34,12 +34,9 @@
     <Reference Include="BouncyCastle.Crypto">
       <HintPath>..\..\third_party\net\BouncyCastle\1.8.9\BouncyCastle.Crypto.dll</HintPath>
     </Reference>
-    <Reference Include="PdfSharp-wpf">
-      <HintPath>..\..\third_party\net\PdfSharp\1.50.5147\PdfSharp-wpf.dll</HintPath>
+    <Reference Include="PdfSharp">
+      <HintPath>..\..\third_party\net\PdfSharp\6.1.1\PdfSharp.dll</HintPath>
     </Reference>
-    <Reference Include="PresentationCore" />
-    <Reference Include="PresentationFramework" />
-    <Reference Include="WindowsBase" />
   </ItemGroup>
 
 </Project>

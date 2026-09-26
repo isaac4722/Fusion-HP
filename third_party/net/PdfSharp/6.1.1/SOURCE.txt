@@ -1,0 +1,6 @@
+PDFsharp 6.1.1 (MIT, netstandard2.0 para net48) — https://www.nuget.org/packages/PDFsharp/6.1.1 · https://github.com/empira/PDFsharp
+Solo para FusionStudio: incrustación real de fuentes vía IFontResolver.
+Motivo de la desviación de versión (1.50 → 6.1.1): la API XPrivateFontCollection
+de 1.50 es un stub (NotImplementedException verificado con dnfile) y la build GDI
+sustituye familias privadas — imposible cumplir «incrustar Outfit/Cormorant».
+Lite (net35) conserva 1.50 GDI.
