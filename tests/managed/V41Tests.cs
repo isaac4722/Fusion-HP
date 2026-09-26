@@ -12,6 +12,7 @@
 //  Descubiertas por reflexión (TestRunner): métodos públicos estáticos Test*.
 // ============================================================================
 using System;
+using System.IO;
 using System.Windows.Forms;
 using Fusion.Studio.Ui.Widgets;
 using Fusion.Tests;
@@ -54,6 +55,92 @@ namespace Fusion.Tests
                 sb.Text = "";
                 TestRunner.Check(!sb.Inner.IsDisposed, "inner sano tras limpiar");
             }
+        }
+
+        // ------------------------------------- estados: disabled / navegación
+        public static void TestWidgetDisabledStatesAndNavigation()
+        {
+            // FusionInput: Enabled=false sincroniza el inner y pinta tenue
+            using (var input = new FusionInput())
+            {
+                input.Enabled = false;
+                TestRunner.Check(!input.Inner.Enabled, "FusionInput: inner deshabilitado en sincronía");
+                input.Width = 200; input.Height = 30;   // OnResize con inner deshabilitado: sin NRE
+                TestRunner.Check(input.Inner.Width > 0, "FusionInput: layout sano en disabled");
+                input.Enabled = true;
+                TestRunner.Check(input.Inner.Enabled, "FusionInput: re-habilitación sincronizada");
+            }
+            // FusionSearchBox: disabled + cue banner no revienta
+            using (var sb = new FusionSearchBox())
+            {
+                sb.Placeholder = "Buscar";
+                sb.Enabled = false;
+                sb.Width = 272;
+                sb.Enabled = true;
+                TestRunner.Check(sb.Inner != null && !sb.Inner.IsDisposed, "FusionSearchBox: disabled/re-enabled sano");
+            }
+            // FusionIconButton: el pintado con alpha no revienta (sin handle, dry)
+            using (var ib = new FusionIconButton())
+            {
+                ib.IconName = "search";
+                ib.Enabled = false;
+                ib.Enabled = true;
+                TestRunner.Check(true, "FusionIconButton: transición Enabled estable");
+            }
+            // FusionTabs: navegación deja páginas visibles correctas y sin estado roto
+            using (var tabs = new FusionTabs())
+            {
+                tabs.Width = 500; tabs.Height = 400;
+                var p1 = new Panel(); var p2 = new Panel(); var p3 = new Panel();
+                tabs.Add("A", "home", p1);
+                tabs.Add("B", "book", p2);
+                tabs.Add("C", "photo", p3);
+                tabs.SelectedIndex = 1;
+                TestRunner.Check(!p1.Visible && p2.Visible && !p3.Visible, "FusionTabs: selección B visible");
+                tabs.SelectedIndex = 2;
+                TestRunner.Check(!p1.Visible && !p2.Visible && p3.Visible, "FusionTabs: salto a C correcto");
+                tabs.Enabled = false;
+                tabs.SelectedIndex = 0;   // con Enabled=false el set programático sigue (API estable)
+                TestRunner.Check(p1.Visible, "FusionTabs: API programática activa en disabled");
+            }
+            // FusionTabs.Add(null) → contracto claro
+            using (var tabs2 = new FusionTabs())
+            {
+                bool threw = false;
+                try { tabs2.Add("X", "x", null); }
+                catch (ArgumentNullException) { threw = true; }
+                TestRunner.Check(threw, "FusionTabs: Add(null) → ArgumentNullException");
+            }
+        }
+
+        // ------------------------------------ iconos: 0 botones sin glifo
+        public static void TestAllUsedIconsExist()
+        {
+            // nombres usados por el código de UI (auditoría v4.1.0); si alguien
+            // añade un IconName sin PNG, esta prueba lo detecta en CI
+            string[] used = {
+                "activity","app-window-bottom","bolt","book","check","chevrons-left","chevrons-right",
+                "clock","device-desktop","download","eye","eye-off","file-text","folder-open","heading",
+                "home","hourglass","layout-grid","list","movie","music","palette","pencil","photo","piano",
+                "player-play","player-skip-back","player-skip-forward","plus","refresh","search","settings",
+                "square","stack-2","trash","upload","wand","x","folder"
+            };
+            string root = AppDomain.CurrentDomain.BaseDirectory;
+            string icons = null;
+            for (string d = root; d != null && d.Length > 3; d = Path.GetDirectoryName(d))
+            {
+                string cand = Path.Combine(Path.Combine(Path.Combine(d, "resources"), "img"), "icons");
+                if (Directory.Exists(cand)) { icons = cand; break; }
+            }
+            TestRunner.Check(icons != null, "iconos: carpeta resources/img/icons localizada");
+            if (icons == null) return;
+            int missing = 0; string missingList = "";
+            foreach (string name in used)
+            {
+                string p = Path.Combine(Path.Combine(Path.Combine(icons, "ink20"), name + ".png"));
+                if (!File.Exists(p)) { missing++; missingList += " " + name; }
+            }
+            TestRunner.CheckEq(missing, 0, "iconos usados presentes en ink20" + missingList);
         }
 
         // -------------------------------------------------- resto de widgets

@@ -43,6 +43,8 @@ namespace Fusion.Studio.Ui.Widgets
 
         public int Add(string title, string iconName, Control page)
         {
+            // v4.1.0: contracto claro — sin página no hay pestaña fantasma
+            if (page == null) throw new ArgumentNullException("page");
             page.Visible = false;
             page.Dock = DockStyle.Fill;
             content.Controls.Add(page);
@@ -103,6 +105,22 @@ namespace Fusion.Studio.Ui.Widgets
             LayoutContent();
         }
 
+        // v4.1.0: DPI/cambio de fuente → re-medir chips (antes quedaban descuadrados)
+        protected override void OnFontChanged(EventArgs e)
+        {
+            base.OnFontChanged(e);
+            MeasureTabs();
+            Invalidate();
+        }
+
+        // v4.1.0: Enabled=false — sin hover ni selección por ratón
+        protected override void OnEnabledChanged(EventArgs e)
+        {
+            base.OnEnabledChanged(e);
+            if (!Enabled) foreach (var t in tabs) t.Hover = false;
+            Invalidate();
+        }
+
         protected override void OnMouseMove(MouseEventArgs e)
         {
             bool changed = false;
@@ -125,6 +143,7 @@ namespace Fusion.Studio.Ui.Widgets
 
         protected override void OnMouseDown(MouseEventArgs e)
         {
+            if (!Enabled) { base.OnMouseDown(e); return; }
             for (int i = 0; i < tabs.Count; i++)
             {
                 var t = tabs[i];
@@ -168,10 +187,11 @@ namespace Fusion.Studio.Ui.Widgets
                 int x = r.X + 10;
                 if (!string.IsNullOrEmpty(t.Icon))
                 {
-                    UiIcons.Draw(g, t.Icon, IconTint.Ink, x, r.Y + (r.Height - 20) / 2);
+                    // v4.1.0: icono blanco (tenue) cuando el control está deshabilitado
+                    UiIcons.Draw(g, t.Icon, Enabled ? IconTint.Ink : IconTint.White, x, r.Y + (r.Height - 20) / 2);
                     x += 20 + 4;
                 }
-                Color fg = on ? UiTheme.Text : UiTheme.TextDim;
+                Color fg = !Enabled ? UiTheme.TextDim : (on ? UiTheme.Text : UiTheme.TextDim);
                 TextRenderer.DrawText(g, t.Title, UiTheme.Normal(),
                     new Rectangle(x, r.Y, r.Right - x, r.Height), fg,
                     TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);

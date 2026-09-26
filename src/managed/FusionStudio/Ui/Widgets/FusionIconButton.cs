@@ -91,7 +91,32 @@ namespace Fusion.Studio.Ui.Widgets
             }
 
             IconTint tint = Active && Enabled ? IconTint.Accent : IconTint.Ink;
-            UiIcons.DrawCentered(g, IconName, Enabled ? tint : IconTint.Ink, r);
+            DrawIcon(g, tint, r, Enabled ? 1f : 0.35f);
+        }
+
+        /// <summary>Dibuja el icono con opacidad (v4.1.0: disabled = 35 %).</summary>
+        void DrawIcon(Graphics g, IconTint tint, Rectangle r, float opacity)
+        {
+            var img = UiIcons.Get(IconName, tint);
+            if (img == null) return;
+            int x = r.X + (r.Width - img.Width) / 2;
+            int y = r.Y + (r.Height - img.Height) / 2;
+            if (opacity >= 1f)
+            {
+                g.DrawImage(img, x, y, img.Width, img.Height);
+                return;
+            }
+            var cm = new System.Drawing.Imaging.ColorMatrix
+            {
+                Matrix33 = opacity   // canal alfa escalado
+            };
+            using (var ia = new System.Drawing.Imaging.ImageAttributes())
+            {
+                ia.SetColorMatrix(cm, System.Drawing.Imaging.ColorMatrixFlag.Default,
+                                  System.Drawing.Imaging.ColorAdjustType.Bitmap);
+                var dst = new Rectangle(x, y, img.Width, img.Height);
+                g.DrawImage(img, dst, 0, 0, img.Width, img.Height, GraphicsUnit.Pixel, ia);
+            }
         }
 
         protected override void OnTextChanged(EventArgs e)

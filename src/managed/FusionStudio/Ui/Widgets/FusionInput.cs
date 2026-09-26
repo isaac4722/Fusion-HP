@@ -60,6 +60,19 @@ namespace Fusion.Studio.Ui.Widgets
             set { inner.Text = value; }
         }
 
+        // v4.1.0: Enabled=false VISIBLE — borde tenue, fondo gris y TextBox
+        // interno deshabilitado en sincronía (antes el contenedor no cambiaba).
+        protected override void OnEnabledChanged(EventArgs e)
+        {
+            base.OnEnabledChanged(e);
+            if (inner != null)
+            {
+                inner.Enabled = Enabled;
+                inner.ForeColor = Enabled ? UiTheme.Text : UiTheme.TextDim;
+            }
+            Invalidate();
+        }
+
         public bool ReadOnly
         {
             get { return inner.ReadOnly; }
@@ -101,9 +114,12 @@ namespace Fusion.Studio.Ui.Widgets
                     p.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
                     p.CloseFigure();
                 }
-                using (var b = new SolidBrush(Color.White)) g.FillPath(b, p);
-                using (var pen = new Pen(focused ? UiTheme.Accent : UiTheme.InputBorder))
-                    g.DrawPath(pen, p);
+                Color back = Enabled ? Color.White : UiTheme.Bg;
+                Color border = !Enabled ? UiTheme.ChipBorder
+                             : focused ? UiTheme.Accent
+                             : UiTheme.InputBorder;
+                using (var b = new SolidBrush(back)) g.FillPath(b, p);
+                using (var pen = new Pen(border)) g.DrawPath(pen, p);
             }
         }
     }
@@ -153,8 +169,9 @@ namespace Fusion.Studio.Ui.Widgets
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
+            // v4.1.0: icono tenue cuando el control está deshabilitado
             UiIcons.Draw(e.Graphics, string.IsNullOrEmpty(LeftIcon) ? "search" : LeftIcon,
-                IconTint.Ink, 10, (Height - 20) / 2);
+                Enabled ? IconTint.Ink : IconTint.White, 10, (Height - 20) / 2);
         }
     }
 }
