@@ -555,9 +555,15 @@ static void TestWil()
     stream.reset();
     CHECK(!stream, "WIL: reset libera y deja el puntero vacio");
 
-    // 4) modo sin excepciones: la API de WIL nunca lanza
+    // 4) modo sin excepciones: la API de WIL nunca lanza (QI sobre ptr válido)
     bool threw = false;
-    try { (void)stream.try_query<ISequentialStream>(); } catch (...) { threw = true; }
+    try {
+        wil::com_ptr_nothrow<IStream> s2;
+        if (SUCCEEDED(CreateStreamOnHGlobal(nullptr, TRUE, s2.put()))) {
+            auto seq2 = s2.try_query<ISequentialStream>();
+            CHECK(seq2.get() != nullptr, "WIL: QI de flujo fresco resuelve");
+        }
+    } catch (...) { threw = true; }
     CHECK(!threw, "WIL: modo sin excepciones activo");
 
     // 5) aserciones idiomáticas doctest (conviven con el arnés propio)
