@@ -33,6 +33,13 @@
       <HintPath>..\..\..\third_party\net\PdfSharp\1.50.5147\PdfSharp.dll</HintPath>
       <Private>true</Private>
     </Reference>
+    <!-- DocumentFormat.OpenXml 2.7.2 (MIT, net40) — SOLO FusionStudio net48;
+         FusionShared y Lite (net35) nunca lo cargan [DEPENDENCIAS.md] -->
+    <Reference Include="DocumentFormat.OpenXml">
+      <HintPath>..\..\..\third_party\net\DocumentFormat.OpenXml\2.7.2\DocumentFormat.OpenXml.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="WindowsBase" />
   </ItemGroup>
 
 </Project>
