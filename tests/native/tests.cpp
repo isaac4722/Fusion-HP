@@ -24,9 +24,19 @@
 #include <wil/resource.h>
 #include <wil/com.h>
 
+// doctest 2.4.11 (v4.1.0): aserciones idiomáticas DENTRO del arnés propio.
+// · NO_SHORT_MACRO_NAMES: los CHECK/REQUIRE del arnés no se tocan.
+// · NO_EXCEPTIONS: CODE_STYLE del núcleo (fallos por handler, nunca throw).
+// · IMPLEMENT en esta única TU: el binario de pruebas es el único consumidor.
+#define DOCTEST_CONFIG_NO_SHORT_MACRO_NAMES
+#define DOCTEST_CONFIG_NO_EXCEPTIONS
+#define DOCTEST_CONFIG_IMPLEMENT
+#include "doctest.h"
+
 using namespace fusion;
 
 static int g_fail = 0, g_pass = 0;
+static int g_dtFail = 0;   // fallos reportados por las aserciones doctest
 #define CHECK(cond, msg) do { \
     std::cout << std::left << std::setw(52) << std::string(msg); \
     if (cond) { std::cout << "[OK]" << std::endl; g_pass++; } \
@@ -546,11 +556,28 @@ static void TestWil()
     bool threw = false;
     try { (void)stream.try_query<ISequentialStream>(); } catch (...) { threw = true; }
     CHECK(!threw, "WIL: modo sin excepciones activo");
+
+    // 5) aserciones idiomáticas doctest (conviven con el arnés propio)
+    DOCTEST_CHECK(SUCCEEDED(hr));
+    DOCTEST_CHECK_EQ(seq.get() != nullptr, true);
 }
 
 int main()
 {
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+
+    // doctest (v4.1.0): las aserciones DOCTEST_* fuera de test cases pasan por
+    // este handler (setAsDefaultForAssertsOutOfTestCases) — se cuentan en la
+    // MISMA salida y en el MISMO código de salida que el arnés propio.
+    doctest::Context dtctx;
+    dtctx.setAssertHandler([](const doctest::AssertData& ad) {
+        std::cout << "  [DOCTEST] fallo en " << (ad.m_file ? ad.m_file : "?")
+                  << ":" << ad.m_line << "  " << (ad.m_expr ? ad.m_expr : "");
+        if (!ad.m_decomp.empty()) std::cout << "  (" << ad.m_decomp << ")";
+        std::cout << std::endl;
+        g_dtFail++;
+    });
+    dtctx.setAsDefaultForAssertsOutOfTestCases();
 
     TestEnvironment();
     TestWil();
@@ -563,7 +590,8 @@ int main()
     TestMotor();
     TestNativeLibrary();
 
-    std::cout << "\nResultado: " << g_pass << " OK · " << g_fail << " FALLO" << std::endl;
+    std::cout << "\nResultado: " << g_pass << " OK · " << (g_fail + g_dtFail) << " FALLO"
+              << " (arnés " << g_fail << " · doctest " << g_dtFail << ")" << std::endl;
     CoUninitialize();
-    return g_fail == 0 ? 0 : 1;
+    return (g_fail + g_dtFail) == 0 ? 0 : 1;
 }
