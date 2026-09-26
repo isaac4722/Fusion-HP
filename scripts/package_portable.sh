@@ -31,13 +31,20 @@ cp "$SRC_SHARED" "$OUT/FusionShared.dll"
 cp "$SRC_STUDIO" "$OUT/FusionStudio.exe"
 cp "$SRC_LITE"  "$OUT/FusionStudio.Lite.exe"
 
-# terceros (v4.1.0) junto al exe + interop SQLite por arquitectura
+# terceros (v4.1.0/4.1.1) junto al exe + interop SQLite por arquitectura
+# PDFsharp dual (v4.1.1): 6.1.1 junto al exe (Studio net48) y 1.50 en subcarpeta
+# (Lite net35) — el resolvedor de Program.cs sirve la copia correcta.
 cp third_party/net/Newtonsoft.Json/13.0.3/Newtonsoft.Json.dll "$OUT/"
 cp third_party/net/NLog/4.7.15/NLog.dll "$OUT/"
-cp third_party/net/PdfSharp/1.50.5147/PdfSharp.dll "$OUT/"
 cp third_party/net/PdfSharp/6.1.1/PdfSharp.dll "$OUT/"
 cp third_party/net/PdfSharp/6.1.1/PdfSharp.System.dll "$OUT/"
+mkdir -p "$OUT/PdfSharp-1.50"
+cp third_party/net/PdfSharp/1.50.5147/PdfSharp.dll "$OUT/PdfSharp-1.50/"
 cp third_party/net/Microsoft.Extensions.Logging.Abstractions/6.0.0/Microsoft.Extensions.Logging.Abstractions.dll "$OUT/"
+cp third_party/net/System.Buffers/4.5.1/System.Buffers.dll "$OUT/"
+cp third_party/net/System.Memory/4.5.4/System.Memory.dll "$OUT/"
+cp third_party/net/System.Numerics.Vectors/4.5.0/System.Numerics.Vectors.dll "$OUT/"
+cp third_party/net/System.Runtime.CompilerServices.Unsafe/6.0.0/System.Runtime.CompilerServices.Unsafe.dll "$OUT/"
 cp third_party/net/System.Data.SQLite/1.0.118/System.Data.SQLite.dll "$OUT/"
 cp third_party/net/DocumentFormat.OpenXml/2.7.2/DocumentFormat.OpenXml.dll "$OUT/"
 cp third_party/net/Ookii.Dialogs/1.0.0/Ookii.Dialogs.Wpf.dll "$OUT/"

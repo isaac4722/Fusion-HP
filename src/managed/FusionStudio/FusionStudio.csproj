@@ -11,7 +11,7 @@
     <AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>4.1.0</Version>
+    <Version>4.1.1</Version>
     <AssemblyTitle>Fusion HP Studio</AssemblyTitle>
     <Product>Fusion HP</Product>
     <Description>Estudio de presentación litúrgica híbrido (Win7 x86 → Win11 x64)</Description>

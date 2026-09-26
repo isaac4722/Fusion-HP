@@ -187,10 +187,19 @@ jobs:
           $tp = "third_party/net"
           Copy-Item "$tp/Newtonsoft.Json/13.0.3/Newtonsoft.Json.dll"                      installer/staging/
           Copy-Item "$tp/NLog/4.7.15/NLog.dll"                                            installer/staging/
-          Copy-Item "$tp/PdfSharp/1.50.5147/PdfSharp.dll"                                 installer/staging/
+          # PDFsharp DUAL (v4.1.1): 6.1.1 junto al exe (Studio net48) y 1.50 en
+          # subcarpeta (Lite net35 — el resolvedor de Program.cs la sirve)
           Copy-Item "$tp/PdfSharp/6.1.1/PdfSharp.dll"                                     installer/staging/
+          New-Item -ItemType Directory -Force -Path installer/staging/PdfSharp-1.50 | Out-Null
+          Copy-Item "$tp/PdfSharp/1.50.5147/PdfSharp.dll"                                 installer/staging/PdfSharp-1.50/
           Copy-Item "$tp/PdfSharp/6.1.1/PdfSharp.System.dll"                              installer/staging/
           Copy-Item "$tp/Microsoft.Extensions.Logging.Abstractions/6.0.0/Microsoft.Extensions.Logging.Abstractions.dll" installer/staging/
+          # cadena transitiva de PDFsharp 6.1.1 (v4.1.1): sin estas, el enlace
+          # de M.E.L.Abstractions/System.Memory falla al exportar PDF
+          Copy-Item "$tp/System.Buffers/4.5.1/System.Buffers.dll"                          installer/staging/
+          Copy-Item "$tp/System.Memory/4.5.4/System.Memory.dll"                           installer/staging/
+          Copy-Item "$tp/System.Numerics.Vectors/4.5.0/System.Numerics.Vectors.dll"        installer/staging/
+          Copy-Item "$tp/System.Runtime.CompilerServices.Unsafe/6.0.0/System.Runtime.CompilerServices.Unsafe.dll" installer/staging/
           Copy-Item "$tp/System.Data.SQLite/1.0.118/System.Data.SQLite.dll"               installer/staging/
           Copy-Item "$tp/DocumentFormat.OpenXml/2.7.2/DocumentFormat.OpenXml.dll"         installer/staging/
           Copy-Item "$tp/Ookii.Dialogs/1.0.0/Ookii.Dialogs.Wpf.dll"                       installer/staging/
@@ -257,6 +266,46 @@ jobs:
           Set-Content portable/FusionHP-Portable-x64/portable.flag "# Fusion HP modo portable"
           Set-Content portable/FusionHP-Portable-x64/LEEME.txt "Fusion HP (portable x64): ejecuta FusionHP.exe."
           Compress-Archive -Path portable/FusionHP-Portable-x64 -DestinationPath dist/FusionHP-Portable-x64.zip -Force
+
+      - name: Verificación del portable — terceros completos (regresión v4.1.1)
+        shell: pwsh
+        run: |
+          # v4.1.0 salió con el portable SIN las DLL de terceros: FusionStudio
+          # moría en silencio al arrancar (NLog no cargable). Esta verificación
+          # DURA impide repetirlo: si falta una pieza crítica, el job cae.
+          Copy-Item installer/staging/*.dll                 portable/FusionHP-Portable/
+          Copy-Item installer/staging/PdfSharp-1.50         portable/FusionHP-Portable/PdfSharp-1.50 -Recurse
+          Copy-Item installer/staging/x86                   portable/FusionHP-Portable/x86 -Recurse
+          Copy-Item installer/staging/x64                   portable/FusionHP-Portable/x64 -Recurse
+          Copy-Item installer/staging/*.dll                 portable/FusionHP-Portable-x64/
+          Copy-Item installer/staging/PdfSharp-1.50         portable/FusionHP-Portable-x64/PdfSharp-1.50 -Recurse
+          Copy-Item installer/staging/x86                   portable/FusionHP-Portable-x64/x86 -Recurse
+          Copy-Item installer/staging/x64                   portable/FusionHP-Portable-x64/x64 -Recurse
+          Compress-Archive -Path portable/FusionHP-Portable -DestinationPath dist/FusionHP-Portable-x86.zip -Force
+          Compress-Archive -Path portable/FusionHP-Portable-x64 -DestinationPath dist/FusionHP-Portable-x64.zip -Force
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $criticas = @(
+            'FusionHP.exe','FusionShared.dll','FusionStudio.exe','FusionStudio.Lite.exe',
+            'NLog.dll','Newtonsoft.Json.dll','System.Data.SQLite.dll',
+            'x86/SQLite.Interop.dll','x64/SQLite.Interop.dll',
+            'PdfSharp.dll','PdfSharp-1.50/PdfSharp.dll','PdfSharp.System.dll',
+            'Microsoft.Extensions.Logging.Abstractions.dll',
+            'System.Buffers.dll','System.Memory.dll','System.Numerics.Vectors.dll',
+            'System.Runtime.CompilerServices.Unsafe.dll',
+            'DocumentFormat.OpenXml.dll','Ookii.Dialogs.Wpf.dll')
+          foreach ($par in @(@('dist/FusionHP-Portable-x86.zip','FusionHP-Portable'),
+                              @('dist/FusionHP-Portable-x64.zip','FusionHP-Portable-x64'))) {
+            $zipPath = Resolve-Path $par[0]
+            $raiz    = $par[1]
+            $za = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
+            try {
+              $nombres = $za.Entries | ForEach-Object { $_.FullName -replace '\\','/' }
+              foreach ($c in $criticas) {
+                if ($nombres -notcontains "$raiz/$c") { throw "PORTABLE INCOMPLETO: falta $c en $zipPath" }
+              }
+              Write-Host "portable verificado: $zipPath — $($criticas.Count) piezas críticas presentes"
+            } finally { $za.Dispose() }
+          }
 
       - name: Checksums SHA256
         shell: pwsh

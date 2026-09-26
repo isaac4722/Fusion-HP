@@ -7,7 +7,7 @@
 ; ============================================================================
 
 #define AppName "Fusion HP"
-#define AppVersion "4.1.0"
+#define AppVersion "4.1.1"
 #define AppPublisher "Fusion HP"
 #define AppExeName "FusionHP.exe"
 #define DotNetUrl "https://go.microsoft.com/fwlink/?linkid=2088631"
@@ -52,12 +52,19 @@ Source: "staging\FusionShared.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "staging\FusionStudio.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "staging\FusionStudio.Lite.exe"; DestDir: "{app}"; Flags: ignoreversion
 
-; Componentes de terceros (v4.1.0 — ver DEPENDENCIAS.md / LICENSE.md §4)
+; Componentes de terceros (v4.1.0/4.1.1 — ver DEPENDENCIAS.md / LICENSE.md §4)
 Source: "staging\Newtonsoft.Json.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "staging\NLog.dll"; DestDir: "{app}"; Flags: ignoreversion
+; PDFsharp dual (v4.1.1): 6.1.1 junto al exe (Studio net48) + 1.50 en subcarpeta (Lite net35)
 Source: "staging\PdfSharp.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "staging\PdfSharp.System.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "staging\PdfSharp-1.50\PdfSharp.dll"; DestDir: "{app}\PdfSharp-1.50"; Flags: ignoreversion
 Source: "staging\Microsoft.Extensions.Logging.Abstractions.dll"; DestDir: "{app}"; Flags: ignoreversion
+; Cadena transitiva de PDFsharp 6.1.1 (v4.1.1)
+Source: "staging\System.Buffers.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "staging\System.Memory.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "staging\System.Numerics.Vectors.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "staging\System.Runtime.CompilerServices.Unsafe.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "staging\System.Data.SQLite.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "staging\DocumentFormat.OpenXml.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "staging\Ookii.Dialogs.Wpf.dll"; DestDir: "{app}"; Flags: ignoreversion
