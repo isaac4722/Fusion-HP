@@ -2,7 +2,15 @@
 
 **Aplicación híbrida de presentación litúrgica y multimedia** para **Windows 7 SP1 x86 → Windows 11 x64**. Núcleo nativo C++ (proyección estable, cero parpadeo) + capa C#/.NET Framework (estudio, biblioteca, interoperabilidad, automatización). Sin Java, sin .NET Core, sin escribir en el Registro de Windows.
 
-> Fuente normativa: [`spec/Aplicacion_Hibrida_TechnicalDoc_v1.1_2026-09-23.md`](spec/Aplicacion_Hibrida_TechnicalDoc_v1.1_2026-09-23.md) · Contrato de trabajo: [`AGENT.md`](AGENT.md)
+> Fuente normativa: [`spec/Aplicacion_Hibrida_TechnicalDoc_v1.1_2026-09-23.md`](spec/Aplicacion_Hibrida_TechnicalDoc_v1.1_2026-09-23.md) (con la **enmienda v4.0.0** que revoca la Sección 8) · Contrato de trabajo: [`AGENT.md`](AGENT.md) · Decisiones: [`docs/agent/DECISIONES_v4.md`](docs/agent/DECISIONES_v4.md)
+
+## v4.0.0 — GUI web consolidada y producto 100 % local
+
+- **Sin API, sin OBS, sin control remoto, sin Triggers** — eliminados por completo por decisión del usuario (código, settings, diagnóstico, pruebas y docs). Nada escucha ni habla por la red; la única comunicación es el IPC interno `ipc.v1`.
+- **GUI/UX de la web como base en C++ y C#**: pestaña **Temas** (aplicar al elemento o a todo, en caliente), **Biblia rápida G** con cita directa, favoritos de la web y modo **Tercio** (versículo como lower third), **miniaturas** en el programa, **recientes con nombre** en Inicio. El estudio nativo C++ mantiene la réplica web completa (Inicio · PowerStudio · Presentar).
+- **Assets de la web dentro del programa**: fuentes Outfit / Cormorant Garamond (Medium, **SemiBold y Bold instanciados del variable de la web**) / Libre Baskerville, 6 fondos, logo y 62 iconos Tabler × 4 tintas.
+- **4 biblias completas en español** autoinstaladas: **RV1960 · NVI · RVG · RVR1909** (~31 000 versículos cada una, verificado por prueba).
+- **Canciones = BD, cero PPTX**: el banco se carga una vez en `cancionero.fdb`; proyectar es consultar la BD → Motor, sin generar archivos (prueba automatizada). El PPTX solo interviene si el operador lo pide.
 
 ## v3.0.0 — Reestructuración: los 7 bugs del prototipo, resueltos
 

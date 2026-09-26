@@ -1,47 +1,49 @@
-# Fusion HP v3.0.0 — Reestructuración completa (los 7 bugs del prototipo, resueltos)
+# Fusion HP v4.0.0 — GUI web consolidada y producto 100 % local
 
-**Fusion HP** es un presentador litúrgico híbrido (núcleo nativo C++ + capa C#/.NET Framework) que opera desde **Windows 7 SP1 x86** hasta **Windows 11 x64**, sin Java, sin .NET Core y sin escribir en el Registro de Windows. Esta versión parte de cero en cuanto a distribución: las releases anteriores fueron eliminadas y el prototipo fue reestructurado para resolver los defectos reportados.
+**Fusion HP** es un presentador litúrgico híbrido (núcleo nativo C++ + capa C#/.NET Framework) que opera desde **Windows 7 SP1 x86** hasta **Windows 11 x64**, sin Java, sin .NET Core y sin escribir en el Registro de Windows. La distribución parte de cero: las releases anteriores fueron eliminadas.
 
-## Qué se corrigió (de lo reportado)
+## Qué cambió en v4.0.0
 
-1. **El cargador de Escenarios no mostraba nombres** → nuevo cargador `Abrir proyecto`: recientes con el NOMBRE del proyecto, número de escenarios y los TÍTULOS de cada escenario visibles antes de abrir (lectura rápida de cabecera ahp.v1). Ya no se elige un archivo a ciegas.
-2. **La ventana de proyección no respetaba la pantalla elegida** → el monitor seleccionado en Configuración ahora viaja al núcleo (IPC `monitor public|stage`) y la salida borderless fullscreen se posiciona donde el operador manda; con un solo monitor, Configuración avisa honestamente.
-3. **Cerrar con la X dejaba el proceso vivo / parecía duplicarse** → el estudio nativo maneja `WM_CLOSE` (persiste borrador y recientes) y termina el bucle del núcleo limpiamente; el Motor guarda su sesión en TODOS los caminos de salida; los mutex de instancia evitan duplicación real.
-4. **La configuración no se aplicaba al arrancar** → monitores de salida, logo de reposo, avance y reloj se aplican al abrir la app, sin pasar por Configuración. *(v4.0.0: la API HTTP, el control remoto y OBS fueron eliminados por decisión del usuario — producto 100 % local.)*
-5. **La importación PPTX extraía en vez de cargar el original** → nuevo **proyector PPTX directo**: lee el archivo ORIGINAL tal cual (contenedor OPC, herencia de 4 niveles, EMUs) y lo entrega al Motor SIN convertir ni guardar nada — cada carga re-lee el original, con PowerPoint o SIN él (ya no exige PowerPoint; el COM se usa solo si existe, por fidelidad). Informe de fidelidad incluido.
-6. **Las bibliotecas exigían búsqueda para mostrar algo** → Cantos y Biblia están disponibles DIRECTAMENTE: lista completa de cantos sin tope (el tope de 200 del estudio nativo fue eliminado), árbol bíblico completo de 66 libros, búsqueda instantánea opcional (≤200 ms).
-7. **El flujo generaba PPTX para cada ocasión** → flujo Holyrics consolidado: los cantos se cargan desde la base de datos (`cancionero.fdb`) y se proyectan directamente (DB → Motor por IPC `motor.load`); una prueba automatizada verifica que proyectar un canto NO genera ningún archivo.
+1. **Sin API, sin OBS, sin control remoto — a petición del usuario**: el servidor HTTP, el cliente obs-websocket, la página `/remote`, el Mando (móvil y nativo) y el motor de Triggers fueron **eliminados por completo** (código, configuración, diagnóstico, pruebas y documentación). El programa es **100 % local**: nada escucha ni habla por la red; la única comunicación es el IPC interno `ipc.v1` entre los propios ejecutables.
+2. **GUI/UX de la web consolidada en C++ y C#** (petición: «la GUI de la web como base»):
+   - Nueva pestaña **Temas** en la biblioteca C#: los 6 temas web aplicables al elemento o a todo el proyecto, re-resueltos en caliente.
+   - **Biblia rápida (tecla G)** como overlay: cita directa («Jn 3:16», «1co 13»), **favoritos de la web** sin escribir nada, y casilla **Tercio** para insertar el versículo como lower third — sin salir del modo Presentar.
+   - **Miniaturas** de la primera diapositiva en la lista del programa (paridad con el programa de la web).
+   - **Proyectos recientes con nombre** y número de escenarios en la portada Inicio (paridad con las tarjetas de la web).
+   - El estudio nativo C++ conserva la GUI web replicada (Inicio, PowerStudio con 8 pestañas y Backstage, consola Presentar con Biblia rápida G).
+3. **Assets de la web dentro del programa**: las fuentes Outfit, Cormorant Garamond (Media, SemiBold y **Bold instanciado del variable de la web**) y Libre Baskerville, los 6 fondos, el logo y 62 iconos Tabler en 4 tintas viajan en `resources/` y se cargan vía PrivateFontCollection — sin instalar nada en el sistema.
+4. **4 biblias completas en español incluidas** y autoinstaladas en el primer arranque: **RV1960** (31 036), **NVI** (31 103), **RVG** (31 102) y **RVR1909** (31 084 versículos), con verificación automatizada de 66 libros y conteo por versión.
+5. **Canciones: la base de datos manda (flujo Holyrics)**: el banco de cantos se carga **una sola vez** en `cancionero.fdb`; proyectar es **consultar la BD → Motor** (un elemento por sección Verso/Coro), **sin generar PPTX ni archivos temporales** — una prueba automatizada garantiza 0 archivos al proyectar. El PPTX solo aparece cuando el operador lo pide (importar el original tal cual, o exportar).
+
+## Qué se corrigió (de lo reportado al prototipo, se mantiene resuelto)
+
+1. El cargador de Escenarios muestra **nombre, N escenarios y títulos** antes de abrir.
+2. La ventana de proyección respeta el **monitor elegido** (viaja al núcleo por IPC).
+3. Cerrar con la X **no duplica ni deja procesos zombi**; el Motor persiste su sesión.
+4. La configuración (monitores, logo, avance, reloj) **se aplica al arrancar**.
+5. El PPTX se proyecta **tal cual** (COM si existe, o lector nativo OPC sin PowerPoint).
+6. Cantos y Biblia **directamente disponibles** sin necesidad de buscar (lista sin tope, 66 libros).
+7. **Cero PPTX generados** al proyectar cantos (DB → Motor, verificado por prueba).
 
 ## Qué incluye
 
 - **Núcleo nativo C++** (`FusionHP.exe`, /MT, x86 y x64): bootstrap con detección de SO/arquitectura/.NET (perfiles A/B/C), salida borderless sin parpadeo (Direct2D con fallback GDI+ de doble buffer), sincronización línea por línea, video DirectShow con fail-safe, pantalla de reposo (negro/logo/tema), Stage View de músicos y servidor IPC `ipc.v1` con 30+ comandos.
-- **Estudio** (`FusionStudio.exe`, .NET Framework 4.8): modos Inicio/Estudio/Presentación, biblioteca directa de Cantos y Biblia, programa con sub-líneas clicables, previsualización con el mismo modelo de render que la salida, editor WPF con lienzo estilo PowerPoint, herencia de estilos de 4 niveles (Tema → Plantilla → Escenario → Elemento) aplicable en caliente, clasificador e historial de uso.
-- **Variante Lite** (`FusionStudio.Lite.exe`, .NET 3.5 SP1): perfil B con motor Live completo, importadores/exportadores y API.
+- **Estudio** (`FusionStudio.exe`, .NET Framework 4.8): modos Inicio/Estudio/Presentación, biblioteca directa (Cantos, Biblia, Escenarios, Medios, **Temas**), programa con miniaturas y sub-líneas clicables, previsualización con el mismo modelo de render que la salida, editor WPF con lienzo estilo PowerPoint, herencia de estilos de 4 niveles (Tema → Plantilla → Escenario → Elemento) aplicable en caliente, clasificador, Stage View (alertas/temporizador/tono-BPM) e historial de uso con CSV.
+- **Variante Lite** (`FusionStudio.Lite.exe`, .NET 3.5 SP1): perfil B con motor Live completo, biblioteca, importadores/exportadores y la misma GUI.
 - **Perfil C**: sin .NET, el núcleo abre su estudio nativo completo (Inicio/Editor/Presentar en Win32/GDI+) y proyecta igualmente.
-- **Interoperabilidad**: Biblias **Zefania XML**, **e-Sword .bib/.bblx 9+** (descifrado Twofish), **JSON** y **TSV**; cantos de himnario JSON y respaldo de Holyrics; **PPTX original tal cual** (COM o nativo) e importación a Escenarios; exportación **PPTX (ISO/IEC-29500)**, **PDF** e **imágenes PNG 1080p**.
-- **100 % local (v4.0.0)**: sin API de red, sin OBS, sin control remoto y sin Triggers — eliminados por decisión del usuario; nada escucha ni habla por la red.
-- **Diagnóstico**: Ayuda → Estado del sistema con autotest, log estructurado rotativo y mensajes de error en lenguaje humano con «Copiar detalles técnicos».
+- **Interoperabilidad**: Biblias **Zefania XML**, **e-Sword .bib/.bblx 9+** (descifrado Twofish), **JSON** y **TSV**; cantos de himnario JSON y respaldo de Holyrics; **PPTX original tal cual** (COM o nativo) e importación a Escenarios; exportación **PPTX (ISO/IEC-29500)**, **PDF** e **imágenes PNG 1080p** — siempre por decisión explícita del operador.
+- **Diagnóstico**: Ayuda → Estado del sistema con autotest (render, núcleo, permisos), log estructurado rotativo y mensajes de error en lenguaje humano con «Copiar detalles técnicos».
 
 ## Instalación
 
 1. Ejecuta el instalador: instala el binario correspondiente a tu arquitectura (x86/x64) y detecta .NET; sin permisos de administrador si instalas en tu perfil.
 2. Modo **portable**: descomprime el ZIP y ejecuta `FusionHP.exe`; todos los datos quedan en la carpeta `datos` junto al programa.
-3. Primer arranque: Cantos y Biblia ya están disponibles (RV1960, NVI, RVG, RVR1909 empaquetadas).
+3. Primer arranque: Cantos y Biblia ya están disponibles (RV1960, NVI, RVG, RVR1909 empaquetadas); el cancionero se crea como una única base de datos.
 
-## Verificación (criterios de aceptación 12.3)
+## Verificación (criterios de aceptación)
 
-- F0/F6: arranque dual x86/x64 con detección automática; perfil C sin .NET proyecta texto/imágenes/video.
-- F1: transición ≤ 16 ms sin frame negro (ventanas persistentes + doble buffer); cambio de línea ≤ 1 frame.
-- F4: PPTX con herencia de 4 niveles y EMUs se proyecta/importa con informe de fidelidad; `.pptm` sin ejecutar macros; RV1960 con búsqueda ≤ 200 ms.
-- F5 (sustituido en v4.0.0): verificación automatizada de que proyectar no abre puertos ni genera archivos.
-- Tests: núcleo 113 comprobaciones + capa C# (net48 y net35) en el arnés propio; gate de calidad `quality_gate.sh` en cada commit; CI x86+x64.
-
-## Limitaciones conocidas
-
-- Los módulos e-Sword con cifrado completo de archivo (comprados/protegidos) no pueden leerse: se informa y sugiere la edición Zefania equivalente.
-- Los `.pptm` se proyectan/importan sin ejecutar macros; animaciones y transiciones de PowerPoint no se importan (MVP).
-- Exportación a video MP4, coautoría en nube y salida NDI quedan para fases posteriores.
-
-## Referencia normativa
-
-Documento Técnico v1.1 (2026-09-23): `spec/Aplicacion_Hibrida_TechnicalDoc_v1.1_2026-09-23.md` en el repositorio.
+- **100 % local**: `settings.json` sin claves de red (prueba automatizada); sin HttpListener/WebSocket en el producto; el estudio nativo y la consola no exponen ninguna salida de red.
+- **Biblias completas**: prueba automatizada lee las 4 versiones de `resources/data/bibles` y verifica 66 libros y ≥30 000 versículos por versión.
+- **Flujo de cantos**: prueba automatizada «proyectar un canto NO crea archivos» (ni .pptx ni .ahp).
+- **Temas**: prueba automatizada del cambio de tema en caliente (Clásico → Solemne → fuente Cormorant Garamond) y de la anulación por elemento.
+- **Dual**: CI compila x86 + x64 (núcleo) y net48 + net35 (administrado), con suites nativas (109+ pruebas) y administradas (55+ pruebas) en verde.

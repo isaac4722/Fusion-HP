@@ -1,3 +1,5 @@
+> **ENMIENDA v4.0.0 (26/09/2026):** La **Sección 8 completa (API HTTP, control remoto móvil, Triggers y OBS/NDI) queda REVOCADA** por decisión del usuario: el producto es 100 % local y no abre ningún puerto ni cliente de red. Los criterios F5 de las secciones 12.3 relativos a API/OBS se sustituyen por: «el proceso no abre sockets de escucha ni clientes de red; verificado por prueba automatizada». Ver `docs/agent/DECISIONES_v4.md`.
+
 # Especificación de Prototipo (MVP) — Aplicación Híbrida de Presentación Litúrgica y Multimedia para Windows 7 x86 – Windows 11 x64
 
 **Documento Técnico v1.1 · 23/09/2026 · Equipo de Arquitectura del Proyecto**  
