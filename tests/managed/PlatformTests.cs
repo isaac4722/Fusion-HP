@@ -8,6 +8,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
 using System.IO.Compression;
 using System.Text;
 using Fusion.Shared;
@@ -73,7 +74,11 @@ namespace Fusion.Tests
             int pages = -1;
             string detail = "";
             try { pages = new PdfExporter().Export(p, outPath, dir); }
-            catch (Exception ex) { detail = ex.ToString(); }
+            catch (Exception ex)
+            {
+                var tr = PdfExporterProductFontResolverTrace();
+                detail = ex.ToString() + " TRACE=" + tr;
+            }
             TestRunner.CheckEq(pages, 1, "una página " + detail);
             var bytes = File.ReadAllBytes(outPath);
             string head = Encoding.ASCII.GetString(bytes, 0, 5);
@@ -105,6 +110,18 @@ namespace Fusion.Tests
                 i = j;
             }
             return string.Join(" | ", names.ToArray());
+        }
+
+        internal static string PdfExporterProductFontResolverTrace()
+        {
+            try
+            {
+                var f = typeof(PdfExporter).Assembly.GetType("Fusion.Studio.Export.PdfExporter+ProductFontResolver");
+                if (f == null) return "(resolver no encontrado)";
+                var p = f.GetField("LastTrace", BindingFlags.NonPublic | BindingFlags.Static);
+                return p != null ? Convert.ToString(p.GetValue(null)) : "(sin campo)";
+            }
+            catch (Exception e) { return "(trace error " + e.Message + ")"; }
         }
 
         static bool ContainsAscii(byte[] data, string needle)

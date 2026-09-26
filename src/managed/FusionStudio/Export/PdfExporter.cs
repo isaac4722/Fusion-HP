@@ -146,8 +146,11 @@ namespace Fusion.Studio.Export
             static readonly Dictionary<string, byte[]> _cache =
                 new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase);
 
+            internal static string LastTrace = "";
+
             public PdfSharp.Fonts.FontResolverInfo ResolveTypeface(string familyName, bool bold, bool italic)
             {
+                LastTrace += "|RT:" + (familyName ?? "null") + "/" + bold + "/" + italic;
                 return new PdfSharp.Fonts.FontResolverInfo(FaceFor(familyName, bold, italic));
             }
 
@@ -215,10 +218,9 @@ namespace Fusion.Studio.Export
         {
             if (_fontsRegistered) return;
             _fontsRegistered = true;
-            // GlobalFontSettings solo admite un resolver por proceso: se fija una
-            // vez con las fuentes del producto (para cualquier familia pedida).
-            try { PdfSharp.Fonts.GlobalFontSettings.FontResolver = new ProductFontResolver(); }
-            catch { /* resolver ya fijado u hostile: se usa el que haya */ }
+            // GlobalFontSettings solo admite un resolver por proceso. SIN catch:
+            // si el setter falla, la prueba debe mostrarlo (no degradar en silencio).
+            PdfSharp.Fonts.GlobalFontSettings.FontResolver = new ProductFontResolver();
         }
 #endif
 
