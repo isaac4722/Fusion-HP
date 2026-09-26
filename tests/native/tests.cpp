@@ -701,7 +701,7 @@ int main()
     dtctx.setAssertHandler([](const doctest::AssertData& ad) {
         std::cout << "  [DOCTEST] fallo en " << (ad.m_file ? ad.m_file : "?")
                   << ":" << ad.m_line << "  " << (ad.m_expr ? ad.m_expr : "");
-        if (!ad.m_decomp.empty()) std::cout << "  (" << ad.m_decomp << ")";
+        if (ad.m_decomp.size() > 0) std::cout << "  (" << ad.m_decomp << ")";
         std::cout << std::endl;
         g_dtFail++;
     });
