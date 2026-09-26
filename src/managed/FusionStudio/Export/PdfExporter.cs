@@ -159,14 +159,23 @@ namespace Fusion.Studio.Export
                 lock (_cache)
                 {
                     byte[] data;
-                    if (!_cache.TryGetValue(faceName, out data))
+                    try
                     {
-                        string file = FileForFace(faceName);
-                        string path = Path.Combine(Path.Combine(FontsRoot(), "fonts"), file);
-                        if (!File.Exists(path)) path = Path.Combine(Path.Combine(FontsRoot(), "fonts"), "Outfit-Regular.ttf");
-                        data = File.ReadAllBytes(path);
-                        _cache[faceName] = data;
+                        if (!_cache.TryGetValue(faceName, out data))
+                        {
+                            string file = FileForFace(faceName);
+                            string path = Path.Combine(Path.Combine(FontsRoot(), "fonts"), file);
+                            if (!File.Exists(path)) path = Path.Combine(Path.Combine(FontsRoot(), "fonts"), "Outfit-Regular.ttf");
+                            data = File.ReadAllBytes(path);
+                            _cache[faceName] = data;
+                        }
                     }
+                    catch (Exception ex)
+                    {
+                        LastTrace += "|GF:" + (faceName ?? "null") + "/EX:" + ex.GetType().Name;
+                        throw;
+                    }
+                    LastTrace += "|GF:" + (faceName ?? "null") + "/" + (data == null ? "null" : data.Length.ToString());
                     return data;
                 }
             }
