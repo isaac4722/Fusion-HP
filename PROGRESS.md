@@ -6,3 +6,4 @@
 2026-09-26 · RUN  · v4.0.0 TESTS: V40Tests (settings sin claves de red · 4 biblias 66 libros y ≥30k versículos · semántica de temas en caliente · 12 favoritos parsean) + versiones 4.0.0 + notas + DECISIONES_v4.md · 7_PERSIST
 2026-09-26 · DONE · v4.0.0 CI VERDE (main + tag): ronda 1 fix IconTint cualificado — núcleos x86+x64 + C# net48/net35 + gate + instalador dual 6,5 MB + portables x86/x64 · 9_CLOSE
 2026-09-26 · DONE · v4.0.0 Release PUBLICADA: github.com/isaac4722/Fusion-HP/releases/tag/v4.0.0 (setup dual + portables + SHA256SUMS, notas v4) · release v3.0.0 y su tag ELIMINADOS (contenían la API revocada — cero rastro, solo queda v4.0.0) · 11_RELEASE
+2026-09-26 · DONE · v4.0.1 FIX ARRANQUE: NRE cs.domain 2026-09-25 — FusionInput ctor fijaba Height antes de crear inner; OnResize virtual despachaba a FusionSearchBox con inner nulo · inner→antes de Bounds + guardas nulas en ambos OnResize + V41Tests (widgets enteros sin bomba de mensajes) · 7_PERSIST

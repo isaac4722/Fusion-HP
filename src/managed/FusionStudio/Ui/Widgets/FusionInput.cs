@@ -25,9 +25,14 @@ namespace Fusion.Studio.Ui.Widgets
             SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
                      ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw |
                      ControlStyles.SupportsTransparentBackColor, true);
-            Height = 30;
             BackColor = Color.White;
 
+            // v4.0.1 (NRE al arrancar, cs.domain 2026-09-25): el TextBox interno
+            // se crea ANTES de tocar Bounds. Fijar Height dispara SetBounds →
+            // UpdateBounds → OnSizeChanged → OnResize, y OnResize es virtual:
+            // desde el ctor de la base ya se despacha al OnResize de la clase
+            // derivada (FusionSearchBox) y al de esta, que leían «inner» aún
+            // nulo. Orden correcto: campos → eventos → Bounds.
             inner = new TextBox
             {
                 BorderStyle = BorderStyle.None,
@@ -43,6 +48,8 @@ namespace Fusion.Studio.Ui.Widgets
                 if (h != null) h(this, EventArgs.Empty);
             };
             Controls.Add(inner);
+
+            Height = 30;
             Cursor = Cursors.IBeam;
             Click += delegate { inner.Focus(); };
         }
@@ -73,6 +80,7 @@ namespace Fusion.Studio.Ui.Widgets
         protected override void OnResize(EventArgs e)
         {
             base.OnResize(e);
+            if (inner == null) return; // v4.0.1: guardia — OnResize puede despacharse desde el ctor
             inner.Location = new Point(10, (Height - inner.PreferredHeight) / 2);
             inner.Width = Math.Max(0, Width - 18);
         }
@@ -137,6 +145,7 @@ namespace Fusion.Studio.Ui.Widgets
         protected override void OnResize(EventArgs e)
         {
             base.OnResize(e);
+            if (inner == null) return; // v4.0.1: guardia — OnResize puede despacharse desde el ctor
             inner.Location = new Point(32, (Height - inner.PreferredHeight) / 2);
             inner.Width = Math.Max(0, Width - 40);
         }

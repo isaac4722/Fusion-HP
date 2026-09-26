@@ -1,4 +1,24 @@
-# Fusion HP v4.0.0 — GUI web consolidada y producto 100 % local
+# Fusion HP v4.0.1 — corrección crítica de arranque · GUI web consolidada y producto 100 % local
+
+## Corregido en v4.0.1 — NRE al arrancar (crash total de la GUI)
+
+**Síntoma** (registro `cs.domain` del 2026-09-25 20:48:21): `FusionStudio.exe` moría al abrir con
+`System.NullReferenceException` en `FusionInput.OnResize`, desde `MainForm.BuildLibrary → FusionSearchBox..ctor`.
+
+**Causa raíz**: el constructor de `FusionInput` fijaba `Height = 30` **antes** de crear su `TextBox` interno.
+En WinForms, fijar `Height` dispara `SetBounds → UpdateBounds → OnSizeChanged → OnResize`, y `OnResize` es
+**virtual**: desde el propio constructor de la base ya se despachaba al `OnResize` de la clase derivada
+(`FusionSearchBox`), que —junto al de la base— leía el campo `inner` aún nulo. Toda construcción de un
+`FusionInput`/`FusionSearchBox` fallaba de forma determinista, de modo que la GUI no llegaba a arrancar.
+
+**Arreglo**: el `TextBox` interno se crea y se cablea **antes** de tocar `Bounds` (campos → eventos → bounds),
+y ambos `OnResize` llevan guardia nula como segunda barrera. Cobertura: nueva suite `V41Tests` que construye
+toda la superficie de widgets (FusionInput, FusionSearchBox, FusionTabs, FusionButton, FusionIconButton) sin
+bomba de mensajes — si el orden ctor/bounds vuelve a romperse, la suite lo detecta en CI y no en la máquina del usuario.
+
+> Nota de distribución: la v4.0.0 queda **retirada** (arrancaba en crash); esta v4.0.1 la sustituye como release única.
+
+---
 
 **Fusion HP** es un presentador litúrgico híbrido (núcleo nativo C++ + capa C#/.NET Framework) que opera desde **Windows 7 SP1 x86** hasta **Windows 11 x64**, sin Java, sin .NET Core y sin escribir en el Registro de Windows. La distribución parte de cero: las releases anteriores fueron eliminadas.
 
