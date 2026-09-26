@@ -14,17 +14,12 @@ namespace Fusion.Studio
         static void Main(string[] args)
         {
             // Excepciones no controladas: log + diálogo humano (nunca stack crudo) [SPEC §11.2]
+            // v4.1.0: NLog (LogService) — mismo studio-errors.log, con niveles y rotación.
+            Fusion.Studio.Ui.LogService.Init();
+            Fusion.Studio.Ui.LogService.Info("cs.app", "estudio iniciado");
             Application.ThreadException += delegate(object s, System.Threading.ThreadExceptionEventArgs e)
             {
-                Fusion.Shared.AppSettings st = Fusion.Shared.AppSettings.Load();
-                try { System.IO.Directory.CreateDirectory(st.LogsPath); }
-                catch { }
-                try
-                {
-                    System.IO.File.AppendAllText(System.IO.Path.Combine(st.LogsPath, "studio-errors.log"),
-                        DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " | cs.ui | " + e.Exception.ToString() + "\n");
-                }
-                catch { }
+                Fusion.Studio.Ui.LogService.Error("cs.ui", e.Exception);
                 MessageBox.Show(
                     "Ocurrió un problema inesperado y la operación fue cancelada.\n\n" +
                     "Qué puedes hacer: repite la acción. Si vuelve a fallar, usa «Ayuda → Estado del sistema » " +
@@ -34,14 +29,8 @@ namespace Fusion.Studio
             };
             AppDomain.CurrentDomain.UnhandledException += delegate(object s, UnhandledExceptionEventArgs e)
             {
-                try
-                {
-                    var st = Fusion.Shared.AppSettings.Load();
-                    System.IO.Directory.CreateDirectory(st.LogsPath);
-                    System.IO.File.AppendAllText(System.IO.Path.Combine(st.LogsPath, "studio-errors.log"),
-                        DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " | cs.domain | " + e.ExceptionObject + "\n");
-                }
-                catch { }
+                var ex = e.ExceptionObject as Exception;
+                Fusion.Studio.Ui.LogService.Error("cs.domain", ex ?? new Exception(Convert.ToString(e.ExceptionObject)));
             };
 
             Application.EnableVisualStyles();

@@ -23,4 +23,12 @@
     <ProjectReference Include="..\FusionShared\FusionShared.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- NLog 4.7.15 (BSD-3, net35) — log estructurado [DEPENDENCIAS.md] -->
+    <Reference Include="NLog">
+      <HintPath>..\..\..\third_party\net\NLog\4.7.15\NLog.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
 </Project>
