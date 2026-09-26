@@ -7,7 +7,7 @@
 ; ============================================================================
 
 #define AppName "Fusion HP"
-#define AppVersion "4.0.1"
+#define AppVersion "4.1.0"
 #define AppPublisher "Fusion HP"
 #define AppExeName "FusionHP.exe"
 #define DotNetUrl "https://go.microsoft.com/fwlink/?linkid=2088631"
@@ -51,6 +51,19 @@ Source: "staging\FusionHP.x64.exe"; DestDir: "{app}"; DestName: "FusionHP.exe"; 
 Source: "staging\FusionShared.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "staging\FusionStudio.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "staging\FusionStudio.Lite.exe"; DestDir: "{app}"; Flags: ignoreversion
+
+; Componentes de terceros (v4.1.0 — ver DEPENDENCIAS.md / LICENSE.md §4)
+Source: "staging\Newtonsoft.Json.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "staging\NLog.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "staging\PdfSharp.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "staging\PdfSharp.System.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "staging\Microsoft.Extensions.Logging.Abstractions.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "staging\System.Data.SQLite.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "staging\DocumentFormat.OpenXml.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "staging\Ookii.Dialogs.Wpf.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "staging\x86\SQLite.Interop.dll"; DestDir: "{app}\x86"; Flags: ignoreversion
+Source: "staging\x64\SQLite.Interop.dll"; DestDir: "{app}\x64"; Flags: ignoreversion
+
 Source: "staging\resources\*"; DestDir: "{app}\resources"; Flags: recursesubdirs ignoreversion
 
 [Icons]

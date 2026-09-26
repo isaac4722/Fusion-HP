@@ -182,6 +182,22 @@ jobs:
           Copy-Item (Find-First "$root/gestionada" "FusionShared.dll")      installer/staging/
           Copy-Item (Find-First "$root/gestionada" "FusionStudio.exe")     installer/staging/
           Copy-Item (Find-First "$root/gestionada" "FusionStudio.Lite.exe") installer/staging/
+
+          # terceros (v4.1.0): DLL junto al exe + interop SQLite por arquitectura
+          $tp = "third_party/net"
+          Copy-Item "$tp/Newtonsoft.Json/13.0.3/Newtonsoft.Json.dll"                      installer/staging/
+          Copy-Item "$tp/NLog/4.7.15/NLog.dll"                                            installer/staging/
+          Copy-Item "$tp/PdfSharp/1.50.5147/PdfSharp.dll"                                 installer/staging/
+          Copy-Item "$tp/PdfSharp/6.1.1/PdfSharp.dll"                                     installer/staging/
+          Copy-Item "$tp/PdfSharp/6.1.1/PdfSharp.System.dll"                              installer/staging/
+          Copy-Item "$tp/Microsoft.Extensions.Logging.Abstractions/6.0.0/Microsoft.Extensions.Logging.Abstractions.dll" installer/staging/
+          Copy-Item "$tp/System.Data.SQLite/1.0.118/System.Data.SQLite.dll"               installer/staging/
+          Copy-Item "$tp/DocumentFormat.OpenXml/2.7.2/DocumentFormat.OpenXml.dll"         installer/staging/
+          Copy-Item "$tp/Ookii.Dialogs/1.0.0/Ookii.Dialogs.Wpf.dll"                       installer/staging/
+          New-Item -ItemType Directory -Force -Path installer/staging/x86 | Out-Null
+          New-Item -ItemType Directory -Force -Path installer/staging/x64 | Out-Null
+          Copy-Item "$tp/System.Data.SQLite/1.0.118/x86/SQLite.Interop.dll" installer/staging/x86/
+          Copy-Item "$tp/System.Data.SQLite/1.0.118/x64/SQLite.Interop.dll" installer/staging/x64/
           # recursos: TODO el árbol (img con iconos, fuentes, fondos, biblias)
           # (destino = staging ya existente: resources queda como staging/resources)
           Copy-Item resources installer/staging -Recurse -Force

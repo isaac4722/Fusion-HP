@@ -1,69 +1,49 @@
-# Fusion HP v4.0.1 — corrección crítica de arranque · GUI web consolidada y producto 100 % local
+# Fusion HP v4.1.0 — dependencias permisivas verificadas · licencia v1.1 · GUI pulida
 
-## Corregido en v4.0.1 — NRE al arrancar (crash total de la GUI)
+**Fusion HP** es un presentador litúrgico híbrido (núcleo nativo C++ + capa C#/.NET Framework) que opera desde **Windows 7 SP1 x86** hasta **Windows 11 x64**, sin Java, sin .NET Core como runtime obligatorio y sin escribir en el Registro de Windows.
 
-**Síntoma** (registro `cs.domain` del 2026-09-25 20:48:21): `FusionStudio.exe` moría al abrir con
-`System.NullReferenceException` en `FusionInput.OnResize`, desde `MainForm.BuildLibrary → FusionSearchBox..ctor`.
+## Novedades v4.1.0
 
-**Causa raíz**: el constructor de `FusionInput` fijaba `Height = 30` **antes** de crear su `TextBox` interno.
-En WinForms, fijar `Height` dispara `SetBounds → UpdateBounds → OnSizeChanged → OnResize`, y `OnResize` es
-**virtual**: desde el propio constructor de la base ya se despachaba al `OnResize` de la clase derivada
-(`FusionSearchBox`), que —junto al de la base— leía el campo `inner` aún nulo. Toda construcción de un
-`FusionInput`/`FusionSearchBox` fallaba de forma determinista, de modo que la GUI no llegaba a arrancar.
+### 1. Lista cerrada de librerías (11, todas permisivas — ver DEPENDENCIAS.md)
+Cada librería = una pieza = un commit, con pruebas que cubren la sustitución:
 
-**Arreglo**: el `TextBox` interno se crea y se cablea **antes** de tocar `Bounds` (campos → eventos → bounds),
-y ambos `OnResize` llevan guardia nula como segunda barrera. Cobertura: nueva suite `V41Tests` que construye
-toda la superficie de widgets (FusionInput, FusionSearchBox, FusionTabs, FusionButton, FusionIconButton) sin
-bomba de mensajes — si el orden ctor/bounds vuelve a romperse, la suite lo detecta en CI y no en la máquina del usuario.
+**Núcleo C++:**
+- **Microsoft WIL 1.0.240803.1** (MIT): RAII de COM/HANDLE (`WIL_EXCEPTION_MODE=1`, sin excepciones). VideoPlayer (DirectShow), mutex del bootstrap, handles de procesos y búsqueda de fuentes ya no pueden fugar. `TestWil` en CoreTests.
+- **doctest 2.4.11** (MIT): aserciones idiomáticas dentro de CoreTests **sin tocar** el arnés propio, la convención `Test*` ni el código de salida (handler + `setAsDefaultForAssertsOutOfTestCases`).
+- **SQLite amalgamation 3.45.1** (dominio público): lector nativo fdb/biblias con SQL real. `SqliteDb` RAII + 4 escenarios: B-tree con 30 000 filas, WAL entre conexiones, UTF-16 con texto español y **módulo e-Sword real del repo** (Génesis 1:1, Scripture cifrada). `FusionHP.exe` x64: **2,24 MB**.
+- **spdlog 1.12.0** (MIT): `Logger.cpp` con sink diario síncrono (retención 14 días, hilo-seguro), formato SPEC §11.1.5 byte a byte y `SPDLOG_NO_EXCEPTIONS`. **Verificación Win7 automatizada**: gate CI `dumpbin /IMPORTS` (x86+x64, exe+tests) — **cero imports Win8+**.
 
-> Nota de distribución: la v4.0.0 queda **retirada** (arrancaba en crash); esta v4.0.1 la sustituye como release única.
+**Capa C#:**
+- **Newtonsoft.Json 13.0.3** (MIT, net35): motor detrás de la fachada `JsonValue` — API pública intacta, `FormatException` preservado, round-trip ahp.v1 estable; corrige escapes sustitutos, números exóticos y BOM.
+- **NLog 4.7.15** (BSD-3): `LogService` con rotación diaria; los hooks `cs.ui`/`cs.domain` migrados al mismo `studio-errors.log`. **Regla dura: nunca se registran letras ni versículos.**
+- **PDFsharp** (MIT): exportación PDF con **Unicode real** y **fuentes del producto incrustadas** (Outfit, Cormorant Garamond, Libre Baskerville vía `IFontResolver` — `/FontFile2` verificado por prueba). FusionStudio usa **6.1.1** (desviación documentada: la 1.50 trae `XPrivateFontCollection` stub y no puede incrustar fuentes privadas — verificado y registrado en DEPENDENCIAS.md); Lite conserva la 1.50.
+- **System.Data.SQLite.Core 1.0.118** (PD/MIT): vía ADO.NET (Read Only) como lector primario de módulos e-Sword con **fallback intacto al lector puro de B-Tree** del perfil B; interop x86/x64 incluido.
+- **DocumentFormat.OpenXml 2.7.2** (MIT): importador PPTX con modelo tipado, herencia Run→cuerpo→layout→maestro→tema real y anti-XXE por construcción. **Solo FusionStudio net48**; Lite conserva la vía Packaging. `PptxDirectProjector` intacto.
+- **Ookii.Dialogs 1.0.0** (BSD-3): botón «Carpeta» en Medios (importa carpetas completas) con diálogo nativo de Vista+ y fallback clásico. Sin JumpLists.
+- **Portable.BouncyCastle 1.8.9** (MIT): vendida como motor disponible para formatos futuros; `Twofish.cs` propio sigue en uso (vectores oficiales I=1,2,3 vigentes). Vector SHA-256 NIST cubierto por prueba.
 
----
+### 2. El SDK destapó dos bugs reales del contenedor PPTX (y se corrigieron)
+- La relación raíz se escribía con `Type="officeDocument"` en vez del URI completo.
+- Las relaciones del paquete se escribían como **partes sueltas** (`_rels` a mano) en vez de `CreateRelationship`: el paquete exportado tenía las relaciones raíz vacías (PowerPoint real también lo rechazaría). Ahora el contenedor es OPC estricto: presentación→slides/master, master→theme/layout, slide→layout/medios.
 
-**Fusion HP** es un presentador litúrgico híbrido (núcleo nativo C++ + capa C#/.NET Framework) que opera desde **Windows 7 SP1 x86** hasta **Windows 11 x64**, sin Java, sin .NET Core y sin escribir en el Registro de Windows. La distribución parte de cero: las releases anteriores fueron eliminadas.
+### 3. GUI: estados y organización
+- **Estados `Enabled=false` completos** en toda la superficie modelada: FusionInput/FusionSearchBox (borde tenue, fondo gris, TextBox interno sincronizado, icono atenuado), FusionIconButton (icono al 35 % con ColorMatrix), FusionTabs (sin hover/selección por ratón, título e iconos atenuados, re-medición al cambiar DPI/fuente).
+- Guardas de navegación: `FusionTabs.Add(null)` → contrato claro; layout sano en transiciones disabled↔enabled.
+- Pruebas: `V41Tests` extendido (estados, navegación entre pestañas, transiciones de habilitación) y verificación de que **los 42 nombres de iconos usados existen** en los 4 sets — cero botones sin glifo.
+- Iconos: inventario completo — 62 glifos × 4 tintas ya presentes, 0 huecos.
 
-## Qué cambió en v4.0.0
+### 4. Licencia v1.1 — autoridad del autor + abiertas con atribución
+- **Se mantienen íntegras** las cláusulas de autoridad: copyright exclusivo, solo-lectura del código, uso libre ministerial de los binarios, prohibida la ingeniería inversa.
+- **§4 reescrita con la realidad**: se eliminan las entradas fantasma (Qt 5.15, LibVLC, miniz — nunca existieron en el árbol) y se declara la lista real de componentes permisivos.
+- **Regla de oro permanente**: solo permisivos (MIT/BSD/Apache-2.0/Zlib/PD/OFL); prohibido GPL/AGPL/LGPL enlazado estático, salvo licencia comercial o LGPL con enlace dinámico + reemplazo.
+- **Nueva cláusula**: `DEPENDENCIAS.md` es normativa, se actualiza con cada release y prevalece sobre §4.
 
-1. **Sin API, sin OBS, sin control remoto — a petición del usuario**: el servidor HTTP, el cliente obs-websocket, la página `/remote`, el Mando (móvil y nativo) y el motor de Triggers fueron **eliminados por completo** (código, configuración, diagnóstico, pruebas y documentación). El programa es **100 % local**: nada escucha ni habla por la red; la única comunicación es el IPC interno `ipc.v1` entre los propios ejecutables.
-2. **GUI/UX de la web consolidada en C++ y C#** (petición: «la GUI de la web como base»):
-   - Nueva pestaña **Temas** en la biblioteca C#: los 6 temas web aplicables al elemento o a todo el proyecto, re-resueltos en caliente.
-   - **Biblia rápida (tecla G)** como overlay: cita directa («Jn 3:16», «1co 13»), **favoritos de la web** sin escribir nada, y casilla **Tercio** para insertar el versículo como lower third — sin salir del modo Presentar.
-   - **Miniaturas** de la primera diapositiva en la lista del programa (paridad con el programa de la web).
-   - **Proyectos recientes con nombre** y número de escenarios en la portada Inicio (paridad con las tarjetas de la web).
-   - El estudio nativo C++ conserva la GUI web replicada (Inicio, PowerStudio con 8 pestañas y Backstage, consola Presentar con Biblia rápida G).
-3. **Assets de la web dentro del programa**: las fuentes Outfit, Cormorant Garamond (Media, SemiBold y **Bold instanciado del variable de la web**) y Libre Baskerville, los 6 fondos, el logo y 62 iconos Tabler en 4 tintas viajan en `resources/` y se cargan vía PrivateFontCollection — sin instalar nada en el sistema.
-4. **4 biblias completas en español incluidas** y autoinstaladas en el primer arranque: **RV1960** (31 036), **NVI** (31 103), **RVG** (31 102) y **RVR1909** (31 084 versículos), con verificación automatizada de 66 libros y conteo por versión.
-5. **Canciones: la base de datos manda (flujo Holyrics)**: el banco de cantos se carga **una sola vez** en `cancionero.fdb`; proyectar es **consultar la BD → Motor** (un elemento por sección Verso/Coro), **sin generar PPTX ni archivos temporales** — una prueba automatizada garantiza 0 archivos al proyectar. El PPTX solo aparece cuando el operador lo pide (importar el original tal cual, o exportar).
+## Qué incluye (resumen v4.0.x, vigente)
+- Núcleo C++ (`FusionHP.exe`, /MT, x86+x64): bootstrap con perfiles A/B/C, salida borderless sin parpadeo, sincronización línea por línea, video DirectShow fail-safe, Stage View y servidor IPC `ipc.v1`.
+- 4 biblias completas en español (RV1960, NVI, RVG, RVR1909) autoinstaladas; canciones BD→proyección sin generar PPTX; PPTX solo cuando el operador lo pide.
+- GUI web consolidada en C++/C#: Temas en caliente, Biblia rápida G con favoritos y Tercio, miniaturas, recientes con nombre.
+- Instalador dual (x86+x64) con presupuesto **≤ 10 MB**, portables por arquitectura y SHA256SUMS.
 
-## Qué se corrigió (de lo reportado al prototipo, se mantiene resuelto)
-
-1. El cargador de Escenarios muestra **nombre, N escenarios y títulos** antes de abrir.
-2. La ventana de proyección respeta el **monitor elegido** (viaja al núcleo por IPC).
-3. Cerrar con la X **no duplica ni deja procesos zombi**; el Motor persiste su sesión.
-4. La configuración (monitores, logo, avance, reloj) **se aplica al arrancar**.
-5. El PPTX se proyecta **tal cual** (COM si existe, o lector nativo OPC sin PowerPoint).
-6. Cantos y Biblia **directamente disponibles** sin necesidad de buscar (lista sin tope, 66 libros).
-7. **Cero PPTX generados** al proyectar cantos (DB → Motor, verificado por prueba).
-
-## Qué incluye
-
-- **Núcleo nativo C++** (`FusionHP.exe`, /MT, x86 y x64): bootstrap con detección de SO/arquitectura/.NET (perfiles A/B/C), salida borderless sin parpadeo (Direct2D con fallback GDI+ de doble buffer), sincronización línea por línea, video DirectShow con fail-safe, pantalla de reposo (negro/logo/tema), Stage View de músicos y servidor IPC `ipc.v1` con 30+ comandos.
-- **Estudio** (`FusionStudio.exe`, .NET Framework 4.8): modos Inicio/Estudio/Presentación, biblioteca directa (Cantos, Biblia, Escenarios, Medios, **Temas**), programa con miniaturas y sub-líneas clicables, previsualización con el mismo modelo de render que la salida, editor WPF con lienzo estilo PowerPoint, herencia de estilos de 4 niveles (Tema → Plantilla → Escenario → Elemento) aplicable en caliente, clasificador, Stage View (alertas/temporizador/tono-BPM) e historial de uso con CSV.
-- **Variante Lite** (`FusionStudio.Lite.exe`, .NET 3.5 SP1): perfil B con motor Live completo, biblioteca, importadores/exportadores y la misma GUI.
-- **Perfil C**: sin .NET, el núcleo abre su estudio nativo completo (Inicio/Editor/Presentar en Win32/GDI+) y proyecta igualmente.
-- **Interoperabilidad**: Biblias **Zefania XML**, **e-Sword .bib/.bblx 9+** (descifrado Twofish), **JSON** y **TSV**; cantos de himnario JSON y respaldo de Holyrics; **PPTX original tal cual** (COM o nativo) e importación a Escenarios; exportación **PPTX (ISO/IEC-29500)**, **PDF** e **imágenes PNG 1080p** — siempre por decisión explícita del operador.
-- **Diagnóstico**: Ayuda → Estado del sistema con autotest (render, núcleo, permisos), log estructurado rotativo y mensajes de error en lenguaje humano con «Copiar detalles técnicos».
-
-## Instalación
-
-1. Ejecuta el instalador: instala el binario correspondiente a tu arquitectura (x86/x64) y detecta .NET; sin permisos de administrador si instalas en tu perfil.
-2. Modo **portable**: descomprime el ZIP y ejecuta `FusionHP.exe`; todos los datos quedan en la carpeta `datos` junto al programa.
-3. Primer arranque: Cantos y Biblia ya están disponibles (RV1960, NVI, RVG, RVR1909 empaquetadas); el cancionero se crea como una única base de datos.
-
-## Verificación (criterios de aceptación)
-
-- **100 % local**: `settings.json` sin claves de red (prueba automatizada); sin HttpListener/WebSocket en el producto; el estudio nativo y la consola no exponen ninguna salida de red.
-- **Biblias completas**: prueba automatizada lee las 4 versiones de `resources/data/bibles` y verifica 66 libros y ≥30 000 versículos por versión.
-- **Flujo de cantos**: prueba automatizada «proyectar un canto NO crea archivos» (ni .pptx ni .ahp).
-- **Temas**: prueba automatizada del cambio de tema en caliente (Clásico → Solemne → fuente Cormorant Garamond) y de la anulación por elemento.
-- **Dual**: CI compila x86 + x64 (núcleo) y net48 + net35 (administrado), con suites nativas (109+ pruebas) y administradas (55+ pruebas) en verde.
+## Verificación
+- CI: núcleo x86+x64 (144 checks nativos) · C# net35+net48 (58 pruebas) · gate de prohibiciones 0 violaciones · gate de imports Win8+ en verde · instalador dual + portables + SHA256SUMS.
+- La verificación manual final en Win7 x86 real sin .NET (perfil C) queda para el despliegue del propietario; el gate de imports es el proxy automatizado en CI.

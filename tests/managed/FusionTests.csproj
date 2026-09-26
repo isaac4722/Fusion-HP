@@ -9,7 +9,7 @@
     <UseWindowsForms>true</UseWindowsForms>
     <AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
-    <Version>4.0.1</Version>
+    <Version>4.1.0</Version>
     <AssemblyTitle>Fusion HP Tests</AssemblyTitle>
     <Product>Fusion HP</Product>
   </PropertyGroup>
