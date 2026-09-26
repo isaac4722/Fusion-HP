@@ -203,7 +203,15 @@ void App::BroadcastState() {
 
 void App::BroadcastMotorState() {
     if (!ipc_ || !motor_) return;
-    ipc_->BroadcastEvent("motor", motor_->StateJson());
+    ipc_->BroadcastEvent("motor", MotorStateJson());
+}
+
+// v4.2.0: estado del Motor + visibilidad de la salida (la GUI sincroniza el
+// ciclo Iniciar/Terminar aunque el Motor quede autónomo o la GUI se reabra)
+Json App::MotorStateJson() {
+    Json j = motor_ ? motor_->StateJson() : Json::object();
+    j["outputVisible"] = live_.OutputVisible();
+    return j;
 }
 
 void App::ApplyBlank(const std::string& mode) {
@@ -352,12 +360,38 @@ Json App::Dispatch(const std::string& cmd, const Json& p) {
     }
     if (cmd == "monitor") {
         int idx = p.value("index", -1);
+        // v4.2.0: si viaja el nombre de dispositivo manda EL NOMBRE (órdenes de
+        // enumeración distintas entre C# y C++: índice desnudo podía fallar)
+        if (p.contains("device") && p["device"].is_string()) {
+            int di = Monitors::IndexOfDevice(ToWide(p["device"].get<std::string>()));
+            if (di >= 0) idx = di;
+        }
         std::string which = p.value("output", std::string("public"));
         if (which == "stage") {
             if (!live_.StageHwnd()) live_.CreateStage(idx);
         } else {
             live_.ShowOnMonitor(idx);
         }
+        return ok;
+    }
+    // ---- v4.2.0 — SALIDA INTEGRADA (estilo PowerPoint) ----
+    // La salida nace oculta y solo se muestra cuando el operador inicia la
+    // presentación; «Terminar» la oculta sin destruir nada.
+    if (cmd == "output.show") {
+        if (p.contains("device") && p["device"].is_string()) {
+            int di = Monitors::IndexOfDevice(ToWide(p["device"].get<std::string>()));
+            if (di >= 0) live_.ShowOnMonitor(di);
+        } else if (p.contains("index")) {
+            int idx = p.value("index", -1);
+            if (idx >= 0) live_.ShowOnMonitor(idx);
+        }
+        live_.ShowOutput(true);
+        BroadcastMotorState();   // v4.2.0: la GUI lee outputVisible del evento motor
+        return ok;
+    }
+    if (cmd == "output.hide") {
+        live_.ShowOutput(false);
+        BroadcastMotorState();
         return ok;
     }
     if (cmd == "env") {
@@ -450,7 +484,7 @@ Json App::DispatchMotor(const std::string& cmd, const Json& p) {
         return ok;
     }
     if (cmd == "motor.state") {
-        ok["data"] = motor_->StateJson();
+        ok["data"] = MotorStateJson();
         return ok;
     }
     return {{"ok", false}, {"error", "comando motor desconocido: " + cmd}};

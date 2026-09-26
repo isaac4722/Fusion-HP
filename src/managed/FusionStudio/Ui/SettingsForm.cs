@@ -49,13 +49,14 @@ namespace Fusion.Studio.Ui
             {
                 var lblSolo = new Label
                 {
-                    Text = "Con un solo monitor la proyección cubrirá tu pantalla.\n" +
-                           "Conecta un segundo monitor o usa la tecla Esc para reposo.",
-                    Location = new Point(24, y + 2), Size = new Size(500, 30),
+                    Text = "Con un solo monitor la proyección cubrirá tu pantalla al\n" +
+                           "Iniciar la presentación (Esc la termina). Conecta un segundo\n" +
+                           "monitor para operar y proyectar a la vez.",
+                    Location = new Point(24, y + 2), Size = new Size(500, 44),
                     ForeColor = UiTheme.TextDim, Font = UiTheme.Small()
                 };
                 Controls.Add(lblSolo);
-                y += 36;
+                y += 48;
             }
 
             cmbStage = new ComboBox { Location = new Point(24, y), Size = new Size(300, 24), DropDownStyle = ComboBoxStyle.DropDownList };

@@ -48,6 +48,27 @@ public:
         return list.empty() ? 0 : list[0].index;
     }
 
+    // v4.2.0: resolver por NOMBRE de dispositivo (\\.\DISPLAY2) — la enumeración
+    // de WinForms (Screen.AllScreens) y la propia NO garantizan el mismo orden;
+    // el índice desnudo podía proyectar en el monitor equivocado.
+    static int IndexOfDevice(const std::wstring& device) {
+        if (device.empty()) return -1;
+        auto list = Enumerate();
+        for (auto& m : list) {
+            if (m.name.size() == device.size()) {
+                bool eq = true;
+                for (size_t i = 0; i < m.name.size(); ++i) {
+                    wchar_t a = m.name[i], b = device[i];
+                    if (a >= L'A' && a <= L'Z') a = a - L'A' + L'a';
+                    if (b >= L'A' && b <= L'Z') b = b - L'A' + L'a';
+                    if (a != b) { eq = false; break; }
+                }
+                if (eq) return m.index;
+            }
+        }
+        return -1;
+    }
+
     static int Count() { return (int)Enumerate().size(); }
 
     static bool RectOf(int index, RECT* out) {

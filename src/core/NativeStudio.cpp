@@ -1333,12 +1333,10 @@ void NativeStudio::OnCommand(int id) {
         case CMD_ITEM_UP: MoveItem(draft_.selItem, -1); return;
         case CMD_ITEM_DOWN: MoveItem(draft_.selItem, 1); return;
         case CMD_PROYECTOR: {
-            // ciclar la salida entre monitores (la ventana de salida es persistente)
-            int n = Monitors::Count();
-            if (n > 1 && live_) {
-                int nextM = (live_->MonitorIndex() + 1) % n;
-                live_->ShowOnMonitor(nextM);
-            }
+            // v4.2.0 — TOGGLE integrado (como PowerPoint): la salida oculta se
+            // muestra; la visible se oculta. Nunca se destruye: todo es
+            // visibilidad (el monitor se elige en Configuración del estudio).
+            if (live_) live_->ShowOutput(!live_->OutputVisible());
             return;
         }
         default: break;

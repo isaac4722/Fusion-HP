@@ -38,20 +38,13 @@ namespace Fusion.Studio.Ui
             // se enviaba: la salida ignoraba la selección del operador).
             try
             {
+                // v4.2.0: SetMonitor viaja con el NOMBRE del dispositivo — los
+                // índices de Screen.AllScreens (C#) y del núcleo (EnumDisplayMonitors)
+                // no garantizan el mismo orden y podía proyectar en el monitor equivocado.
                 if (Settings.PublicMonitor >= 0)
-                {
-                    var mp = JsonValue.Object();
-                    mp.Set("index", JsonValue.Make(Settings.PublicMonitor));
-                    mp.Set("output", JsonValue.Make("public"));
-                    Live.PostCore("monitor", mp);
-                }
+                    Live.SetMonitor(Settings.PublicMonitor, "public");
                 if (Settings.StageMonitor >= 0)
-                {
-                    var ms = JsonValue.Object();
-                    ms.Set("index", JsonValue.Make(Settings.StageMonitor));
-                    ms.Set("output", JsonValue.Make("stage"));
-                    Live.PostCore("monitor", ms);
-                }
+                    Live.SetMonitor(Settings.StageMonitor, "stage");
             }
             catch { }
 

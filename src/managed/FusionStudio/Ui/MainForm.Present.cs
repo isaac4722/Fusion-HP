@@ -16,7 +16,7 @@ namespace Fusion.Studio.Ui
 {
     public partial class MainForm
     {
-        FusionButton btnSend, btnBlack, btnLogo, btnClear, btnShow, btnMsg, btnVerse, btnChords, btnAdvance;
+        FusionButton btnSend, btnBlack, btnLogo, btnClear, btnShow, btnMsg, btnVerse, btnChords, btnAdvance, btnOutput;
         FusionIconButton ibPrevEl, ibPrevLine, ibNextLine, ibNextEl;
         FusionSearchBox txtHighlight;
         System.Collections.Generic.Dictionary<int, Bitmap> progThumbs;
@@ -128,13 +128,25 @@ namespace Fusion.Studio.Ui
             btnSend.Click += delegate
             {
                 var scn = CurrentScenarioUi;
-                if (scn != null) Live.SendToLive(scn);
+                if (scn != null)
+                {
+                    Live.SendToLive(scn);
+                    StartPresentation();   // como PowerPoint: al presentar se MUESTRA la salida
+                }
             };
             right.Controls.Add(btnSend); y += 40;
 
             var lblScreens = new Label { Text = "PANTALLAS", Font = UiTheme.SmallBold(), ForeColor = UiTheme.TextDim,
                                          Location = new Point(12, y), AutoSize = true };
             right.Controls.Add(lblScreens); y += 22;
+
+            // v4.2.0 — SALIDA INTEGRADA (estilo PowerPoint): la ventana de salida
+            // no es un programa aparte que vive ahí negro para siempre; nace
+            // OCULTA y solo aparece al INICIAR la presentación. «Terminar» la
+            // vuelve a ocultar (Esc también termina).
+            btnOutput = MakeLiveButton("Iniciar presentación", "device-desktop", ref y, FusionButtonKind.Primary);
+            btnOutput.Click += delegate { ToggleOutput(); };
+            right.Controls.Add(btnOutput); y += 40;
 
             // v4.2.0 (C2): cuadrícula 2×2 — Negro/Logo y Ocultar/Mostrar comparten
             // filas (antes 4 chips apilados consumían 144 px y empujaban el resto)
@@ -262,6 +274,28 @@ namespace Fusion.Studio.Ui
             SetActiveKind(btnClear, b == "clear");
             SetActiveKind(btnAdvance, Settings.AdvanceMode == "line");
             UpdateAdvanceButton();
+            // v4.2.0: ciclo de la salida integrada (texto/estado del botón)
+            if (btnOutput != null)
+            {
+                bool vis = Live.State.OutputVisible;
+                btnOutput.Text = vis ? "Terminar presentación" : "Iniciar presentación";
+                var k = vis ? FusionButtonKind.Active : FusionButtonKind.Primary;
+                if (btnOutput.Kind != k) { btnOutput.Kind = k; btnOutput.Invalidate(); }
+                else btnOutput.Invalidate();   // el texto cambió: repintar igual
+            }
+        }
+
+        // ------------------------------------------------------------ salida integrada (v4.2.0)
+        void ToggleOutput()
+        {
+            if (Live.State.OutputVisible) Live.HideOutput();
+            else StartPresentation();
+        }
+
+        void StartPresentation()
+        {
+            if (!Live.State.OutputVisible)
+                Live.ShowOutput(Settings.PublicMonitor >= 0 ? Settings.PublicMonitor : -1);
         }
 
         static void SetActiveKind(FusionButton b, bool on)

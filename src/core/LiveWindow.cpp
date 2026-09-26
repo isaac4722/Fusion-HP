@@ -55,10 +55,23 @@ bool LiveWindow::Create(int monitorIndex, const std::wstring& title) {
         Logger::Error("core.live", "fallo al inicializar el renderer de la salida publica");
         return false;
     }
-    ShowWindow(hwnd_, SW_SHOWNOACTIVATE);
-    UpdateWindow(hwnd_);
-    Logger::Info("core.live", "ventana de salida creada en monitor " + std::to_string(monitorIndex));
+    // v4.2.0: OCULTA al arrancar — como PowerPoint, la pantalla de salida solo
+    // existe cuando el operador inicia la presentación (output.show via IPC).
+    // El estado se dibuja igual: el HwndRenderTarget renderiza aunque el hwnd
+    // esté oculto y el primer ShowOutput(true) pinta sin parpadeo.
+    outputVisible_ = false;
+    Logger::Info("core.live", "ventana de salida creada (oculta) en monitor " + std::to_string(monitorIndex));
     return true;
+}
+
+void LiveWindow::ShowOutput(bool on) {
+    if (!hwnd_) return;
+    if (outputVisible_ == on) return;
+    outputVisible_ = on;
+    ShowWindow(hwnd_, on ? SW_SHOWNOACTIVATE : SW_HIDE);
+    if (on) RenderNow();          // primer frame sin transición sucia
+    Logger::Info("core.live", on ? "salida VISIBLE (presentación iniciada)"
+                                  : "salida oculta (presentación terminada)");
 }
 
 bool LiveWindow::CreateStage(int monitorIndex) {
@@ -79,6 +92,7 @@ void LiveWindow::ShowOnMonitor(int monitorIndex) {
     RECT rc;
     if (!Monitors::RectOf(monitorIndex, &rc)) return;
     monitorIdx_ = monitorIndex;
+    // v4.2.0: válido también OCULTA — se posiciona para el próximo inicio
     SetWindowPos(hwnd_, nullptr, rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top,
                  SWP_NOZORDER | SWP_NOACTIVATE);
     renderer_.Resize();
@@ -86,7 +100,7 @@ void LiveWindow::ShowOnMonitor(int monitorIndex) {
         SetWindowPos(videoHwnd_, nullptr, 0, 0, rc.right - rc.left, rc.bottom - rc.top,
                      SWP_NOZORDER | SWP_NOACTIVATE);
     }
-    RenderNow();
+    if (outputVisible_) RenderNow();
 }
 
 void LiveWindow::Destroy() {

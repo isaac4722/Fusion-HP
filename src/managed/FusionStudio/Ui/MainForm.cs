@@ -426,8 +426,9 @@ namespace Fusion.Studio.Ui
             int scen = Live.Project != null ? Live.Project.Scenarios.Count : 0;
             string proj = Live.Project != null ? Live.Project.Name : "Sin proyecto";
             lblProject.Text = proj;
-            lblStatus.Text = core + "   ·   " + scen + " escenarios   ·   perfil " + DetectProfile();
-            lblLive.Visible = !Live.State.IsBlank;
+            string salida = Live.State.OutputVisible ? "salida ● activa" : "salida ○ oculta";
+            lblStatus.Text = core + "   ·   " + salida + "   ·   " + scen + " escenarios   ·   perfil " + DetectProfile();
+            lblLive.Visible = Live.State.OutputVisible && !Live.State.IsBlank;
             lblMotor.Text = Live.State.HasProgram ? "MOTOR ● programa activo" : "";
             lblMotor.Location = new Point(status.Width - lblMotor.PreferredWidth - 10, 5);
         }
@@ -500,7 +501,10 @@ namespace Fusion.Studio.Ui
             {
                 if (mode == Mode.Present)
                 {
-                    Live.Blank("black");       // pantalla de reposo [SPEC §6.1.3]
+                    // v4.2.0 — como PowerPoint: Esc TERMINA la presentación (oculta
+                    // la salida). Sin presentación, Esc pone la pantalla de reposo.
+                    if (Live.State.OutputVisible) Live.HideOutput();
+                    else Live.Blank("black");       // pantalla de reposo [SPEC §6.1.3]
                     e.Handled = true;
                 }
                 return;
@@ -539,8 +543,11 @@ namespace Fusion.Studio.Ui
             string info = "Salida configurada: " +
                 (Settings.PublicMonitor >= 0 && Settings.PublicMonitor < monitors.Length
                     ? monitors[Settings.PublicMonitor].DeviceName
-                    : "automática (segundo monitor si existe)") + "\n\n" +
-                "Monitores detectados: " + monitors.Length;
+                    : "automática (segundo monitor si existe)") + "\n" +
+                "Estado: " + (Live.State.OutputVisible ? "VISIBLE (presentación en curso)" : "oculta (sin presentación)") + "\n\n" +
+                "Monitores detectados: " + monitors.Length + "\n\n" +
+                "La ventana de salida es parte de este programa (como PowerPoint):\n" +
+                "aparece al Iniciar presentación y se oculta al Terminar (Esc).";
             MessageBox.Show(this, info, "Fusion HP — salida", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 

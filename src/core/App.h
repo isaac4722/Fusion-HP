@@ -32,6 +32,7 @@ private:
     void ApplyBlank(const std::string& mode);       // black|logo|theme|clear|none
     void PreloadSlideJson(const Json& slide);       // carga diferida [SPEC §6.4]
     void BroadcastMotorState();                     // evento motor.state
+    Json MotorStateJson();                          // motor.state + outputVisible (v4.2.0)
     Json DispatchMotor(const std::string& cmd, const Json& p);   // familia motor.*
     void WatchStandalone();                        // GUI fuera => Motor autónomo
     void UpdateStage(bool force);                   // reloj/temporizador/next del escenario

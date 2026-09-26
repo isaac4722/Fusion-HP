@@ -22,6 +22,13 @@ public:
     void ShowOnMonitor(int monitorIndex);       // reposiciona sin destruir
     void Destroy();
 
+    // v4.2.0 — SALIDA INTEGRADA (estilo PowerPoint): la ventana de salida se
+    // crea OCULTA y solo aparece cuando el operador INICIA la presentación;
+    // «Terminar» la vuelve a ocultar. Nunca se destruye [SPEC §6.3.1]:
+    // show/hide son visibilidad, no recreación (cero parpadeo).
+    void ShowOutput(bool on);
+    bool OutputVisible() const { return outputVisible_; }
+
     HWND Hwnd() const { return hwnd_; }
     static LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
     HWND VideoHwnd() const { return videoHwnd_; }
@@ -68,6 +75,7 @@ private:
     int monitorIdx_ = -1;
     std::wstring class_;
     bool standalone_ = false;
+    bool outputVisible_ = false;    // v4.2.0: oculta hasta «Iniciar presentación»
     UINT_PTR hintTimer_ = 0;
 };
 

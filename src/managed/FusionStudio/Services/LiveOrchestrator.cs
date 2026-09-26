@@ -28,6 +28,7 @@ namespace Fusion.Studio.Services
         public ResolvedSlide Current;           // resuelto local para el preview
         public bool HasProgram;                 // el Motor tiene programa cargado
         public string AdvanceMode = "line";     // línea|diapositiva (referencia web)
+        public bool OutputVisible;              // v4.2.0: salida visible (estilo PowerPoint)
         public int LineCount { get { return Current != null ? Current.Lines.Count : 0; } }
     }
 
@@ -148,6 +149,7 @@ namespace Fusion.Studio.Services
                 State.IsBlank = State.BlankMode != "none";
                 State.HasProgram = st.GetBool("hasProgram", false);
                 State.AdvanceMode = st.GetStr("advance", "line");
+                State.OutputVisible = st.GetBool("outputVisible", State.OutputVisible);   // v4.2.0
                 highlight.Clear();
                 foreach (string w in st.GetStringArray("highlight")) highlight.Add(w);
                 RefreshCurrentLocal();
@@ -342,6 +344,44 @@ namespace Fusion.Studio.Services
             IpcPost("motor.advance", p);
         }
 
+        // ---------------------------------------------------------------- salida integrada (v4.2.0)
+        // Estilo PowerPoint: la ventana de salida NO es un programa aparte —
+        // nace oculta y solo aparece al INICIAR la presentación; «Terminar» la
+        // vuelve a ocultar sin destruir nada. El espejo es optimista: el Motor
+        // confirma con outputVisible en el próximo motor.state.
+        public void ShowOutput(int monitorIndex)
+        {
+            var p = JsonValue.Object();
+            var scr = System.Windows.Forms.Screen.AllScreens;
+            if (monitorIndex >= 0 && monitorIndex < scr.Length)
+                p.Set("device", JsonValue.Make(scr[monitorIndex].DeviceName));   // el nombre manda
+            else
+                p.Set("index", JsonValue.Make(monitorIndex));
+            IpcPost("output.show", p);
+            State.OutputVisible = true;   // espejo optimista (el Motor confirma)
+            FireStateChanged();
+        }
+
+        public void HideOutput()
+        {
+            IpcPost("output.hide", JsonValue.Object());
+            State.OutputVisible = false;
+            FireStateChanged();
+        }
+
+        /// <summary>Mueve la salida/retorno al monitor elegido (device name manda).</summary>
+        public void SetMonitor(int monitorIndex, string which)
+        {
+            var p = JsonValue.Object();
+            var scr = System.Windows.Forms.Screen.AllScreens;
+            if (monitorIndex >= 0 && monitorIndex < scr.Length)
+                p.Set("device", JsonValue.Make(scr[monitorIndex].DeviceName));
+            else
+                p.Set("index", JsonValue.Make(monitorIndex));
+            p.Set("output", JsonValue.Make(which));
+            IpcPost("monitor", p);
+        }
+
         /// <summary>Añade un Escenario al final del proyecto, lo entrega al Motor
         /// y lo proyecta [SPEC §7.5.1].</summary>
         public void SendToLive(Scenario scn)
@@ -356,6 +396,11 @@ namespace Fusion.Studio.Services
             State.LineIndex = 0;
             SendProgram(i, el, 0);
             Blank("none");   // enviar a pantalla = mostrar
+            // v4.2.0 — SALIDA INTEGRADA: todo envío a pantalla MUESTRA la salida
+            // (único punto de paso: cantos, versículos, medios y escenarios);
+            // como PowerPoint, proyectar implica iniciar. Idempotente.
+            if (!State.OutputVisible)
+                ShowOutput(Settings.PublicMonitor >= 0 ? Settings.PublicMonitor : -1);
             RefreshCurrentLocal();
         }
 
