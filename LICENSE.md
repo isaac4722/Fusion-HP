@@ -41,14 +41,17 @@ licencia en lo que a dichos componentes respecta. La obligación de esos compone
 es **atribución, no reciprocidad**, y ninguno transfiere derechos sobre el Software.
 
 **La lista completa, normativa y verificada por hash, está en [`DEPENDENCIAS.md`](DEPENDENCIAS.md).**
-Resumen de los componentes incluidos en el instalador (versión vigente v4.1.0):
+Resumen de los componentes incluidos en el instalador (versión vigente v4.1.1):
 - **C++**: Microsoft WIL 1.0.240803.1 (MIT) · doctest 2.4.11 (MIT, solo pruebas) ·
   SQLite amalgamation 3.45.1 (dominio público) · spdlog 1.12.0 (MIT) ·
   nlohmann/json 3.11.x (MIT, preexistente).
 - **C#**: Newtonsoft.Json 13.0.3 (MIT) · NLog 4.7.15 (BSD-3) · PDFsharp 1.50.5147 y
   6.1.1 (MIT) · Microsoft.Extensions.Logging.Abstractions 6.0.0 (MIT) ·
-  System.Data.SQLite.Core 1.0.118 (dominio público/MIT) · DocumentFormat.OpenXml
-  2.7.2 (MIT) · Ookii.Dialogs 1.0.0 (BSD-3) · Portable.BouncyCastle 1.8.9 (MIT).
+  System.Buffers 4.5.1, System.Memory 4.5.4, System.Numerics.Vectors 4.5.0 y
+  System.Runtime.CompilerServices.Unsafe 6.0.0 (MIT, cadena transitiva de
+  PDFsharp 6.1.1) · System.Data.SQLite.Core 1.0.118 (dominio público/MIT) ·
+  DocumentFormat.OpenXml 2.7.2 (MIT) · Ookii.Dialogs 1.0.0 (BSD-3) ·
+  Portable.BouncyCastle 1.8.9 (MIT).
 - **Assets**: fuentes Outfit, Cormorant Garamond y Libre Baskerville (SIL OFL 1.1) ·
   Tabler Icons (MIT) · Biblia Reina-Valera 1909 (texto de dominio público).
 

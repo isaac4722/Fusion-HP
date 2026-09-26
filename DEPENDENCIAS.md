@@ -26,6 +26,10 @@
 | PDFsharp | 1.50.5147 | MIT | net20 | Motor PDF de **FusionStudio.Lite** (perfil B) | `2fa0893c6a1a8e64` |
 | **PDFsharp** | **6.1.1** | MIT | netstandard2.0 | Motor PDF de **FusionStudio** (net48) — **desviación de versión autorizada**: la 1.50 trae `XPrivateFontCollection` stub (NotImplementedException verificado con dnfile) y su build GDI sustituye familias privadas, por lo que NO puede incrustar las fuentes del producto; la 6.1.1 con `IFontResolver` sí | dll `6ab52dd47537fdef` · System `d8b8426655d22c13` |
 | Microsoft.Extensions.Logging.Abstractions | 6.0.0 | MIT | netstandard2.0 | Dependencia de PDFsharp 6.1.1 | `fef2acbc613d9353` |
+| System.Buffers | 4.5.1 | MIT | net461 | Cadena transitiva de PDFsharp 6.1.1 (v4.1.1) | `accccfbe45d9f08f` |
+| System.Memory | 4.5.4 | MIT | net461 | Cadena transitiva de PDFsharp 6.1.1 (v4.1.1) | `8e76318e8b06692a` |
+| System.Numerics.Vectors | 4.5.0 | MIT | net46 | Cadena transitiva de System.Memory (v4.1.1) | `1d3ef8698281e7cf` |
+| System.Runtime.CompilerServices.Unsafe | 6.0.0 | MIT | net461 | Cadena transitiva de PDFsharp 6.1.1 (v4.1.1) | `37768488e8ef4572` |
 | System.Data.SQLite.Core | 1.0.118 | Dominio público/MIT | net20 (+ interop x86/x64) | Vía ADO.NET de `SQLiteFileReader`; lector puro B-Tree de fallback (perfil B) | managed `069d8c7bb2e6d08d` · x86 `1236cb079fd94557` · x64 `abd11bd7c1bed1cc` |
 | DocumentFormat.OpenXml | 2.7.2 | MIT | net40 | Importador PPTX de FusionStudio (herencia 4 niveles, anti-XXE por construcción). **Nunca** en FusionShared/Lite (net35) | `211c0231d9bae955` |
 | Ookii.Dialogs | 1.0.0 | BSD-3 | net35 | `VistaFolderBrowserDialog` (Medios → Carpeta). Solo diálogos; sin JumpLists | `04b8cb55ff481a4f` |
