@@ -39,7 +39,7 @@ namespace Fusion.Studio.Export
 
                 // -------- _rels/.rels
                 AddPart(pkg, new Uri("/_rels/.rels", UriKind.Relative), "application/vnd.openxmlformats-package.relationships+xml",
-                        RelsXml(new[] { new RelEntry("rId1", "officeDocument", "ppt/presentation.xml") }));
+                        RelsXml(new[] { new RelEntry("rId1", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument", "ppt/presentation.xml") }));
 
                 // -------- ppt/presentation.xml
                 var slideFiles = new List<string>();

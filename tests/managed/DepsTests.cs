@@ -72,8 +72,12 @@ namespace Fusion.Tests
             var emoji = JsonValue.Parse("\"emoji: \\uD83D\\uDE00\"");
             TestRunner.CheckEq(emoji.Str, "emoji: \U0001F600", "escape sustituto UTF-16");
             // números exóticos
-            var big = JsonValue.Parse("{\"n\":1e999}").GetNum("n", 0);   // infinito → funciona
-            TestRunner.Check(double.IsPositiveInfinity(big), "1e999 parsea a infinito");
+            // v4.1.1: Newtonsoft es estricto con overflow — rechaza (el propio
+            // parser lo aceptaba como infinito; el estricto evita basura en ahp.v1)
+            bool of = false;
+            try { JsonValue.Parse("{\"n\":1e999}"); }
+            catch (FormatException) { of = true; }
+            TestRunner.Check(of, "1e999 rechazado (parser estricto)");
             var neg = JsonValue.Parse("{\"n\":-0.0}").GetNum("n", 1);
             TestRunner.Check(neg == 0, "-0.0 parsea a cero");
             var exp = JsonValue.Parse("{\"n\":2.5e-3}").GetNum("n", 0);
