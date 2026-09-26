@@ -83,6 +83,16 @@ namespace Fusion.Studio.Ui
                 return;
             }
 
+            RenderSlide(g, slide, activeLine, W, H);
+        }
+
+        /// <summary>Render del slide RESUELTO reutilizable: misma rutina para la
+        /// preview, las miniaturas del programa y el clasificador [SPEC §7.4.2].
+        /// v4.0.0: extraído de OnPaint para las miniaturas del programa.</summary>
+        public static void RenderSlide(Graphics g, ResolvedSlide slide, int activeLine, int W, int H)
+        {
+            if (slide == null || W <= 0 || H <= 0) return;
+
             // Fondo
             using (var b = new SolidBrush(Parse(slide.Background.Color)))
                 g.FillRectangle(b, 0, 0, W, H);

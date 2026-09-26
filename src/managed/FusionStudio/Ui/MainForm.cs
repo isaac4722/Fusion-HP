@@ -103,7 +103,7 @@ namespace Fusion.Studio.Ui
         // biblioteca
         Panel libraryPanel;
         FusionTabs libTabs;
-        ListBox songsList, scenariosList, mediaList;
+        ListBox songsList, scenariosList, mediaList, themesList;
         TreeView bibleTree;
         FusionSearchBox bibleSearch;
         ListBox bibleResults;
@@ -308,6 +308,7 @@ namespace Fusion.Studio.Ui
 
             if (m == Mode.Present) RefreshProgram();
             if (m == Mode.Studio) ActivateEditor();
+            if (m == Mode.Home) RefreshRecents();   // tarjetas de recientes (web)
         }
 
         void OnFormLoad(object sender, EventArgs e)
@@ -433,7 +434,7 @@ namespace Fusion.Studio.Ui
                 case Keys.L:
                     Live.Blank(Live.State.BlankMode == "logo" ? "none" : "logo"); e.Handled = true; break;
                 case Keys.G:
-                    FocusBibleSearch(); e.Handled = true; break;
+                    ShowQuickVerse(); e.Handled = true; break;   // biblia rápida (web)
                 case Keys.F5:
                     ShowOutputInfo(); e.Handled = true; break;
             }

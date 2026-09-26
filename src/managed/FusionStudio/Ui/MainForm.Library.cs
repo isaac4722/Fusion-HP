@@ -149,6 +149,133 @@ namespace Fusion.Studio.Ui
             tabMedia.Controls.Add(mediaList);
             tabMedia.Controls.Add(medBar);
             libTabs.Add("Medios", "photo", tabMedia);
+
+            // ---- pestaña Temas (paridad web: temas aplicables al elemento o a todo)
+            var tabThemes = new Panel { BackColor = Color.White };
+            themesList = new ListBox { Dock = DockStyle.Fill, BorderStyle = BorderStyle.None, Font = UiTheme.Normal(),
+                                       IntegralHeight = false, DrawMode = DrawMode.OwnerDrawVariable,
+                                       BackColor = Color.White };
+            themesList.DrawItem += ThemesListDraw;
+            themesList.MeasureItem += delegate(object s, MeasureItemEventArgs e) { e.ItemHeight = 44; };
+            themesList.DoubleClick += delegate { ApplyThemeToAll(); };
+            var themeBar = new Panel { Dock = DockStyle.Bottom, Height = 38, BackColor = UiTheme.Panel };
+            var btnThemeElement = new FusionButton { Text = "Al elemento", IconName = "wand", Kind = FusionButtonKind.Chip,
+                                                     Dock = DockStyle.Left, Width = 110 };
+            btnThemeElement.Click += delegate { ApplyThemeToElement(); };
+            var btnThemeAll = new FusionButton { Text = "Aplicar a todo", IconName = "check", Kind = FusionButtonKind.Chip,
+                                                 Dock = DockStyle.Right, Width = 128 };
+            btnThemeAll.Click += delegate { ApplyThemeToAll(); };
+            themeBar.Controls.Add(btnThemeElement); themeBar.Controls.Add(btnThemeAll);
+            tabThemes.Controls.Add(themesList);
+            tabThemes.Controls.Add(themeBar);
+            libTabs.Add("Temas", "palette", tabThemes);
+        }
+
+        // ------------------------------------------------------------ temas (web)
+        void ThemesListDraw(object sender, DrawItemEventArgs e)
+        {
+            if (e.Index < 0) return;
+            var p = Live.Project;
+            if (p == null || e.Index >= p.Themes.Count) return;
+            var t = p.Themes[e.Index];
+            bool sel = (e.State & DrawItemState.Selected) != 0;
+            bool active = t.Id == p.ThemeRef;
+            using (var b = new SolidBrush(sel || active ? UiTheme.AccentSoft : Color.White))
+                e.Graphics.FillRectangle(b, e.Bounds);
+            if (active)
+                using (var b = new SolidBrush(UiTheme.Accent))
+                    e.Graphics.FillRectangle(b, e.Bounds.X, e.Bounds.Y, 3, e.Bounds.Height);
+            // muestra de color: fondo del tema + acento del texto activo
+            var sw = new Rectangle(e.Bounds.X + 10, e.Bounds.Y + 8, 44, 28);
+            using (var b = new SolidBrush(ParseHex(t.Background.Color)))
+                e.Graphics.FillRectangle(b, sw);
+            using (var pen = new Pen(UiTheme.ChipBorder))
+                e.Graphics.DrawRectangle(pen, sw);
+            using (var b = new SolidBrush(ParseHex(t.Style.ActiveColor)))
+                e.Graphics.FillRectangle(b, sw.X + sw.Width - 12, sw.Y + sw.Height - 12, 10, 10);
+            using (var b = new SolidBrush(active ? UiTheme.AccentDark : UiTheme.Text))
+                TextRenderer.DrawText(e.Graphics, t.Name, UiTheme.NormalBold(),
+                    new Rectangle(e.Bounds.X + 64, e.Bounds.Y + 4, e.Bounds.Width - 70, 18),
+                    b.Color, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+            TextRenderer.DrawText(e.Graphics, (t.Style.Font ?? "Segoe UI") + " · fondo " +
+                (string.IsNullOrEmpty(t.Background.Image) ? (t.Background.Color ?? "") :
+                 System.IO.Path.GetFileName(t.Background.Image).Replace("app:resources/backgrounds/", "")),
+                UiTheme.Small(),
+                new Rectangle(e.Bounds.X + 64, e.Bounds.Y + 22, e.Bounds.Width - 70, 16),
+                UiTheme.TextDim, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+        }
+
+        static Color ParseHex(string hex)
+        {
+            try
+            {
+                string h = (hex ?? "").TrimStart('#');
+                if (h.Length == 6) return Color.FromArgb(255, Convert.ToInt32(h.Substring(0, 2), 16),
+                    Convert.ToInt32(h.Substring(2, 2), 16), Convert.ToInt32(h.Substring(4, 2), 16));
+            }
+            catch { }
+            return Color.FromArgb(255, 10, 7, 4);
+        }
+
+        /// <summary>Aplica el tema elegido SOLO al elemento en curso (paridad web:
+        /// «aplicar tema al elemento»), clonando su estilo y fondo.</summary>
+        void ApplyThemeToElement()
+        {
+            var p = Live.Project;
+            var t = themesList != null && p != null && themesList.SelectedIndex >= 0 &&
+                    themesList.SelectedIndex < p.Themes.Count ? p.Themes[themesList.SelectedIndex] : null;
+            var el = Live.CurrentElement;
+            if (t == null || el == null) return;
+            el.StyleOverride = t.Style.Clone();
+            el.BgOverride = CloneBg(t.Background);
+            Live.SendCurrent();
+            RefreshProgram();
+        }
+
+        /// <summary>Aplica el tema elegido a TODO el proyecto (paridad web: «aplicar
+        /// tema a todo»): lo vuelve activo, limpia anulaciones locales y reenvía.</summary>
+        void ApplyThemeToAll()
+        {
+            var p = Live.Project;
+            var t = themesList != null && p != null && themesList.SelectedIndex >= 0 &&
+                    themesList.SelectedIndex < p.Themes.Count ? p.Themes[themesList.SelectedIndex] : null;
+            if (t == null) return;
+            p.ThemeRef = t.Id;
+            foreach (var scn in p.Scenarios)
+            {
+                scn.StyleOverride = new StyleOverride();
+                scn.BgOverride = new BackgroundOverride();
+                foreach (var el in scn.Elements)
+                {
+                    el.StyleOverride = new StyleOverride();
+                    el.BgOverride = new BackgroundOverride();
+                }
+            }
+            Live.ThemeChanged();          // re-resuelve en caliente [SPEC §7.4.1]
+            RefreshProgram();
+            themesList.Invalidate();
+        }
+
+        static BackgroundOverride CloneBg(BackgroundOverride src)
+        {
+            return new BackgroundOverride
+            {
+                Color = src.Color,
+                Image = src.Image,
+                Fit = src.Fit,
+                Opacity = src.Opacity
+            };
+        }
+
+        /// <summary>Biblia rápida (tecla G, paridad web): overlay con cita directa,
+        /// favoritos y modo Tercio — sin salir del modo Presentación.</summary>
+        public void ShowQuickVerse()
+        {
+            SetPresentMode();
+            using (var f = new QuickVerseForm(this))
+            {
+                f.ShowDialog(this);
+            }
         }
 
         void LibraryTabChanged() { }
@@ -159,6 +286,19 @@ namespace Fusion.Studio.Ui
             RefreshBibles();
             RefreshScenarios();
             RefreshMedia();
+            RefreshThemes();
+        }
+
+        void RefreshThemes()
+        {
+            if (themesList == null) return;
+            int sel = themesList.SelectedIndex;
+            themesList.Items.Clear();
+            var p = Live.Project;
+            if (p != null)
+                foreach (var t in p.Themes) themesList.Items.Add(t);
+            if (sel >= 0 && sel < themesList.Items.Count) themesList.SelectedIndex = sel;
+            themesList.Invalidate();
         }
 
         // ------------------------------------------------------------ cantos

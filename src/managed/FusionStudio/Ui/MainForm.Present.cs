@@ -19,6 +19,7 @@ namespace Fusion.Studio.Ui
         FusionButton btnSend, btnBlack, btnLogo, btnClear, btnShow, btnMsg, btnVerse, btnChords, btnAdvance;
         FusionIconButton ibPrevEl, ibPrevLine, ibNextLine, ibNextEl;
         FusionSearchBox txtHighlight;
+        System.Collections.Generic.Dictionary<int, Bitmap> progThumbs;
 
         void BuildPresent()
         {
@@ -151,7 +152,7 @@ namespace Fusion.Studio.Ui
 
             btnVerse = MakeLiveButton("Versículo rápido", "book", ref y, FusionButtonKind.Chip);
             btnVerse.Kbd = "G";
-            btnVerse.Click += delegate { FocusBibleSearch(); };
+            btnVerse.Click += delegate { ShowQuickVerse(); };
             right.Controls.Add(btnVerse); y += 36;
 
             btnMsg = MakeLiveButton("Mensaje en pantalla", "app-window-bottom", ref y, FusionButtonKind.Chip);
@@ -291,6 +292,7 @@ namespace Fusion.Studio.Ui
         void RefreshProgram()
         {
             if (programList == null || programList.IsDisposed) return;
+            InvalidateProgThumbs();      // miniaturas obsoletas (paridad web: 2 columnas)
             suppressPreviewRefresh = true;
             programList.Items.Clear();
             if (Live.Project != null)
@@ -332,12 +334,24 @@ namespace Fusion.Studio.Ui
             if (active)
                 using (var b = new SolidBrush(UiTheme.Accent))
                     e.Graphics.FillRectangle(b, e.Bounds.X, e.Bounds.Y, 3, e.Bounds.Height);
+            // miniatura de la primera diapositiva (paridad web: programa con
+            // miniaturas de 2 columnas — aquí 1 columna por fila)
+            var th = GetProgThumb(e.Index);
+            int textX = e.Bounds.X + 38;
+            if (th != null)
+            {
+                var tr = new Rectangle(e.Bounds.X + 10, e.Bounds.Y + 3, 74, 40);
+                e.Graphics.DrawImage(th, tr);
+                using (var pen = new Pen(UiTheme.ChipBorder))
+                    e.Graphics.DrawRectangle(pen, tr);
+                textX = e.Bounds.X + 92;
+            }
             string icon = s != null && s.Elements.Count > 0 ? IconOfKind(s.Elements[0].KindKey) : "file-text";
-            UiIcons.Draw(e.Graphics, icon, IconTint.Ink, e.Bounds.X + 10, e.Bounds.Y + 13);
+            if (th == null) UiIcons.Draw(e.Graphics, icon, IconTint.Ink, e.Bounds.X + 10, e.Bounds.Y + 13);
             string title = s != null ? s.Title : "";
             using (var b = new SolidBrush(active ? UiTheme.AccentDark : UiTheme.Text))
                 TextRenderer.DrawText(e.Graphics, (e.Index + 1) + ".  " + title, UiTheme.NormalBold(),
-                    new Rectangle(e.Bounds.X + 38, e.Bounds.Y, e.Bounds.Width - 92, e.Bounds.Height),
+                    new Rectangle(textX, e.Bounds.Y, e.Bounds.Width - (textX - e.Bounds.X) - 56, e.Bounds.Height),
                     b.Color, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
             if (s != null && s.Elements.Count > 0)
             {
@@ -348,6 +362,38 @@ namespace Fusion.Studio.Ui
                 TextRenderer.DrawText(e.Graphics, count, UiTheme.Small(), cr, UiTheme.TextDim,
                     TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
             }
+        }
+
+        /// <summary>Miniatura cacheada del primer elemento del escenario índice.</summary>
+        Bitmap GetProgThumb(int idx)
+        {
+            try
+            {
+                var p = Live.Project;
+                if (p == null || idx < 0 || idx >= p.Scenarios.Count) return null;
+                var scn = p.Scenarios[idx];
+                if (scn.Elements.Count == 0) return null;
+                if (progThumbs == null) progThumbs = new System.Collections.Generic.Dictionary<int, Bitmap>();
+                Bitmap bmp;
+                if (progThumbs.TryGetValue(idx, out bmp)) return bmp;
+                string baseDir = !string.IsNullOrEmpty(p.SourcePath)
+                    ? System.IO.Path.GetDirectoryName(p.SourcePath) : Settings.ProjectsPath;
+                var rs = ResolvedSlide.Resolve(scn.Elements[0], scn, p, baseDir);
+                if (rs == null) return null;
+                bmp = new Bitmap(148, 84);
+                using (var g = Graphics.FromImage(bmp))
+                    SlidePreview.RenderSlide(g, rs, 0, 148, 84);
+                progThumbs[idx] = bmp;
+                return bmp;
+            }
+            catch { return null; }
+        }
+
+        void InvalidateProgThumbs()
+        {
+            if (progThumbs == null) return;
+            foreach (var kv in progThumbs) kv.Value.Dispose();
+            progThumbs.Clear();
         }
 
         void RefreshLines()

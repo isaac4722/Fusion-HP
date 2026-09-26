@@ -82,6 +82,42 @@ namespace Fusion.Studio.Ui
             {
                 ExportProject();
             }, 3);
+
+            // ---- recientes con nombre (paridad web: tarjetas de la portada)
+            lblRecents = new Label { Text = "PROYECTOS RECIENTES", Font = UiTheme.SmallBold(),
+                                     ForeColor = UiTheme.TextDim, Location = new Point(40, 604), AutoSize = true };
+            homePanel.Controls.Add(lblRecents);
+            recentsList = new ListBox
+            {
+                Location = new Point(40, 628), Size = new Size(816, 116),
+                BorderStyle = BorderStyle.None, Font = UiTheme.Normal(),
+                DrawMode = DrawMode.OwnerDrawVariable, IntegralHeight = false, BackColor = UiTheme.Panel
+            };
+            recentsList.DrawItem += RecentDraw;
+            recentsList.MeasureItem += delegate(object s, MeasureItemEventArgs e) { e.ItemHeight = 34; };
+            recentsList.DoubleClick += delegate { OpenRecentSelected(); };
+            homePanel.Controls.Add(recentsList);
+        }
+
+        void RecentDraw(object sender, DrawItemEventArgs e)
+        {
+            if (e.Index < 0 || e.Index >= recentEntries.Count) return;
+            var r = recentEntries[e.Index];
+            bool sel = (e.State & DrawItemState.Selected) != 0;
+            using (var b = new SolidBrush(sel ? UiTheme.AccentSoft : UiTheme.Panel))
+                e.Graphics.FillRectangle(b, e.Bounds);
+            using (var pen = new Pen(UiTheme.ChipBorder))
+                e.Graphics.DrawRectangle(pen, e.Bounds.X, e.Bounds.Y, e.Bounds.Width - 1, e.Bounds.Height - 1);
+            using (var b = new SolidBrush(UiTheme.Accent))
+                e.Graphics.FillRectangle(b, e.Bounds.X, e.Bounds.Y, 3, e.Bounds.Height);
+            Fusion.Studio.Ui.Widgets.UiIcons.Draw(e.Graphics, "folder-open", IconTint.Ink, e.Bounds.X + 10, e.Bounds.Y + 8);
+            TextRenderer.DrawText(e.Graphics, r.Name, UiTheme.NormalBold(),
+                new Rectangle(e.Bounds.X + 40, e.Bounds.Y + 2, e.Bounds.Width - 140, 16),
+                sel ? UiTheme.AccentDark : UiTheme.Text,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+            TextRenderer.DrawText(e.Graphics, r.Count + " escenario(s) · " + r.Path, UiTheme.Small(),
+                new Rectangle(e.Bounds.X + 40, e.Bounds.Y + 17, e.Bounds.Width - 140, 15),
+                UiTheme.TextDim, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
         }
 
         void AddTile(string title, string subtitle, string icon, EventHandler onClick, int column)
@@ -121,6 +157,52 @@ namespace Fusion.Studio.Ui
                 c.Location = new Point(x, y);
                 x += 264;
             }
+            // sección de recientes (paridad web: tarjetas de presentaciones recientes)
+            if (lblRecents != null) lblRecents.Location = new Point(40, 604);
+            if (recentsList != null) recentsList.Location = new Point(40, 628);
+        }
+
+        // ------------------------------------------------------------ recientes (web)
+        Label lblRecents;
+        ListBox recentsList;
+
+        class RecentEntry { public string Path, Name; public int Count; }
+        readonly System.Collections.Generic.List<RecentEntry> recentEntries =
+            new System.Collections.Generic.List<RecentEntry>();
+
+        /// <summary>Recarga los proyectos recientes con nombre y N escenarios
+        /// (misma información del cargador dedicado, ahora visible en Inicio).</summary>
+        void RefreshRecents()
+        {
+            if (recentsList == null) return;
+            recentEntries.Clear();
+            foreach (string p in Settings.RecentProjects)
+            {
+                try
+                {
+                    if (!System.IO.File.Exists(p)) continue;
+                    var info = AhpProjectInfo.ReadHeader(p);
+                    recentEntries.Add(new RecentEntry { Path = p, Name = info.Name, Count = info.ScenarioCount });
+                }
+                catch { }
+            }
+            recentsList.Items.Clear();
+            foreach (var r in recentEntries) recentsList.Items.Add(r);
+        }
+
+        void OpenRecentSelected()
+        {
+            var r = recentsList != null ? recentsList.SelectedItem as RecentEntry : null;
+            if (r == null) return;
+            if (Live.LoadProject(r.Path))
+            {
+                RefreshLibrary();
+                RefreshProgram();
+                SetMode(Mode.Present);
+            }
+            else
+                MessageBox.Show(this, "No se pudo abrir el proyecto:\n" + r.Path,
+                    "Fusion HP", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
         // ------------------------------------------------------------ estudio
