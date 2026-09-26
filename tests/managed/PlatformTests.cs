@@ -121,11 +121,20 @@ namespace Fusion.Tests
             string addErr = "";
             try
             {
+                // AddFont(string) es un stub (NotImplementedException) en 1.50-wpf:
+                // la vía real es AddFont(Stream, family)
                 foreach (string f in ttf)
-                    PdfSharp.Drawing.XPrivateFontCollection.AddFont(f);
+                {
+                    string fn = Path.GetFileName(f);
+                    if (fn.StartsWith("Outfit", StringComparison.Ordinal))
+                    {
+                        using (var ms = new MemoryStream(File.ReadAllBytes(f)))
+                            PdfSharp.Drawing.XPrivateFontCollection.AddFont(ms, "Outfit");
+                    }
+                }
             }
             catch (Exception ex) { addErr = ex.GetType().Name + ": " + ex.Message; }
-            TestRunner.Check(addErr.Length == 0, "sonda: AddFont sin excepción — " + addErr);
+            TestRunner.Check(addErr.Length == 0, "sonda: AddFont(Stream,family) sin excepción — " + addErr);
             string fontErr = "";
             string resolved = "";
             try

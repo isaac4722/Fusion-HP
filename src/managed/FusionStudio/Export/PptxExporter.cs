@@ -62,7 +62,8 @@ namespace Fusion.Studio.Export
                     "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster", "rId1");
 
                 // presentación: master = rId1 (mismo esquema de rIds que siempre)
-                presPart.CreateRelationship(new Uri("../slideMasters/slideMaster1.xml", UriKind.Relative), TargetMode.Internal,
+                // target relativo a /ppt/ (¡NO "../"! — resolvería fuera de ppt/)
+                presPart.CreateRelationship(new Uri("slideMasters/slideMaster1.xml", UriKind.Relative), TargetMode.Internal,
                     "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster", "rId1");
 
                 var slideFiles = new List<string>();

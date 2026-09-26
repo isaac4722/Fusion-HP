@@ -139,13 +139,36 @@ namespace Fusion.Studio.Export
             {
                 string dir = FontsDir();
                 if (dir == null) return;
-                // v4.1.0: XPrivateFontCollection de la build WPF — la typeface
-                // conserva la ruta del archivo y PdfSharp la EMBEBE de verdad
-                // (la build GDI sustituye fuentes privadas por la del sistema).
-                foreach (string f in Directory.GetFiles(dir, "*.ttf"))
-                    XPrivateFontCollection.AddFont(f);
+                // v4.1.0: XPrivateFontCollection (build WPF) vía AddFont(Stream, name)
+                // — AddFont(string) es un STUB con NotImplementedException en
+                // 1.50.5147. La clave es el nombre de familia que resuelven los
+                // temas («Outfit», «Cormorant Garamond», «Libre Baskerville»).
+                // La typeface conserva el stream y PdfSharp la EMBEBE de verdad
+                // (la build GDI sustituye familias privadas por la del sistema).
+                RegisterFamily(dir, "Outfit-Regular.ttf", "Outfit");
+                RegisterFamily(dir, "Outfit-SemiBold.ttf", "Outfit SemiBold");
+                RegisterFamily(dir, "Outfit-Bold.ttf", "Outfit");
+                RegisterFamily(dir, "CormorantGaramond-Medium.ttf", "Cormorant Garamond");
+                RegisterFamily(dir, "CormorantGaramond-SemiBold.ttf", "Cormorant Garamond");
+                RegisterFamily(dir, "CormorantGaramond-Bold.ttf", "Cormorant Garamond");
+                RegisterFamily(dir, "CormorantGaramond-Italic.ttf", "Cormorant Garamond");
+                RegisterFamily(dir, "LibreBaskerville-Regular.ttf", "Libre Baskerville");
+                RegisterFamily(dir, "LibreBaskerville-Italic.ttf", "Libre Baskerville");
             }
             catch { /* sin fuentes privadas se cae a las del sistema */ }
+        }
+
+        static void RegisterFamily(string dir, string file, string family)
+        {
+            string path = Path.Combine(dir, file);
+            if (!File.Exists(path)) return;
+            using (var fs = File.OpenRead(path))
+            {
+                var ms = new MemoryStream();
+                fs.CopyTo(ms);
+                ms.Position = 0;
+                XPrivateFontCollection.AddFont(ms, family);
+            }
         }
 
         static string FontsDir()
