@@ -164,8 +164,8 @@ namespace Fusion.Studio.Export
                         if (!_cache.TryGetValue(faceName, out data))
                         {
                             string file = FileForFace(faceName);
-                            string path = Path.Combine(Path.Combine(FontsRoot(), "fonts"), file);
-                            if (!File.Exists(path)) path = Path.Combine(Path.Combine(FontsRoot(), "fonts"), "Outfit-Regular.ttf");
+                            string path = Path.Combine(FontsDir(), file);
+                            if (!File.Exists(path)) path = Path.Combine(FontsDir(), "Outfit-Regular.ttf");
                             data = File.ReadAllBytes(path);
                             _cache[faceName] = data;
                         }
@@ -210,17 +210,6 @@ namespace Fusion.Studio.Export
                     default: return "Outfit-Regular.ttf";
                 }
             }
-        }
-
-        static string FontsRoot()
-        {
-            // raíz que contiene resources/fonts — mismo paseo que FontsDir()
-            for (string d = AppDomain.CurrentDomain.BaseDirectory; d != null && d.Length > 3;
-                 d = Path.GetDirectoryName(d))
-            {
-                if (Directory.Exists(Path.Combine(Path.Combine(d, "resources"), "fonts"))) return d;
-            }
-            return AppDomain.CurrentDomain.BaseDirectory;
         }
 
         static void RegisterProductFonts()
