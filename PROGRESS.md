@@ -4,3 +4,5 @@
 2026-09-26 · DONE · v4.0.0 GUI WEB EN C#: pestaña Temas (6 temas, aplicar al elemento o a todo en caliente) + QuickVerseForm (biblia rápida G con cita/favoritos/Tercio) + miniaturas en el programa (RenderSlide estático) + recientes con nombre en Inicio · 3_IMPLEMENT
 2026-09-26 · DONE · v4.0.0 ASSETS: Cormorant Garamond SemiBold+Bold instanciados del woff2 variable de la web (varLib.instancer) — temas web con peso real · fuentes/fondos/iconos/logo ya viajan en resources/ · 3_IMPLEMENT
 2026-09-26 · RUN  · v4.0.0 TESTS: V40Tests (settings sin claves de red · 4 biblias 66 libros y ≥30k versículos · semántica de temas en caliente · 12 favoritos parsean) + versiones 4.0.0 + notas + DECISIONES_v4.md · 7_PERSIST
+2026-09-26 · DONE · v4.0.0 CI VERDE (main + tag): ronda 1 fix IconTint cualificado — núcleos x86+x64 + C# net48/net35 + gate + instalador dual 6,5 MB + portables x86/x64 · 9_CLOSE
+2026-09-26 · DONE · v4.0.0 Release PUBLICADA: github.com/isaac4722/Fusion-HP/releases/tag/v4.0.0 (setup dual + portables + SHA256SUMS, notas v4) · release v3.0.0 y su tag ELIMINADOS (contenían la API revocada — cero rastro, solo queda v4.0.0) · 11_RELEASE
