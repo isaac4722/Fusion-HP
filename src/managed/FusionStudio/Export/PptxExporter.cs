@@ -36,12 +36,35 @@ namespace Fusion.Studio.Export
             {
                 // [Content_Types].xml lo genera System.IO.Packaging a partir de los
                 // content types de las partes (crearla a mano colisiona en Dispose).
+                //
+                // v4.1.0 (robustez OPC): relaciones REALES con CreateRelationship.
+                // El hack histórico de escribir /_rels y *.rels como PARTES sueltas
+                // producía paquetes con las relaciones vacías — PowerPoint real los
+                // rechazaría y el SDK abre con «main part is missing». La estructura
+                // (master rId1, diapositivas rId2..N) se conserva exactamente.
 
-                // -------- _rels/.rels
-                AddPart(pkg, new Uri("/_rels/.rels", UriKind.Relative), "application/vnd.openxmlformats-package.relationships+xml",
-                        RelsXml(new[] { new RelEntry("rId1", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument", "ppt/presentation.xml") }));
+                // -------- ppt/presentation.xml (parte raíz del documento)
+                var presPart = CreateXmlPart(pkg, "/ppt/presentation.xml",
+                    "application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml", null);
 
-                // -------- ppt/presentation.xml
+                // -------- master + layout + theme mínimos (herencia válida)
+                var masterPart = CreateXmlPart(pkg, "/ppt/slideMasters/slideMaster1.xml",
+                    "application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml", MasterXml());
+                var layoutPart = CreateXmlPart(pkg, "/ppt/slideLayouts/slideLayout1.xml",
+                    "application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml", LayoutXml());
+                CreateXmlPart(pkg, "/ppt/theme/theme1.xml",
+                    "application/vnd.openxmlformats-officedocument.theme+xml", ThemeXml(project));
+                masterPart.CreateRelationship(new Uri("../theme/theme1.xml", UriKind.Relative), TargetMode.Internal,
+                    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme", "rId1");
+                masterPart.CreateRelationship(new Uri("../slideLayouts/slideLayout1.xml", UriKind.Relative), TargetMode.Internal,
+                    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout", "rId2");
+                layoutPart.CreateRelationship(new Uri("../slideMasters/slideMaster1.xml", UriKind.Relative), TargetMode.Internal,
+                    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster", "rId1");
+
+                // presentación: master = rId1 (mismo esquema de rIds que siempre)
+                presPart.CreateRelationship(new Uri("../slideMasters/slideMaster1.xml", UriKind.Relative), TargetMode.Internal,
+                    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster", "rId1");
+
                 var slideFiles = new List<string>();
                 int n = 0;
                 // una diapositiva por LÍNEA de texto (regla MVP [SPEC §9.3.1]);
@@ -55,33 +78,28 @@ namespace Fusion.Studio.Export
                             foreach (var line in el.Lines)
                             {
                                 n++;
-                                WriteSlide(pkg, n, line, el, scn, project, baseDir, slideFiles, rep);
+                                WriteSlide(pkg, presPart, n, line, el, scn, project, baseDir, slideFiles, rep);
                             }
                             if (el.Lines.Count == 0)
                             {
                                 n++;
-                                WriteSlide(pkg, n, "", el, scn, project, baseDir, slideFiles, rep);
+                                WriteSlide(pkg, presPart, n, "", el, scn, project, baseDir, slideFiles, rep);
                             }
                         }
                         else
                         {
                             n++;
-                            WriteSlide(pkg, n, null, el, scn, project, baseDir, slideFiles, rep);
+                            WriteSlide(pkg, presPart, n, null, el, scn, project, baseDir, slideFiles, rep);
                         }
                     }
                 }
                 var sldIds = new StringBuilder();
-                var presRels = new StringBuilder();
                 for (int i = 0; i < slideFiles.Count; i++)
                 {
                     sldIds.Append("<p:sldId id=\"" + (256 + i) + "\" r:id=\"rId" + (i + 2) + "\"/>");
-                    presRels.Append(Rel("rId" + (i + 2),
-                        "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide",
-                        "slides/" + slideFiles[i]));
                 }
-                AddPart(pkg, new Uri("/ppt/presentation.xml", UriKind.Relative),
-                        "application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml",
-                        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
+                using (var w = new StreamWriter(presPart.GetStream(FileMode.Create), new UTF8Encoding(false)))
+                    w.Write("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
                         "<p:presentation xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" " +
                         "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" " +
                         "xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\">" +
@@ -90,38 +108,17 @@ namespace Fusion.Studio.Export
                         "<p:sldSz cx=\"" + PresW + "\" cy=\"" + PresH + "\"/>" +
                         "<p:notesSz cx=\"6858000\" cy=\"9144000\"/></p:presentation>");
 
-                // -------- relaciones de presentación
-                var masterRel = Rel("rId1",
-                    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster",
-                    "../slideMasters/slideMaster1.xml");
-                presRels.Insert(0, masterRel);
-                AddPart(pkg, new Uri("/ppt/_rels/presentation.xml.rels", UriKind.Relative),
-                        "application/vnd.openxmlformats-package.relationships+xml",
-                        RelsXmlRaw(presRels.ToString()));
+                // -------- raíz del paquete: relación officeDocument REAL
+                pkg.CreateRelationship(new Uri("ppt/presentation.xml", UriKind.Relative), TargetMode.Internal,
+                    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument", "rId1");
 
-                // -------- master + layout + theme mínimos (herencia válida)
-                AddPart(pkg, new Uri("/ppt/slideMasters/slideMaster1.xml", UriKind.Relative),
-                        "application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml", MasterXml());
-                AddPart(pkg, new Uri("/ppt/slideMasters/_rels/slideMaster1.xml.rels", UriKind.Relative),
-                        "application/vnd.openxmlformats-package.relationships+xml",
-                        RelsXml(new[] {
-                            new RelEntry("rId1", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme", "../theme/theme1.xml"),
-                            new RelEntry("rId2", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout", "../slideLayouts/slideLayout1.xml")
-                        }));
-                AddPart(pkg, new Uri("/ppt/slideLayouts/slideLayout1.xml", UriKind.Relative),
-                        "application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml", LayoutXml());
-                AddPart(pkg, new Uri("/ppt/slideLayouts/_rels/slideLayout1.xml.rels", UriKind.Relative),
-                        "application/vnd.openxmlformats-package.relationships+xml",
-                        RelsXml(new[] { new RelEntry("rId1", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster", "../slideMasters/slideMaster1.xml") }));
-                AddPart(pkg, new Uri("/ppt/theme/theme1.xml", UriKind.Relative),
-                        "application/vnd.openxmlformats-officedocument.theme+xml", ThemeXml(project));
                 rep.Slides = slideFiles.Count;
                 rep.Warnings.Add("La sincronización por línea se exporta como una diapositiva por línea [SPEC §9.3.1].");
             }
             return rep;
         }
 
-        void WriteSlide(Package pkg, int idx, string singleLine, Element el, Scenario scn, AhpProject project,
+        void WriteSlide(Package pkg, PackagePart presPart, int idx, string singleLine, Element el, Scenario scn, AhpProject project,
                         string baseDir, List<string> slideFiles, PptxExportReport rep)
         {
             string name = "slide" + idx + ".xml";
@@ -131,7 +128,7 @@ namespace Fusion.Studio.Export
             long bg = ColorHex(resolved.Background.Color);
 
             var spTree = new StringBuilder();
-            var slideExtraRels = new StringBuilder();
+            string slideImageTarget = null;
 
             // imagen o video → pic
             if ((el.Kind == ElementKind.Image || el.Kind == ElementKind.Video) && !string.IsNullOrEmpty(el.Src))
@@ -151,10 +148,8 @@ namespace Fusion.Studio.Export
                         int r2;
                         while ((r2 = s.Read(buf, 0, buf.Length)) > 0) o.Write(buf, 0, r2);
                     }
-                    // La relación r:embed se declara en el SLIDE (no en el paquete)
-                    slideExtraRels.Append(Rel("rIdImg1",
-                        "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
-                        "../media/img" + idx + ext));
+                    // La relación r:embed se declara EN EL SLIDE (parte→parte)
+                    slideImageTarget = "../media/img" + idx + ext;
                     long cx = (long)(el.W * PresW), cy = (long)(el.H * PresH);
                     long x = (long)(el.X * PresW), y = (long)(el.Y * PresH);
                     spTree.Append("<p:pic><p:nvPicPr><p:cNvPr id=\"2\" name=\"Medio\"/>" +
@@ -213,13 +208,13 @@ namespace Fusion.Studio.Export
                 "<p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>" +
                 "<p:grpSpPr/>" + spTree + "</p:spTree></p:cSld>" +
                 "<p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>";
-            AddPart(pkg, new Uri("/ppt/slides/" + name, UriKind.Relative),
-                    "application/vnd.openxmlformats-officedocument.presentationml.slide+xml", slideXml);
-            AddPart(pkg, new Uri("/ppt/slides/_rels/" + name + ".rels", UriKind.Relative),
-                    "application/vnd.openxmlformats-package.relationships+xml",
-                    RelsXmlRaw(Rel("rId1",
-                        "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout",
-                        "../slideLayouts/slideLayout1.xml") + slideExtraRels.ToString()));
+            var slidePart = CreateXmlPart(pkg, "/ppt/slides/" + name,
+                "application/vnd.openxmlformats-officedocument.presentationml.slide+xml", slideXml);
+            slidePart.CreateRelationship(new Uri("../slideLayouts/slideLayout1.xml", UriKind.Relative), TargetMode.Internal,
+                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout", "rId1");
+            if (slideImageTarget != null)
+                slidePart.CreateRelationship(new Uri(slideImageTarget, UriKind.Relative), TargetMode.Internal,
+                    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image", "rIdImg1");
         }
 
         static string ResolveSrc(string baseDir, string rel)
@@ -246,37 +241,17 @@ namespace Fusion.Studio.Export
                             .Replace("\"", "&quot;").Replace("'", "&apos;");
         }
 
-        static void AddPart(Package pkg, Uri uri, string contentType, string xml)
+        /// <summary>Crea una parte XML (v4.1.0: devuelve la parte para que el
+        /// llamador cuelgue de ella sus CreateRelationship — OPC real).</summary>
+        static PackagePart CreateXmlPart(Package pkg, string uri, string contentType, string xml)
         {
-            if (pkg.PartExists(uri)) pkg.DeletePart(uri);
-            var part = pkg.CreatePart(uri, contentType);
-            using (var w = new StreamWriter(part.GetStream(FileMode.Create), new UTF8Encoding(false)))
-                w.Write(xml);
-        }
-
-        static string Rel(string id, string type, string target)
-        {
-            return "<Relationship Id=\"" + id + "\" Type=\"" + type + "\" Target=\"" + target + "\"/>";
-        }
-
-        private class RelEntry
-        {
-            public string Id, Type, Target;
-            public RelEntry(string id, string type, string target) { Id = id; Type = type; Target = target; }
-        }
-
-        static string RelsXml(RelEntry[] rels)
-        {
-            var sb = new StringBuilder();
-            foreach (var r in rels) sb.Append(Rel(r.Id, r.Type, r.Target));
-            return RelsXmlRaw(sb.ToString());
-        }
-
-        static string RelsXmlRaw(string inner)
-        {
-            return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
-                   "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">" +
-                   inner + "</Relationships>";
+            var u = new Uri(uri, UriKind.Relative);
+            if (pkg.PartExists(u)) pkg.DeletePart(u);
+            var part = pkg.CreatePart(u, contentType);
+            if (xml != null)
+                using (var w = new StreamWriter(part.GetStream(FileMode.Create), new UTF8Encoding(false)))
+                    w.Write(xml);
+            return part;
         }
 
         static string MasterXml()
