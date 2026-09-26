@@ -3,6 +3,8 @@
 // ============================================================================
 #include "App.h"
 #include "Logger.h"
+
+#include <wil/resource.h>
 #include "Monitors.h"
 
 namespace fusion {
@@ -143,8 +145,10 @@ int App::RunManaged(const std::wstring& exe) {
                      " (err=" + std::to_string(GetLastError()) + ")");
         return 0;
     }
-    CloseHandle(pi.hThread);
-    CloseHandle(pi.hProcess);
+    // WIL (v4.1.0): handles del proceso lanzado por RAII — sin fugas si esto
+    // crece con salidas tempranas.
+    wil::unique_handle hThread(pi.hThread);
+    wil::unique_handle hProcess(pi.hProcess);
     studioRunning_ = true;
     Logger::Info("core.bootstrap", ToUtf8(exe) + " lanzado (perfil " + ToUtf8(env_.profile) + ")");
     return 1;

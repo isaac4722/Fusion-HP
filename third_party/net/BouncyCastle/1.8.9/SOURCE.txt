@@ -1,0 +1,1 @@
+https://www.nuget.org/packages/Portable.BouncyCastle/1.8.9 (MIT) · https://www.bouncycastle.org/csharp

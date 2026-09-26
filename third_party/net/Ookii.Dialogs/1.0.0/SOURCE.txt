@@ -1,0 +1,1 @@
+https://www.nuget.org/packages/Ookii.Dialogs/1.0.0 (BSD-3)

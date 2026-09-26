@@ -1,5 +1,7 @@
 // ============================================================================
 //  Fusion-HP · VideoPlayer.cpp — grafo DirectShow con VMR9 windowless
+//  v4.1.0: COM por RAII (WIL com_ptr_nothrow, WIL_EXCEPTION_MODE=1). Las
+//  salidas anticipadas ya no pueden fugar interfaces: reset() implícito.
 // ============================================================================
 #include "VideoPlayer.h"
 #include "Logger.h"
@@ -7,55 +9,42 @@
 namespace fusion {
 
 VideoPlayer::VideoPlayer() {}
-VideoPlayer::~VideoPlayer() { Stop(); ReleaseAll(); }
-
-void VideoPlayer::ReleaseAll() {
-    if (audio_) { audio_->Release(); audio_ = nullptr; }
-    if (seeking_) { seeking_->Release(); seeking_ = nullptr; }
-    if (events_) { events_->Release(); events_ = nullptr; }
-    if (control_) { control_->Release(); control_ = nullptr; }
-    if (vmr_) { vmr_->Release(); vmr_ = nullptr; }
-    if (graph_) { graph_->Release(); graph_ = nullptr; }
-}
+VideoPlayer::~VideoPlayer() { Stop(); }
 
 bool VideoPlayer::Play(const std::wstring& src, HWND hwndVideo, bool loop, int volume, double startAt) {
     Stop();
     if (!hwndVideo) return false;
 
     HRESULT hr = CoCreateInstance(CLSID_FilterGraph, nullptr, CLSCTX_INPROC_SERVER,
-                                  __uuidof(IGraphBuilder), (void**)&graph_);
+                                  __uuidof(IGraphBuilder), reinterpret_cast<void**>(graph_.put()));
     if (FAILED(hr) || !graph_) return false;
 
     // VMR9 windowless: render directo al hijo, sin ventana propia
     hr = CoCreateInstance(CLSID_VideoMixingRenderer9, nullptr, CLSCTX_INPROC_SERVER,
-                          __uuidof(IBaseFilter), (void**)&vmr_);
+                          __uuidof(IBaseFilter), reinterpret_cast<void**>(vmr_.put()));
     if (SUCCEEDED(hr) && vmr_) {
-        graph_->AddFilter(vmr_, L"VMR9");
-        IVMRFilterConfig9* cfg = nullptr;
-        if (SUCCEEDED(vmr_->QueryInterface(__uuidof(IVMRFilterConfig9), (void**)&cfg))) {
-            cfg->SetRenderingMode(VMR9Mode_Windowless);
-            cfg->Release();
-        }
-        IVMRWindowlessControl9* wc9 = nullptr;
-        if (SUCCEEDED(vmr_->QueryInterface(__uuidof(IVMRWindowlessControl9), (void**)&wc9))) {
+        graph_->AddFilter(vmr_.get(), L"VMR9");
+        auto cfg = vmr_.try_query<IVMRFilterConfig9>();
+        if (cfg) cfg->SetRenderingMode(VMR9Mode_Windowless);
+        auto wc9 = vmr_.try_query<IVMRWindowlessControl9>();
+        if (wc9) {
             RECT r; GetClientRect(hwndVideo, &r);
             wc9->SetVideoClippingWindow(hwndVideo);
             wc9->SetVideoPosition(nullptr, &r);
-            wc9->Release();
         }
     }
 
     hr = graph_->RenderFile(src.c_str(), nullptr);
     if (FAILED(hr)) {
         Logger::Error("core.media", "no se pudo cargar el video: " + ToUtf8(src));
-        ReleaseAll();
-        return false;                          // fail-safe: el llamador muestra fondo+aviso
+        Stop();                                // fail-safe: el llamador muestra fondo+aviso
+        return false;
     }
 
-    graph_->QueryInterface(__uuidof(IMediaControl), (void**)&control_);
-    graph_->QueryInterface(__uuidof(IMediaEventEx), (void**)&events_);
-    graph_->QueryInterface(__uuidof(IMediaSeeking), (void**)&seeking_);
-    graph_->QueryInterface(__uuidof(IBasicAudio), (void**)&audio_);
+    graph_.query_to(__uuidof(IMediaControl), control_.put_void());
+    graph_.query_to(__uuidof(IMediaEventEx), events_.put_void());
+    graph_.query_to(__uuidof(IMediaSeeking), seeking_.put_void());
+    graph_.query_to(__uuidof(IBasicAudio), audio_.put_void());
 
     if (audio_) {
         // volumen DirectShow: 0 (fuerte) a -10000 (mudo); 0-100% del elemento
@@ -75,7 +64,7 @@ bool VideoPlayer::Play(const std::wstring& src, HWND hwndVideo, bool loop, int v
     hr = control_->Run();
     if (FAILED(hr)) {
         Logger::Error("core.media", "Run() fallo para el video: " + ToUtf8(src));
-        ReleaseAll();
+        Stop();
         return false;
     }
     playing_ = true;
@@ -113,7 +102,13 @@ void VideoPlayer::SetVolume(int v) {
 void VideoPlayer::Stop() {
     if (control_) control_->Stop();
     playing_ = false;
-    ReleaseAll();
+    // WIL: mismos releases que el ReleaseAll() histórico, ahora automáticos.
+    audio_.reset();
+    seeking_.reset();
+    events_.reset();
+    control_.reset();
+    vmr_.reset();
+    graph_.reset();
     src_.clear();
 }
 

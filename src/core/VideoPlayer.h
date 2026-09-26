@@ -7,6 +7,8 @@
 #pragma once
 #include "Common.h"
 
+#include <wil/com.h>
+
 #include <dshow.h>
 #include <d3d9.h>
 #include <vmr9.h>
@@ -30,16 +32,17 @@ public:
     void PumpEvents();                // procesa EC_COMPLETE para loop/fin
 
 private:
-    IGraphBuilder* graph_ = nullptr;
-    IMediaControl* control_ = nullptr;
-    IMediaEventEx* events_ = nullptr;
-    IMediaSeeking* seeking_ = nullptr;
-    IBasicAudio* audio_ = nullptr;
-    IBaseFilter* vmr_ = nullptr;
+    // WIL (v4.1.0): RAII de COM — cero Release() manuales, cero fugas si hay
+    // salida anticipada. com_ptr_nothrow + WIL_EXCEPTION_MODE=1: nunca lanza.
+    wil::com_ptr_nothrow<IGraphBuilder> graph_;
+    wil::com_ptr_nothrow<IMediaControl> control_;
+    wil::com_ptr_nothrow<IMediaEventEx> events_;
+    wil::com_ptr_nothrow<IMediaSeeking> seeking_;
+    wil::com_ptr_nothrow<IBasicAudio>   audio_;
+    wil::com_ptr_nothrow<IBaseFilter>   vmr_;
     std::wstring src_;
     bool loop_ = false;
     bool playing_ = false;
-    void ReleaseAll();
 };
 
 } // namespace fusion

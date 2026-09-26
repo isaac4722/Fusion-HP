@@ -1,0 +1,1 @@
+https://www.nuget.org/packages/PDFsharp/1.50.5147 · https://github.com/empira/PDFsharp

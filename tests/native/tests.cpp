@@ -21,6 +21,9 @@
 #include <iostream>
 #include <iomanip>
 
+#include <wil/resource.h>
+#include <wil/com.h>
+
 using namespace fusion;
 
 static int g_fail = 0, g_pass = 0;
@@ -502,11 +505,55 @@ static void TestNativeLibrary()
     fs::remove_all(dir, ec);
 }
 
+// --------------------------------------------------------------------- WIL
+// v4.1.0: RAII de WIL (WIL_EXCEPTION_MODE=1) — handles e interfaces COM se
+// liberan solos en toda salida. Este test documenta el contrato que el resto
+// del núcleo ya usa (VideoPlayer, main, App, Renderer).
+static void TestWil()
+{
+    std::cout << "\n-- WIL (RAII) --" << std::endl;
+
+    // 1) unique_handle cierra el handle del SO al salir del ámbito
+    HANDLE raw = CreateFileW(L".", GENERIC_READ,
+                             FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
+                             OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+    CHECK(raw != INVALID_HANDLE_VALUE, "WIL: handle de prueba valido");
+    {
+        wil::unique_handle h(raw);
+        CHECK(h.get() == raw, "WIL: unique_handle adopta el handle");
+    }
+    DWORD flags = 0;
+    CHECK(GetHandleInformation(raw, &flags) == 0 && GetLastError() == ERROR_INVALID_HANDLE,
+          "WIL: el handle se cerro al salir del ambito");
+
+    // 2) unique_find_handle trata INVALID_HANDLE_VALUE como vacio
+    {
+        WIN32_FIND_DATAW fdz = {};
+        wil::unique_find_handle none(FindFirstFileW(L"Z:\\__no_existe_fusion__\\*.x", &fdz));
+        CHECK(!none, "WIL: find handle vacio en ruta inexistente");
+    }
+
+    // 3) com_ptr_nothrow: crea, consulta y libera sin excepciones
+    wil::com_ptr_nothrow<IStream> stream;
+    HRESULT hr = CreateStreamOnHGlobal(nullptr, TRUE, stream.put());
+    CHECK(SUCCEEDED(hr) && stream, "WIL: com_ptr crea un IStream");
+    auto seq = stream.try_query<ISequentialStream>();
+    CHECK(seq.get() != nullptr, "WIL: try_query resuelve interfaz derivada");
+    stream.reset();
+    CHECK(!stream, "WIL: reset libera y deja el puntero vacio");
+
+    // 4) modo sin excepciones: la API de WIL nunca lanza
+    bool threw = false;
+    try { (void)stream.try_query<ISequentialStream>(); } catch (...) { threw = true; }
+    CHECK(!threw, "WIL: modo sin excepciones activo");
+}
+
 int main()
 {
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
     TestEnvironment();
+    TestWil();
     TestJson();
     TestSlideState();
     TestHighlight();

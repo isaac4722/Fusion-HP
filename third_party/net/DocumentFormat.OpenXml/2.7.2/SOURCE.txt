@@ -1,0 +1,1 @@
+https://www.nuget.org/packages/DocumentFormat.OpenXml/2.7.2 · https://github.com/dotnet/Open-XML-SDK (MIT)

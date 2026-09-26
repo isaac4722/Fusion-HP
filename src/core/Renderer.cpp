@@ -4,6 +4,8 @@
 #include "Renderer.h"
 #include "Logger.h"
 
+#include <wil/resource.h>
+
 namespace fusion {
 
 using namespace Gdiplus;
@@ -153,15 +155,15 @@ void Renderer::LoadPrivateFonts() {
     dir += L"\\resources\\fonts";
 
     WIN32_FIND_DATAW fd;
-    HANDLE h = FindFirstFileW((dir + L"\\*.ttf").c_str(), &fd);
-    if (h == INVALID_HANDLE_VALUE) return;
+    // WIL (v4.1.0): unique_find_handle — FindClose garantizado en toda salida.
+    wil::unique_find_handle h(FindFirstFileW((dir + L"\\*.ttf").c_str(), &fd));
+    if (!h) return;
     fonts_ = new Gdiplus::PrivateFontCollection();
     std::vector<std::wstring> files;
     do {
         if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
             files.push_back(dir + L"\\" + fd.cFileName);
-    } while (FindNextFileW(h, &fd));
-    FindClose(h);
+    } while (FindNextFileW(h.get(), &fd));
     for (auto& f : files) {
         Status st = fonts_->AddFontFile(f.c_str());
         (void)st;   // una fuente dañada no frena las demás

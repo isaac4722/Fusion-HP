@@ -20,8 +20,11 @@ BAD()  { printf '[FALLO] %s\n' "$1"; FAIL=1; VIOL=$((VIOL+1)); }
 SKIP() { printf '[SALTA] %s\n' "$1"; }
 
 HAS_MATCH() { # patrón, archivos… — devuelve coincidencias reales (excluye docs de la propia prohibición)
+  # v4.1.0: excluye third_party (cabeceras vendorizadas — WIL/spdlog/sqlite/
+  # doctest citan APIs prohibidas en sus propias capas internas; el producto
+  # no las usa y cada librería entra auditada por hash en DEPENDENCIAS.md)
   local pat="$1"; shift
-  grep -rniE "$pat" "$@" 2>/dev/null \
+  grep -rniE --exclude-dir=third_party "$pat" "$@" 2>/dev/null \
     | grep -v "audit-allow" \
     | grep -viE "prohibid|cero |nunca|jamás|sin jvm|sin java|no usa|no se usa|never |removida|retirad|descargado|comentari" \
     || true
