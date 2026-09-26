@@ -61,6 +61,30 @@ jobs:
           Write-Host "CoreTests exit code: $code"
           if ($code -ne 0) { throw "tests nativos $platform FALLAN (exit=$code)" }
 
+      - name: Verificación Win7 (imports Win8+) y tamaño del núcleo [v4.1.0]
+        shell: pwsh
+        run: |
+          $platform = '${{ matrix.arch }}' -eq 'x86' ? 'Win32' : 'x64'
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vspath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          $dumpbin = Get-ChildItem "$vspath\VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe" | Select-Object -First 1
+          if (-not $dumpbin) { throw "dumpbin no encontrado" }
+          # APIs solo-Win8+: su presencia rompe Win7 SP1 x86 [tabla deps v4.1.0]
+          $banned = 'WaitOnAddress','WakeByAddressAll','WakeByAddressSingle','GetSystemTimePreciseAsFileTime','CreateFile2','GetOverlappedResultEx','PathCchCanonicalizeEx','PathCchCombineEx','RoInitialize','RoGetActivationFactory'
+          $fail = $false
+          foreach ($exe in @("dist\$platform\FusionHP.exe", "dist\tests\$platform\CoreTests.exe")) {
+            $size = [math]::Round((Get-Item $exe).Length / 1MB, 2)
+            Write-Host "Tamaño $exe : $size MB"
+            $imports = & $dumpbin.FullName /IMPORTS $exe | Out-String
+            foreach ($api in $banned) {
+              if ($imports -match $api) {
+                Write-Host "::error::$exe importa $api (solo Win8+)"
+                $fail = $true
+              }
+            }
+          }
+          if ($fail) { throw "imports Win8+ detectados — verificación Win7 SP1 fallida" }
+
       - name: Subir binarios del núcleo
         uses: actions/upload-artifact@v4
         with:

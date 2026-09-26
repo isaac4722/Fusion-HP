@@ -18,7 +18,6 @@ public:
                              EXCEPTION_POINTERS* ep = nullptr);
 private:
     static void Write(int lv, const char* module, const std::string& msg);
-    static void RotateIfNeeded();
 };
 
 } // namespace fusion
