@@ -7,7 +7,7 @@
 ; ============================================================================
 
 #define AppName "Fusion HP"
-#define AppVersion "4.1.1"
+#define AppVersion "4.2.0"
 #define AppPublisher "Fusion HP"
 #define AppExeName "FusionHP.exe"
 #define DotNetUrl "https://go.microsoft.com/fwlink/?linkid=2088631"

@@ -2,7 +2,13 @@
 
 **Aplicación híbrida de presentación litúrgica y multimedia** para **Windows 7 SP1 x86 → Windows 11 x64**. Núcleo nativo C++ (proyección estable, cero parpadeo) + capa C#/.NET Framework (estudio, biblioteca, interoperabilidad, automatización). Sin Java, sin .NET Core, sin escribir en el Registro de Windows.
 
-> Fuente normativa: [`spec/Aplicacion_Hibrida_TechnicalDoc_v1.1_2026-09-23.md`](spec/Aplicacion_Hibrida_TechnicalDoc_v1.1_2026-09-23.md) (con la **enmienda v4.0.0** que revoca la Sección 8) · Contrato de trabajo: [`AGENT.md`](AGENT.md) · Decisiones: [`docs/agent/DECISIONES_v4.md`](docs/agent/DECISIONES_v4.md)
+> Fuente normativa: [`spec/Aplicacion_Hibrida_TechnicalDoc_v1.1_2026-09-23.md`](spec/Aplicacion_Hibrida_TechnicalDoc_v1.1_2026-09-23.md) (con la **enmienda v4.0.0** que revoca la Sección 8 y la **enmienda v4.2.0** del ciclo integrado de la salida) · Contrato de trabajo: [`AGENT.md`](AGENT.md) · Decisiones: [`docs/agent/DECISIONES_v4.md`](docs/agent/DECISIONES_v4.md)
+
+## v4.2.0 — GUI reparada, salida integrada estilo PowerPoint y Modo Operador
+
+- **GUI sin elementos rotos**: pestañas de la biblioteca adaptativas («Medios»/«Temas» ya son alcanzables), columna derecha en cuadrícula 2×N con autoscroll («LÍNEAS DEL ELEMENTO» visible), Inicio con autoscroll, biblioteca llena en el primer arranque, **Guardar (Ctrl+S/botón)**, preview sin líneas solapadas (fórmula del núcleo), botones deshabilitados visibles, editor con teclado de texto correcto y selector de logo en Configuración.
+- **Salida integrada (como PowerPoint)**: la ventana de salida **nace oculta** y solo aparece al **Iniciar presentación** (o al enviar cualquier elemento); **Terminar/Esc** la oculta. Nunca se destruye: visibilidad pura, cero parpadeo. El monitor viaja por **nombre de dispositivo** para no equivocar pantalla.
+- **Modo Operador (F8)**: consola en vivo dedicada (patrón Holy/PTT) — **EN PANTALLA** + **SIGUIENTE** con el mismo contrato de render, transporte gigante, Negro/Logo/Ocultar, lista del programa con búsqueda, reloj y estado de la salida.
 
 ## v4.0.0 — GUI web consolidada y producto 100 % local
 
