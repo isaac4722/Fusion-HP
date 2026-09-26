@@ -9,7 +9,7 @@
 - net35/net48: System.Windows.Forms, System.Drawing, System.Xml, System.Core.
 - net48 (Studio): PresentationFramework/PresentationCore/WindowsBase (WPF),
   WindowsFormsIntegration (ElementHost), WindowsBase (System.IO.Packaging).
-- TcpClient/HttpListener/SHA256/DeflateStream — parte del framework.
+- DeflateStream/IO/Json — parte del framework. Desde v4.0.0 sin HttpListener ni WebSockets (producto 100 % local).
 
 ## Toolset de compilación (no se distribuye)
 - MSVC v143 (WindowsTargetPlatformVersion 10.0), `/MT`.

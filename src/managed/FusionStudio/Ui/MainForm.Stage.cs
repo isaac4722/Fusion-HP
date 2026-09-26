@@ -2,7 +2,7 @@
 //  Fusion-HP · MainForm.Stage.cs — ESCENARIO DE MÚSICOS (Stage View beta-1):
 //  alertas doradas, temporizador regresivo y tono/BPM enviados al monitor de
 //  retorno del núcleo C++ (comandos ipc stage.*). Además: grabación de
-//  historial, y aperturas de Mando/Clasificador/Historial (GUI web + beta-1).
+//  historial y aperturas de Clasificador/Historial (GUI web + beta-1).
 // ============================================================================
 using System;
 using System.Drawing;
@@ -17,7 +17,7 @@ namespace Fusion.Studio.Ui
     public partial class MainForm
     {
         FusionInput txtStageAlert;
-        FusionButton btnStageAlert, btnStageAlertClear, btnStageTimer, btnStageTimerStop, btnMando, btnSorter, btnHistory;
+        FusionButton btnStageAlert, btnStageAlertClear, btnStageTimer, btnStageTimerStop, btnSorter, btnHistory;
         NumericUpDown numStageMin;
         Timer stageTimer;
         int stageCountdown = -1;
@@ -146,12 +146,6 @@ namespace Fusion.Studio.Ui
         /// <summary>Botones de la GUI web/beta-1 en el panel de herramientas.</summary>
         void BuildWebExtras(Panel right, ref int y)
         {
-            btnMando = new FusionButton { Text = "Mando (vista móvil)", IconName = "device-mobile",
-                                          Kind = FusionButtonKind.Chip,
-                                          Location = new Point(12, y), Size = new Size(206, 30) };
-            btnMando.Click += delegate { ShowMando(); };
-            right.Controls.Add(btnMando); y += 32;
-
             btnSorter = new FusionButton { Text = "Clasificador", IconName = "layout-grid",
                                            Kind = FusionButtonKind.Chip,
                                            Location = new Point(12, y), Size = new Size(206, 30) };
@@ -163,15 +157,6 @@ namespace Fusion.Studio.Ui
                                             Location = new Point(12, y), Size = new Size(206, 30) };
             btnHistory.Click += delegate { ShowHistory(); };
             right.Controls.Add(btnHistory); y += 34;
-        }
-
-        MandoForm mandoForm;
-        void ShowMando()
-        {
-            if (mandoForm == null || mandoForm.IsDisposed)
-                mandoForm = new MandoForm(this, Live);
-            mandoForm.Show(this);
-            mandoForm.BringToFront();
         }
 
         SorterForm sorterForm;

@@ -2,12 +2,12 @@
 //  Fusion-HP · tests/managed/V30Tests.cs — pruebas de la reestructuración
 //  v3.0.0 (bugs corregidos del prototipo):
 //   · cargador de Escenarios con nombres  → AhpProjectInfo (bug #1);
-//   · OBS WebSocket restaurado           → hash de autenticación obs-websocket
-//     5.x con vector precalculado (bug #4, SPEC §8.4);
 //   · PPTX original tal cual             → PptxDirectProjector proyecta el
 //     archivo fuente sin PowerPoint y sin escribir proyectos (bug #5);
 //   · flujo Holyrics sin PPTX            → proyectar un canto NO genera
 //     archivos .pptx ni convertir nada (bug #7).
+//  v4.0.0: retirado el test de OBS — el cliente OBS fue eliminado junto con
+//  la API y el control remoto por decisión del usuario (producto 100% local).
 //  Descubiertas por reflexión (TestRunner): métodos públicos estáticos Test*.
 // ============================================================================
 using System;
@@ -71,19 +71,6 @@ namespace Fusion.Tests
             s.PushRecent("p10.ahp");
             TestRunner.CheckEq(s.RecentProjects[0], "p10.ahp", "reabierto sube al frente");
             TestRunner.CheckEq(s.RecentProjects.Count, 12, "sin duplicados ni crecimiento");
-        }
-
-        // ------------------------------------------------------------ bug #4
-        public static void TestObsAuthHash()
-        {
-            // Vector precalculado (obs-websocket 5.x): base64(sha256(
-            //   base64(sha256(password + salt)) + challenge ))
-            string hash = ObsClient.AuthHash("s3cr3t!", "salt123", "challenge456");
-            TestRunner.CheckEq(hash, "b8gcoKWKnLgJIb7zI9P73PQEAraKQkLW8kvEU026PcQ=",
-                "hash de autenticación obs-websocket 5.x");
-            // casos borde sin lanzar
-            string empty = ObsClient.AuthHash("", "", "");
-            TestRunner.Check(!string.IsNullOrEmpty(empty), "hash con entradas vacías");
         }
 
         // ------------------------------------------------------------ bug #5

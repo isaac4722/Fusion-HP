@@ -18,7 +18,7 @@ enum {
     CMD_P_BLANK_B, CMD_P_BLANK_C, CMD_P_BLANK_L, CMD_P_ADVANCE, CMD_P_BIBLE,
     CMD_P_ITEM = 1100, CMD_P_SLIDE = 1101, CMD_P_LINE = 1102,
     CMD_P_VERSE_BASE = 1200,
-    CMD_PRESENT = 105, CMD_MANDO = 171, CMD_SHORTCUTS = 781,
+    CMD_PRESENT = 105, CMD_SHORTCUTS = 781,
     CMD_INSERT_REF = 700, CMD_CH_PREV = 703, CMD_CH_NEXT = 704,
 };
 }
@@ -380,10 +380,6 @@ void NativeStudio::PaintPresent(Gdiplus::Graphics& g, const RECT& cli) {
              hoverId_ == CMD_P_MONITOR ? ui::kHot : 0);
     HitAdd(CMD_P_MONITOR, 0, 0, mb2);
     yy += 34;
-    RECT mdb{rp.left + 10, yy, rp.right - 10, yy + 30};
-    ui::Chip(g, mdb, L"Control remoto (Mando)", L"", "device-mobile",
-             hoverId_ == CMD_MANDO ? ui::kHot : 0);
-    HitAdd(CMD_MANDO, 0, 0, mdb);
 
     // ---- transporte (web Transport) ----
     RECT tr{main.left + pad, H - 84, main.right - pad, H - 12};

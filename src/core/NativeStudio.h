@@ -3,7 +3,7 @@
 //  100 % en C++ nativo (Win32 + GDI+, sin navegador ni capas externas).
 //  [v2.3, petición del usuario: "la GUI de la web es a replicar con C++ y C#"]
 //
-//  Modos de la referencia web (App.tsx / PowerStudio / PresentMode / RemoteView):
+//  Modos de la referencia web (App.tsx / PowerStudio / PresentMode):
 //   · Start   — pantalla de inicio estilo PowerPoint (barra lateral roja +
 //              tarjetas de presentaciones + buscador).
 //   · Editor  — PowerStudio: barra de título con acceso rápido, cinta de 8
@@ -13,7 +13,6 @@
 //   · Present — consola del presentador: cabecera EN VIVO + reloj, programa
 //              con sub-líneas, vista previa + A continuación, Pausas B/C/L,
 //              transporte con avance conmutable y Biblia rápida (G).
-//   · Mando   — réplica del control remoto móvil (RemoteView de la web).
 //
 //  El estudio ES una vista/controlador desechable del Motor (v2.2): navega
 //  con Motor::Goto/Next/... y refleja el estado. Sin este estudio (p. ej. con
@@ -43,7 +42,7 @@ public:
 
 private:
     // ------------------------------------------------------------ modos
-    enum class Mode { Start, Editor, Present, Mando };
+    enum class Mode { Start, Editor, Present };
     enum RibbonTab { TAB_ARCHIVO = 0, TAB_INICIO, TAB_INSERTAR, TAB_DISENO,
                      TAB_TRANSICIONES, TAB_ANIMACIONES, TAB_PRESENTACION, TAB_VISTA,
                      TAB_COUNT };
@@ -66,7 +65,6 @@ private:
     void PaintStart(Gdiplus::Graphics& g, const RECT& cli);
     void PaintEditor(Gdiplus::Graphics& g, const RECT& cli);
     void PaintPresent(Gdiplus::Graphics& g, const RECT& cli);
-    void PaintMando(Gdiplus::Graphics& g, const RECT& cli);
     void PaintModal(Gdiplus::Graphics& g, const RECT& cli);   // ? / Opciones
 
     // ediciones auxiliares de pintado
@@ -154,7 +152,7 @@ private:
     struct Scrollable { RECT r; int* off; int max; };
     std::vector<Scrollable> scrolls_;
     void ScrollAdd(const RECT& r, int& off, int max);
-    int scThumbs_ = 0, scLib_ = 0, scProgram_ = 0, scMando_ = 0,
+    int scThumbs_ = 0, scLib_ = 0, scProgram_ = 0,
         scStart_ = 0, scSorter_ = 0, scVerses_ = 0, scRecent_ = 0;
 
     // modo/paneles

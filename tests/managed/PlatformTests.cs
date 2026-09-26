@@ -1,162 +1,25 @@
 // ============================================================================
-//  Fusion-HP · tests/managed/PlatformTests.cs — API HTTP (6 endpoints + 401),
-//  Triggers, exportadores PPTX/PDF/imágenes y JSON de canciones.
+//  Fusion-HP · tests/managed/PlatformTests.cs — exportadores PPTX/PDF/imágenes
+//  y JSON de canciones.
+//  v4.0.0: retirados los tests de API HTTP y Triggers — ambas piezas fueron
+//  ELIMINADAS del producto por decisión del usuario (sin red, sin OBS, sin
+//  control remoto). La suite cubre solo funcionalidad local.
 // ============================================================================
 using System;
-using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
-using System.Net;
 using System.Text;
 using Fusion.Shared;
 using Fusion.Shared.Model;
 using Fusion.Studio.Export;
 using Fusion.Studio.Import;
-using Fusion.Studio.Services;
 using Fusion.Tests;
 
 namespace Fusion.Tests
 {
     static class PlatformTests
     {
-        // ---------------------------------------------------------------- API
-        class TestLive : LiveOrchestrator
-        {
-            public TestLive(AppSettings s) : base(s) { }
-        }
-
-        public static void TestApiServerEndpoints()
-        {
-            // Criterio F5 [SPEC §12.3.6]: 6 endpoints responden con token y 401 sin él
-            string dir = TestRunner.TempDir();
-            var settings = new AppSettings { DataDir = dir, ApiPort = 27999 + new Random().Next(200), ApiToken = "TESTTOKEN123" };
-            var live = new LiveOrchestrator(settings);
-            live.Project = AhpProject.CreateDefault();
-            var scn = new Scenario { Title = "Canto API" };
-            scn.Elements.Add(new Element { Kind = ElementKind.Text, Lines = { "línea uno", "línea dos" } });
-            live.Project.Scenarios.Add(scn);
-            live.Select(0, 0, 0);
-
-            var api = new ApiServer(live, settings);
-            api.Start();
-            try
-            {
-                TestRunner.Check(api.Running, "API corriendo");
-                string baseUri = "http://127.0.0.1:" + settings.ApiPort;
-
-                // sin token → 401 [SPEC §8.1.4]
-                using (var c = new WebClient())
-                {
-                    c.Encoding = Encoding.UTF8;
-                    try
-                    {
-                        c.DownloadString(baseUri + "/api/v1/state");
-                        TestRunner.Check(false, "debe rechazar sin token");
-                    }
-                    catch (WebException we)
-                    {
-                        var resp = (HttpWebResponse)we.Response;
-                        TestRunner.CheckEq((int)resp.StatusCode, 401, "401 sin token");
-                    }
-                }
-
-                // con token → 200
-                string state;
-                using (var c = new WebClient())
-                {
-                    c.Headers["Authorization"] = "Bearer " + settings.ApiToken;
-                    c.Encoding = Encoding.UTF8;   // sin charset en la respuesta, WebClient asume Latin-1
-                    state = c.DownloadString(baseUri + "/api/v1/state");
-                }
-                var sj = JsonValue.Parse(state);
-                TestRunner.CheckEq(sj.GetStr("scenarioTitle"), "Canto API", "state con título");
-                TestRunner.CheckEq(sj.GetStr("text"), "línea uno", "state con línea activa");
-
-                // /api/v1/text?format=plain (texto para tooling externo) [SPEC §8.4.3]
-                using (var c = new WebClient())
-                {
-                    c.Headers["Authorization"] = "Bearer " + settings.ApiToken;
-                    c.Encoding = Encoding.UTF8;
-                    string plain = c.DownloadString(baseUri + "/api/v1/text?format=plain");
-                    TestRunner.CheckEq(plain, "línea uno", "texto plano para tooling externo");
-                    string json = c.DownloadString(baseUri + "/api/v1/text?format=json");
-                    TestRunner.CheckEq(JsonValue.Parse(json).GetStr("text"), "línea uno", "json");
-                }
-
-                // POST next
-                using (var c = new WebClient())
-                {
-                    c.Headers["Authorization"] = "Bearer " + settings.ApiToken;
-                    c.Headers[HttpRequestHeader.ContentType] = "application/json";
-                    c.Encoding = Encoding.UTF8;
-                    c.UploadString(baseUri + "/api/v1/next", "POST", "");
-                    string st2 = c.DownloadString(baseUri + "/api/v1/state");
-                    TestRunner.CheckEq(JsonValue.Parse(st2).GetStr("text"), "línea dos", "next avanzó línea");
-                    // POST prev
-                    c.UploadString(baseUri + "/api/v1/prev", "POST", "");
-                    string st3 = c.DownloadString(baseUri + "/api/v1/state");
-                    TestRunner.CheckEq(JsonValue.Parse(st3).GetStr("text"), "línea uno", "prev retrocedió");
-                    // POST goto
-                    c.UploadString(baseUri + "/api/v1/goto", "POST", "{\"scenario\":0,\"element\":0,\"line\":1}");
-                    string st4 = c.DownloadString(baseUri + "/api/v1/state");
-                    TestRunner.CheckEq(JsonValue.Parse(st4).GetInt("line", -1), 1, "goto por índice");
-                    // POST message
-                    c.UploadString(baseUri + "/api/v1/message", "POST", "{\"text\":\"Aviso de prueba\"}");
-                    TestRunner.Check(live.CurrentElement != null && live.CurrentElement.OverlayText == "Aviso de prueba", "mensaje en overlay");
-                }
-            }
-            finally
-            {
-                api.Stop();
-            }
-        }
-
-        // ---------------------------------------------------------------- triggers
-        public static void TestTriggerEtiquetaATema()
-        {
-            // Caso canónico: etiqueta "lento" → tema "calma" [SPEC §5.1.4, §12.3.6]
-            string dir = TestRunner.TempDir();
-            var settings = new AppSettings { DataDir = dir };
-            var live = new LiveOrchestrator(settings);
-            live.Project = AhpProject.CreateDefault();   // ya trae tema-calma
-            var te = new TriggerEngine();
-            var rule = new TriggerRule { Event = "tag", Tag = "lento", Action = "theme.change", Parameter = "Calma" };
-            te.Add(rule);
-            string changed = null;
-            te.ThemeChanger = delegate(string n) { changed = n; };
-            var scn = new Scenario { Title = "x" };
-            scn.Tags.Add("lento");
-            var el = new Element { Lines = { "x" } };
-            scn.Elements.Add(el);
-            te.Fire("tag", scn, el, live);
-            TestRunner.CheckEq(live.Project.ThemeRef, "tema-calma", "tema activado por etiqueta");
-            TestRunner.Check(changed == "Calma", "callback del tema: " + changed);
-        }
-
-        public static void TestTriggerMessage()
-        {
-            string dir = TestRunner.TempDir();
-            var live = new LiveOrchestrator(new AppSettings { DataDir = dir });
-            live.Project = AhpProject.CreateDefault();
-            var scn = new Scenario { Title = "x" };
-            scn.Tags.Add("anuncio");
-            var el = new Element { Kind = ElementKind.Text };
-            el.Lines.Add("hola");
-            scn.Elements.Add(el);
-            var te = new TriggerEngine();
-            te.Add(new TriggerRule { Event = "tag", Tag = "anuncio", Action = "message", Parameter = "5 minutos" });
-            string shown = null;
-            te.MessageShower = delegate(string s) { shown = s; };
-            te.Fire("tag", scn, el, live);
-            TestRunner.Check(shown == "5 minutos", "acción message ejecutada");
-            // sin etiqueta → no dispara
-            string shown2 = null;
-            te.MessageShower = delegate(string s) { shown2 = s; };
-            te.Fire("tag", new Scenario { Title = "y" }, null, live);
-            TestRunner.Check(shown2 == null, "sin coincidencia no dispara");
-        }
-
-        // ---------------------------------------------------------------- exportadores
+        // ------------------------------------------------------------ exportadores
         public static void TestPptxExporter()
         {
             var p = AhpProject.CreateDefault();

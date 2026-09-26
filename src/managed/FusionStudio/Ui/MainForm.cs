@@ -152,7 +152,6 @@ namespace Fusion.Studio.Ui
             KeyPreview = true;
             KeyDown += OnGlobalKey;
             FormClosing += OnFormClosing;
-            FormClosed += HandleFormClosedForServices;
             Load += OnFormLoad;
             SetMode(Settings.StartInPresentMode ? Mode.Present : Mode.Home);
         }
@@ -337,9 +336,9 @@ namespace Fusion.Studio.Ui
                         Live.SyncFromMotor();
                         RefreshProgram();
                     }
-                    // [v3.0.0 — bug «el modo API no funciona»] Aplica la configuración
-                    // completa AL ARRANCAR: API, monitor de salida, logo de reposo y
-                    // OBS quedan activos sin pasar por Configuración.
+                    // [v3.0.0 — bug «ventana de proyección»] Aplica la configuración
+                    // completa AL ARRANCAR: monitor de salida, logo de reposo, avance
+                    // y reloj quedan activos sin pasar por Configuración.
                     ApplySettings();
                 });
             });
@@ -382,11 +381,10 @@ namespace Fusion.Studio.Ui
         public void UpdateStatus()
         {
             string core = Live.CoreConnected ? "motor ● conectado" : "motor ○ desconectado";
-            string api = Settings.ApiEnabled ? ("API :" + Settings.ApiPort) : "API apagada";
             int scen = Live.Project != null ? Live.Project.Scenarios.Count : 0;
             string proj = Live.Project != null ? Live.Project.Name : "Sin proyecto";
             lblProject.Text = proj;
-            lblStatus.Text = core + "   ·   " + api + "   ·   " + scen + " escenarios   ·   perfil " + DetectProfile();
+            lblStatus.Text = core + "   ·   " + scen + " escenarios   ·   perfil " + DetectProfile();
             lblLive.Visible = !Live.State.IsBlank;
             lblMotor.Text = Live.State.HasProgram ? "MOTOR ● programa activo" : "";
             lblMotor.Location = new Point(status.Width - lblMotor.PreferredWidth - 10, 5);

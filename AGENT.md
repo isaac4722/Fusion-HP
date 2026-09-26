@@ -36,12 +36,12 @@ Aplica para TODO agente (IA o humano). Lee este archivo, `docs/agent/` y la espe
 
 - `src/core/`: Núcleo nativo C++ (Win32/CRT). Bootstrap, detección de entorno, render (Direct2D/GDI+), media (DirectShow), gestor de pantallas, IPC puente, log binario. Prohibido: código administrado, dependencias externas no incluidas en `/MT`.
 - `src/managed/FusionShared/`: Dominio compartido net35→net48 (`ahp.v1`: Escenario, Elemento, Tema, canciones, biblias, IPC, JSON propio, lector SQLite y Twofish para e-Sword). Sin UI.
-- `src/managed/FusionStudio/`: App principal net48 (WinForms + editor WPF vía `ElementHost`): modos Inicio/Estudio/Presentación, biblioteca, API, OBS, Triggers, importadores/exportadores.
+- `src/managed/FusionStudio/`: App principal net48 (WinForms + editor WPF vía `ElementHost`): modos Inicio/Estudio/Presentación, biblioteca, importadores/exportadores. 100 % local: sin API, sin OBS, sin control remoto (v4.0.0).
 - `src/managed/FusionStudio.Lite/`: Variante de perfil B (net35, `LITE`): mismas fuentes, editor funcional WinForms. Prohibido: mocks, cifras inventadas, patrones web.
 - `src/bridge/`: Puente de interoperabilidad C++/CLI (opcional, solo punteros de render). Protocolo IPC `ipc.v1` [SPEC §3.4].
 - `src/managed/core/`: Dominio compartido (`Escenario`, `Elemento`, `Proyecto`, `Tema`) + sistema de diseño (`Theme.xaml`, tokens UI en `UiTokens.cs`).
-- `src/managed/data/` + `src/managed/services/` + `src/managed/state/`: Persistencia (`ahp.v1`, índices bíblicos), servicios de plataforma (red, media, OBS/NDI, Planning Center, Drive) y estado (`provider`).
-- `src/managed/features/`: Módulos funcionales (Live, Editor, API, Triggers, Biblioteca, Importadores). Cada uno con su UI, lógica y tests.
+- `src/managed/data/` + `src/managed/services/` + `src/managed/state/`: Persistencia (`ahp.v1`, índices bíblicos), servicios locales (media, historial) y estado (`provider`). Sin servicios de red.
+- `src/managed/features/`: Módulos funcionales (Live, Editor, Biblioteca, Importadores). Cada uno con su UI, lógica y tests.
 - `tests/core.Tests/`, `tests/managed.Tests/`: Tests nativos y administrados. Reflejan la estructura de `src/`.
 - `installer/`: Inno Setup dual (instalador x86/x64 + modo portable).
 - `docs/` y `docs/agent/`: Documentación con alcance para el agente (ver abajo).
@@ -76,7 +76,7 @@ Aplica para TODO agente (IA o humano). Lee este archivo, `docs/agent/` y la espe
 - Depender de Java/JRE, .NET Core obligatorio o runtimes no incluidos en el paquete [SPEC §3.5].
 - Inventar cifras de rendimiento, tasas o datos de usuario.
 - Reemplazar el sistema de diseño o la arquitectura dual; solo evolucionar lo existente.
-- Commitear tokens, API keys, contraseñas de OBS, credenciales de Planning Center o secretos.
+- Commitear tokens, API keys, credenciales o secretos de ningún tipo.
 - Escribir en el Registro de Windows desde cualquier capa [SPEC §11.4].
 - Inventar contenido en `docs/agent/` o en los `progress*.md`: si falta información, escribe `TODO:`.
 
@@ -88,7 +88,7 @@ El ciclo se ejecuta como una máquina de estados. Cada paso emite un "route" que
 
 | Estado | Acción Principal | Route si OK | Route si FALLA |
 |---|---|---|---|
-| **1. ANALYZE** | Analiza encargo (think ≥1 min).<br>Identifica módulos (Live/Editor/API), secciones de la especificación aplicables y **dirección estética** si toca UI. | `2_PLAN` | `9_BLOCKED` |
+| **1. ANALYZE** | Analiza encargo (think ≥1 min).<br>Identifica módulos (Live/Editor/Biblioteca), secciones de la especificación aplicables y **dirección estética** si toca UI. | `2_PLAN` | `9_BLOCKED` |
 | **2. PLAN** | Define el plan de implementación.<br>**Paso obligatorio solo en el primer intento.**<br>En reintentos, se salta a `3_IMPLEMENT`.<br>(Investiga en la web mejores prácticas para implementar la fixture; adapta soluciones que funcionen.) | `3_IMPLEMENT` | `1_ANALYZE` |
 | **3. IMPLEMENT** | Aplica lo pedido: 1 pieza por commit.<br>Compila x86 y x64.<br>Usa skills de diseño o instrucciones oficiales si aplica. | `3.5_VISUAL_GATE` | `9_BLOCKED` |
 | **3.5 VISUAL GATE** | *(Solo si una función pasa de lógica a full stack o GUI.)*<br>Precompila la app, captura pantallas (Live + Editor + Multiview) y verifícalas contra slop/BASURA con VLM Skill.<br>Borra las capturas al terminar (temp). | `4_AUDIT` | `6_RETRY` |
@@ -212,7 +212,7 @@ Para mantener este archivo delgado, el detalle vive en `docs/agent/`. El agente 
 | Verdad funcional | `spec/Aplicacion_Hibrida_TechnicalDoc_v1.1_2026-09-23.md` | Estado `1_ANALYZE` (siempre) |
 | Especificación base obligatoria | `spec/especificacion-programa-completo.md` [SPEC] | Estado `1_ANALYZE` (siempre) |
 | Requerimientos de integración | `spec/Requerimientos.md` [REQ] | Estado `1_ANALYZE` (siempre) |
-| Detalle Holyrics | `spec/holyrics-spec.md` [HOLY] | Estado `1_ANALYZE` (si la pieza toca Live, API, Triggers, Biblias) |
+| Detalle Holyrics | `spec/holyrics-spec.md` [HOLY] | Estado `1_ANALYZE` (si la pieza toca Live o Biblias) |
 | Detalle PowerPoint | `spec/powerpoint-spec.md` [PPT] | Estado `1_ANALYZE` (si la pieza toca Editor, PPTX, herencia de estilos) |
 | Dependencias y toolset | `docs/agent/DEPENDENCIAS.md` | Estado `2_PLAN` o `3_IMPLEMENT` (si se toca NuGet, MSVC o Inno Setup) |
 | Estilo de código C++ y C# | `docs/agent/CODE_STYLE.md` | Estado `3_IMPLEMENT` (siempre) |
@@ -238,5 +238,5 @@ Toda pieza debe poder rastrearse hasta uno o más de estos criterios [SPEC §12.
 - **F2:** Proyecto x86 abre idéntico en x64; herencia Tema→Elemento verificada con tema en caliente.
 - **F3:** Video con bucle/volumen/punto de inicio; fail-safe demostrado con archivo corrupto.
 - **F4:** PPTX con herencia de 4 niveles y EMUs importado con informe de fidelidad; `.pptm` sin ejecutar macros; RV1960 con búsqueda ≤200 ms.
-- **F5:** Seis endpoints API con token válido y `401` sin él; Trigger `lento` → tema `calma` con acción OBS documentada.
+- **F5 (revocado en v4.0.0):** la automatización de red fue eliminada por decisión del usuario. Criterio sustituto: el programa **no abre ningún puerto ni cliente de red** (verificado por prueba).
 - **F6:** Métricas de tabla 10.1 dentro de objetivo en Win7 x86 4 GB y Win11 x64; ningún diálogo exige `regedit`; log de 60 min sin `ERROR`.

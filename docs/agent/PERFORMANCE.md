@@ -14,5 +14,5 @@ Estrategias implementadas [SPEC §10.3]:
 1. Carga diferida: `preload` del siguiente elemento; liberación del anterior.
 2. Un modelo resuelto, tres consumos (pública/retorno/multiview).
 3. Ventana persistente + fondo en caché → transición = redraw, no recarga.
-4. Servicios (API/OBS/triggers) arrancan bajo demanda y en hilos de fondo.
+4. Sin servicios de red (v4.0.0): todo el arranque es local y en hilos de fondo.
 5. Índice bíblico en disco (.fbi): solo el índice (16 B/verso) en memoria.

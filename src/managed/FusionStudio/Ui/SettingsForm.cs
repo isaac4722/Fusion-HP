@@ -1,7 +1,8 @@
 // ============================================================================
-//  Fusion-HP · SettingsForm — configuración [SPEC §4.4, §8.1, §8.4]:
-// pantallas, API HTTP de control remoto (token autogenerado), pantalla de reposo
-// y comportamiento de arranque. Persistencia en JSON (nunca el Registro).
+//  Fusion-HP · SettingsForm — configuración [SPEC §4.4]:
+//  pantallas (monitor público y de músicos), pantalla de reposo y
+//  comportamiento de arranque. Persistencia en JSON (nunca el Registro).
+//  v4.0.0: sin grupos de API/OBS — el programa es 100% local.
 // ============================================================================
 using System;
 using System.Drawing;
@@ -15,23 +16,16 @@ namespace Fusion.Studio.Ui
     {
         readonly MainForm owner;
         ComboBox cmbPublic, cmbStage;
-        CheckBox chkApi;
-        NumericUpDown numPort;
-        Button btnToken, btnQr;
         ComboBox cmbRest;
         CheckBox chkStartPresent;
-        Label lblQrHint;
         ComboBox cmbAdvance, cmbTransition;
         CheckBox chkClock, chkAnimation, chkKeepEngine;
-        CheckBox chkObs;
-        TextBox txtObsHost, txtObsPass;
-        NumericUpDown numObsPort;
 
         public SettingsForm(MainForm owner)
         {
             this.owner = owner;
             Text = "Configuración";
-            Size = new Size(560, 800);
+            ClientSize = new Size(544, 520);
             StartPosition = FormStartPosition.CenterParent;
             Font = UiTheme.Normal();
             BackColor = UiTheme.Panel;
@@ -49,13 +43,13 @@ namespace Fusion.Studio.Ui
             Controls.Add(cmbPublic);
             y += 30;
             // [v3.0.0] Aviso honesto con un solo monitor (la salida borderless cubre
-            // el escritorio del operador; el Mando remoto evita quedarse sin control).
+            // el escritorio del operador; el teclado del Motor mantiene el control).
             if (Screen.AllScreens.Length == 1)
             {
                 var lblSolo = new Label
                 {
                     Text = "Con un solo monitor la proyección cubrirá tu pantalla.\n" +
-                           "Conecta un segundo monitor o usa la ventana del Mando.",
+                           "Conecta un segundo monitor o usa la tecla Esc para reposo.",
                     Location = new Point(24, y + 2), Size = new Size(500, 30),
                     ForeColor = UiTheme.TextDim, Font = UiTheme.Small()
                 };
@@ -69,57 +63,6 @@ namespace Fusion.Studio.Ui
             cmbStage.SelectedIndex = S.StageMonitor >= 0 ? S.StageMonitor + 1 : 0;
             Controls.Add(cmbStage);
             y += 40;
-
-            var g2 = Group("API HTTP (control remoto)", y); y = g2;
-            chkApi = new CheckBox { Text = "Activar servidor API local", Location = new Point(24, y), AutoSize = true, Checked = S.ApiEnabled };
-            Controls.Add(chkApi);
-            y += 28;
-            var lblPort = new Label { Text = "Puerto:", Location = new Point(24, y + 3), AutoSize = true };
-            Controls.Add(lblPort);
-            numPort = new NumericUpDown { Location = new Point(80, y), Width = 80, Minimum = 1024, Maximum = 65535, Value = S.ApiPort };
-            Controls.Add(numPort);
-            btnToken = new FusionButton { Text = "Regenerar token", IconName = "refresh",
-                                          Location = new Point(180, y - 3), Size = new Size(150, 32) };
-            btnToken.Click += delegate { txtToken.Text = NewToken(); };
-            Controls.Add(btnToken);
-            txtToken = new TextBox { Location = new Point(24, y + 34), Width = 320, ReadOnly = true, BorderStyle = BorderStyle.FixedSingle };
-            txtToken.Text = string.IsNullOrEmpty(S.ApiToken) ? NewToken() : S.ApiToken;
-            Controls.Add(txtToken);
-            btnQr = new FusionButton { Text = "Ver código QR de emparejamiento", IconName = "device-mobile",
-                                      Location = new Point(24, y + 72), Size = new Size(244, 32) };
-            btnQr.Click += delegate { ShowQr(); };
-            Controls.Add(btnQr);
-            lblQrHint = new Label { Text = "El control remoto móvil se empareja por IP + token, sin nube ni cuentas.",
-                                    Location = new Point(24, y + 108), AutoSize = true, ForeColor = UiTheme.TextDim, Font = UiTheme.Small() };
-            Controls.Add(lblQrHint);
-            y += 136;
-
-            var g3 = Group("OBS Studio (transmisión)", y); y = g3;
-            chkObs = new CheckBox { Text = "Conectar a obs-websocket (cambiar escenas)", Location = new Point(24, y), AutoSize = true, Checked = S.ObsEnabled };
-            Controls.Add(chkObs);
-            y += 28;
-            var lblObsHost = new Label { Text = "Servidor:", Location = new Point(24, y + 3), AutoSize = true };
-            Controls.Add(lblObsHost);
-            txtObsHost = new TextBox { Location = new Point(100, y), Width = 120, Text = S.ObsHost, BorderStyle = BorderStyle.FixedSingle };
-            Controls.Add(txtObsHost);
-            var lblObsPort = new Label { Text = "Puerto:", Location = new Point(232, y + 3), AutoSize = true };
-            Controls.Add(lblObsPort);
-            numObsPort = new NumericUpDown { Location = new Point(286, y), Width = 70, Minimum = 1, Maximum = 65535, Value = S.ObsPort };
-            Controls.Add(numObsPort);
-#if !LITE
-            var btnObsTest = new FusionButton { Text = "Probar", IconName = "world", Location = new Point(372, y - 3), Size = new Size(86, 32) };
-            btnObsTest.Click += delegate { TestObs(); };
-            Controls.Add(btnObsTest);
-#endif
-            y += 32;
-            var lblObsPass = new Label { Text = "Contraseña:", Location = new Point(24, y + 3), AutoSize = true };
-            Controls.Add(lblObsPass);
-            txtObsPass = new TextBox { Location = new Point(100, y), Width = 224, Text = S.ObsPassword, UseSystemPasswordChar = true, BorderStyle = BorderStyle.FixedSingle };
-            Controls.Add(txtObsPass);
-            var lblObsHint = new Label { Text = "OBS Studio → Herramientas → ajustes de obs-websocket (v5).",
-                                         Location = new Point(24, y + 30), AutoSize = true, ForeColor = UiTheme.TextDim, Font = UiTheme.Small() };
-            Controls.Add(lblObsHint);
-            y += 52;
 
             var g4 = Group("Comportamiento", y); y = g4;
             cmbRest = new ComboBox { Location = new Point(24, y), Size = new Size(200, 24), DropDownStyle = ComboBoxStyle.DropDownList };
@@ -175,14 +118,16 @@ namespace Fusion.Studio.Ui
             Controls.Add(lblKeep);
             y += 80;
 
+            int by = y + 10;
             var btnSave = new FusionButton { Text = "Guardar", IconName = "check", Kind = FusionButtonKind.Primary,
-                                            Location = new Point(360, 710), Size = new Size(90, 34) };
+                                             Location = new Point(356, by), Size = new Size(90, 34) };
             btnSave.Click += delegate { Save(); Close(); };
             Controls.Add(btnSave);
             var btnClose = new FusionButton { Text = "Cancelar", IconName = "x",
-                                            Location = new Point(458, 710), Size = new Size(86, 34) };
+                                              Location = new Point(454, by), Size = new Size(86, 34) };
             btnClose.Click += delegate { Close(); };
             Controls.Add(btnClose);
+            ClientSize = new Size(544, by + 60);
         }
 
         int Group(string title, int y)
@@ -195,66 +140,11 @@ namespace Fusion.Studio.Ui
             return y + 30;
         }
 
-        void AddField(string label, ref int y, out TextBox box, string value, bool password = false)
-        {
-            var l = new Label { Text = label, Location = new Point(24, y + 3), AutoSize = true };
-            Controls.Add(l);
-            box = new TextBox { Location = new Point(140, y), Width = 240 };
-            if (password) box.UseSystemPasswordChar = true;
-            box.Text = value ?? "";
-            Controls.Add(box);
-            y += 30;
-        }
-
-        NumericUpDown AddNum(string label, ref int y, int value)
-        {
-            var l = new Label { Text = label, Location = new Point(24, y + 3), AutoSize = true };
-            Controls.Add(l);
-            var n = new NumericUpDown { Location = new Point(140, y), Width = 90, Minimum = 1, Maximum = 65535, Value = value };
-            Controls.Add(n);
-            y += 30;
-            return n;
-        }
-
-        TextBox txtToken;
-
-        static string NewToken()
-        {
-            var rng = new Random(Environment.TickCount);
-            var chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-            var sb = new System.Text.StringBuilder();
-            for (int i = 0; i < 24; i++) sb.Append(chars[rng.Next(chars.Length)]);
-            return sb.ToString();
-        }
-
-        void ShowQr()
-        {
-            string ip = "127.0.0.1";
-            try
-            {
-                var host = System.Net.Dns.GetHostEntry(System.Net.Dns.GetHostName());
-                foreach (var a in host.AddressList)
-                    if (a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork) { ip = a.ToString(); break; }
-            }
-            catch { }
-            string url = "http://" + ip + ":" + (int)numPort.Value + "/remote?token=" + txtToken.Text;
-            // QR simple por texto: el operador puede teclear la URL o copiarla.
-            // (La representación gráfica del QR vive en el diálogo de diagnóstico.)
-            MessageBox.Show(this,
-                "Emparejamiento del control remoto:\n\n" + url + "\n\n" +
-                "Abre esa dirección en el teléfono (misma red Wi-Fi) e introduce el token:\n" +
-                txtToken.Text + "\n\nSin Internet, sin nube, sin cuentas.",
-                "Fusion HP — control remoto", MessageBoxButtons.OK, MessageBoxIcon.Information);
-        }
-
         void Save()
         {
             var S = owner.Settings;
             S.PublicMonitor = cmbPublic.SelectedIndex;
             S.StageMonitor = cmbStage.SelectedIndex - 1;
-            S.ApiEnabled = chkApi.Checked;
-            S.ApiPort = (int)numPort.Value;
-            S.ApiToken = txtToken.Text;
             S.RestScreen = cmbRest.SelectedIndex == 1 ? "logo" : cmbRest.SelectedIndex == 2 ? "theme" : "black";
             S.StartInPresentMode = chkStartPresent.Checked;
             S.AdvanceMode = cmbAdvance.SelectedIndex == 1 ? "slide" : "line";
@@ -262,38 +152,8 @@ namespace Fusion.Studio.Ui
             S.Animation = chkAnimation.Checked;
             S.ShowClock = chkClock.Checked;
             S.KeepEngineAlive = chkKeepEngine.Checked;
-            S.ObsEnabled = chkObs.Checked;
-            S.ObsHost = txtObsHost.Text.Trim().Length == 0 ? "127.0.0.1" : txtObsHost.Text.Trim();
-            S.ObsPort = (int)numObsPort.Value;
-            S.ObsPassword = txtObsPass.Text;
             S.Save();
             owner.ApplySettings();
         }
-
-#if !LITE
-        /// <summary>Prueba de conexión obs-websocket (v3.0.0): resultado en lenguaje
-        /// humano, sin stack traces crudos [SPEC §11.2.3].</summary>
-        void TestObs()
-        {
-            string host = txtObsHost.Text.Trim().Length == 0 ? "127.0.0.1" : txtObsHost.Text.Trim();
-            try
-            {
-                var probe = new System.Net.WebSockets.ClientWebSocket();
-                probe.Dispose();
-                MessageBox.Show(this,
-                    "Cliente OBS disponible.\n\nGuarda la configuración: Fusion HP intentará conectarse a ws://" +
-                    host + ":" + (int)numObsPort.Value + "/ y cambiará escenas cuando un Trigger obs.scene lo pida.\n\n" +
-                    "Si OBS no está corriendo, el cliente reintenta automáticamente.",
-                    "Fusion HP — OBS", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show(this,
-                    "No se pudo crear el cliente WebSocket en este equipo.\n\n" +
-                    "Qué puedes hacer: verifica que el sistema tenga .NET Framework 4.5 o superior.\n\n" + ex.Message,
-                    "Fusion HP — OBS", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            }
-        }
-#endif
     }
 }

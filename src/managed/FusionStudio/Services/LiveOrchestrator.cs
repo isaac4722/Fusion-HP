@@ -223,7 +223,7 @@ namespace Fusion.Studio.Services
 
         // ---------------------------------------------------------------- navegación → Motor
         // Espejo local OPTIMISTA: los índices se actualizan al instante (la GUI
-        // y la API siguen útiles sin núcleo) y el comando viaja al Motor, que es
+        // y la GUI sigue útil sin núcleo) y el comando viaja al Motor, que es
         // la autoridad — su evento motor.state llega después y reconcilia.
         public Scenario CurrentScenario
         {

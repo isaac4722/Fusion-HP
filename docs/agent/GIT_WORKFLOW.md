@@ -7,4 +7,4 @@
 - Tags: `v1.x.y-beta.z` alineado con `ahp.v1` [SPEC §12.4].
 - PROGRESS.md: SOLO añadir entradas (una línea por pieza). Rotación
   hot → warm → cold según AGENT.md. Prohibido reescribir la bitácora.
-- Prohibido commitear tokens/credenciales (GitHub, OBS, Planning Center).
+- Prohibido commitear tokens/credenciales (GitHub u otros).

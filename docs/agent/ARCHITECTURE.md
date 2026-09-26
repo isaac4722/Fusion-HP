@@ -21,9 +21,8 @@ FusionStudio.exe (C# net48, WinForms + WPF)
  ├─ Biblioteca: Cantos (songs/*.json) + Biblia (índice en disco .fbi) + Medios
  ├─ Importadores: Zefania XML · e-Sword (.bib SQLite 9+ con Twofish) · JSON · TSV · PPTX (COM y OpenXML)
  ├─ Exportadores: PPTX (System.IO.Packaging) · PDF (escritor puro) · PNG (GDI+)
- ├─ ApiServer (HttpListener, 6 endpoints + token + /remote móvil)
- ├─ ObsClient (WebSocket RFC6455 propio + auth sha256)
- └─ TriggerEngine (evento → condiciones → acciones, JSON)
+ └─ (v4.0.0) Sin servicios de red: la API HTTP, el cliente OBS y el motor de
+    Triggers fueron ELIMINADOS por decisión del usuario — producto 100 % local.
 
 FusionStudio.Lite.exe (C# net35, WinForms, define LITE)
  └─ Mismas fuentes; editor funcional WinForms en lugar de WPF [SPEC §7.1.2]

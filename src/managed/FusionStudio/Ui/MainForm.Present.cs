@@ -16,7 +16,7 @@ namespace Fusion.Studio.Ui
 {
     public partial class MainForm
     {
-        FusionButton btnSend, btnBlack, btnLogo, btnClear, btnShow, btnMsg, btnVerse, btnChords, btnAdvance, btnApi;
+        FusionButton btnSend, btnBlack, btnLogo, btnClear, btnShow, btnMsg, btnVerse, btnChords, btnAdvance;
         FusionIconButton ibPrevEl, ibPrevLine, ibNextLine, ibNextEl;
         FusionSearchBox txtHighlight;
 
@@ -162,14 +162,7 @@ namespace Fusion.Studio.Ui
             btnChords.Click += delegate { ShowChordsWindow(); };
             right.Controls.Add(btnChords); y += 36;
 
-            // [v3.0.0 — bug «el modo API no funciona»] Interruptor rápido de la API
-            // (OBS consume /api/v1/text como fuente de navegador; el móvil usa /remote).
-            // Ya no vive solo enterrado en Configuración: se enciende/apaga aquí.
-            btnApi = MakeLiveButton("API para OBS y móvil apagada", "world", ref y, FusionButtonKind.Chip);
-            btnApi.Click += delegate { ToggleApi(); };
-            right.Controls.Add(btnApi); y += 38;
-
-            // Mando / Clasificador / Historial (GUI web + función beta-1)
+            // Clasificador / Historial (GUI web + función beta-1)
             BuildWebExtras(right, ref y);
 
             // Escenario de músicos (Stage View beta-1): alerta, temporizador, tono/BPM

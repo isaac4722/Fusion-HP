@@ -1,5 +1,5 @@
 // ============================================================================
-//  Fusion-HP · NativeStudio.cpp — núcleo de la ventana + Inicio + Mando + modales
+//  Fusion-HP · NativeStudio.cpp — núcleo de la ventana + Inicio + modales
 //  (el editor está en NativeStudio.Editor.cpp y la consola en .Present.cpp)
 // ============================================================================
 #include "NativeStudio.h"
@@ -36,7 +36,7 @@ enum {
     CMD_REMOVE_SECTION, CMD_DUP_PRES, CMD_PASTE, CMD_DUP_SLIDES, CMD_DEL_SLIDES,
     CMD_FONT_DOWN, CMD_FONT_UP, CMD_ALIGN_L, CMD_ALIGN_C, CMD_ALIGN_R, CMD_TOGGLE_LT,
     CMD_ITEM_UP, CMD_ITEM_DOWN,
-    CMD_PROYECTOR = 170, CMD_MANDO,
+    CMD_PROYECTOR = 170,
 
     CMD_LIB_TAB_BASE = 200,      // +libtab
     CMD_SONG_BASE = 256,         // +i (songHits_ <200)
@@ -65,9 +65,6 @@ enum {
     CMD_P_SLIDE = 1101,          // a=itemIdx b=slideIdx
     CMD_P_LINE  = 1102,          // a=lineIdx
     CMD_P_VERSE_BASE = 1200,     // +i (verseHits_ <100)
-
-    CMD_M_BACK = 2000, CMD_M_PREV, CMD_M_NEXT, CMD_M_B, CMD_M_C, CMD_M_L,
-    CMD_M_ITEM = 2100,           // a=itemIdx
 
     CMD_T_ITEM_BASE = 2300,      // +itemIdx (cabecera de sección en miniaturas)
     CMD_T_SLIDE = 2400,          // a=itemIdx b=slideIdx
@@ -373,7 +370,6 @@ void NativeStudio::Paint() {
         case Mode::Start:   PaintStart(g, cli); break;
         case Mode::Editor:  PaintEditor(g, cli); break;
         case Mode::Present: PaintPresent(g, cli); break;
-        case Mode::Mando:   PaintMando(g, cli); break;
     }
     if (shortcutsOpen_ || optionsOpen_) PaintModal(g, cli);
 }
@@ -414,7 +410,7 @@ void NativeStudio::ScrollAdd(const RECT& r, int& off, int max) {
 // ================================================================== tick
 void NativeStudio::Tick() {
     SyncFromMotor();
-    if (mode_ == Mode::Present || mode_ == Mode::Mando || mode_ == Mode::Start)
+    if (mode_ == Mode::Present || mode_ == Mode::Start)
         Repaint();                             // reloj
 }
 
@@ -1090,128 +1086,6 @@ void NativeStudio::PlaceEdit(HWND ed, const RECT& r, bool show) {
     if (!IsWindowVisible(ed)) ShowWindow(ed, SW_SHOW);
 }
 
-// ================================================================== MANDO
-// Réplica de RemoteView (App.tsx de la web): marco de móvil centrado.
-void NativeStudio::PaintMando(Gdiplus::Graphics& g, const RECT& cli) {
-    int W = cli.right, H = cli.bottom;
-    Gdiplus::SolidBrush bg(ui::ToColor(0xFFE6E6E6));
-    g.FillRectangle(&bg, (Gdiplus::REAL)(0), (Gdiplus::REAL)(0),  (Gdiplus::REAL)W,  (Gdiplus::REAL)H);
-
-    int ph = std::min(H - 24, 860), pw = std::min(W - 24, 420);
-    int px = (W - pw) / 2, py = (H - ph) / 2;
-    RECT fr{px, py, px + pw, py + ph};
-    Gdiplus::Pen bp(ui::ToColor(0xFFC8C6C4), 1.0f);
-    Gdiplus::SolidBrush wb(ui::ToColor(ui::Paper));
-    g.FillRectangle(&wb, (Gdiplus::REAL)(fr.left), (Gdiplus::REAL)(fr.top),  (Gdiplus::REAL)(fr.right - fr.left), 
-                    (Gdiplus::REAL)(fr.bottom - fr.top));
-    g.DrawRectangle(&bp, (Gdiplus::REAL)(fr.left), (Gdiplus::REAL)(fr.top),  (Gdiplus::REAL)(fr.right - fr.left - 1), 
-                    (Gdiplus::REAL)(fr.bottom - fr.top - 1));
-
-    int y = fr.top;
-    // cabecera del mando
-    RECT back{fr.left + 8, y + 10, fr.left + 36, y + 38};
-    ui::IconButton(g, back, "chevron-left", (hoverId_ == CMD_M_BACK ? ui::kHot : 0));
-    HitAdd(CMD_M_BACK, 0, 0, back);
-    HDC dc = g.GetHDC();
-    SetBkMode(dc, TRANSPARENT);
-    SelectObject(dc, ui::Font(13, FW_SEMIBOLD));
-    SetTextColor(dc, ui::Cref(ui::Ink));
-    RECT t1{fr.left + 40, y + 8, fr.right - 40, y + 28};
-    DrawTextW(dc, L"Mando", -1, &t1, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-    SelectObject(dc, ui::Font(11));
-    SetTextColor(dc, ui::Cref(ui::Gray));
-    RECT t2{fr.left + 40, y + 26, fr.right - 40, y + 44};
-    DrawTextW(dc, L"Sincronizado con este equipo", -1, &t2, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-    g.ReleaseHDC(dc);
-    y += 50;
-    Gdiplus::Pen hp(ui::ToColor(ui::Border), 1.0f);
-    g.DrawLine(&hp,  (Gdiplus::REAL)fr.left,  (Gdiplus::REAL)y,  (Gdiplus::REAL)fr.right,  (Gdiplus::REAL)y);
-
-    // vista previa 16:9
-    int prevW = pw - 24, prevH = prevW * 9 / 16;
-    RECT pr{fr.left + 12, y + 8, fr.left + 12 + prevW, y + 8 + prevH};
-    Gdiplus::Bitmap* th = ThumbOf(CurrentSlideJson(), prevW, prevH, "mando:preview");
-    if (th) g.DrawImage(th, pr.left, pr.top, prevW, prevH);
-    else { Gdiplus::SolidBrush bk(ui::ToColor(0xFF000000)); g.FillRectangle(&bk, (Gdiplus::REAL)(pr.left), (Gdiplus::REAL)(pr.top),  (Gdiplus::REAL)prevW,  (Gdiplus::REAL)prevH); }
-    y = pr.bottom + 8;
-
-    // línea actual
-    dc = g.GetHDC();
-    SelectObject(dc, ui::Font(11));
-    SetTextColor(dc, ui::Cref(ui::Gray));
-    RECT lq{fr.left + 14, y, fr.right - 14, y + 16};
-    DrawTextW(dc, (curScn_ >= 0 && curScn_ < (int)progTitles_.size())
-              ? ToWide(progTitles_[(size_t)curEl_ < progTitles_.size() ? (size_t)curEl_ : 0].first).c_str()
-              : L"", -1, &lq, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
-    SelectObject(dc, ui::Font(20, FW_SEMIBOLD));
-    SetTextColor(dc, ui::Cref(ui::Ink));
-    RECT lb{fr.left + 14, y + 16, fr.right - 14, y + 52};
-    // primera línea visible del slide actual
-    std::wstring cur;
-    {
-        const Json& s = CurrentSlideJson();
-        if (s.contains("lines") && s["lines"].is_array() && !s["lines"].empty()) {
-            size_t li = (size_t)curLine_ < s["lines"].size() ? (size_t)curLine_ : 0;
-            if (s["lines"][li].is_string()) cur = ToWide(s["lines"][li].get<std::string>());
-        }
-        if (cur.empty() && s.contains("reference")) cur = ToWide(s["reference"].get<std::string>());
-    }
-    std::wstring shown = cur.empty() ? std::wstring(L"Sin contenido") : cur;
-    DrawTextW(dc, shown.c_str(), -1, &lb, DT_LEFT | DT_WORDBREAK | DT_END_ELLIPSIS);
-    g.ReleaseHDC(dc);
-    y += 60;
-
-    // Anterior / Siguiente (primario acento)
-    int bw = (pw - 36) / 2;
-    RECT pv{fr.left + 12, y, fr.left + 12 + bw, y + 56};
-    RECT nx{fr.right - 12 - bw, y, fr.right - 12, y + 56};
-    ui::Chip(g, pv, L"Anterior", L"←", "player-skip-back", hoverId_ == CMD_M_PREV ? ui::kHot : 0);
-    HitAdd(CMD_M_PREV, 0, 0, pv);
-    ui::Chip(g, nx, L"Siguiente", L"→", "player-skip-forward",
-             ui::kAcc | (hoverId_ == CMD_M_NEXT ? ui::kHot : 0));
-    HitAdd(CMD_M_NEXT, 0, 0, nx);
-    y += 64;
-    // B / C / L
-    int kw = (pw - 36) / 3;
-    struct KBtn { int id; const wchar_t* l; const wchar_t* k; };
-    KBtn ks[] = {{CMD_M_B, L"Negro", L"B"}, {CMD_M_C, L"Limpiar", L"C"}, {CMD_M_L, L"Logo", L"L"}};
-    for (int i = 0; i < 3; i++) {
-        RECT r{fr.left + 12 + i * (kw + 6), y, fr.left + 12 + (i + 1) * (kw + 6) - 6, y + 52};
-        bool on = (ks[i].id == CMD_M_B && blank_ == "black") ||
-                  (ks[i].id == CMD_M_C && blank_ == "clear") ||
-                  (ks[i].id == CMD_M_L && blank_ == "logo");
-        ui::Chip(g, r, ks[i].l, ks[i].k, "",
-                 (on ? ui::kOn : 0) | (hoverId_ == ks[i].id ? ui::kHot : 0));
-        HitAdd(ks[i].id, 0, 0, r);
-    }
-    y += 60;
-
-    // programa (lista desplazable)
-    RECT listR{fr.left + 8, y, fr.right - 8, fr.bottom - 8};
-    int rowH = 34, total = (int)progTitles_.size() * rowH;
-    ScrollAdd(listR, scMando_, std::max(0, (int)(total - (listR.bottom - listR.top))));
-    int yy = listR.top - scMando_;
-    for (int i = 0; i < (int)progTitles_.size(); i++) {
-        RECT r{listR.left, yy, listR.right, yy + rowH};
-        if (r.bottom > listR.top && r.top < listR.bottom) {
-            bool cur = (i == curEl_);
-            ui::Row(g, r, i + 1, ToWide(progTitles_[(size_t)i].first), L"", "",
-                    (cur ? ui::kOn : 0) | (hoverId_ == CMD_M_ITEM && hoverA_ == i ? ui::kHot : 0));
-            HitAdd(CMD_M_ITEM, i, 0, r);
-        }
-        yy += rowH;
-    }
-    if (progTitles_.empty()) {
-        dc = g.GetHDC();
-        SelectObject(dc, ui::Font(12));
-        SetTextColor(dc, ui::Cref(ui::Gray));
-        RECT tr = listR;
-        DrawTextW(dc, L"Sin programa cargado.\nUsa Presentar en el editor.", -1, &tr,
-                  DT_CENTER | DT_VCENTER | DT_WORDBREAK);
-        g.ReleaseHDC(dc);
-    }
-}
-
 // ================================================================== MODALES
 // Réplica de ShortcutsModal + SettingsModal (App.tsx).
 void NativeStudio::PaintModal(Gdiplus::Graphics& g, const RECT& cli) {
@@ -1467,7 +1341,6 @@ void NativeStudio::OnCommand(int id) {
             }
             return;
         }
-        case CMD_MANDO: GoMode(Mode::Mando); return;
         default: break;
     }
 
@@ -1684,14 +1557,7 @@ void NativeStudio::OnCommand(int id) {
         return;
     }
 
-    // ---------------- mando ----------------
-    if (id == CMD_M_BACK) { GoMode(Mode::Present); return; }
-    if (id == CMD_M_PREV) { MotorPrev(); return; }
-    if (id == CMD_M_NEXT) { MotorNext(); return; }
-    if (id == CMD_M_B) { MotorBlank("black"); return; }
-    if (id == CMD_M_C) { MotorBlank("clear"); return; }
-    if (id == CMD_M_L) { MotorBlank("logo"); return; }
-    if (id == CMD_M_ITEM) { MotorGoto(curScn_, pressA_, 0); return; }
+    // ---------------- fin de comandos ----------------
 
     // ---------------- miniaturas / clasificador ----------------
     if (id >= CMD_T_ITEM_BASE && id < CMD_T_ITEM_BASE + 200) {
@@ -1740,10 +1606,9 @@ bool NativeStudio::OnKey(UINT vk, bool down, bool ctrl, bool shift) {
         return true;
     }
 
-    // Esc: cadena de la web (modal → mando → presentar → editor → inicio)
+    // Esc: cadena de la web (modal → presentar → editor → inicio)
     if (vk == VK_ESCAPE) {
         if (shortcutsOpen_ || optionsOpen_) { shortcutsOpen_ = optionsOpen_ = false; }
-        else if (mode_ == Mode::Mando) GoMode(Mode::Present);
         else if (mode_ == Mode::Present) GoMode(Mode::Editor);
         else if (mode_ == Mode::Editor && ribbonTab_ == TAB_ARCHIVO) { ribbonTab_ = TAB_INICIO; Repaint(); }
         else if (mode_ == Mode::Editor) GoMode(Mode::Start);
@@ -1761,7 +1626,7 @@ bool NativeStudio::OnKey(UINT vk, bool down, bool ctrl, bool shift) {
         return false;
     }
 
-    if (mode_ == Mode::Present || mode_ == Mode::Mando) {
+    if (mode_ == Mode::Present) {
         switch (vk) {
             case VK_RIGHT: case VK_SPACE: case VK_NEXT: MotorNext(); return true;
             case VK_LEFT: case VK_PRIOR: MotorPrev(); return true;

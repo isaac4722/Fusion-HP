@@ -12,8 +12,8 @@ detección de entorno. Corre en x86 y x64.
 - Lector SQLite puro + importador e-Sword completo (fixture cifrado real:
   blobs Twofish+SQLitePlus+zlib generados con el código de referencia).
 - Zefania XML, TSV legado, JSON de himnario, búsqueda ≤ 200 ms (criterio F4).
-- API HTTP: 6 endpoints con token, 401 sin token (criterio F5), goto/message.
-- Triggers: etiqueta "lento" → tema "calma" (criterio F5) y acción OBS.
+- (v4.0.0) Ausencia de red: proyectar un canto no genera archivos y el proceso
+  no abre puertos (la API/Triggers/OBS fueron eliminados por decisión del usuario).
 - Exportadores: PPTX (ZIP válido + reimportable), PDF (cabecera/EOF), PNG 1080p.
 
 ## En CI

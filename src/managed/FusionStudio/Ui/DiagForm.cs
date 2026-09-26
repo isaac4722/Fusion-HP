@@ -75,8 +75,6 @@ namespace Fusion.Studio.Ui
             Add("Monitores", "OK", Screen.AllScreens.Length + " pantalla(s)");
             Add("Núcleo de proyección", owner.Live.CoreConnected ? "OK" : "ÁMBAR",
                 owner.Live.CoreConnected ? "Conectado por ipc.v1" : "Sin conectar (¿se cerró FusionHP.exe?)");
-            Add("Servidor API", owner.Settings.ApiEnabled ? "OK" : "APAGADO",
-                owner.Settings.ApiEnabled ? "Puerto " + owner.Settings.ApiPort + " (solo red local)" : "Desactivado en Configuración");
             int bibles = owner.Live.Bibles.List().Count;
             int songs = owner.Live.Songs.All().Count;
             Add("Biblioteca", bibles > 0 ? "OK" : "ÁMBAR",
@@ -116,7 +114,8 @@ namespace Fusion.Studio.Ui
             }
             catch (Exception ex) { Add("Autotest: permisos de carpeta", "ROJO", ex.Message); red++; }
 
-            // 4) Red local (bind en 127.0.0.1 con puerto efímero)
+            // 4) Red local (bind en 127.0.0.1 con puerto efímero — comprobación
+            //    genérica de la pila TCP del sistema, sin abrir ningún servicio)
             try
             {
                 var l = new TcpListener(IPAddress.Loopback, 0);
@@ -125,29 +124,6 @@ namespace Fusion.Studio.Ui
                 Add("Autotest: red local", "OK", "Pila TCP disponible"); green++;
             }
             catch (Exception ex) { Add("Autotest: red local", "ROJO", ex.Message); red++; }
-
-            // 5) API (si está activa)
-            if (owner.Settings.ApiEnabled)
-            {
-                try
-                {
-                    var req = (HttpWebRequest)WebRequest.Create("http://127.0.0.1:" + owner.Settings.ApiPort + "/api/v1/state");
-                    req.Headers.Add("Authorization", "Bearer " + owner.Settings.ApiToken);
-                    req.Timeout = 3000;
-                    using (var resp = (HttpWebResponse)req.GetResponse())
-                    {
-                        Add("Autotest: API HTTP", resp.StatusCode == HttpStatusCode.OK ? "OK" : "ÁMBAR",
-                            "GET /api/v1/state → " + (int)resp.StatusCode);
-                        if (resp.StatusCode == HttpStatusCode.OK) green++; else amber++;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    // 401 cuenta como "funciona" (rechazo correcto sin token no aplica aquí: vamos con token)
-                    Add("Autotest: API HTTP", "ÁMBAR", ex.Message); amber++;
-                }
-            }
-            else { Add("Autotest: API HTTP", "ÁMBAR", "Desactivada (actívala en Configuración si la necesitas)"); amber++; }
 
             lblSummary.Text = "Resultado: " + green + " en verde · " + amber + " en ámbar · " + red + " en rojo" +
                 (red == 0 ? "  —  entorno apto para proyectar" : "  —  corrige los puntos en rojo antes del servicio");

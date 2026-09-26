@@ -24,7 +24,7 @@ enum {
     CMD_REMOVE_SECTION, CMD_DUP_PRES, CMD_PASTE, CMD_DUP_SLIDES, CMD_DEL_SLIDES,
     CMD_FONT_DOWN, CMD_FONT_UP, CMD_ALIGN_L, CMD_ALIGN_C, CMD_ALIGN_R, CMD_TOGGLE_LT,
     CMD_ITEM_UP, CMD_ITEM_DOWN,
-    CMD_PROYECTOR = 170, CMD_MANDO,
+    CMD_PROYECTOR = 170,
     CMD_LIB_TAB_BASE = 200,
     CMD_SONG_BASE = 256,
     CMD_THEME_BASE = 512,
@@ -404,15 +404,11 @@ void NativeStudio::PaintRibbon(Gdiplus::Graphics& g, const RECT& r) {
             BigBtn(x, y0, L"Proyector", L"ventana", "device-desktop", CMD_PROYECTOR); x += 80;
             GroupLbl(10, 200, L"Iniciar presentación");
             SepAt(220); x = 230;
-            // Salidas: Mando (OBS eliminado por decisión del usuario)
-            BigBtn(x, y0, L"Mando", L"táctil", "device-mobile", CMD_MANDO);
-            GroupLbl(230, 90, L"Salidas");
-            SepAt(330); x = 340;
             BigBtn(x, y0, L"PNG", L"actual", "photo", CMD_BS_PNG_CUR); x += 74;
             BigBtn(x, y0, L"PNG", L"todas", "layout-grid", CMD_BS_PNG_ALL); x += 74;
             BigBtn(x, y0, L"JSON", L"Ctrl+S", "download", CMD_BS_JSON); x += 74;
             BigBtn(x, y0, L"CSV", L"historial", "file-text", CMD_BS_CSV);
-            GroupLbl(340, 310, L"Exportar");
+            GroupLbl(230, 310, L"Exportar");
             break;
         }
         case TAB_VISTA: {
