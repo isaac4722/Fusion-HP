@@ -110,7 +110,7 @@ namespace Fusion.Studio.Ui
                 e.Graphics.DrawRectangle(pen, e.Bounds.X, e.Bounds.Y, e.Bounds.Width - 1, e.Bounds.Height - 1);
             using (var b = new SolidBrush(UiTheme.Accent))
                 e.Graphics.FillRectangle(b, e.Bounds.X, e.Bounds.Y, 3, e.Bounds.Height);
-            Fusion.Studio.Ui.Widgets.UiIcons.Draw(e.Graphics, "folder-open", IconTint.Ink, e.Bounds.X + 10, e.Bounds.Y + 8);
+            Fusion.Studio.Ui.Widgets.UiIcons.Draw(e.Graphics, "folder-open", Fusion.Studio.Ui.Widgets.IconTint.Ink, e.Bounds.X + 10, e.Bounds.Y + 8);
             TextRenderer.DrawText(e.Graphics, r.Name, UiTheme.NormalBold(),
                 new Rectangle(e.Bounds.X + 40, e.Bounds.Y + 2, e.Bounds.Width - 140, 16),
                 sel ? UiTheme.AccentDark : UiTheme.Text,
