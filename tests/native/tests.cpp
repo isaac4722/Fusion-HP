@@ -615,10 +615,12 @@ static void TestSqlite()
                   q.ColumnInt(0) == N, "SQLite: 30 000 filas contadas");
         }
         {
-            // búsqueda por índice B-tree (book,chapter,verse) con fila repetida
+            // búsqueda por índice B-tree con el triple EXISTENTE de la fila 4242
             SqliteDb::Stmt q;
-            CHECK(mem.Prepare("SELECT COUNT(*) FROM verses WHERE book=5 AND chapter=7 AND verse=9;", &q) &&
-                  q.Step() && q.ColumnInt(0) >= 1, "SQLite: búsqueda por índice encuentra filas");
+            CHECK(mem.Prepare("SELECT COUNT(*) FROM verses WHERE book=? AND chapter=? AND verse=?;", &q) &&
+                  q.BindInt(1, 1 + (4242 % 66)) && q.BindInt(2, 1 + (4242 % 150)) &&
+                  q.BindInt(3, 1 + (4242 % 176)) && q.Step() && q.ColumnInt(0) >= 1,
+                  "SQLite: búsqueda por índice encuentra filas");
         }
         {
             // acceso directo por rowid: contenido exacto de la fila 4243
@@ -659,8 +661,10 @@ static void TestSqlite()
         CHECK(u.Exec("CREATE TABLE t(x TEXT);"), "SQLite: tabla en UTF-16");
         std::string esperado = "Señor de los Ejércitos — salmo 23, año 1960";
         SqliteDb::Stmt ins;
-        CHECK(u.Prepare("INSERT INTO t VALUES(?);", &ins) && ins.BindText(1, esperado) &&
-              ins.Step(), "SQLite: texto español en UTF-16");
+        CHECK(u.Prepare("INSERT INTO t VALUES(?);", &ins) && ins.BindText(1, esperado),
+              "SQLite: prepare con texto español");
+        ins.Step();                       // INSERT → SQLITE_DONE (Step()==false)
+        CHECK(u.RowsChanged() == 1, "SQLite: texto español en UTF-16");
         SqliteDb::Stmt q;
         CHECK(u.Prepare("SELECT x FROM t;", &q) && q.Step() &&
               q.ColumnText(0) == esperado, "SQLite: UTF-16 ↔ UTF-8 sin pérdida");
