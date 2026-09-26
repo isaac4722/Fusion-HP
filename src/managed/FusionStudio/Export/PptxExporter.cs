@@ -210,6 +210,9 @@ namespace Fusion.Studio.Export
                 "<p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>";
             var slidePart = CreateXmlPart(pkg, "/ppt/slides/" + name,
                 "application/vnd.openxmlformats-officedocument.presentationml.slide+xml", slideXml);
+            // relación presentación→diapositiva (rId = idx+1, coincide con sldIdLst)
+            presPart.CreateRelationship(new Uri("slides/" + name, UriKind.Relative), TargetMode.Internal,
+                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide", "rId" + (idx + 1));
             slidePart.CreateRelationship(new Uri("../slideLayouts/slideLayout1.xml", UriKind.Relative), TargetMode.Internal,
                 "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout", "rId1");
             if (slideImageTarget != null)

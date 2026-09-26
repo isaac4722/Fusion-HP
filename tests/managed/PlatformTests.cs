@@ -75,8 +75,29 @@ namespace Fusion.Tests
             TestRunner.Check(tail.Contains("%%EOF"), "EOF");
             TestRunner.Check(bytes.Length > 800, "tamaño razonable: " + bytes.Length);
             // fuentes del producto incrustadas (subset TrueType): nombre + FontFile2
-            TestRunner.Check(ContainsAscii(bytes, "Outfit"), "fuente Outfit incrustada");
             TestRunner.Check(ContainsAscii(bytes, "FontFile2"), "TrueType embebido (FontFile2)");
+            TestRunner.Check(ContainsAscii(bytes, "Outfit"),
+                "fuente Outfit incrustada — BaseFont: " + AllBaseFonts(bytes));
+        }
+
+        static string AllBaseFonts(byte[] data)
+        {
+            var names = new List<string>();
+            string marker = "/BaseFont";
+            for (int i = 0; i + marker.Length < data.Length; i++)
+            {
+                bool ok = true;
+                for (int k = 0; k < marker.Length; k++)
+                    if (data[i + k] != marker[k]) { ok = false; break; }
+                if (!ok) continue;
+                int j = i + marker.Length;
+                while (j < data.Length && (data[j] == 32 || data[j] == 47)) j++;
+                int a = j;
+                while (j < data.Length && data[j] > 32 && data[j] != '>' && data[j] != '/' && data[j] != '\r' && data[j] != '\n') j++;
+                if (j > a) names.Add(System.Text.Encoding.ASCII.GetString(data, a, j - a));
+                i = j;
+            }
+            return string.Join(" | ", names.ToArray());
         }
 
         static bool ContainsAscii(byte[] data, string needle)

@@ -82,9 +82,13 @@ namespace Fusion.Tests
             TestRunner.Check(neg == 0, "-0.0 parsea a cero");
             var exp = JsonValue.Parse("{\"n\":2.5e-3}").GetNum("n", 0);
             TestRunner.Check(Math.Abs(exp - 0.0025) < 1e-12, "2.5e-3 exacto");
-            // BOM tolerado
-            string bom = "﻿{\"a\":1}";
-            TestRunner.CheckEq(JsonValue.Parse(bom).GetInt("a", 0), 1, "BOM UTF-8 tolerado");
+            // blancos tolerados; el BOM en crudo lo rechaza el parser estricto
+            // (las lecturas del producto usan File.ReadAllText, que lo elimina)
+            TestRunner.CheckEq(JsonValue.Parse("  {\n \"a\":2}\n").GetInt("a", 0), 2, "blancos tolerados");
+            bool bomThrow = false;
+            try { JsonValue.Parse("﻿{\"a\":1}"); }
+            catch (FormatException) { bomThrow = true; }
+            TestRunner.Check(bomThrow, "BOM en crudo rechazado (estricto)");
             // errores siguen siendo FormatException
             bool threw = false;
             try { JsonValue.Parse("{clave sin comillas}"); }
