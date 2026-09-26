@@ -47,10 +47,13 @@ namespace Fusion.Tests
                 TestRunner.Check(hasSlide, "slides/");
                 TestRunner.Check(zip.Entries.Count >= 5, "entradas: " + zip.Entries.Count);
             }
-            // reimportable por el importador OpenXML
+            // reimportable por el importador OpenXML (diagnóstico si falla)
             var p2 = AhpProject.CreateDefault();
-            var rep2 = new PptxOpenXmlImporter().Import(outPath, p2);
-            TestRunner.Check(rep2.Scenarios >= 1, "reimportado: " + rep2.Scenarios);
+            int scenarios = -1;
+            string detail = "";
+            try { scenarios = new PptxOpenXmlImporter().Import(outPath, p2).Scenarios; }
+            catch (Exception ex) { detail = ex.ToString(); }
+            TestRunner.Check(scenarios >= 1, "reimportado: " + scenarios + " " + detail);
         }
 
         public static void TestPdfExporter()
@@ -99,6 +102,40 @@ namespace Fusion.Tests
                 i = j;
             }
             return string.Join(" | ", names.ToArray());
+        }
+
+        public static void TestPdfFontProbe()
+        {
+            // sondeo por etapas: dónde se rompe la cadena fuentes privadas
+            string dir = null;
+            for (string d = AppDomain.CurrentDomain.BaseDirectory; d != null && d.Length > 3;
+                 d = Path.GetDirectoryName(d))
+            {
+                string cand = Path.Combine(Path.Combine(d, "resources"), "fonts");
+                if (Directory.Exists(cand)) { dir = cand; break; }
+            }
+            TestRunner.Check(dir != null, "sonda: carpeta resources/fonts encontrada: " + (dir ?? "null"));
+            if (dir == null) return;
+            string[] ttf = Directory.GetFiles(dir, "*.ttf");
+            TestRunner.Check(ttf.Length >= 9, "sonda: TTF presentes: " + ttf.Length);
+            string addErr = "";
+            try
+            {
+                foreach (string f in ttf)
+                    PdfSharp.Drawing.XPrivateFontCollection.AddFont(f);
+            }
+            catch (Exception ex) { addErr = ex.GetType().Name + ": " + ex.Message; }
+            TestRunner.Check(addErr.Length == 0, "sonda: AddFont sin excepción — " + addErr);
+            string fontErr = "";
+            string resolved = "";
+            try
+            {
+                var fnt = new PdfSharp.Drawing.XFont("Outfit", 24);
+                resolved = fnt.Name != null ? fnt.Name : "(null)";
+            }
+            catch (Exception ex) { fontErr = ex.GetType().Name + ": " + ex.Message; }
+            TestRunner.Check(fontErr.Length == 0 && resolved.Contains("Outfit"),
+                "sonda: XFont Outfit resuelve a '" + resolved + "' — " + fontErr);
         }
 
         static bool ContainsAscii(byte[] data, string needle)
