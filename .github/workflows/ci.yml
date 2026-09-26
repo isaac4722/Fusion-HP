@@ -201,6 +201,9 @@ jobs:
           # recursos: TODO el árbol (img con iconos, fuentes, fondos, biblias)
           # (destino = staging ya existente: resources queda como staging/resources)
           Copy-Item resources installer/staging -Recurse -Force
+          # presupuesto de instalador (≤10 MB aprobado): el módulo de muestra
+          # e-Sword (4,4 MB) permanece en el repo para pruebas/import, no viaja
+          Remove-Item installer/staging/resources/data/sample -Recurse -Force -ErrorAction SilentlyContinue
           # verificación de assets críticos de la fusión web (v2.1)
           if (-not (Test-Path installer/staging/resources/fonts)) { throw 'faltan fuentes de la GUI' }
           if (-not (Test-Path installer/staging/resources/backgrounds)) { throw 'faltan fondos de la referencia' }

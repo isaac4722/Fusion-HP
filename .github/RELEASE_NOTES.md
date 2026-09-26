@@ -42,7 +42,7 @@ Cada librería = una pieza = un commit, con pruebas que cubren la sustitución:
 - Núcleo C++ (`FusionHP.exe`, /MT, x86+x64): bootstrap con perfiles A/B/C, salida borderless sin parpadeo, sincronización línea por línea, video DirectShow fail-safe, Stage View y servidor IPC `ipc.v1`.
 - 4 biblias completas en español (RV1960, NVI, RVG, RVR1909) autoinstaladas; canciones BD→proyección sin generar PPTX; PPTX solo cuando el operador lo pide.
 - GUI web consolidada en C++/C#: Temas en caliente, Biblia rápida G con favoritos y Tercio, miniaturas, recientes con nombre.
-- Instalador dual (x86+x64) con presupuesto **≤ 10 MB**, portables por arquitectura y SHA256SUMS.
+- Instalador dual (x86+x64) con presupuesto **≤ 10 MB**, portables por arquitectura y SHA256SUMS. El módulo de muestra e-Sword (RVR1909, 4,4 MB) queda en el repo para pruebas e importación y no viaja en el instalador; las 4 biblias completas sí van incluidas.
 
 ## Verificación
 - CI: núcleo x86+x64 (144 checks nativos) · C# net35+net48 (58 pruebas) · gate de prohibiciones 0 violaciones · gate de imports Win8+ en verde · instalador dual + portables + SHA256SUMS.
