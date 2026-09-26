@@ -36,6 +36,8 @@
 
 using namespace fusion;
 
+namespace fs = std::filesystem;   // usado por TestSqlite (antes de su declaración posterior)
+
 static int g_fail = 0, g_pass = 0;
 static int g_dtFail = 0;   // fallos reportados por las aserciones doctest
 #define CHECK(cond, msg) do { \
