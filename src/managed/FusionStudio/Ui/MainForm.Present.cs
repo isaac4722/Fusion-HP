@@ -16,7 +16,7 @@ namespace Fusion.Studio.Ui
 {
     public partial class MainForm
     {
-        FusionButton btnSend, btnBlack, btnLogo, btnClear, btnShow, btnMsg, btnVerse, btnChords, btnAdvance, btnOutput;
+        FusionButton btnSend, btnBlack, btnLogo, btnClear, btnShow, btnMsg, btnVerse, btnChords, btnAdvance, btnOutput, btnOperator;
         FusionIconButton ibPrevEl, ibPrevLine, ibNextLine, ibNextEl;
         FusionSearchBox txtHighlight;
         System.Collections.Generic.Dictionary<int, Bitmap> progThumbs;
@@ -171,6 +171,7 @@ namespace Fusion.Studio.Ui
             btnSorter = MakeGridButton(right, "Clasificador", "layout-grid", null, 1, ref y, delegate { ShowSorter(); });
             y += 36;
             btnHistory = MakeGridButton(right, "Historial", "clock", null, 0, ref y, delegate { ShowHistory(); });
+            btnOperator = MakeGridButton(right, "Operador", "keyboard", "F8", 1, ref y, delegate { ShowOperator(); });
             y += 40;
 
             // Escenario de músicos (Stage View beta-1): alerta, temporizador, tono/BPM

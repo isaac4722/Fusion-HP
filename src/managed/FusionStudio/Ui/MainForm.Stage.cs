@@ -165,5 +165,19 @@ namespace Fusion.Studio.Ui
             historyForm.Show(this);
             historyForm.BringToFront();
         }
+
+        OperatorForm operatorForm;
+
+        /// <summary>Modo Operador (v4.2.0, F8): consola en vivo dedicada —
+        /// «en pantalla» + «siguiente», transporte gigante y pantallas a un toque
+        /// (patrón Holy/PTT, vista presentador de PowerPoint).</summary>
+        void ShowOperator()
+        {
+            if (operatorForm == null || operatorForm.IsDisposed)
+                operatorForm = new OperatorForm(this, Live);
+            operatorForm.Show(this);
+            operatorForm.BringToFront();
+            operatorForm.Activate();
+        }
     }
 }

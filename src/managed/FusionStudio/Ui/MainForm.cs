@@ -534,6 +534,8 @@ namespace Fusion.Studio.Ui
                     ShowQuickVerse(); e.Handled = true; break;   // biblia rápida (web)
                 case Keys.F5:
                     ShowOutputInfo(); e.Handled = true; break;
+                case Keys.F8:
+                    ShowOperator(); e.Handled = true; break;     // modo operador (v4.2.0)
             }
         }
 

@@ -241,6 +241,25 @@ namespace Fusion.Tests
             }
         }
 
+        // -------------------------------------------------- v4.2.0 — Modo Operador
+        public static void TestOperatorNextOfTransitions()
+        {
+            var p = Fusion.Shared.Model.AhpProject.CreateDefault();
+            p.Scenarios.Clear();
+            var s1 = new Fusion.Shared.Model.Scenario { Title = "Canto uno" };
+            s1.Elements.Add(new Fusion.Shared.Model.Element { Lines = { "uno-a" } });
+            s1.Elements.Add(new Fusion.Shared.Model.Element { Lines = { "uno-b" } });
+            var s2 = new Fusion.Shared.Model.Scenario { Title = "Canto dos" };
+            s2.Elements.Add(new Fusion.Shared.Model.Element { Lines = { "dos-a" } });
+            p.Scenarios.Add(s1); p.Scenarios.Add(s2);
+            // (0,0)→(0,1)→(1,0)→null  — la misma secuencia del transporte del Motor
+            TestRunner.Check(OperatorForm.NextOf(p, 0, 0) == s1.Elements[1], "siguiente: mismo escenario");
+            TestRunner.Check(OperatorForm.NextOf(p, 0, 1) == s2.Elements[0], "siguiente: salta al próximo escenario");
+            TestRunner.Check(OperatorForm.NextOf(p, 1, 0) == null, "fin del programa: null");
+            TestRunner.Check(OperatorForm.NextOf(p, -1, 0) == null && OperatorForm.NextOf(null, 0, 0) == null,
+                "fuera de rango/proyecto nulo: null");
+        }
+
         // -------------------------------------------------- v4.2.0 (C8)
         public static void TestDisabledIconsUseInkFadedTint()
         {
