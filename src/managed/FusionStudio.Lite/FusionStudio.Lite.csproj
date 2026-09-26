@@ -57,4 +57,13 @@
     </Reference>
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Ookii.Dialogs 1.0.0 (BSD-3, net35) — VistaFolderBrowserDialog nativo;
+         solo diálogos, nada de JumpLists (escribirían registro) [DEPENDENCIAS.md] -->
+    <Reference Include="Ookii.Dialogs.Wpf">
+      <HintPath>..\..\..\third_party\net\Ookii.Dialogs\1.0.0\Ookii.Dialogs.Wpf.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
 </Project>

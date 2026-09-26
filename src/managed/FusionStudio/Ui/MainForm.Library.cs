@@ -145,7 +145,10 @@ namespace Fusion.Studio.Ui
             var btnImportBible = new FusionButton { Text = "Biblia", IconName = "book", Kind = FusionButtonKind.Chip,
                                                     Dock = DockStyle.Right, Width = 88 };
             btnImportBible.Click += delegate { ImportBible(); };
-            medBar.Controls.Add(btnAddMedia); medBar.Controls.Add(btnImportBible);
+            var btnMediaFolder = new FusionButton { Text = "Carpeta", IconName = "folder-open", Kind = FusionButtonKind.Chip,
+                                                    Dock = DockStyle.Left, Width = 96 };
+            btnMediaFolder.Click += delegate { AddMediaFolder(); };   // Ookii VistaFolderBrowserDialog (v4.1.0)
+            medBar.Controls.Add(btnAddMedia); medBar.Controls.Add(btnMediaFolder); medBar.Controls.Add(btnImportBible);
             tabMedia.Controls.Add(mediaList);
             tabMedia.Controls.Add(medBar);
             libTabs.Add("Medios", "photo", tabMedia);
@@ -531,6 +534,59 @@ namespace Fusion.Studio.Ui
             public bool IsVideo
             {
                 get { var e = System.IO.Path.GetExtension(Path).ToLowerInvariant(); return e == ".mp4" || e == ".avi" || e == ".wmv" || e == ".mov"; }
+            }
+        }
+
+        /// <summary>Importa todas las imágenes/videos de una carpeta (v4.1.0,
+        /// Ookii.Dialogs VistaFolderBrowserDialog: diálogo nativo de Vista+ con
+        /// fallback COM robusto; en XP/Win7 básico se degrada al clásico).</summary>
+        void AddMediaFolder()
+        {
+            string dir = null;
+            try
+            {
+                // variante WPF de Ookii: ShowDialog() → bool? (no IDisposable)
+                var d = new Ookii.Dialogs.Wpf.VistaFolderBrowserDialog();
+                d.Description = "Carpeta con imágenes o videos para los medios";
+                d.UseDescriptionForTitle = true;
+                if (d.ShowDialog() != true) return;
+                dir = d.SelectedPath;
+            }
+            catch
+            {
+                // sin diálogo Vista (entorno raro): FolderBrowserDialog clásico
+                using (var d = new FolderBrowserDialog())
+                {
+                    d.Description = "Carpeta con imágenes o videos para los medios";
+                    if (d.ShowDialog(this) != DialogResult.OK) return;
+                    dir = d.SelectedPath;
+                }
+            }
+            if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir)) return;
+            try
+            {
+                Directory.CreateDirectory(Settings.MediaPath);
+                int n = 0;
+                foreach (var f in Directory.GetFiles(dir))
+                {
+                    string ext = Path.GetExtension(f).ToLowerInvariant();
+                    if (ext == ".jpg" || ext == ".jpeg" || ext == ".png" || ext == ".gif" || ext == ".bmp" ||
+                        ext == ".mp4" || ext == ".avi" || ext == ".wmv" || ext == ".mov")
+                    {
+                        File.Copy(f, Path.Combine(Settings.MediaPath, Path.GetFileName(f)), true);
+                        n++;
+                    }
+                }
+                RefreshMedia();
+                LogService.Info("cs.media", "carpeta importada: " + n + " archivos");
+                if (n == 0)
+                    MessageBox.Show(this, "La carpeta no contiene imágenes o videos compatibles.",
+                        "Fusion HP", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "No se pudo importar la carpeta.\n\n" + ex.Message,
+                    "Fusion HP", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
         }
 
